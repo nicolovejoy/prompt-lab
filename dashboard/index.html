@@ -151,15 +151,18 @@
       document.getElementById('view-prompts').classList.toggle('active', view === 'prompts');
       document.getElementById('view-sessions').classList.toggle('active', view === 'sessions');
 
-      // Update filters visibility
+      // Update filters visibility and labels
       const bulkActions = document.querySelector('.bulk-actions');
       const searchInput = document.getElementById('search-input');
+      const ratedFilter = document.getElementById('rated-filter');
       if (view === 'sessions') {
         bulkActions.style.display = 'none';
         searchInput.placeholder = 'Search sessions...';
+        ratedFilter.options[0].text = 'All sessions';
       } else {
         bulkActions.style.display = 'flex';
         searchInput.placeholder = 'Search prompts...';
+        ratedFilter.options[0].text = 'All prompts';
       }
 
       selectedIndex = -1;
