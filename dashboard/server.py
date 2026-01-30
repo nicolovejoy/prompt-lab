@@ -2,7 +2,7 @@
 """Prompt history dashboard - local web UI for reviewing and rating prompts."""
 
 import sqlite3
-import json
+import subprocess
 from pathlib import Path
 from flask import Flask, jsonify, request, send_file
 
@@ -108,6 +108,23 @@ def stats():
         "unrated": total - rated,
         "by_project": {row["project"]: row["count"] for row in by_project}
     })
+
+
+@app.route("/api/info")
+def info():
+    """Return app info including last commit date."""
+    repo_dir = SCRIPT_DIR.parent
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%ci"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True
+        )
+        commit_date = result.stdout.strip() if result.returncode == 0 else None
+    except Exception:
+        commit_date = None
+    return jsonify({"commit_date": commit_date})
 
 
 if __name__ == "__main__":
