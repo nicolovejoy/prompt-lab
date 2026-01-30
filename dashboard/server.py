@@ -136,7 +136,8 @@ def list_sessions():
     project = request.args.get("project")
     rated = request.args.get("rated")
 
-    query = "SELECT * FROM sessions WHERE ended_at IS NOT NULL"
+    # Only show sessions with summaries
+    query = "SELECT * FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''"
     params = []
 
     if project:
@@ -154,6 +155,21 @@ def list_sessions():
     conn.close()
 
     return jsonify([dict(row) for row in rows])
+
+
+@app.route("/api/sessions/stats")
+def session_stats():
+    conn = get_db()
+    # Only count sessions with summaries
+    total = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''").fetchone()["n"]
+    rated = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != '' AND utility IS NOT NULL").fetchone()["n"]
+    conn.close()
+
+    return jsonify({
+        "total": total,
+        "rated": rated,
+        "unrated": total - rated
+    })
 
 
 @app.route("/api/sessions/<int:session_id>", methods=["PATCH"])

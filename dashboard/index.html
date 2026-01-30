@@ -165,8 +165,10 @@
       selectedIndex = -1;
       selectedIds.clear();
       if (view === 'prompts') {
+        loadStats();
         loadPrompts();
       } else {
+        loadSessionStats();
         loadSessions();
       }
       updateHelpFooter();
@@ -197,6 +199,16 @@
       const data = await res.json();
       document.getElementById('stats').innerHTML = `
         <div class="stat"><div class="stat-num">${data.total}</div><div class="stat-label">Total</div></div>
+        <div class="stat"><div class="stat-num">${data.rated}</div><div class="stat-label">Rated</div></div>
+        <div class="stat"><div class="stat-num">${data.unrated}</div><div class="stat-label">Unrated</div></div>
+      `;
+    }
+
+    async function loadSessionStats() {
+      const res = await fetch('/api/sessions/stats');
+      const data = await res.json();
+      document.getElementById('stats').innerHTML = `
+        <div class="stat"><div class="stat-num">${data.total}</div><div class="stat-label">Sessions</div></div>
         <div class="stat"><div class="stat-num">${data.rated}</div><div class="stat-label">Rated</div></div>
         <div class="stat"><div class="stat-num">${data.unrated}</div><div class="stat-label">Unrated</div></div>
       `;
@@ -284,6 +296,7 @@
       });
 
       await loadSessions();
+      loadSessionStats();
 
       if (ratedFilter === 'false' && prevIndex >= 0) {
         const newIndex = Math.min(prevIndex, sessionIds.length - 1);
