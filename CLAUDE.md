@@ -12,7 +12,7 @@ Opens at http://localhost:5111
 
 ## Next Steps
 
-- Fix 'x' key delete (was working, now broken)
-- Improve navigation UX
+- Test full workflow end-to-end on fresh machine
 - Add tag filtering dropdown
+- Allow editing session summaries in dashboard
 - Consider truncating long contexts more gracefully
