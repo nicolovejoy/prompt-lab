@@ -55,6 +55,17 @@
     .undo-toast.hidden { display: none; }
     .undo-btn { background: #4a90d9; color: white; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
     .undo-btn:hover { background: #3a7bc8; }
+    .view-toggle { display: flex; gap: 0; margin-bottom: 20px; }
+    .view-toggle button { border-radius: 0; border-right: none; }
+    .view-toggle button:first-child { border-radius: 4px 0 0 4px; }
+    .view-toggle button:last-child { border-radius: 0 4px 4px 0; border-right: 1px solid #ccc; }
+    .view-toggle button.active { background: #4a90d9; color: white; border-color: #4a90d9; }
+    .session-card { background: white; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
+    .session-card.focused { outline: 2px solid #4a90d9; outline-offset: 2px; }
+    .session-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
+    .session-meta { font-size: 0.85rem; color: #666; }
+    .session-summary { font-size: 0.95rem; line-height: 1.5; margin-bottom: 10px; }
+    .session-summary.empty { color: #999; font-style: italic; }
   </style>
 </head>
 <body>
@@ -68,7 +79,12 @@
 
   <div class="stats" id="stats"></div>
 
-  <div class="filters">
+  <div class="view-toggle">
+    <button id="view-prompts" class="active" onclick="setView('prompts')">Prompts</button>
+    <button id="view-sessions" onclick="setView('sessions')">Sessions</button>
+  </div>
+
+  <div class="filters" id="filters">
     <select id="project-filter">
       <option value="">All projects</option>
     </select>
@@ -122,9 +138,38 @@
     let hasConfirmedDelete = false;
     let lastDeletedPrompts = [];
     let undoTimeout = null;
+    let currentView = 'prompts';
+    let allSessions = [];
+    let sessionIds = [];
 
     function toggleHelp() {
       document.getElementById('help-overlay').classList.toggle('visible');
+    }
+
+    function setView(view) {
+      currentView = view;
+      document.getElementById('view-prompts').classList.toggle('active', view === 'prompts');
+      document.getElementById('view-sessions').classList.toggle('active', view === 'sessions');
+
+      // Update filters visibility
+      const bulkActions = document.querySelector('.bulk-actions');
+      const searchInput = document.getElementById('search-input');
+      if (view === 'sessions') {
+        bulkActions.style.display = 'none';
+        searchInput.placeholder = 'Search sessions...';
+      } else {
+        bulkActions.style.display = 'flex';
+        searchInput.placeholder = 'Search prompts...';
+      }
+
+      selectedIndex = -1;
+      selectedIds.clear();
+      if (view === 'prompts') {
+        loadPrompts();
+      } else {
+        loadSessions();
+      }
+      updateHelpFooter();
     }
 
     function updateHelpFooter() {
@@ -179,6 +224,73 @@
       const res = await fetch('/api/prompts?' + params);
       allPrompts = await res.json();
       renderPrompts();
+    }
+
+    async function loadSessions() {
+      const project = document.getElementById('project-filter').value;
+      const rated = document.getElementById('rated-filter').value;
+      const params = new URLSearchParams();
+      if (project) params.set('project', project);
+      if (rated) params.set('rated', rated);
+
+      const res = await fetch('/api/sessions?' + params);
+      allSessions = await res.json();
+      renderSessions();
+    }
+
+    function renderSessions() {
+      const search = document.getElementById('search-input').value.toLowerCase();
+      const sessions = allSessions.filter(s =>
+        !search || (s.summary && s.summary.toLowerCase().includes(search)) ||
+        s.project.toLowerCase().includes(search)
+      );
+
+      const container = document.getElementById('prompts');
+      if (sessions.length === 0) {
+        container.innerHTML = '<div class="empty">No sessions found</div>';
+        sessionIds = [];
+        selectedIndex = -1;
+        return;
+      }
+
+      sessionIds = sessions.map(s => s.id);
+      container.innerHTML = sessions.map((s, i) => `
+        <div class="session-card" data-id="${s.id}">
+          <div class="session-header">
+            <div class="session-meta">
+              <strong>${s.project}</strong> · ${s.started_at}${s.ended_at ? ' → ' + s.ended_at.split(' ')[1] : ''}
+            </div>
+          </div>
+          <div class="session-summary ${s.summary ? '' : 'empty'}">${s.summary ? escapeHtml(s.summary) : 'No summary'}</div>
+          <div class="prompt-actions">
+            <div class="rating">
+              ${[1,2,3,4,5].map(n => `
+                <button onclick="rateSession(${s.id}, ${n})" class="${s.utility === n ? 'active' : ''}">${n}</button>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function rateSession(id, utility) {
+      const ratedFilter = document.getElementById('rated-filter').value;
+      const prevIndex = selectedIndex;
+
+      await fetch(`/api/sessions/${id}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({utility})
+      });
+
+      await loadSessions();
+
+      if (ratedFilter === 'false' && prevIndex >= 0) {
+        const newIndex = Math.min(prevIndex, sessionIds.length - 1);
+        if (newIndex >= 0) {
+          selectItem(newIndex);
+        }
+      }
     }
 
     function renderPrompts() {
@@ -360,23 +472,38 @@
       loadStats();
     }
 
-    document.getElementById('project-filter').addEventListener('change', loadPrompts);
-    document.getElementById('rated-filter').addEventListener('change', loadPrompts);
+    document.getElementById('project-filter').addEventListener('change', () => {
+      currentView === 'prompts' ? loadPrompts() : loadSessions();
+    });
+    document.getElementById('rated-filter').addEventListener('change', () => {
+      currentView === 'prompts' ? loadPrompts() : loadSessions();
+    });
 
     let searchTimeout;
     document.getElementById('search-input').addEventListener('input', () => {
       clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(renderPrompts, 200);
+      searchTimeout = setTimeout(() => {
+        currentView === 'prompts' ? renderPrompts() : renderSessions();
+      }, 200);
     });
 
     function selectPrompt(index) {
-      const cards = document.querySelectorAll('.prompt-card');
+      selectItem(index);
+    }
+
+    function selectItem(index) {
+      const cardClass = currentView === 'prompts' ? '.prompt-card' : '.session-card';
+      const cards = document.querySelectorAll(cardClass);
       cards.forEach(c => c.classList.remove('focused'));
       if (index >= 0 && index < cards.length) {
         selectedIndex = index;
         cards[index].classList.add('focused');
         cards[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
+    }
+
+    function getItemIds() {
+      return currentView === 'prompts' ? promptIds : sessionIds;
     }
 
     document.addEventListener('keydown', (e) => {
@@ -409,33 +536,38 @@
         return;
       }
 
+      const itemIds = getItemIds();
       if (e.key === 'ArrowDown' || e.key === 'j') {
         e.preventDefault();
-        selectPrompt(Math.min(selectedIndex + 1, promptIds.length - 1));
+        selectItem(Math.min(selectedIndex + 1, itemIds.length - 1));
         updateHelpFooter();
       } else if (e.key === 'ArrowUp' || e.key === 'k') {
         e.preventDefault();
-        selectPrompt(Math.max(selectedIndex - 1, 0));
+        selectItem(Math.max(selectedIndex - 1, 0));
         updateHelpFooter();
       } else if (e.key >= '1' && e.key <= '5' && selectedIndex >= 0) {
-        rate(promptIds[selectedIndex], parseInt(e.key));
-      } else if (e.key === 't' && selectedIndex >= 0) {
+        if (currentView === 'prompts') {
+          rate(itemIds[selectedIndex], parseInt(e.key));
+        } else {
+          rateSession(itemIds[selectedIndex], parseInt(e.key));
+        }
+      } else if (e.key === 't' && selectedIndex >= 0 && currentView === 'prompts') {
         const card = document.querySelectorAll('.prompt-card')[selectedIndex];
         card.querySelector('.tags-input').focus();
-      } else if (e.key === 'e' && selectedIndex >= 0) {
+      } else if (e.key === 'e' && selectedIndex >= 0 && currentView === 'prompts') {
         const card = document.querySelectorAll('.prompt-card')[selectedIndex];
         card.querySelector('.prompt-text').classList.toggle('expanded');
-      } else if (e.key === ' ' && selectedIndex >= 0) {
+      } else if (e.key === ' ' && selectedIndex >= 0 && currentView === 'prompts') {
         e.preventDefault();
-        const id = promptIds[selectedIndex];
+        const id = itemIds[selectedIndex];
         toggleSelection(id, !selectedIds.has(id));
         renderPrompts();
-        selectPrompt(selectedIndex);
+        selectItem(selectedIndex);
         updateHelpFooter();
-      } else if (e.key === 'x') {
+      } else if (e.key === 'x' && currentView === 'prompts') {
         // Delete selected items, or focused item if nothing selected
         if (selectedIds.size === 0 && selectedIndex >= 0) {
-          const id = promptIds[selectedIndex];
+          const id = itemIds[selectedIndex];
           if (id) {
             selectedIds.add(id);
             updateDeleteButton();

@@ -131,6 +131,52 @@ def stats():
     })
 
 
+@app.route("/api/sessions")
+def list_sessions():
+    project = request.args.get("project")
+    rated = request.args.get("rated")
+
+    query = "SELECT * FROM sessions WHERE ended_at IS NOT NULL"
+    params = []
+
+    if project:
+        query += " AND project = ?"
+        params.append(project)
+    if rated == "true":
+        query += " AND utility IS NOT NULL"
+    elif rated == "false":
+        query += " AND utility IS NULL"
+
+    query += " ORDER BY started_at DESC"
+
+    conn = get_db()
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    return jsonify([dict(row) for row in rows])
+
+
+@app.route("/api/sessions/<int:session_id>", methods=["PATCH"])
+def update_session(session_id):
+    data = request.json
+    conn = get_db()
+
+    updates = []
+    params = []
+    for field in ["utility", "summary"]:
+        if field in data:
+            updates.append(f"{field} = ?")
+            params.append(data[field] if data[field] != "" else None)
+
+    if updates:
+        params.append(session_id)
+        conn.execute(f"UPDATE sessions SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+
+    conn.close()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/info")
 def info():
     """Return app info including last commit date."""

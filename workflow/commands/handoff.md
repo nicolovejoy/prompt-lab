@@ -9,9 +9,9 @@ Quick handoff for next session.
 ## Capture Commits
 
 1. Get project name from `pwd`
-2. Get session start time:
+2. Get session ID and start time:
    ```bash
-   sqlite3 ~/.claude/prompt-history.db "SELECT started_at FROM sessions WHERE project='<project>' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;"
+   sqlite3 ~/.claude/prompt-history.db "SELECT id, started_at FROM sessions WHERE project='<project>' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;"
    ```
 3. Log commits since session start:
    ```bash
@@ -21,10 +21,26 @@ Quick handoff for next session.
    ```bash
    sqlite3 ~/.claude/prompt-history.db "INSERT OR IGNORE INTO commits (hash, message) VALUES ('<hash>', '<message>');"
    ```
-5. Close session:
-   ```bash
-   sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET ended_at=datetime('now') WHERE project='<project>' AND ended_at IS NULL;"
-   ```
+
+## Generate Session Summary
+
+Write a brief summary (50-100 words max) covering:
+- What was accomplished this session
+- What's coming up next
+- Any key insights or decisions made
+
+Base this on the conversation context, commits made, and any changes to files.
+
+Store the summary:
+```bash
+sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET summary='<escaped_summary>' WHERE id=<session_id>;"
+```
+
+## Close Session
+
+```bash
+sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET ended_at=datetime('now') WHERE project='<project>' AND ended_at IS NULL;"
+```
 
 ## Update CLAUDE.md
 
@@ -36,7 +52,7 @@ Quick handoff for next session.
 ## Append to devlog.md
 
 Add dated entry:
-- Summary of work done (1-2 sentences)
+- The session summary
 - Commits made (if any)
 
 ## Done

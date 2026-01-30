@@ -62,7 +62,9 @@ CREATE TABLE sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project TEXT NOT NULL,
     started_at TEXT DEFAULT (datetime('now')),
-    ended_at TEXT
+    ended_at TEXT,
+    summary TEXT,
+    utility INTEGER CHECK(utility BETWEEN 1 AND 5)
 );
 CREATE TABLE commits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
