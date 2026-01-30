@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prompt Dashboard</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+    h1 { margin: 0 0 20px; font-size: 1.5rem; }
+    .filters { display: flex; gap: 10px; margin-bottom: 20px; }
+    select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; background: white; }
+    button { cursor: pointer; }
+    button:hover { background: #eee; }
+    .stats { background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 20px; }
+    .stat { text-align: center; }
+    .stat-num { font-size: 1.5rem; font-weight: bold; }
+    .stat-label { font-size: 0.8rem; color: #666; }
+    .prompt-card { background: white; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
+    .prompt-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px; }
+    .prompt-meta { font-size: 0.85rem; color: #666; }
+    .prompt-text { font-family: monospace; font-size: 0.9rem; white-space: pre-wrap; background: #f9f9f9; padding: 10px; border-radius: 4px; max-height: 150px; overflow-y: auto; cursor: pointer; }
+    .prompt-text.expanded { max-height: none; }
+    .prompt-actions { display: flex; gap: 10px; margin-top: 10px; align-items: center; }
+    .rating { display: flex; gap: 4px; }
+    .rating button { padding: 4px 10px; font-size: 0.9rem; }
+    .rating button.active { background: #4a90d9; color: white; border-color: #4a90d9; }
+    .tags-input { flex: 1; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
+    .empty { text-align: center; padding: 40px; color: #666; }
+    .prompt-card.selected { outline: 2px solid #4a90d9; outline-offset: 2px; }
+    .help { font-size: 0.75rem; color: #888; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Prompt Dashboard</h1>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="filters">
+    <select id="project-filter">
+      <option value="">All projects</option>
+    </select>
+    <select id="rated-filter">
+      <option value="">All prompts</option>
+      <option value="false">Unrated only</option>
+      <option value="true">Rated only</option>
+    </select>
+    <button onclick="loadPrompts()">Refresh</button>
+  </div>
+
+  <div id="prompts"></div>
+  <div class="help">Keyboard: ↑↓ navigate · 1-5 rate · t focus tags · e expand/collapse</div>
+
+  <script>
+    let selectedIndex = -1;
+    let promptIds = [];
+    async function loadStats() {
+      const res = await fetch('/api/stats');
+      const data = await res.json();
+      document.getElementById('stats').innerHTML = `
+        <div class="stat"><div class="stat-num">${data.total}</div><div class="stat-label">Total</div></div>
+        <div class="stat"><div class="stat-num">${data.rated}</div><div class="stat-label">Rated</div></div>
+        <div class="stat"><div class="stat-num">${data.unrated}</div><div class="stat-label">Unrated</div></div>
+      `;
+    }
+
+    async function loadProjects() {
+      const res = await fetch('/api/projects');
+      const projects = await res.json();
+      const select = document.getElementById('project-filter');
+      projects.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        select.appendChild(opt);
+      });
+    }
+
+    async function loadPrompts() {
+      const project = document.getElementById('project-filter').value;
+      const rated = document.getElementById('rated-filter').value;
+      const params = new URLSearchParams();
+      if (project) params.set('project', project);
+      if (rated) params.set('rated', rated);
+
+      const res = await fetch('/api/prompts?' + params);
+      const prompts = await res.json();
+
+      const container = document.getElementById('prompts');
+      if (prompts.length === 0) {
+        container.innerHTML = '<div class="empty">No prompts found</div>';
+        promptIds = [];
+        selectedIndex = -1;
+        return;
+      }
+
+      promptIds = prompts.map(p => p.id);
+      container.innerHTML = prompts.map((p, i) => `
+        <div class="prompt-card" data-id="${p.id}">
+          <div class="prompt-header">
+            <div class="prompt-meta">
+              <strong>${p.project}</strong> · ${p.timestamp}
+            </div>
+          </div>
+          <div class="prompt-text" onclick="this.classList.toggle('expanded')">${escapeHtml(p.prompt)}</div>
+          <div class="prompt-actions">
+            <div class="rating">
+              ${[1,2,3,4,5].map(n => `
+                <button onclick="rate(${p.id}, ${n})" class="${p.utility === n ? 'active' : ''}">${n}</button>
+              `).join('')}
+            </div>
+            <input class="tags-input" placeholder="tags (comma-separated)" value="${p.tags || ''}"
+                   onchange="updateTags(${p.id}, this.value)">
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function rate(id, utility) {
+      await fetch(`/api/prompts/${id}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({utility})
+      });
+      loadPrompts();
+      loadStats();
+    }
+
+    async function updateTags(id, tags) {
+      await fetch(`/api/prompts/${id}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({tags})
+      });
+    }
+
+    document.getElementById('project-filter').addEventListener('change', loadPrompts);
+    document.getElementById('rated-filter').addEventListener('change', loadPrompts);
+
+    function selectPrompt(index) {
+      const cards = document.querySelectorAll('.prompt-card');
+      cards.forEach(c => c.classList.remove('selected'));
+      if (index >= 0 && index < cards.length) {
+        selectedIndex = index;
+        cards[index].classList.add('selected');
+        cards[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      // Skip if typing in input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
+        if (e.key === 'Escape') e.target.blur();
+        return;
+      }
+
+      if (e.key === 'ArrowDown' || e.key === 'j') {
+        e.preventDefault();
+        selectPrompt(Math.min(selectedIndex + 1, promptIds.length - 1));
+      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        e.preventDefault();
+        selectPrompt(Math.max(selectedIndex - 1, 0));
+      } else if (e.key >= '1' && e.key <= '5' && selectedIndex >= 0) {
+        rate(promptIds[selectedIndex], parseInt(e.key));
+      } else if (e.key === 't' && selectedIndex >= 0) {
+        const card = document.querySelectorAll('.prompt-card')[selectedIndex];
+        card.querySelector('.tags-input').focus();
+      } else if (e.key === 'e' && selectedIndex >= 0) {
+        const card = document.querySelectorAll('.prompt-card')[selectedIndex];
+        card.querySelector('.prompt-text').classList.toggle('expanded');
+      }
+    });
+
+    loadStats();
+    loadProjects();
+    loadPrompts();
+  </script>
+</body>
+</html>
