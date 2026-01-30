@@ -136,7 +136,7 @@ def list_sessions():
     project = request.args.get("project")
     rated = request.args.get("rated")
 
-    # Only show sessions with summaries
+    # Only show sessions that have summaries
     query = "SELECT * FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''"
     params = []
 
@@ -160,7 +160,7 @@ def list_sessions():
 @app.route("/api/sessions/stats")
 def session_stats():
     conn = get_db()
-    # Only count sessions with summaries
+    # Count sessions with summaries
     total = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''").fetchone()["n"]
     rated = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != '' AND utility IS NOT NULL").fetchone()["n"]
     conn.close()
