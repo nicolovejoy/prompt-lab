@@ -304,6 +304,8 @@
         hasConfirmedDelete = true;
       }
 
+      const prevIndex = selectedIndex;
+
       // Store prompts for undo
       const idsToDelete = Array.from(selectedIds);
       lastDeletedPrompts = allPrompts.filter(p => idsToDelete.includes(p.id));
@@ -316,8 +318,14 @@
 
       selectedIds.clear();
       document.getElementById('select-all').checked = false;
-      loadPrompts();
+      await loadPrompts();
       loadStats();
+
+      // Auto-select next prompt at same position
+      if (prevIndex >= 0 && promptIds.length > 0) {
+        const newIndex = Math.min(prevIndex, promptIds.length - 1);
+        selectPrompt(newIndex);
+      }
 
       // Show undo toast
       showUndoToast(lastDeletedPrompts.length);
