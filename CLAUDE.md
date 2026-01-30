@@ -13,4 +13,4 @@ Opens at http://localhost:5111
 ## Next Steps
 
 - Add .venv to .gitignore
-- Consider adding delete prompt functionality
+- Add tag filtering dropdown

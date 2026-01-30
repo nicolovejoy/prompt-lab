@@ -67,6 +67,22 @@ def update_prompt(prompt_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/prompts/bulk", methods=["DELETE"])
+def delete_prompts():
+    data = request.json
+    ids = data.get("ids", [])
+    if not ids:
+        return jsonify({"ok": False, "error": "No ids provided"}), 400
+
+    conn = get_db()
+    placeholders = ",".join("?" * len(ids))
+    conn.execute(f"DELETE FROM prompts WHERE id IN ({placeholders})", ids)
+    conn.commit()
+    deleted = conn.total_changes
+    conn.close()
+    return jsonify({"ok": True, "deleted": deleted})
+
+
 @app.route("/api/projects")
 def list_projects():
     conn = get_db()
