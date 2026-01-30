@@ -2,6 +2,8 @@
 
 ## 2026-01-30
 
+Added help overlay (`?` to toggle) and context-aware footer that shows relevant shortcuts based on state. Made repo public on GitHub.
+
 Added bulk delete feature with checkboxes, select all, and keyboard shortcuts (space to toggle, x to delete). Added search box that filters prompts by text, tags, or project name.
 
 Confirmed prompt auto-logging hook is now working after the absolute path fix. Updated CLAUDE.md to reflect.

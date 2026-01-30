@@ -36,6 +36,15 @@
     .bulk-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
     .select-all-label { display: flex; align-items: center; gap: 5px; font-size: 0.9rem; cursor: pointer; }
     .help { font-size: 0.75rem; color: #888; margin-top: 10px; }
+    .help kbd { background: #e8e8e8; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+    .help-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; }
+    .help-overlay.visible { display: flex; }
+    .help-panel { background: white; border-radius: 12px; padding: 24px 32px; max-width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+    .help-panel h2 { margin: 0 0 16px; font-size: 1.1rem; }
+    .help-panel dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; }
+    .help-panel dt { font-family: monospace; background: #f0f0f0; padding: 2px 8px; border-radius: 4px; text-align: center; }
+    .help-panel dd { margin: 0; color: #555; }
+    .help-panel .hint { margin-top: 16px; font-size: 0.8rem; color: #888; text-align: center; }
   </style>
 </head>
 <body>
@@ -64,13 +73,46 @@
   </div>
 
   <div id="prompts"></div>
-  <div class="help">Keyboard: ↑↓ navigate · 1-5 rate · t focus tags · e expand · space select · x delete selected</div>
+  <div class="help" id="help-footer"></div>
+
+  <div class="help-overlay" id="help-overlay" onclick="toggleHelp()">
+    <div class="help-panel" onclick="event.stopPropagation()">
+      <h2>Keyboard Shortcuts</h2>
+      <dl>
+        <dt>j / ↓</dt><dd>Next prompt</dd>
+        <dt>k / ↑</dt><dd>Previous prompt</dd>
+        <dt>1-5</dt><dd>Rate prompt</dd>
+        <dt>t</dt><dd>Edit tags</dd>
+        <dt>e</dt><dd>Expand/collapse</dd>
+        <dt>space</dt><dd>Toggle selection</dd>
+        <dt>x</dt><dd>Delete selected</dd>
+        <dt>esc</dt><dd>Clear selection / blur</dd>
+        <dt>?</dt><dd>Toggle this help</dd>
+      </dl>
+      <div class="hint">Press <kbd>?</kbd> or click outside to close</div>
+    </div>
+  </div>
 
   <script>
     let selectedIndex = -1;
     let promptIds = [];
     let selectedIds = new Set();
     let allPrompts = [];
+
+    function toggleHelp() {
+      document.getElementById('help-overlay').classList.toggle('visible');
+    }
+
+    function updateHelpFooter() {
+      const footer = document.getElementById('help-footer');
+      if (selectedIds.size > 0) {
+        footer.innerHTML = `<kbd>x</kbd> delete ${selectedIds.size} · <kbd>space</kbd> toggle · <kbd>esc</kbd> clear · <kbd>?</kbd> help`;
+      } else if (selectedIndex >= 0) {
+        footer.innerHTML = `<kbd>j/k</kbd> navigate · <kbd>1-5</kbd> rate · <kbd>t</kbd> tags · <kbd>e</kbd> expand · <kbd>space</kbd> select · <kbd>?</kbd> help`;
+      } else {
+        footer.innerHTML = `<kbd>j/k</kbd> navigate · <kbd>?</kbd> help`;
+      }
+    }
     async function loadStats() {
       const res = await fetch('/api/stats');
       const data = await res.json();
@@ -203,6 +245,7 @@
       const count = selectedIds.size;
       btn.textContent = `Delete (${count})`;
       btn.disabled = count === 0;
+      updateHelpFooter();
     }
 
     async function deleteSelected() {
@@ -241,6 +284,29 @@
     }
 
     document.addEventListener('keydown', (e) => {
+      // Help toggle works everywhere
+      if (e.key === '?') {
+        toggleHelp();
+        return;
+      }
+
+      // Close help on Escape
+      if (e.key === 'Escape') {
+        const overlay = document.getElementById('help-overlay');
+        if (overlay.classList.contains('visible')) {
+          toggleHelp();
+          return;
+        }
+        // Clear selections on Escape
+        if (selectedIds.size > 0) {
+          selectedIds.clear();
+          document.getElementById('select-all').checked = false;
+          renderPrompts();
+          updateHelpFooter();
+          return;
+        }
+      }
+
       // Skip if typing in input
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
         if (e.key === 'Escape') e.target.blur();
@@ -250,9 +316,11 @@
       if (e.key === 'ArrowDown' || e.key === 'j') {
         e.preventDefault();
         selectPrompt(Math.min(selectedIndex + 1, promptIds.length - 1));
+        updateHelpFooter();
       } else if (e.key === 'ArrowUp' || e.key === 'k') {
         e.preventDefault();
         selectPrompt(Math.max(selectedIndex - 1, 0));
+        updateHelpFooter();
       } else if (e.key >= '1' && e.key <= '5' && selectedIndex >= 0) {
         rate(promptIds[selectedIndex], parseInt(e.key));
       } else if (e.key === 't' && selectedIndex >= 0) {
@@ -267,6 +335,7 @@
         toggleSelection(id, !selectedIds.has(id));
         renderPrompts();
         selectPrompt(selectedIndex);
+        updateHelpFooter();
       } else if (e.key === 'x' && selectedIds.size > 0) {
         deleteSelected();
       }
@@ -275,6 +344,7 @@
     loadStats();
     loadProjects();
     loadPrompts();
+    updateHelpFooter();
   </script>
 </body>
 </html>
