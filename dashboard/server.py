@@ -84,6 +84,27 @@ def delete_prompts():
     return jsonify({"ok": True, "deleted": deleted})
 
 
+@app.route("/api/prompts/restore", methods=["POST"])
+def restore_prompts():
+    data = request.json
+    prompts = data.get("prompts", [])
+    if not prompts:
+        return jsonify({"ok": False, "error": "No prompts provided"}), 400
+
+    conn = get_db()
+    for p in prompts:
+        conn.execute(
+            """INSERT INTO prompts (id, timestamp, project, prompt, outcome, utility, tags, notes, session_id, context)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (p.get("id"), p.get("timestamp"), p.get("project"), p.get("prompt"),
+             p.get("outcome"), p.get("utility"), p.get("tags"), p.get("notes"),
+             p.get("session_id"), p.get("context"))
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "restored": len(prompts)})
+
+
 @app.route("/api/projects")
 def list_projects():
     conn = get_db()

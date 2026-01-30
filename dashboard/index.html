@@ -51,6 +51,10 @@
     .help-panel dt { font-family: monospace; background: #f0f0f0; padding: 2px 8px; border-radius: 4px; text-align: center; }
     .help-panel dd { margin: 0; color: #555; }
     .help-panel .hint { margin-top: 16px; font-size: 0.8rem; color: #888; text-align: center; }
+    .undo-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 12px 20px; border-radius: 8px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 200; }
+    .undo-toast.hidden { display: none; }
+    .undo-btn { background: #4a90d9; color: white; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+    .undo-btn:hover { background: #3a7bc8; }
   </style>
 </head>
 <body>
@@ -87,6 +91,11 @@
   <div id="prompts"></div>
   <div class="help" id="help-footer"></div>
 
+  <div class="undo-toast hidden" id="undo-toast">
+    <span id="undo-message">Deleted 1 prompt</span>
+    <button class="undo-btn" onclick="undoDelete()">Undo</button>
+  </div>
+
   <div class="help-overlay" id="help-overlay" onclick="toggleHelp()">
     <div class="help-panel" onclick="event.stopPropagation()">
       <h2>Keyboard Shortcuts</h2>
@@ -110,6 +119,9 @@
     let promptIds = [];
     let selectedIds = new Set();
     let allPrompts = [];
+    let hasConfirmedDelete = false;
+    let lastDeletedPrompts = [];
+    let undoTimeout = null;
 
     function toggleHelp() {
       document.getElementById('help-overlay').classList.toggle('visible');
@@ -219,13 +231,25 @@
     }
 
     async function rate(id, utility) {
+      const ratedFilter = document.getElementById('rated-filter').value;
+      const prevIndex = selectedIndex;
+
       await fetch(`/api/prompts/${id}`, {
         method: 'PATCH',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({utility})
       });
-      loadPrompts();
+
+      await loadPrompts();
       loadStats();
+
+      // In unrated filter, stay at same index (now the next prompt)
+      if (ratedFilter === 'false' && prevIndex >= 0) {
+        const newIndex = Math.min(prevIndex, promptIds.length - 1);
+        if (newIndex >= 0) {
+          selectPrompt(newIndex);
+        }
+      }
     }
 
     async function updateTags(id, tags) {
@@ -273,16 +297,57 @@
 
     async function deleteSelected() {
       if (selectedIds.size === 0) return;
-      if (!confirm(`Delete ${selectedIds.size} prompt(s)?`)) return;
+
+      // First delete requires confirmation
+      if (!hasConfirmedDelete) {
+        if (!confirm(`Delete ${selectedIds.size} prompt(s)?`)) return;
+        hasConfirmedDelete = true;
+      }
+
+      // Store prompts for undo
+      const idsToDelete = Array.from(selectedIds);
+      lastDeletedPrompts = allPrompts.filter(p => idsToDelete.includes(p.id));
 
       await fetch('/api/prompts/bulk', {
         method: 'DELETE',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ids: Array.from(selectedIds)})
+        body: JSON.stringify({ids: idsToDelete})
       });
 
       selectedIds.clear();
       document.getElementById('select-all').checked = false;
+      loadPrompts();
+      loadStats();
+
+      // Show undo toast
+      showUndoToast(lastDeletedPrompts.length);
+    }
+
+    function showUndoToast(count) {
+      const toast = document.getElementById('undo-toast');
+      document.getElementById('undo-message').textContent = `Deleted ${count} prompt${count > 1 ? 's' : ''}`;
+      toast.classList.remove('hidden');
+
+      // Auto-hide after 8 seconds
+      clearTimeout(undoTimeout);
+      undoTimeout = setTimeout(() => {
+        toast.classList.add('hidden');
+        lastDeletedPrompts = [];
+      }, 8000);
+    }
+
+    async function undoDelete() {
+      if (lastDeletedPrompts.length === 0) return;
+
+      await fetch('/api/prompts/restore', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({prompts: lastDeletedPrompts})
+      });
+
+      document.getElementById('undo-toast').classList.add('hidden');
+      clearTimeout(undoTimeout);
+      lastDeletedPrompts = [];
       loadPrompts();
       loadStats();
     }
