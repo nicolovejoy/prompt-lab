@@ -1,7 +1,9 @@
 # Output Preferences
 
+- Be concise and direct. No flattery.
+- Only offer opinions when code is problematic or a simpler approach exists
+- Ask for clarification when intentions are unclear
 - Avoid markdown tables in terminal output — use lists or plain text
-- Be direct. No flattery.
 - Flag when a request seems ill-advised
 
 # Workflow
