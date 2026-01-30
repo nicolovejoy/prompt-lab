@@ -22,7 +22,7 @@ mkdir -p ~/.claude/commands ~/.claude/hooks
 
 # Symlink commands
 echo "Installing commands..."
-for cmd in readup handoff prompts; do
+for cmd in readup handoff prompts review; do
     ln -sf "$SCRIPT_DIR/workflow/commands/$cmd.md" ~/.claude/commands/
     echo "  /$(basename $cmd .md)"
 done
@@ -101,6 +101,7 @@ echo "Commands installed:"
 echo "  /readup   - Start a session, review last session's prompts"
 echo "  /handoff  - End a session, update docs"
 echo "  /prompts  - Query prompt history"
+echo "  /review   - Summarize recent sessions (past N days)"
 echo ""
 echo "Prompts are auto-logged to ~/.claude/prompt-history.db"
 echo "Run ./dashboard.sh to start the dashboard"
