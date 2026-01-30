@@ -21,6 +21,9 @@
     .prompt-meta { font-size: 0.85rem; color: #666; }
     .prompt-text { font-family: monospace; font-size: 0.9rem; white-space: pre-wrap; background: #f9f9f9; padding: 10px; border-radius: 4px; max-height: 150px; overflow-y: auto; cursor: pointer; }
     .prompt-text.expanded { max-height: none; }
+    .prompt-context { font-size: 0.8rem; color: #666; background: #fafafa; border-left: 3px solid #ddd; padding: 8px 12px; margin-bottom: 8px; max-height: 60px; overflow: hidden; cursor: pointer; }
+    .prompt-context.expanded { max-height: none; }
+    .prompt-context::before { content: "Claude: "; font-weight: 600; color: #888; }
     .prompt-actions { display: flex; gap: 10px; margin-top: 10px; align-items: center; }
     .rating { display: flex; gap: 4px; }
     .rating button { padding: 4px 10px; font-size: 0.9rem; }
@@ -174,6 +177,7 @@
               <strong>${p.project}</strong> · ${p.timestamp}
             </div>
           </div>
+          ${p.context ? `<div class="prompt-context" onclick="this.classList.toggle('expanded')">${escapeHtml(p.context)}</div>` : ''}
           <div class="prompt-text" onclick="this.classList.toggle('expanded')">${escapeHtml(p.prompt)}</div>
           <div class="prompt-actions">
             <div class="rating">
