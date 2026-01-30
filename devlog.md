@@ -2,6 +2,8 @@
 
 ## 2026-01-30
 
+Fixed context capture: `tac` not available on macOS, switched to `tail -r`. Context now working - tested and confirmed in dashboard.
+
 Added context capture: hook now extracts Claude's last response from transcript and stores it with the prompt. UI shows context above each prompt with "Claude:" prefix.
 
 Added help overlay (`?` to toggle) and context-aware footer that shows relevant shortcuts based on state. Made repo public on GitHub.

@@ -12,6 +12,7 @@ Opens at http://localhost:5111
 
 ## Next Steps
 
+- Fix 'x' key delete (was working, now broken)
+- Improve navigation UX
 - Add tag filtering dropdown
-- Test context capture with new prompts
 - Consider truncating long contexts more gracefully
