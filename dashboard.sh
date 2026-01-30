@@ -5,9 +5,9 @@ if [ ! -d .venv ]; then
     echo "Creating virtual environment..."
     python3 -m venv .venv
     source .venv/bin/activate
-    pip install -q -r requirements.txt
+    pip install -q -r dashboard/requirements.txt
 else
     source .venv/bin/activate
 fi
 
-python server.py
+python dashboard/server.py

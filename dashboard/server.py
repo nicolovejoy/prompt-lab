@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from flask import Flask, jsonify, request, send_file
 
+SCRIPT_DIR = Path(__file__).parent
 app = Flask(__name__)
 DB_PATH = Path.home() / ".claude" / "prompt-history.db"
 
@@ -18,7 +19,7 @@ def get_db():
 
 @app.route("/")
 def index():
-    return send_file("index.html")
+    return send_file(SCRIPT_DIR / "index.html")
 
 
 @app.route("/api/prompts")

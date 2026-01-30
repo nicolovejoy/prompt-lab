@@ -1,0 +1,32 @@
+# Output Preferences
+
+- Avoid markdown tables in terminal output — use lists or plain text
+- Be direct. No flattery.
+- Flag when a request seems ill-advised
+
+# Workflow
+
+- Plan before coding. Confirm approach before implementation.
+- Work iteratively: one feature at a time, test before moving on.
+- Log work to devlog.md using /handoff at session end
+
+# Session Management
+
+- Start sessions with /readup
+- End sessions with /handoff
+
+# Prompt History
+
+SQLite database at `~/.claude/prompt-history.db` tracks:
+- **prompts**: Auto-logged via hook, rated at /handoff (utility 1-5, tags)
+- **commits**: Git commits linked to sessions
+- **sessions**: Session start/end times per project
+
+Hook at `~/.claude/hooks/log-prompt.sh` auto-captures all prompts.
+/handoff shows unrated prompts for optional rating.
+/readup surfaces high-utility (4+) prompts from past sessions.
+/prompts queries history (filters: project, `rated`, `tag:<name>`).
+
+# Next Steps
+
+- (Add your project-specific next steps here)
