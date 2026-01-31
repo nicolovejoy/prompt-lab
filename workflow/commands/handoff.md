@@ -49,12 +49,6 @@ sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET ended_at=datetime('now'
    - Add new items from this session
    - Keep 3-5 items max
 
-## Append to devlog.md
-
-Add dated entry:
-- The session summary
-- Commits made (if any)
-
 ## Done
 
 Suggest commit if there are changes.
