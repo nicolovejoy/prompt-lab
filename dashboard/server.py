@@ -22,6 +22,11 @@ def index():
     return send_file(SCRIPT_DIR / "index.html")
 
 
+@app.route("/about")
+def about():
+    return send_file(SCRIPT_DIR / "about.html")
+
+
 @app.route("/api/prompts")
 def list_prompts():
     project = request.args.get("project")
@@ -152,9 +157,19 @@ def list_sessions():
 
     conn = get_db()
     rows = conn.execute(query, params).fetchall()
+    sessions = [dict(row) for row in rows]
+
+    # Attach commits to each session
+    for session in sessions:
+        commits = conn.execute(
+            "SELECT hash, message FROM commits WHERE session_id = ? ORDER BY timestamp",
+            (session['id'],)
+        ).fetchall()
+        session['commits'] = [dict(c) for c in commits]
+
     conn.close()
 
-    return jsonify([dict(row) for row in rows])
+    return jsonify(sessions)
 
 
 @app.route("/api/sessions/stats")
@@ -169,6 +184,20 @@ def session_stats():
         "total": total,
         "rated": rated,
         "unrated": total - rated
+    })
+
+
+@app.route("/api/stats/combined")
+def combined_stats():
+    conn = get_db()
+    prompts_total = conn.execute("SELECT COUNT(*) as n FROM prompts").fetchone()["n"]
+    prompts_rated = conn.execute("SELECT COUNT(*) as n FROM prompts WHERE utility IS NOT NULL").fetchone()["n"]
+    sessions_total = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''").fetchone()["n"]
+    sessions_rated = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != '' AND utility IS NOT NULL").fetchone()["n"]
+    conn.close()
+    return jsonify({
+        "prompts": {"total": prompts_total, "rated": prompts_rated, "unrated": prompts_total - prompts_rated},
+        "sessions": {"total": sessions_total, "rated": sessions_rated, "unrated": sessions_total - sessions_rated}
     })
 
 

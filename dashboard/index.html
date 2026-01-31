@@ -3,76 +3,45 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Prompt Dashboard</title>
-  <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
+  <title>Prompt Lab</title>
   <style>
     :root {
-      --simpsons-yellow: #FED90F;
-      --simpsons-yellow-light: #FFF176;
-      --simpsons-blue: #70B0E0;
-      --simpsons-sky: #7ACDF5;
-      --simpsons-green: #7CB342;
-      --simpsons-orange: #FF7043;
-      --simpsons-pink: #F48FB1;
-      --simpsons-brown: #8D6E63;
-      --simpsons-white: #FFF8E1;
-      --donut-pink: #FF69B4;
-      --donut-sprinkles: #FF6B6B;
+      --bg: #f5f5f5;
+      --card: #ffffff;
+      --text: #1a1a1a;
+      --text-secondary: #666666;
+      --border: #e0e0e0;
+      --accent: #2563eb;
+      --accent-light: #dbeafe;
+      --destructive: #dc2626;
     }
     * { box-sizing: border-box; }
     body {
-      font-family: 'Comic Neue', cursive, system-ui, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       max-width: 900px;
       margin: 0 auto;
       padding: 20px;
-      background: linear-gradient(180deg, var(--simpsons-sky) 0%, var(--simpsons-sky) 120px, var(--simpsons-green) 120px, var(--simpsons-green) 140px, #8BC34A 140px, #8BC34A 100%);
+      background: var(--bg);
       min-height: 100vh;
-    }
-    /* Clouds decoration */
-    body::before {
-      content: '';
-      position: fixed;
-      top: 20px;
-      left: 10%;
-      width: 100px;
-      height: 40px;
-      background: white;
-      border-radius: 50px;
-      box-shadow:
-        30px -15px 0 10px white,
-        60px 0 0 5px white,
-        150px 10px 0 0 white,
-        180px -10px 0 15px white,
-        220px 5px 0 8px white,
-        400px 20px 0 5px white,
-        430px 0 0 12px white,
-        470px 10px 0 3px white;
-      z-index: 0;
-      pointer-events: none;
-      opacity: 0.9;
+      color: var(--text);
     }
     header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 20px;
-      background: var(--simpsons-yellow);
+      background: var(--card);
       padding: 15px 25px;
-      border-radius: 20px;
-      border: 4px solid #1a1a1a;
-      box-shadow: 6px 6px 0 #1a1a1a;
-      position: relative;
-      z-index: 1;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     h1 {
       margin: 0;
-      font-family: 'Bangers', cursive;
-      font-size: 2.2rem;
-      color: #1a1a1a;
-      text-shadow: 2px 2px 0 var(--simpsons-orange);
-      letter-spacing: 2px;
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--text);
     }
-    .header-meta { font-size: 0.8rem; color: #5D4037; text-align: right; font-weight: 700; }
+    .header-meta { font-size: 0.8rem; color: var(--text-secondary); text-align: right; }
     .header-meta .desc { margin-bottom: 2px; }
     .filters {
       display: flex;
@@ -81,74 +50,89 @@
       flex-wrap: wrap;
     }
     select, button {
-      padding: 10px 16px;
-      border: 3px solid #1a1a1a;
-      border-radius: 12px;
-      background: var(--simpsons-white);
-      font-family: 'Comic Neue', cursive;
-      font-weight: 700;
-      font-size: 0.95rem;
-      box-shadow: 3px 3px 0 #1a1a1a;
-      transition: all 0.1s ease;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      font-family: inherit;
+      font-size: 0.9rem;
+      color: var(--text);
+      transition: all 0.15s ease;
+    }
+    select:focus, button:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-light);
     }
     button { cursor: pointer; }
     button:hover {
-      transform: translate(-2px, -2px);
-      box-shadow: 5px 5px 0 #1a1a1a;
+      background: var(--bg);
     }
     button:active {
-      transform: translate(2px, 2px);
-      box-shadow: 1px 1px 0 #1a1a1a;
+      background: var(--border);
     }
     .stats {
-      background: var(--simpsons-yellow);
+      background: var(--card);
       padding: 20px;
-      border-radius: 20px;
       margin-bottom: 20px;
       display: flex;
-      gap: 30px;
+      gap: 10px;
       justify-content: center;
-      border: 4px solid #1a1a1a;
-      box-shadow: 6px 6px 0 #1a1a1a;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
-    .stat { text-align: center; }
-    .stat-num {
-      font-family: 'Bangers', cursive;
-      font-size: 2.5rem;
-      color: #1a1a1a;
-      text-shadow: 2px 2px 0 var(--simpsons-orange);
-    }
-    .stat-label {
-      font-size: 0.9rem;
-      color: #5D4037;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    .prompt-card {
-      background: var(--simpsons-white);
-      border-radius: 16px;
-      padding: 18px;
-      margin-bottom: 15px;
-      border: 3px solid #1a1a1a;
-      box-shadow: 5px 5px 0 #1a1a1a;
+    .stat-btn {
+      text-align: center;
+      padding: 10px 20px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      cursor: pointer;
       transition: all 0.15s ease;
     }
+    .stat-btn:hover {
+      background: var(--bg);
+    }
+    .stat-btn:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-light);
+    }
+    .stat-num {
+      font-size: 2rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .stat-divider {
+      width: 1px;
+      background: var(--border);
+      margin: 0 10px;
+    }
+    .prompt-card {
+      background: var(--card);
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      transition: box-shadow 0.15s ease;
+    }
     .prompt-card:hover {
-      transform: translate(-2px, -2px);
-      box-shadow: 7px 7px 0 #1a1a1a;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     .prompt-header { display: flex; align-items: center; margin-bottom: 10px; }
-    .prompt-meta { font-size: 0.9rem; color: #5D4037; font-weight: 700; }
-    .prompt-meta strong { color: var(--simpsons-orange); }
+    .prompt-meta { font-size: 0.6rem; color: var(--text-secondary); }
+    .prompt-meta strong { color: var(--text); font-weight: 600; }
     .prompt-text {
-      font-family: 'Courier New', monospace;
-      font-size: 0.9rem;
+      font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+      font-size: 0.85rem;
       white-space: pre-wrap;
-      background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%);
+      background: var(--bg);
       padding: 12px;
-      border-radius: 10px;
-      border: 2px dashed #BDBDBD;
+      border: 1px solid var(--border);
       max-height: 150px;
       overflow-y: auto;
       cursor: pointer;
@@ -156,238 +140,233 @@
     .prompt-text.expanded { max-height: none; }
     .prompt-context {
       font-size: 0.85rem;
-      color: #5D4037;
-      background: linear-gradient(135deg, #E1F5FE 0%, #B3E5FC 100%);
-      border-left: 4px solid var(--simpsons-blue);
+      color: var(--text-secondary);
+      background: var(--accent-light);
+      border-left: 3px solid var(--accent);
       padding: 10px 14px;
       margin-bottom: 10px;
       max-height: 60px;
       overflow: hidden;
       cursor: pointer;
-      border-radius: 0 10px 10px 0;
     }
     .prompt-context.expanded { max-height: none; }
-    .prompt-context::before { content: "Claude: "; font-weight: 700; color: var(--simpsons-blue); }
+    .prompt-context::before { content: "Claude: "; font-weight: 600; color: var(--accent); }
     .prompt-actions { display: flex; gap: 10px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
-    .rating { display: flex; gap: 6px; }
+    .rating { display: flex; gap: 4px; }
     .rating button {
-      padding: 6px 14px;
-      font-size: 1rem;
-      background: var(--donut-pink);
-      color: white;
-      border-color: #C2185B;
-      position: relative;
+      padding: 4px 8px;
+      font-size: 0.63rem;
+      background: var(--bg);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
     }
-    .rating button::before {
-      content: '';
-      position: absolute;
-      top: 2px;
-      left: 25%;
-      width: 4px;
-      height: 4px;
-      background: var(--simpsons-yellow);
-      border-radius: 50%;
-    }
-    .rating button::after {
-      content: '';
-      position: absolute;
-      top: 5px;
-      right: 20%;
-      width: 3px;
-      height: 3px;
-      background: var(--simpsons-blue);
-      border-radius: 50%;
+    .rating button:hover {
+      background: var(--border);
     }
     .rating button.active {
-      background: var(--simpsons-yellow);
-      color: #1a1a1a;
-      border-color: #1a1a1a;
-      font-weight: 700;
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
     }
     .tags-input {
       flex: 1;
-      min-width: 150px;
-      padding: 8px 12px;
-      border: 3px solid #1a1a1a;
-      border-radius: 10px;
-      font-size: 0.9rem;
-      font-family: 'Comic Neue', cursive;
-      background: white;
+      min-width: 100px;
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      font-size: 0.6rem;
+      font-family: inherit;
+      background: var(--card);
+    }
+    .tags-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-light);
     }
     .empty {
       text-align: center;
       padding: 50px;
-      color: #5D4037;
-      font-size: 1.2rem;
-      font-weight: 700;
-      background: var(--simpsons-white);
-      border-radius: 20px;
-      border: 3px solid #1a1a1a;
-      box-shadow: 5px 5px 0 #1a1a1a;
+      color: var(--text-secondary);
+      font-size: 1rem;
+      background: var(--card);
+      border: 1px solid var(--border);
     }
     .prompt-card.focused {
       outline: none;
-      border-color: var(--simpsons-orange);
-      box-shadow: 0 0 0 4px var(--simpsons-yellow), 7px 7px 0 var(--simpsons-orange);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-light);
     }
-    .prompt-card.checked { background: linear-gradient(135deg, var(--simpsons-yellow-light) 0%, var(--simpsons-yellow) 100%); }
+    .prompt-card.checked { background: var(--accent-light); }
     .prompt-checkbox {
       margin-right: 12px;
-      width: 20px;
-      height: 20px;
+      width: 13px;
+      height: 13px;
       cursor: pointer;
-      accent-color: var(--simpsons-orange);
+      accent-color: var(--accent);
     }
     .delete-btn {
-      background: #E53935 !important;
+      background: var(--destructive) !important;
       color: white !important;
-      border-color: #B71C1C !important;
+      border-color: var(--destructive) !important;
     }
-    .delete-btn:hover { background: #C62828 !important; }
+    .delete-btn:hover { background: #b91c1c !important; }
     .delete-btn:disabled {
-      background: #BDBDBD !important;
-      border-color: #9E9E9E !important;
+      background: var(--border) !important;
+      border-color: var(--border) !important;
+      color: var(--text-secondary) !important;
       cursor: not-allowed;
-      transform: none !important;
-      box-shadow: 3px 3px 0 #1a1a1a !important;
     }
     .bulk-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
     .select-all-label {
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       cursor: pointer;
-      font-weight: 700;
-      color: #1a1a1a;
+      color: var(--text-secondary);
     }
     .help {
-      font-size: 0.85rem;
-      color: #5D4037;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
       margin-top: 15px;
       text-align: center;
-      font-weight: 700;
     }
     .help kbd {
-      background: var(--simpsons-yellow);
-      padding: 3px 8px;
-      border-radius: 6px;
-      font-family: 'Courier New', monospace;
-      border: 2px solid #1a1a1a;
-      box-shadow: 2px 2px 0 #1a1a1a;
+      background: var(--bg);
+      padding: 2px 6px;
+      font-family: inherit;
+      font-size: 0.75rem;
+      border: 1px solid var(--border);
     }
-    .help-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+    .help-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; }
     .help-overlay.visible { display: flex; }
     .help-panel {
-      background: var(--simpsons-yellow);
-      border-radius: 20px;
-      padding: 28px 36px;
+      background: var(--card);
+      padding: 24px 32px;
       max-width: 420px;
-      border: 4px solid #1a1a1a;
-      box-shadow: 8px 8px 0 #1a1a1a;
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.2);
     }
     .help-panel h2 {
       margin: 0 0 20px;
-      font-family: 'Bangers', cursive;
-      font-size: 1.6rem;
-      color: #1a1a1a;
-      text-shadow: 1px 1px 0 var(--simpsons-orange);
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text);
     }
     .help-panel dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; }
     .help-panel dt {
-      font-family: 'Courier New', monospace;
-      background: var(--simpsons-white);
+      font-family: "SF Mono", Monaco, monospace;
+      font-size: 0.8rem;
+      background: var(--bg);
       padding: 4px 10px;
-      border-radius: 6px;
       text-align: center;
-      border: 2px solid #1a1a1a;
-      font-weight: 700;
+      border: 1px solid var(--border);
     }
-    .help-panel dd { margin: 0; color: #5D4037; font-weight: 700; display: flex; align-items: center; }
+    .help-panel dd { margin: 0; color: var(--text-secondary); display: flex; align-items: center; }
     .help-panel .hint {
       margin-top: 20px;
-      font-size: 0.85rem;
-      color: #795548;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
       text-align: center;
-      font-weight: 700;
     }
     .undo-toast {
       position: fixed;
       bottom: 25px;
       left: 50%;
       transform: translateX(-50%);
-      background: var(--simpsons-yellow);
-      color: #1a1a1a;
-      padding: 14px 24px;
-      border-radius: 14px;
+      background: var(--text);
+      color: white;
+      padding: 12px 20px;
       display: flex;
       align-items: center;
       gap: 15px;
-      border: 3px solid #1a1a1a;
-      box-shadow: 5px 5px 0 #1a1a1a;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
       z-index: 200;
-      font-weight: 700;
     }
     .undo-toast.hidden { display: none; }
     .undo-btn {
-      background: var(--simpsons-blue) !important;
+      background: var(--accent) !important;
       color: white !important;
-      border: 2px solid #1565C0 !important;
-      padding: 8px 16px !important;
-      border-radius: 8px !important;
+      border: none !important;
+      padding: 6px 12px !important;
       cursor: pointer;
-      font-size: 0.95rem;
-      font-weight: 700;
+      font-size: 0.85rem;
     }
-    .undo-btn:hover { background: #42A5F5 !important; }
+    .undo-btn:hover { background: #1d4ed8 !important; }
     .view-toggle { display: flex; gap: 0; margin-bottom: 20px; }
     .view-toggle button {
-      border-radius: 0;
       border-right: none;
-      background: var(--simpsons-white);
+      background: var(--card);
     }
-    .view-toggle button:first-child { border-radius: 12px 0 0 12px; }
-    .view-toggle button:last-child { border-radius: 0 12px 12px 0; border-right: 3px solid #1a1a1a; }
+    .view-toggle button:last-child { border-right: 1px solid var(--border); }
     .view-toggle button.active {
-      background: var(--simpsons-yellow);
-      color: #1a1a1a;
-      border-color: #1a1a1a;
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
     }
     .session-card {
-      background: var(--simpsons-white);
-      border-radius: 16px;
-      padding: 18px;
-      margin-bottom: 15px;
-      border: 3px solid #1a1a1a;
-      box-shadow: 5px 5px 0 #1a1a1a;
-      transition: all 0.15s ease;
+      background: var(--card);
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      transition: box-shadow 0.15s ease;
     }
     .session-card:hover {
-      transform: translate(-2px, -2px);
-      box-shadow: 7px 7px 0 #1a1a1a;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     .session-card.focused {
       outline: none;
-      border-color: var(--simpsons-orange);
-      box-shadow: 0 0 0 4px var(--simpsons-yellow), 7px 7px 0 var(--simpsons-orange);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-light);
     }
     .session-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
-    .session-meta { font-size: 0.9rem; color: #5D4037; font-weight: 700; }
-    .session-meta strong { color: var(--simpsons-orange); }
-    .session-summary { font-size: 0.95rem; line-height: 1.6; margin-bottom: 12px; color: #3E2723; }
-    .session-summary.empty { color: #9E9E9E; font-style: italic; }
-    /* Donut cursor for fun */
-    .rating button:hover { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%23FF69B4' stroke='%23C2185B' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='4' fill='%23FFF8E1'/%3E%3C/svg%3E") 12 12, pointer; }
+    .session-meta { font-size: 0.85rem; color: var(--text-secondary); }
+    .session-meta strong { color: var(--text); font-weight: 600; }
+    .session-summary { font-size: 0.9rem; line-height: 1.6; margin-bottom: 12px; color: var(--text); }
+    .session-summary.empty { color: var(--text-secondary); font-style: italic; }
+    .session-commits {
+      font-size: 0.85rem;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    .commits-header {
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .commits-header::before {
+      content: '▼ ';
+      font-size: 0.7rem;
+    }
+    .session-commits.collapsed .commits-header::before {
+      content: '▶ ';
+    }
+    .session-commits.collapsed .commits-list {
+      display: none;
+    }
+    .commits-list {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .commit-item {
+      margin: 4px 0;
+      color: var(--text-secondary);
+    }
+    .commit-item code {
+      background: var(--bg);
+      padding: 2px 6px;
+      font-size: 0.8rem;
+    }
     /* Scrollbar styling */
-    ::-webkit-scrollbar { width: 12px; }
-    ::-webkit-scrollbar-track { background: var(--simpsons-white); border-radius: 6px; }
-    ::-webkit-scrollbar-thumb { background: var(--simpsons-yellow); border-radius: 6px; border: 2px solid #1a1a1a; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--simpsons-orange); }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); }
+    ::-webkit-scrollbar-thumb:hover { background: #ccc; }
   </style>
 </head>
 <body>
   <header>
-    <h1>Prompt Dashboard</h1>
+    <h1>Prompt Lab</h1>
     <div class="header-meta">
       <div class="desc">Review and rate your prompts</div>
       <div id="commit-info"></div>
@@ -397,21 +376,21 @@
   <div class="stats" id="stats"></div>
 
   <div class="view-toggle">
-    <button id="view-prompts" class="active" onclick="setView('prompts')">Prompts</button>
-    <button id="view-sessions" onclick="setView('sessions')">Sessions</button>
+    <button id="view-prompts" class="active" data-row="1" data-col="0" onclick="setView('prompts')">Prompts</button>
+    <button id="view-sessions" data-row="1" data-col="1" onclick="setView('sessions')">Summaries</button>
   </div>
 
   <div class="filters" id="filters">
-    <select id="project-filter">
+    <select id="project-filter" data-row="2" data-col="0">
       <option value="">All projects</option>
     </select>
-    <select id="rated-filter">
+    <select id="rated-filter" data-row="2" data-col="1">
       <option value="">All prompts</option>
       <option value="false" selected>Unrated only</option>
       <option value="true">Rated only</option>
     </select>
-    <input type="text" id="search-input" placeholder="Search prompts..." style="flex: 1; padding: 10px 16px; border: 3px solid #1a1a1a; border-radius: 12px; font-family: 'Comic Neue', cursive; font-weight: 700; box-shadow: 3px 3px 0 #1a1a1a;">
-    <button onclick="currentView === 'prompts' ? (loadPrompts(), loadStats()) : (loadSessions(), loadSessionStats())">Refresh</button>
+    <input type="text" id="search-input" data-row="2" data-col="2" placeholder="Search prompts..." style="flex: 1; padding: 8px 14px; border: 1px solid var(--border); font-family: inherit; font-size: 0.9rem;">
+    <button id="refresh-btn" data-row="2" data-col="3" onclick="currentView === 'prompts' ? loadPrompts() : loadSessions(); loadCombinedStats()">Refresh</button>
     <div class="bulk-actions">
       <label class="select-all-label">
         <input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)">
@@ -458,6 +437,8 @@
     let currentView = 'prompts';
     let allSessions = [];
     let sessionIds = [];
+    let focusRow = 3;
+    let focusCol = 0;
 
     function toggleHelp() {
       document.getElementById('help-overlay').classList.toggle('visible');
@@ -474,8 +455,8 @@
       const ratedFilter = document.getElementById('rated-filter');
       if (view === 'sessions') {
         bulkActions.style.display = 'none';
-        searchInput.placeholder = 'Search sessions...';
-        ratedFilter.options[0].text = 'All sessions';
+        searchInput.placeholder = 'Search summaries...';
+        ratedFilter.options[0].text = 'All summaries';
       } else {
         bulkActions.style.display = 'flex';
         searchInput.placeholder = 'Search prompts...';
@@ -485,10 +466,8 @@
       selectedIndex = -1;
       selectedIds.clear();
       if (view === 'prompts') {
-        loadStats();
         loadPrompts();
       } else {
-        loadSessionStats();
         loadSessions();
       }
       updateHelpFooter();
@@ -514,24 +493,21 @@
       }
     }
 
-    async function loadStats() {
-      const res = await fetch('/api/stats');
+    async function loadCombinedStats() {
+      const res = await fetch('/api/stats/combined');
       const data = await res.json();
       document.getElementById('stats').innerHTML = `
-        <div class="stat"><div class="stat-num">${data.total}</div><div class="stat-label">Total</div></div>
-        <div class="stat"><div class="stat-num">${data.rated}</div><div class="stat-label">Rated</div></div>
-        <div class="stat"><div class="stat-num">${data.unrated}</div><div class="stat-label">Unrated</div></div>
+        <button class="stat-btn" data-row="0" data-col="0" onclick="statClick('prompts', '')"><div class="stat-num">${data.prompts.total}</div><div class="stat-label">Prompts</div></button>
+        <button class="stat-btn" data-row="0" data-col="1" onclick="statClick('prompts', 'false')"><div class="stat-num">${data.prompts.unrated}</div><div class="stat-label">Unrated</div></button>
+        <div class="stat-divider"></div>
+        <button class="stat-btn" data-row="0" data-col="2" onclick="statClick('sessions', '')"><div class="stat-num">${data.sessions.total}</div><div class="stat-label">Summaries</div></button>
+        <button class="stat-btn" data-row="0" data-col="3" onclick="statClick('sessions', 'false')"><div class="stat-num">${data.sessions.unrated}</div><div class="stat-label">Unrated</div></button>
       `;
     }
 
-    async function loadSessionStats() {
-      const res = await fetch('/api/sessions/stats');
-      const data = await res.json();
-      document.getElementById('stats').innerHTML = `
-        <div class="stat"><div class="stat-num">${data.total}</div><div class="stat-label">Sessions</div></div>
-        <div class="stat"><div class="stat-num">${data.rated}</div><div class="stat-label">Rated</div></div>
-        <div class="stat"><div class="stat-num">${data.unrated}</div><div class="stat-label">Unrated</div></div>
-      `;
+    function statClick(view, ratedFilter) {
+      document.getElementById('rated-filter').value = ratedFilter;
+      setView(view);
     }
 
     async function loadProjects() {
@@ -579,7 +555,7 @@
 
       const container = document.getElementById('prompts');
       if (sessions.length === 0) {
-        container.innerHTML = '<div class="empty">No sessions found</div>';
+        container.innerHTML = '<div class="empty">No summaries found</div>';
         sessionIds = [];
         selectedIndex = -1;
         return;
@@ -594,6 +570,18 @@
             </div>
           </div>
           <div class="session-summary ${s.summary ? '' : 'empty'}">${s.summary ? escapeHtml(s.summary) : 'No summary'}</div>
+          ${s.commits && s.commits.length > 0 ? `
+            <div class="session-commits collapsed" onclick="this.classList.toggle('collapsed')">
+              <div class="commits-header">${s.commits.length} commit${s.commits.length > 1 ? 's' : ''}</div>
+              <div class="commits-list">
+                ${s.commits.map(c => `
+                  <div class="commit-item">
+                    <code>${c.hash.slice(0,7)}</code> ${escapeHtml(c.message)}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
           <div class="prompt-actions">
             <div class="rating">
               ${[1,2,3,4,5].map(n => `
@@ -616,7 +604,7 @@
       });
 
       await loadSessions();
-      loadSessionStats();
+      loadCombinedStats();
 
       if (ratedFilter === 'false' && prevIndex >= 0) {
         const newIndex = Math.min(prevIndex, sessionIds.length - 1);
@@ -686,7 +674,7 @@
       });
 
       await loadPrompts();
-      loadStats();
+      loadCombinedStats();
 
       // In unrated filter, stay at same index (now the next prompt)
       if (ratedFilter === 'false' && prevIndex >= 0) {
@@ -764,7 +752,7 @@
       selectedIds.clear();
       document.getElementById('select-all').checked = false;
       await loadPrompts();
-      loadStats();
+      loadCombinedStats();
 
       // Auto-select next prompt at same position
       if (prevIndex >= 0 && promptIds.length > 0) {
@@ -802,7 +790,7 @@
       clearTimeout(undoTimeout);
       lastDeletedPrompts = [];
       loadPrompts();
-      loadStats();
+      loadCombinedStats();
     }
 
     document.getElementById('project-filter').addEventListener('change', () => {
@@ -830,6 +818,8 @@
       cards.forEach(c => c.classList.remove('focused'));
       if (index >= 0 && index < cards.length) {
         selectedIndex = index;
+        focusRow = 3 + index;
+        focusCol = 0;
         cards[index].classList.add('focused');
         cards[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
@@ -837,6 +827,80 @@
 
     function getItemIds() {
       return currentView === 'prompts' ? promptIds : sessionIds;
+    }
+
+    function getRowElements(row) {
+      if (row === 0) {
+        return document.querySelectorAll('.stat-btn');
+      } else if (row === 1) {
+        return document.querySelectorAll('.view-toggle button');
+      } else if (row === 2) {
+        return [
+          document.getElementById('project-filter'),
+          document.getElementById('rated-filter'),
+          document.getElementById('search-input'),
+          document.getElementById('refresh-btn')
+        ];
+      } else {
+        const cardClass = currentView === 'prompts' ? '.prompt-card' : '.session-card';
+        const cards = document.querySelectorAll(cardClass);
+        const cardIndex = row - 3;
+        return cardIndex < cards.length ? [cards[cardIndex]] : [];
+      }
+    }
+
+    function getMaxRow() {
+      const cardClass = currentView === 'prompts' ? '.prompt-card' : '.session-card';
+      const cards = document.querySelectorAll(cardClass);
+      return 3 + cards.length - 1;
+    }
+
+    function focusElement(row, col) {
+      // Clear previous focus
+      document.querySelectorAll('.focused').forEach(el => el.classList.remove('focused'));
+      // Blur any focused element when moving to card rows
+      if (row >= 3 && document.activeElement) {
+        document.activeElement.blur();
+      }
+
+      const elements = getRowElements(row);
+      if (elements.length === 0) return;
+
+      const clampedCol = Math.min(col, elements.length - 1);
+      focusRow = row;
+      focusCol = clampedCol;
+
+      const el = elements[clampedCol];
+      if (row >= 3) {
+        // Cards use focused class
+        selectedIndex = row - 3;
+        el.classList.add('focused');
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      } else {
+        // Other rows use native focus
+        el.focus();
+      }
+      updateHelpFooter();
+    }
+
+    function navigateGrid(direction) {
+      const maxRow = getMaxRow();
+      let newRow = focusRow;
+      let newCol = focusCol;
+
+      if (direction === 'left') {
+        const elements = getRowElements(focusRow);
+        newCol = Math.max(0, focusCol - 1);
+      } else if (direction === 'right') {
+        const elements = getRowElements(focusRow);
+        newCol = Math.min(elements.length - 1, focusCol + 1);
+      } else if (direction === 'up') {
+        newRow = Math.max(0, focusRow - 1);
+      } else if (direction === 'down') {
+        newRow = Math.min(maxRow, focusRow + 1);
+      }
+
+      focusElement(newRow, newCol);
     }
 
     document.addEventListener('keydown', (e) => {
@@ -863,21 +927,47 @@
         }
       }
 
-      // Skip if typing in input
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
-        if (e.key === 'Escape') e.target.blur();
+      // Skip j/k if typing in input, but allow arrows
+      const inInput = e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT';
+      if (inInput) {
+        if (e.key === 'Escape') {
+          e.target.blur();
+          return;
+        }
+        // Allow arrow keys to navigate out of inputs
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          navigateGrid(e.key === 'ArrowUp' ? 'up' : 'down');
+          return;
+        }
         return;
       }
 
       const itemIds = getItemIds();
-      if (e.key === 'ArrowDown' || e.key === 'j') {
+      if (e.key === 'ArrowDown') {
         e.preventDefault();
-        selectItem(Math.min(selectedIndex + 1, itemIds.length - 1));
-        updateHelpFooter();
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        navigateGrid('down');
+      } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        selectItem(Math.max(selectedIndex - 1, 0));
-        updateHelpFooter();
+        navigateGrid('up');
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        navigateGrid('left');
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        navigateGrid('right');
+      } else if (e.key === 'j') {
+        e.preventDefault();
+        navigateGrid('down');
+      } else if (e.key === 'k') {
+        e.preventDefault();
+        navigateGrid('up');
+      } else if (e.key === 'Enter' && focusRow < 3) {
+        // Activate focused button/select in rows 0-2
+        const elements = getRowElements(focusRow);
+        if (elements[focusCol]) {
+          elements[focusCol].click();
+        }
       } else if (e.key >= '1' && e.key <= '5' && selectedIndex >= 0) {
         if (currentView === 'prompts') {
           rate(itemIds[selectedIndex], parseInt(e.key));
@@ -913,9 +1003,14 @@
     });
 
     loadInfo();
-    loadStats();
+    loadCombinedStats();
     loadProjects();
-    loadPrompts();
+    loadPrompts().then(() => {
+      // Focus first card on page load
+      if (promptIds.length > 0) {
+        focusElement(3, 0);
+      }
+    });
     updateHelpFooter();
   </script>
 </body>

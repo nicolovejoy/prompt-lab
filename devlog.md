@@ -1,5 +1,9 @@
 # devlog
 
+## 2026-01-31 (afternoon)
+
+Dashboard UX improvements: clickable stat buttons that filter views, grid-based arrow key navigation across stats/toggles/filters/cards, 30% size reduction for rating buttons and tags input, and square corners throughout. Fixed focus bug where filter inputs retained focus when navigating to cards, blocking rating/delete keystrokes.
+
 ## 2026-01-31
 
 Implemented commits-to-sessions linking: updated schema to use session_id instead of prompt_id, added migration for existing DBs (backfilled all 33 commits), updated /handoff to include session_id. Simplified /readup by removing prompt curation (now dashboard-only). Fixed dashboard refresh bug when viewing sessions.
