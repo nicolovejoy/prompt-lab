@@ -14,20 +14,6 @@ Orient me on this project.
    sqlite3 ~/.claude/prompt-history.db "INSERT INTO sessions (project) VALUES ('<project>');"
    ```
 
-## Curate Last Session's Prompts
-
-Query unrated prompts from last session:
-```bash
-sqlite3 ~/.claude/prompt-history.db "SELECT id, substr(prompt, 1, 60) FROM prompts WHERE project='<project>' AND utility IS NULL ORDER BY timestamp DESC LIMIT 10;"
-```
-
-If prompts exist:
-- Show as multi-select: "Keep any prompts from last session?"
-- Selected -> set utility=4
-- Unselected -> delete from db
-
-Skip if no unrated prompts.
-
 ## Gather Context
 
 1. Read CLAUDE.md (especially Next Steps)

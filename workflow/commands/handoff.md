@@ -19,7 +19,7 @@ Quick handoff for next session.
    ```
 4. Insert commits (if any):
    ```bash
-   sqlite3 ~/.claude/prompt-history.db "INSERT OR IGNORE INTO commits (hash, message) VALUES ('<hash>', '<message>');"
+   sqlite3 ~/.claude/prompt-history.db "INSERT OR IGNORE INTO commits (hash, message, session_id) VALUES ('<hash>', '<message>', <session_id>);"
    ```
 
 ## Generate Session Summary

@@ -68,20 +68,28 @@ CREATE TABLE sessions (
 );
 CREATE TABLE commits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    prompt_id INTEGER,
+    session_id INTEGER REFERENCES sessions(id),
     hash TEXT NOT NULL,
     message TEXT,
-    timestamp TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (prompt_id) REFERENCES prompts(id)
+    timestamp TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_prompts_project ON prompts(project);
 CREATE INDEX idx_prompts_utility ON prompts(utility);
-CREATE INDEX idx_commits_prompt_id ON commits(prompt_id);
+CREATE INDEX idx_commits_session_id ON commits(session_id);
 CREATE INDEX idx_sessions_project ON sessions(project);
 EOF
     echo "  Created ~/.claude/prompt-history.db"
 else
     echo "  Database already exists"
+    # Migrate commits table if needed
+    if ! sqlite3 ~/.claude/prompt-history.db "SELECT session_id FROM commits LIMIT 1" 2>/dev/null; then
+        echo "Migrating commits table..."
+        sqlite3 ~/.claude/prompt-history.db "ALTER TABLE commits ADD COLUMN session_id INTEGER REFERENCES sessions(id);"
+        sqlite3 ~/.claude/prompt-history.db "CREATE INDEX IF NOT EXISTS idx_commits_session_id ON commits(session_id);"
+        # Backfill from timestamps
+        sqlite3 ~/.claude/prompt-history.db "UPDATE commits SET session_id = (SELECT s.id FROM sessions s WHERE commits.timestamp BETWEEN s.started_at AND COALESCE(s.ended_at, datetime('now')) ORDER BY s.started_at DESC LIMIT 1) WHERE session_id IS NULL;"
+        echo "  Migrated commits table"
+    fi
 fi
 
 # Offer CLAUDE.md template

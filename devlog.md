@@ -1,5 +1,9 @@
 # devlog
 
+## 2026-01-31
+
+Implemented commits-to-sessions linking: updated schema to use session_id instead of prompt_id, added migration for existing DBs (backfilled all 33 commits), updated /handoff to include session_id. Simplified /readup by removing prompt curation (now dashboard-only). Fixed dashboard refresh bug when viewing sessions.
+
 ## 2026-01-30 (afternoon)
 
 Restructured repo for easy installation: `install.sh` symlinks workflow tools, `dashboard.sh` starts UI. Added session summaries to /handoff that get stored in DB and displayed in new Sessions view. Improved dashboard UX: auto-advance after rating/deleting, undo toast for deletes, context-aware stats. Integrated Ralph Wiggum one-task-per-session approach into /readup.

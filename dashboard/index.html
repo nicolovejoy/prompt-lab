@@ -4,75 +4,392 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Prompt Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --simpsons-yellow: #FED90F;
+      --simpsons-yellow-light: #FFF176;
+      --simpsons-blue: #70B0E0;
+      --simpsons-sky: #7ACDF5;
+      --simpsons-green: #7CB342;
+      --simpsons-orange: #FF7043;
+      --simpsons-pink: #F48FB1;
+      --simpsons-brown: #8D6E63;
+      --simpsons-white: #FFF8E1;
+      --donut-pink: #FF69B4;
+      --donut-sprinkles: #FF6B6B;
+    }
     * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
-    header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 20px; }
-    h1 { margin: 0; font-size: 1.5rem; }
-    .header-meta { font-size: 0.75rem; color: #888; text-align: right; }
+    body {
+      font-family: 'Comic Neue', cursive, system-ui, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background: linear-gradient(180deg, var(--simpsons-sky) 0%, var(--simpsons-sky) 120px, var(--simpsons-green) 120px, var(--simpsons-green) 140px, #8BC34A 140px, #8BC34A 100%);
+      min-height: 100vh;
+    }
+    /* Clouds decoration */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 20px;
+      left: 10%;
+      width: 100px;
+      height: 40px;
+      background: white;
+      border-radius: 50px;
+      box-shadow:
+        30px -15px 0 10px white,
+        60px 0 0 5px white,
+        150px 10px 0 0 white,
+        180px -10px 0 15px white,
+        220px 5px 0 8px white,
+        400px 20px 0 5px white,
+        430px 0 0 12px white,
+        470px 10px 0 3px white;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.9;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      background: var(--simpsons-yellow);
+      padding: 15px 25px;
+      border-radius: 20px;
+      border: 4px solid #1a1a1a;
+      box-shadow: 6px 6px 0 #1a1a1a;
+      position: relative;
+      z-index: 1;
+    }
+    h1 {
+      margin: 0;
+      font-family: 'Bangers', cursive;
+      font-size: 2.2rem;
+      color: #1a1a1a;
+      text-shadow: 2px 2px 0 var(--simpsons-orange);
+      letter-spacing: 2px;
+    }
+    .header-meta { font-size: 0.8rem; color: #5D4037; text-align: right; font-weight: 700; }
     .header-meta .desc { margin-bottom: 2px; }
-    .filters { display: flex; gap: 10px; margin-bottom: 20px; }
-    select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; background: white; }
+    .filters {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    select, button {
+      padding: 10px 16px;
+      border: 3px solid #1a1a1a;
+      border-radius: 12px;
+      background: var(--simpsons-white);
+      font-family: 'Comic Neue', cursive;
+      font-weight: 700;
+      font-size: 0.95rem;
+      box-shadow: 3px 3px 0 #1a1a1a;
+      transition: all 0.1s ease;
+    }
     button { cursor: pointer; }
-    button:hover { background: #eee; }
-    .stats { background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 20px; }
+    button:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 5px 5px 0 #1a1a1a;
+    }
+    button:active {
+      transform: translate(2px, 2px);
+      box-shadow: 1px 1px 0 #1a1a1a;
+    }
+    .stats {
+      background: var(--simpsons-yellow);
+      padding: 20px;
+      border-radius: 20px;
+      margin-bottom: 20px;
+      display: flex;
+      gap: 30px;
+      justify-content: center;
+      border: 4px solid #1a1a1a;
+      box-shadow: 6px 6px 0 #1a1a1a;
+    }
     .stat { text-align: center; }
-    .stat-num { font-size: 1.5rem; font-weight: bold; }
-    .stat-label { font-size: 0.8rem; color: #666; }
-    .prompt-card { background: white; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
+    .stat-num {
+      font-family: 'Bangers', cursive;
+      font-size: 2.5rem;
+      color: #1a1a1a;
+      text-shadow: 2px 2px 0 var(--simpsons-orange);
+    }
+    .stat-label {
+      font-size: 0.9rem;
+      color: #5D4037;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .prompt-card {
+      background: var(--simpsons-white);
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 15px;
+      border: 3px solid #1a1a1a;
+      box-shadow: 5px 5px 0 #1a1a1a;
+      transition: all 0.15s ease;
+    }
+    .prompt-card:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 7px 7px 0 #1a1a1a;
+    }
     .prompt-header { display: flex; align-items: center; margin-bottom: 10px; }
-    .prompt-meta { font-size: 0.85rem; color: #666; }
-    .prompt-text { font-family: monospace; font-size: 0.9rem; white-space: pre-wrap; background: #f9f9f9; padding: 10px; border-radius: 4px; max-height: 150px; overflow-y: auto; cursor: pointer; }
+    .prompt-meta { font-size: 0.9rem; color: #5D4037; font-weight: 700; }
+    .prompt-meta strong { color: var(--simpsons-orange); }
+    .prompt-text {
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%);
+      padding: 12px;
+      border-radius: 10px;
+      border: 2px dashed #BDBDBD;
+      max-height: 150px;
+      overflow-y: auto;
+      cursor: pointer;
+    }
     .prompt-text.expanded { max-height: none; }
-    .prompt-context { font-size: 0.8rem; color: #666; background: #fafafa; border-left: 3px solid #ddd; padding: 8px 12px; margin-bottom: 8px; max-height: 60px; overflow: hidden; cursor: pointer; }
+    .prompt-context {
+      font-size: 0.85rem;
+      color: #5D4037;
+      background: linear-gradient(135deg, #E1F5FE 0%, #B3E5FC 100%);
+      border-left: 4px solid var(--simpsons-blue);
+      padding: 10px 14px;
+      margin-bottom: 10px;
+      max-height: 60px;
+      overflow: hidden;
+      cursor: pointer;
+      border-radius: 0 10px 10px 0;
+    }
     .prompt-context.expanded { max-height: none; }
-    .prompt-context::before { content: "Claude: "; font-weight: 600; color: #888; }
-    .prompt-actions { display: flex; gap: 10px; margin-top: 10px; align-items: center; }
-    .rating { display: flex; gap: 4px; }
-    .rating button { padding: 4px 10px; font-size: 0.9rem; }
-    .rating button.active { background: #4a90d9; color: white; border-color: #4a90d9; }
-    .tags-input { flex: 1; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; }
-    .empty { text-align: center; padding: 40px; color: #666; }
-    .prompt-card.focused { outline: 2px solid #4a90d9; outline-offset: 2px; }
-    .prompt-card.checked { background: #e8f0fe; }
-    .prompt-checkbox { margin-right: 10px; width: 18px; height: 18px; cursor: pointer; }
-    .delete-btn { background: #dc3545; color: white; border-color: #dc3545; }
-    .delete-btn:hover { background: #c82333; }
-    .delete-btn:disabled { background: #ccc; border-color: #ccc; cursor: not-allowed; }
+    .prompt-context::before { content: "Claude: "; font-weight: 700; color: var(--simpsons-blue); }
+    .prompt-actions { display: flex; gap: 10px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+    .rating { display: flex; gap: 6px; }
+    .rating button {
+      padding: 6px 14px;
+      font-size: 1rem;
+      background: var(--donut-pink);
+      color: white;
+      border-color: #C2185B;
+      position: relative;
+    }
+    .rating button::before {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 25%;
+      width: 4px;
+      height: 4px;
+      background: var(--simpsons-yellow);
+      border-radius: 50%;
+    }
+    .rating button::after {
+      content: '';
+      position: absolute;
+      top: 5px;
+      right: 20%;
+      width: 3px;
+      height: 3px;
+      background: var(--simpsons-blue);
+      border-radius: 50%;
+    }
+    .rating button.active {
+      background: var(--simpsons-yellow);
+      color: #1a1a1a;
+      border-color: #1a1a1a;
+      font-weight: 700;
+    }
+    .tags-input {
+      flex: 1;
+      min-width: 150px;
+      padding: 8px 12px;
+      border: 3px solid #1a1a1a;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-family: 'Comic Neue', cursive;
+      background: white;
+    }
+    .empty {
+      text-align: center;
+      padding: 50px;
+      color: #5D4037;
+      font-size: 1.2rem;
+      font-weight: 700;
+      background: var(--simpsons-white);
+      border-radius: 20px;
+      border: 3px solid #1a1a1a;
+      box-shadow: 5px 5px 0 #1a1a1a;
+    }
+    .prompt-card.focused {
+      outline: none;
+      border-color: var(--simpsons-orange);
+      box-shadow: 0 0 0 4px var(--simpsons-yellow), 7px 7px 0 var(--simpsons-orange);
+    }
+    .prompt-card.checked { background: linear-gradient(135deg, var(--simpsons-yellow-light) 0%, var(--simpsons-yellow) 100%); }
+    .prompt-checkbox {
+      margin-right: 12px;
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      accent-color: var(--simpsons-orange);
+    }
+    .delete-btn {
+      background: #E53935 !important;
+      color: white !important;
+      border-color: #B71C1C !important;
+    }
+    .delete-btn:hover { background: #C62828 !important; }
+    .delete-btn:disabled {
+      background: #BDBDBD !important;
+      border-color: #9E9E9E !important;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: 3px 3px 0 #1a1a1a !important;
+    }
     .bulk-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
-    .select-all-label { display: flex; align-items: center; gap: 5px; font-size: 0.9rem; cursor: pointer; }
-    .help { font-size: 0.75rem; color: #888; margin-top: 10px; }
-    .help kbd { background: #e8e8e8; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
-    .help-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; }
+    .select-all-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      font-weight: 700;
+      color: #1a1a1a;
+    }
+    .help {
+      font-size: 0.85rem;
+      color: #5D4037;
+      margin-top: 15px;
+      text-align: center;
+      font-weight: 700;
+    }
+    .help kbd {
+      background: var(--simpsons-yellow);
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      border: 2px solid #1a1a1a;
+      box-shadow: 2px 2px 0 #1a1a1a;
+    }
+    .help-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
     .help-overlay.visible { display: flex; }
-    .help-panel { background: white; border-radius: 12px; padding: 24px 32px; max-width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
-    .help-panel h2 { margin: 0 0 16px; font-size: 1.1rem; }
-    .help-panel dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; }
-    .help-panel dt { font-family: monospace; background: #f0f0f0; padding: 2px 8px; border-radius: 4px; text-align: center; }
-    .help-panel dd { margin: 0; color: #555; }
-    .help-panel .hint { margin-top: 16px; font-size: 0.8rem; color: #888; text-align: center; }
-    .undo-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 12px 20px; border-radius: 8px; display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 200; }
+    .help-panel {
+      background: var(--simpsons-yellow);
+      border-radius: 20px;
+      padding: 28px 36px;
+      max-width: 420px;
+      border: 4px solid #1a1a1a;
+      box-shadow: 8px 8px 0 #1a1a1a;
+    }
+    .help-panel h2 {
+      margin: 0 0 20px;
+      font-family: 'Bangers', cursive;
+      font-size: 1.6rem;
+      color: #1a1a1a;
+      text-shadow: 1px 1px 0 var(--simpsons-orange);
+    }
+    .help-panel dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; }
+    .help-panel dt {
+      font-family: 'Courier New', monospace;
+      background: var(--simpsons-white);
+      padding: 4px 10px;
+      border-radius: 6px;
+      text-align: center;
+      border: 2px solid #1a1a1a;
+      font-weight: 700;
+    }
+    .help-panel dd { margin: 0; color: #5D4037; font-weight: 700; display: flex; align-items: center; }
+    .help-panel .hint {
+      margin-top: 20px;
+      font-size: 0.85rem;
+      color: #795548;
+      text-align: center;
+      font-weight: 700;
+    }
+    .undo-toast {
+      position: fixed;
+      bottom: 25px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--simpsons-yellow);
+      color: #1a1a1a;
+      padding: 14px 24px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      border: 3px solid #1a1a1a;
+      box-shadow: 5px 5px 0 #1a1a1a;
+      z-index: 200;
+      font-weight: 700;
+    }
     .undo-toast.hidden { display: none; }
-    .undo-btn { background: #4a90d9; color: white; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
-    .undo-btn:hover { background: #3a7bc8; }
+    .undo-btn {
+      background: var(--simpsons-blue) !important;
+      color: white !important;
+      border: 2px solid #1565C0 !important;
+      padding: 8px 16px !important;
+      border-radius: 8px !important;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+    .undo-btn:hover { background: #42A5F5 !important; }
     .view-toggle { display: flex; gap: 0; margin-bottom: 20px; }
-    .view-toggle button { border-radius: 0; border-right: none; }
-    .view-toggle button:first-child { border-radius: 4px 0 0 4px; }
-    .view-toggle button:last-child { border-radius: 0 4px 4px 0; border-right: 1px solid #ccc; }
-    .view-toggle button.active { background: #4a90d9; color: white; border-color: #4a90d9; }
-    .session-card { background: white; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
-    .session-card.focused { outline: 2px solid #4a90d9; outline-offset: 2px; }
+    .view-toggle button {
+      border-radius: 0;
+      border-right: none;
+      background: var(--simpsons-white);
+    }
+    .view-toggle button:first-child { border-radius: 12px 0 0 12px; }
+    .view-toggle button:last-child { border-radius: 0 12px 12px 0; border-right: 3px solid #1a1a1a; }
+    .view-toggle button.active {
+      background: var(--simpsons-yellow);
+      color: #1a1a1a;
+      border-color: #1a1a1a;
+    }
+    .session-card {
+      background: var(--simpsons-white);
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 15px;
+      border: 3px solid #1a1a1a;
+      box-shadow: 5px 5px 0 #1a1a1a;
+      transition: all 0.15s ease;
+    }
+    .session-card:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 7px 7px 0 #1a1a1a;
+    }
+    .session-card.focused {
+      outline: none;
+      border-color: var(--simpsons-orange);
+      box-shadow: 0 0 0 4px var(--simpsons-yellow), 7px 7px 0 var(--simpsons-orange);
+    }
     .session-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
-    .session-meta { font-size: 0.85rem; color: #666; }
-    .session-summary { font-size: 0.95rem; line-height: 1.5; margin-bottom: 10px; }
-    .session-summary.empty { color: #999; font-style: italic; }
+    .session-meta { font-size: 0.9rem; color: #5D4037; font-weight: 700; }
+    .session-meta strong { color: var(--simpsons-orange); }
+    .session-summary { font-size: 0.95rem; line-height: 1.6; margin-bottom: 12px; color: #3E2723; }
+    .session-summary.empty { color: #9E9E9E; font-style: italic; }
+    /* Donut cursor for fun */
+    .rating button:hover { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%23FF69B4' stroke='%23C2185B' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='4' fill='%23FFF8E1'/%3E%3C/svg%3E") 12 12, pointer; }
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 12px; }
+    ::-webkit-scrollbar-track { background: var(--simpsons-white); border-radius: 6px; }
+    ::-webkit-scrollbar-thumb { background: var(--simpsons-yellow); border-radius: 6px; border: 2px solid #1a1a1a; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--simpsons-orange); }
   </style>
 </head>
 <body>
   <header>
     <h1>Prompt Dashboard</h1>
     <div class="header-meta">
-      <div class="desc">Review and rate your Claude Code prompts</div>
+      <div class="desc">Review and rate your prompts</div>
       <div id="commit-info"></div>
     </div>
   </header>
@@ -93,8 +410,8 @@
       <option value="false" selected>Unrated only</option>
       <option value="true">Rated only</option>
     </select>
-    <input type="text" id="search-input" placeholder="Search prompts..." style="flex: 1; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px;">
-    <button onclick="loadPrompts()">Refresh</button>
+    <input type="text" id="search-input" placeholder="Search prompts..." style="flex: 1; padding: 10px 16px; border: 3px solid #1a1a1a; border-radius: 12px; font-family: 'Comic Neue', cursive; font-weight: 700; box-shadow: 3px 3px 0 #1a1a1a;">
+    <button onclick="currentView === 'prompts' ? (loadPrompts(), loadStats()) : (loadSessions(), loadSessionStats())">Refresh</button>
     <div class="bulk-actions">
       <label class="select-all-label">
         <input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)">
@@ -123,7 +440,7 @@
         <dt>e</dt><dd>Expand/collapse</dd>
         <dt>space</dt><dd>Toggle selection</dd>
         <dt>x</dt><dd>Delete selected</dd>
-        <dt>esc</dt><dd>Clear selection / blur</dd>
+        <dt>esc</dt><dd>Clear selection</dd>
         <dt>?</dt><dd>Toggle this help</dd>
       </dl>
       <div class="hint">Press <kbd>?</kbd> or click outside to close</div>
