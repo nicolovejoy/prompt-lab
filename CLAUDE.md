@@ -12,10 +12,10 @@ Opens at http://localhost:5111
 
 ## Next Steps
 
+- Set up cron job for synthesizer.py (nightly --all) with email notifications on progress
 - Test full workflow end-to-end on fresh machine
 - Add tag filtering dropdown
 - Allow editing session summaries in dashboard
-- Verify all 5 tabs load cleanly after ratings removal
 
 ## Backlog
 
