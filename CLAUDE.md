@@ -1,6 +1,6 @@
 # prompt-lab
 
-Web dashboard for reviewing and rating prompts from `~/.claude/prompt-history.db`.
+**Prompt Analyst** — web dashboard for tracking prompts and synthesizer output from `~/.claude/prompt-history.db`.
 
 ## Run
 
@@ -15,6 +15,7 @@ Opens at http://localhost:5111
 - Test full workflow end-to-end on fresh machine
 - Add tag filtering dropdown
 - Allow editing session summaries in dashboard
+- Verify all 5 tabs load cleanly after ratings removal
 
 ## Backlog
 
