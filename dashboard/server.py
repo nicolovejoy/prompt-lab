@@ -30,7 +30,6 @@ def about():
 @app.route("/api/prompts")
 def list_prompts():
     project = request.args.get("project")
-    rated = request.args.get("rated")  # "true", "false", or None for all
 
     query = "SELECT * FROM prompts WHERE 1=1"
     params = []
@@ -38,10 +37,6 @@ def list_prompts():
     if project:
         query += " AND project = ?"
         params.append(project)
-    if rated == "true":
-        query += " AND utility IS NOT NULL"
-    elif rated == "false":
-        query += " AND utility IS NULL"
 
     query += " ORDER BY timestamp DESC"
 
@@ -59,7 +54,7 @@ def update_prompt(prompt_id):
 
     updates = []
     params = []
-    for field in ["utility", "tags", "notes"]:
+    for field in ["tags", "notes"]:
         if field in data:
             updates.append(f"{field} = ?")
             params.append(data[field] if data[field] != "" else None)
@@ -73,43 +68,6 @@ def update_prompt(prompt_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/prompts/bulk", methods=["DELETE"])
-def delete_prompts():
-    data = request.json
-    ids = data.get("ids", [])
-    if not ids:
-        return jsonify({"ok": False, "error": "No ids provided"}), 400
-
-    conn = get_db()
-    placeholders = ",".join("?" * len(ids))
-    conn.execute(f"DELETE FROM prompts WHERE id IN ({placeholders})", ids)
-    conn.commit()
-    deleted = conn.total_changes
-    conn.close()
-    return jsonify({"ok": True, "deleted": deleted})
-
-
-@app.route("/api/prompts/restore", methods=["POST"])
-def restore_prompts():
-    data = request.json
-    prompts = data.get("prompts", [])
-    if not prompts:
-        return jsonify({"ok": False, "error": "No prompts provided"}), 400
-
-    conn = get_db()
-    for p in prompts:
-        conn.execute(
-            """INSERT INTO prompts (id, timestamp, project, prompt, outcome, utility, tags, notes, session_id, context)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (p.get("id"), p.get("timestamp"), p.get("project"), p.get("prompt"),
-             p.get("outcome"), p.get("utility"), p.get("tags"), p.get("notes"),
-             p.get("session_id"), p.get("context"))
-        )
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True, "restored": len(prompts)})
-
-
 @app.route("/api/projects")
 def list_projects():
     conn = get_db()
@@ -118,28 +76,9 @@ def list_projects():
     return jsonify([row["project"] for row in rows])
 
 
-@app.route("/api/stats")
-def stats():
-    conn = get_db()
-    total = conn.execute("SELECT COUNT(*) as n FROM prompts").fetchone()["n"]
-    rated = conn.execute("SELECT COUNT(*) as n FROM prompts WHERE utility IS NOT NULL").fetchone()["n"]
-    by_project = conn.execute(
-        "SELECT project, COUNT(*) as count FROM prompts GROUP BY project"
-    ).fetchall()
-    conn.close()
-
-    return jsonify({
-        "total": total,
-        "rated": rated,
-        "unrated": total - rated,
-        "by_project": {row["project"]: row["count"] for row in by_project}
-    })
-
-
 @app.route("/api/sessions")
 def list_sessions():
     project = request.args.get("project")
-    rated = request.args.get("rated")
 
     # Only show sessions that have summaries
     query = "SELECT * FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''"
@@ -148,10 +87,6 @@ def list_sessions():
     if project:
         query += " AND project = ?"
         params.append(project)
-    if rated == "true":
-        query += " AND utility IS NOT NULL"
-    elif rated == "false":
-        query += " AND utility IS NULL"
 
     query += " ORDER BY started_at DESC"
 
@@ -172,32 +107,70 @@ def list_sessions():
     return jsonify(sessions)
 
 
-@app.route("/api/sessions/stats")
-def session_stats():
+@app.route("/api/daily-summaries")
+def list_daily_summaries():
+    project = request.args.get("project")
+    query = "SELECT * FROM daily_summaries WHERE 1=1"
+    params = []
+    if project:
+        query += " AND project = ?"
+        params.append(project)
+    query += " ORDER BY date DESC"
     conn = get_db()
-    # Count sessions with summaries
-    total = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''").fetchone()["n"]
-    rated = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != '' AND utility IS NOT NULL").fetchone()["n"]
+    rows = conn.execute(query, params).fetchall()
     conn.close()
+    return jsonify([dict(row) for row in rows])
 
-    return jsonify({
-        "total": total,
-        "rated": rated,
-        "unrated": total - rated
-    })
+
+@app.route("/api/intentions")
+def list_intentions():
+    project = request.args.get("project")
+    status = request.args.get("status", "active")
+    query = "SELECT * FROM intentions WHERE 1=1"
+    params = []
+    if project:
+        query += " AND project = ?"
+        params.append(project)
+    if status and status != "all":
+        query += " AND status = ?"
+        params.append(status)
+    query += " ORDER BY last_seen DESC"
+    conn = get_db()
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return jsonify([dict(row) for row in rows])
+
+
+@app.route("/api/themes")
+def list_themes():
+    status = request.args.get("status", "active")
+    query = "SELECT * FROM themes WHERE 1=1"
+    params = []
+    if status and status != "all":
+        query += " AND status = ?"
+        params.append(status)
+    query += " ORDER BY last_seen DESC"
+    conn = get_db()
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return jsonify([dict(row) for row in rows])
 
 
 @app.route("/api/stats/combined")
 def combined_stats():
     conn = get_db()
     prompts_total = conn.execute("SELECT COUNT(*) as n FROM prompts").fetchone()["n"]
-    prompts_rated = conn.execute("SELECT COUNT(*) as n FROM prompts WHERE utility IS NOT NULL").fetchone()["n"]
     sessions_total = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''").fetchone()["n"]
-    sessions_rated = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != '' AND utility IS NOT NULL").fetchone()["n"]
+    daily_total = conn.execute("SELECT COUNT(*) as n FROM daily_summaries").fetchone()["n"]
+    intentions_active = conn.execute("SELECT COUNT(*) as n FROM intentions WHERE status = 'active'").fetchone()["n"]
+    themes_active = conn.execute("SELECT COUNT(*) as n FROM themes WHERE status = 'active'").fetchone()["n"]
     conn.close()
     return jsonify({
-        "prompts": {"total": prompts_total, "rated": prompts_rated, "unrated": prompts_total - prompts_rated},
-        "sessions": {"total": sessions_total, "rated": sessions_rated, "unrated": sessions_total - sessions_rated}
+        "prompts": {"total": prompts_total},
+        "sessions": {"total": sessions_total},
+        "daily": {"total": daily_total},
+        "intentions": {"active": intentions_active},
+        "themes": {"active": themes_active}
     })
 
 
@@ -208,7 +181,7 @@ def update_session(session_id):
 
     updates = []
     params = []
-    for field in ["utility", "summary"]:
+    for field in ["summary"]:
         if field in data:
             updates.append(f"{field} = ?")
             params.append(data[field] if data[field] != "" else None)

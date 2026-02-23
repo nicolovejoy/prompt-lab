@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Prompt Lab</title>
+  <title>Prompt Analyst</title>
   <style>
     :root {
       --bg: #f5f5f5;
@@ -13,7 +13,6 @@
       --border: #e0e0e0;
       --accent: #2563eb;
       --accent-light: #dbeafe;
-      --destructive: #dc2626;
     }
     * { box-sizing: border-box; }
     body {
@@ -152,22 +151,6 @@
     .prompt-context.expanded { max-height: none; }
     .prompt-context::before { content: "Claude: "; font-weight: 600; color: var(--accent); }
     .prompt-actions { display: flex; gap: 10px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
-    .rating { display: flex; gap: 4px; }
-    .rating button {
-      padding: 4px 8px;
-      font-size: 0.63rem;
-      background: var(--bg);
-      color: var(--text-secondary);
-      border: 1px solid var(--border);
-    }
-    .rating button:hover {
-      background: var(--border);
-    }
-    .rating button.active {
-      background: var(--accent);
-      color: white;
-      border-color: var(--accent);
-    }
     .tags-input {
       flex: 1;
       min-width: 100px;
@@ -194,35 +177,6 @@
       outline: none;
       border-color: var(--accent);
       box-shadow: 0 0 0 3px var(--accent-light);
-    }
-    .prompt-card.checked { background: var(--accent-light); }
-    .prompt-checkbox {
-      margin-right: 12px;
-      width: 13px;
-      height: 13px;
-      cursor: pointer;
-      accent-color: var(--accent);
-    }
-    .delete-btn {
-      background: var(--destructive) !important;
-      color: white !important;
-      border-color: var(--destructive) !important;
-    }
-    .delete-btn:hover { background: #b91c1c !important; }
-    .delete-btn:disabled {
-      background: var(--border) !important;
-      border-color: var(--border) !important;
-      color: var(--text-secondary) !important;
-      cursor: not-allowed;
-    }
-    .bulk-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
-    .select-all-label {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.9rem;
-      cursor: pointer;
-      color: var(--text-secondary);
     }
     .help {
       font-size: 0.8rem;
@@ -268,30 +222,6 @@
       color: var(--text-secondary);
       text-align: center;
     }
-    .undo-toast {
-      position: fixed;
-      bottom: 25px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--text);
-      color: white;
-      padding: 12px 20px;
-      display: flex;
-      align-items: center;
-      gap: 15px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      z-index: 200;
-    }
-    .undo-toast.hidden { display: none; }
-    .undo-btn {
-      background: var(--accent) !important;
-      color: white !important;
-      border: none !important;
-      padding: 6px 12px !important;
-      cursor: pointer;
-      font-size: 0.85rem;
-    }
-    .undo-btn:hover { background: #1d4ed8 !important; }
     .view-toggle { display: flex; gap: 0; margin-bottom: 20px; }
     .view-toggle button {
       border-right: none;
@@ -357,6 +287,57 @@
       padding: 2px 6px;
       font-size: 0.8rem;
     }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .status-active { background: #dcfce7; color: #166534; }
+    .status-completed { background: var(--accent-light); color: #1e40af; }
+    .status-stalled { background: #fef9c3; color: #854d0e; }
+    .status-abandoned { background: #f3f4f6; color: #6b7280; }
+    .key-decisions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .key-decision-tag {
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+    .count-badges { display: flex; gap: 8px; margin-top: 8px; }
+    .count-badge {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+    }
+    .count-badge strong { color: var(--text); }
+    .project-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .project-tag {
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      background: var(--accent-light);
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .date-range { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
+    .daily-card, .intention-card, .theme-card {
+      background: var(--card);
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      transition: box-shadow 0.15s ease;
+    }
+    .daily-card:hover, .intention-card:hover, .theme-card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .daily-card.focused, .intention-card.focused, .theme-card.focused {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-light);
+    }
     /* Scrollbar styling */
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
@@ -366,9 +347,9 @@
 </head>
 <body>
   <header>
-    <h1>Prompt Lab</h1>
+    <h1>Prompt Analyst</h1>
     <div class="header-meta">
-      <div class="desc">Review and rate your prompts · <a href="/about">About</a></div>
+      <div class="desc">Track your prompting progress · <a href="/about">About</a></div>
       <div id="commit-info"></div>
     </div>
   </header>
@@ -378,35 +359,28 @@
   <div class="view-toggle">
     <button id="view-prompts" class="active" data-row="1" data-col="0" onclick="setView('prompts')">Prompts</button>
     <button id="view-sessions" data-row="1" data-col="1" onclick="setView('sessions')">Summaries</button>
+    <button id="view-daily" data-row="1" data-col="2" onclick="setView('daily')">Daily</button>
+    <button id="view-intentions" data-row="1" data-col="3" onclick="setView('intentions')">Intentions</button>
+    <button id="view-themes" data-row="1" data-col="4" onclick="setView('themes')">Themes</button>
   </div>
 
   <div class="filters" id="filters">
     <select id="project-filter" data-row="2" data-col="0">
       <option value="">All projects</option>
     </select>
-    <select id="rated-filter" data-row="2" data-col="1">
-      <option value="">All prompts</option>
-      <option value="false" selected>Unrated only</option>
-      <option value="true">Rated only</option>
+    <select id="status-filter" data-row="2" data-col="1" style="display:none">
+      <option value="active">Active</option>
+      <option value="all">All statuses</option>
+      <option value="completed">Completed</option>
+      <option value="stalled">Stalled</option>
+      <option value="abandoned">Abandoned</option>
     </select>
     <input type="text" id="search-input" data-row="2" data-col="2" placeholder="Search prompts..." style="flex: 1; padding: 8px 14px; border: 1px solid var(--border); font-family: inherit; font-size: 0.9rem;">
-    <button id="refresh-btn" data-row="2" data-col="3" onclick="currentView === 'prompts' ? loadPrompts() : loadSessions(); loadCombinedStats()">Refresh</button>
-    <div class="bulk-actions">
-      <label class="select-all-label">
-        <input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)">
-        All
-      </label>
-      <button class="delete-btn" id="delete-btn" onclick="deleteSelected()" disabled>Delete (0)</button>
-    </div>
+    <button id="refresh-btn" data-row="2" data-col="3" onclick="refreshCurrentView()">Refresh</button>
   </div>
 
   <div id="prompts"></div>
   <div class="help" id="help-footer"></div>
-
-  <div class="undo-toast hidden" id="undo-toast">
-    <span id="undo-message">Deleted 1 prompt</span>
-    <button class="undo-btn" onclick="undoDelete()">Undo</button>
-  </div>
 
   <div class="help-overlay" id="help-overlay" onclick="toggleHelp()">
     <div class="help-panel" onclick="event.stopPropagation()">
@@ -414,12 +388,8 @@
       <dl>
         <dt>j / ↓</dt><dd>Next prompt</dd>
         <dt>k / ↑</dt><dd>Previous prompt</dd>
-        <dt>1-5</dt><dd>Rate prompt</dd>
         <dt>t</dt><dd>Edit tags</dd>
         <dt>e</dt><dd>Expand/collapse</dd>
-        <dt>space</dt><dd>Toggle selection</dd>
-        <dt>x</dt><dd>Delete selected</dd>
-        <dt>esc</dt><dd>Clear selection</dd>
         <dt>?</dt><dd>Toggle this help</dd>
       </dl>
       <div class="hint">Press <kbd>?</kbd> or click outside to close</div>
@@ -429,14 +399,16 @@
   <script>
     let selectedIndex = -1;
     let promptIds = [];
-    let selectedIds = new Set();
     let allPrompts = [];
-    let hasConfirmedDelete = false;
-    let lastDeletedPrompts = [];
-    let undoTimeout = null;
     let currentView = 'prompts';
     let allSessions = [];
     let sessionIds = [];
+    let allDailySummaries = [];
+    let dailyIds = [];
+    let allIntentions = [];
+    let intentionIds = [];
+    let allThemes = [];
+    let themeIds = [];
     let focusRow = 3;
     let focusCol = 0;
 
@@ -446,39 +418,30 @@
 
     function setView(view) {
       currentView = view;
-      document.getElementById('view-prompts').classList.toggle('active', view === 'prompts');
-      document.getElementById('view-sessions').classList.toggle('active', view === 'sessions');
+      const views = ['prompts', 'sessions', 'daily', 'intentions', 'themes'];
+      views.forEach(v => document.getElementById('view-' + v).classList.toggle('active', v === view));
 
-      // Update filters visibility and labels
-      const bulkActions = document.querySelector('.bulk-actions');
-      const searchInput = document.getElementById('search-input');
-      const ratedFilter = document.getElementById('rated-filter');
-      if (view === 'sessions') {
-        bulkActions.style.display = 'none';
-        searchInput.placeholder = 'Search summaries...';
-        ratedFilter.options[0].text = 'All summaries';
-      } else {
-        bulkActions.style.display = 'flex';
-        searchInput.placeholder = 'Search prompts...';
-        ratedFilter.options[0].text = 'All prompts';
-      }
+      const statusFilter = document.getElementById('status-filter');
+      statusFilter.style.display = (view === 'intentions' || view === 'themes') ? '' : 'none';
+
+      const placeholders = { prompts: 'Search prompts...', sessions: 'Search summaries...', daily: 'Search daily summaries...', intentions: 'Search intentions...', themes: 'Search themes...' };
+      document.getElementById('search-input').placeholder = placeholders[view] || 'Search...';
 
       selectedIndex = -1;
-      selectedIds.clear();
-      if (view === 'prompts') {
-        loadPrompts();
-      } else {
-        loadSessions();
-      }
+      refreshCurrentView();
       updateHelpFooter();
+    }
+
+    function refreshCurrentView() {
+      const loaders = { prompts: loadPrompts, sessions: loadSessions, daily: loadDailySummaries, intentions: loadIntentions, themes: loadThemes };
+      loaders[currentView]();
+      loadCombinedStats();
     }
 
     function updateHelpFooter() {
       const footer = document.getElementById('help-footer');
-      if (selectedIds.size > 0) {
-        footer.innerHTML = `<kbd>x</kbd> delete ${selectedIds.size} · <kbd>space</kbd> toggle · <kbd>esc</kbd> clear · <kbd>?</kbd> help`;
-      } else if (selectedIndex >= 0) {
-        footer.innerHTML = `<kbd>j/k</kbd> navigate · <kbd>1-5</kbd> rate · <kbd>t</kbd> tags · <kbd>e</kbd> expand · <kbd>space</kbd> select · <kbd>?</kbd> help`;
+      if (selectedIndex >= 0) {
+        footer.innerHTML = `<kbd>j/k</kbd> navigate · <kbd>t</kbd> tags · <kbd>e</kbd> expand · <kbd>?</kbd> help`;
       } else {
         footer.innerHTML = `<kbd>j/k</kbd> navigate · <kbd>?</kbd> help`;
       }
@@ -497,16 +460,19 @@
       const res = await fetch('/api/stats/combined');
       const data = await res.json();
       document.getElementById('stats').innerHTML = `
-        <button class="stat-btn" data-row="0" data-col="0" onclick="statClick('prompts', '')"><div class="stat-num">${data.prompts.total}</div><div class="stat-label">Prompts</div></button>
-        <button class="stat-btn" data-row="0" data-col="1" onclick="statClick('prompts', 'false')"><div class="stat-num">${data.prompts.unrated}</div><div class="stat-label">Unrated</div></button>
+        <button class="stat-btn" data-row="0" data-col="0" onclick="statClick('prompts')"><div class="stat-num">${data.prompts.total}</div><div class="stat-label">Prompts</div></button>
         <div class="stat-divider"></div>
-        <button class="stat-btn" data-row="0" data-col="2" onclick="statClick('sessions', '')"><div class="stat-num">${data.sessions.total}</div><div class="stat-label">Summaries</div></button>
-        <button class="stat-btn" data-row="0" data-col="3" onclick="statClick('sessions', 'false')"><div class="stat-num">${data.sessions.unrated}</div><div class="stat-label">Unrated</div></button>
+        <button class="stat-btn" data-row="0" data-col="1" onclick="statClick('sessions')"><div class="stat-num">${data.sessions.total}</div><div class="stat-label">Summaries</div></button>
+        <div class="stat-divider"></div>
+        <button class="stat-btn" data-row="0" data-col="2" onclick="statClick('daily')"><div class="stat-num">${data.daily.total}</div><div class="stat-label">Daily</div></button>
+        <div class="stat-divider"></div>
+        <button class="stat-btn" data-row="0" data-col="3" onclick="statClick('intentions')"><div class="stat-num">${data.intentions.active}</div><div class="stat-label">Intentions</div></button>
+        <div class="stat-divider"></div>
+        <button class="stat-btn" data-row="0" data-col="4" onclick="statClick('themes')"><div class="stat-num">${data.themes.active}</div><div class="stat-label">Themes</div></button>
       `;
     }
 
-    function statClick(view, ratedFilter) {
-      document.getElementById('rated-filter').value = ratedFilter;
+    function statClick(view) {
       setView(view);
     }
 
@@ -524,10 +490,8 @@
 
     async function loadPrompts() {
       const project = document.getElementById('project-filter').value;
-      const rated = document.getElementById('rated-filter').value;
       const params = new URLSearchParams();
       if (project) params.set('project', project);
-      if (rated) params.set('rated', rated);
 
       const res = await fetch('/api/prompts?' + params);
       allPrompts = await res.json();
@@ -536,10 +500,8 @@
 
     async function loadSessions() {
       const project = document.getElementById('project-filter').value;
-      const rated = document.getElementById('rated-filter').value;
       const params = new URLSearchParams();
       if (project) params.set('project', project);
-      if (rated) params.set('rated', rated);
 
       const res = await fetch('/api/sessions?' + params);
       allSessions = await res.json();
@@ -582,36 +544,126 @@
               </div>
             </div>
           ` : ''}
-          <div class="prompt-actions">
-            <div class="rating">
-              ${[1,2,3,4,5].map(n => `
-                <button onclick="rateSession(${s.id}, ${n})" class="${s.utility === n ? 'active' : ''}">${n}</button>
-              `).join('')}
-            </div>
-          </div>
         </div>
       `).join('');
     }
 
-    async function rateSession(id, utility) {
-      const ratedFilter = document.getElementById('rated-filter').value;
-      const prevIndex = selectedIndex;
+    async function loadDailySummaries() {
+      const project = document.getElementById('project-filter').value;
+      const params = new URLSearchParams();
+      if (project) params.set('project', project);
+      const res = await fetch('/api/daily-summaries?' + params);
+      allDailySummaries = await res.json();
+      renderDailySummaries();
+    }
 
-      await fetch(`/api/sessions/${id}`, {
-        method: 'PATCH',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({utility})
-      });
-
-      await loadSessions();
-      loadCombinedStats();
-
-      if (ratedFilter === 'false' && prevIndex >= 0) {
-        const newIndex = Math.min(prevIndex, sessionIds.length - 1);
-        if (newIndex >= 0) {
-          selectItem(newIndex);
-        }
+    function renderDailySummaries() {
+      const search = document.getElementById('search-input').value.toLowerCase();
+      const items = allDailySummaries.filter(d =>
+        !search || d.summary.toLowerCase().includes(search) ||
+        d.project.toLowerCase().includes(search) ||
+        (d.key_decisions && d.key_decisions.toLowerCase().includes(search))
+      );
+      const container = document.getElementById('prompts');
+      if (items.length === 0) {
+        container.innerHTML = '<div class="empty">No daily summaries found</div>';
+        dailyIds = [];
+        selectedIndex = -1;
+        return;
       }
+      dailyIds = items.map(d => d.id);
+      container.innerHTML = items.map(d => {
+        let decisions = [];
+        try { decisions = JSON.parse(d.key_decisions || '[]'); } catch(e) {}
+        return `
+          <div class="daily-card" data-id="${d.id}">
+            <div class="session-header">
+              <div class="session-meta"><strong>${d.project}</strong> · ${d.date}</div>
+            </div>
+            <div class="session-summary">${escapeHtml(d.summary)}</div>
+            ${decisions.length ? `<div class="key-decisions">${decisions.map(dec => `<span class="key-decision-tag">${escapeHtml(dec)}</span>`).join('')}</div>` : ''}
+            <div class="count-badges">
+              <span class="count-badge"><strong>${d.prompt_count}</strong> prompts</span>
+              <span class="count-badge"><strong>${d.session_count}</strong> sessions</span>
+              <span class="count-badge"><strong>${d.commit_count}</strong> commits</span>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    async function loadIntentions() {
+      const project = document.getElementById('project-filter').value;
+      const status = document.getElementById('status-filter').value;
+      const params = new URLSearchParams();
+      if (project) params.set('project', project);
+      if (status) params.set('status', status);
+      const res = await fetch('/api/intentions?' + params);
+      allIntentions = await res.json();
+      renderIntentions();
+    }
+
+    function renderIntentions() {
+      const search = document.getElementById('search-input').value.toLowerCase();
+      const items = allIntentions.filter(i =>
+        !search || i.intention.toLowerCase().includes(search) ||
+        i.project.toLowerCase().includes(search)
+      );
+      const container = document.getElementById('prompts');
+      if (items.length === 0) {
+        container.innerHTML = '<div class="empty">No intentions found</div>';
+        intentionIds = [];
+        selectedIndex = -1;
+        return;
+      }
+      intentionIds = items.map(i => i.id);
+      container.innerHTML = items.map(i => `
+        <div class="intention-card" data-id="${i.id}">
+          <div class="session-header">
+            <div class="session-meta"><strong>${i.project}</strong></div>
+            <span class="status-badge status-${i.status}">${i.status}</span>
+          </div>
+          <div class="session-summary">${escapeHtml(i.intention)}</div>
+          <div class="date-range">${i.first_seen}${i.first_seen !== i.last_seen ? ' → ' + i.last_seen : ''}</div>
+        </div>
+      `).join('');
+    }
+
+    async function loadThemes() {
+      const status = document.getElementById('status-filter').value;
+      const params = new URLSearchParams();
+      if (status) params.set('status', status);
+      const res = await fetch('/api/themes?' + params);
+      allThemes = await res.json();
+      renderThemes();
+    }
+
+    function renderThemes() {
+      const search = document.getElementById('search-input').value.toLowerCase();
+      const items = allThemes.filter(t =>
+        !search || t.theme.toLowerCase().includes(search) ||
+        (t.projects && t.projects.toLowerCase().includes(search))
+      );
+      const container = document.getElementById('prompts');
+      if (items.length === 0) {
+        container.innerHTML = '<div class="empty">No themes found</div>';
+        themeIds = [];
+        selectedIndex = -1;
+        return;
+      }
+      themeIds = items.map(t => t.id);
+      container.innerHTML = items.map(t => {
+        let projects = [];
+        try { projects = JSON.parse(t.projects || '[]'); } catch(e) {}
+        return `
+          <div class="theme-card" data-id="${t.id}">
+            <div class="session-header">
+              <div class="session-meta"><strong>${escapeHtml(t.theme)}</strong></div>
+              <span class="status-badge status-${t.status}">${t.status}</span>
+            </div>
+            ${projects.length ? `<div class="project-tags">${projects.map(p => `<span class="project-tag">${escapeHtml(p)}</span>`).join('')}</div>` : ''}
+            <div class="date-range">${t.first_seen}${t.first_seen !== t.last_seen ? ' → ' + t.last_seen : ''}</div>
+          </div>`;
+      }).join('');
     }
 
     function renderPrompts() {
@@ -627,16 +679,13 @@
         container.innerHTML = '<div class="empty">No prompts found</div>';
         promptIds = [];
         selectedIndex = -1;
-        updateDeleteButton();
         return;
       }
 
       promptIds = prompts.map(p => p.id);
       container.innerHTML = prompts.map((p, i) => `
-        <div class="prompt-card${selectedIds.has(p.id) ? ' checked' : ''}" data-id="${p.id}">
+        <div class="prompt-card" data-id="${p.id}">
           <div class="prompt-header">
-            <input type="checkbox" class="prompt-checkbox" ${selectedIds.has(p.id) ? 'checked' : ''}
-                   onchange="toggleSelection(${p.id}, this.checked)">
             <div class="prompt-meta">
               <strong>${p.project}</strong> · ${p.timestamp}
             </div>
@@ -644,45 +693,17 @@
           ${p.context ? `<div class="prompt-context" onclick="this.classList.toggle('expanded')">${escapeHtml(p.context)}</div>` : ''}
           <div class="prompt-text" onclick="this.classList.toggle('expanded')">${escapeHtml(p.prompt)}</div>
           <div class="prompt-actions">
-            <div class="rating">
-              ${[1,2,3,4,5].map(n => `
-                <button onclick="rate(${p.id}, ${n})" class="${p.utility === n ? 'active' : ''}">${n}</button>
-              `).join('')}
-            </div>
             <input class="tags-input" placeholder="tags (comma-separated)" value="${p.tags || ''}"
                    onchange="updateTags(${p.id}, this.value)">
           </div>
         </div>
       `).join('');
-      updateDeleteButton();
     }
 
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
-    }
-
-    async function rate(id, utility) {
-      const ratedFilter = document.getElementById('rated-filter').value;
-      const prevIndex = selectedIndex;
-
-      await fetch(`/api/prompts/${id}`, {
-        method: 'PATCH',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({utility})
-      });
-
-      await loadPrompts();
-      loadCombinedStats();
-
-      // In unrated filter, stay at same index (now the next prompt)
-      if (ratedFilter === 'false' && prevIndex >= 0) {
-        const newIndex = Math.min(prevIndex, promptIds.length - 1);
-        if (newIndex >= 0) {
-          selectPrompt(newIndex);
-        }
-      }
     }
 
     async function updateTags(id, tags) {
@@ -693,128 +714,20 @@
       });
     }
 
-    function toggleSelection(id, checked) {
-      if (checked) {
-        selectedIds.add(id);
-      } else {
-        selectedIds.delete(id);
-      }
-      const card = document.querySelector(`.prompt-card[data-id="${id}"]`);
-      if (card) card.classList.toggle('checked', checked);
-      updateDeleteButton();
-      updateSelectAllCheckbox();
-    }
-
-    function toggleSelectAll(checked) {
-      if (checked) {
-        promptIds.forEach(id => selectedIds.add(id));
-      } else {
-        promptIds.forEach(id => selectedIds.delete(id));
-      }
-      renderPrompts();
-    }
-
-    function updateSelectAllCheckbox() {
-      const checkbox = document.getElementById('select-all');
-      const allSelected = promptIds.length > 0 && promptIds.every(id => selectedIds.has(id));
-      checkbox.checked = allSelected;
-    }
-
-    function updateDeleteButton() {
-      const btn = document.getElementById('delete-btn');
-      const count = selectedIds.size;
-      btn.textContent = `Delete (${count})`;
-      btn.disabled = count === 0;
-      updateHelpFooter();
-    }
-
-    async function deleteSelected() {
-      if (selectedIds.size === 0) return;
-
-      // First delete requires confirmation
-      if (!hasConfirmedDelete) {
-        if (!confirm(`Delete ${selectedIds.size} prompt(s)?`)) return;
-        hasConfirmedDelete = true;
-      }
-
-      const prevIndex = selectedIndex;
-
-      // Store prompts for undo
-      const idsToDelete = Array.from(selectedIds);
-      lastDeletedPrompts = allPrompts.filter(p => idsToDelete.includes(p.id));
-
-      await fetch('/api/prompts/bulk', {
-        method: 'DELETE',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ids: idsToDelete})
-      });
-
-      selectedIds.clear();
-      document.getElementById('select-all').checked = false;
-      await loadPrompts();
-      loadCombinedStats();
-
-      // Auto-select next prompt at same position
-      if (prevIndex >= 0 && promptIds.length > 0) {
-        const newIndex = Math.min(prevIndex, promptIds.length - 1);
-        selectPrompt(newIndex);
-      }
-
-      // Show undo toast
-      showUndoToast(lastDeletedPrompts.length);
-    }
-
-    function showUndoToast(count) {
-      const toast = document.getElementById('undo-toast');
-      document.getElementById('undo-message').textContent = `Deleted ${count} prompt${count > 1 ? 's' : ''}`;
-      toast.classList.remove('hidden');
-
-      // Auto-hide after 8 seconds
-      clearTimeout(undoTimeout);
-      undoTimeout = setTimeout(() => {
-        toast.classList.add('hidden');
-        lastDeletedPrompts = [];
-      }, 8000);
-    }
-
-    async function undoDelete() {
-      if (lastDeletedPrompts.length === 0) return;
-
-      await fetch('/api/prompts/restore', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({prompts: lastDeletedPrompts})
-      });
-
-      document.getElementById('undo-toast').classList.add('hidden');
-      clearTimeout(undoTimeout);
-      lastDeletedPrompts = [];
-      loadPrompts();
-      loadCombinedStats();
-    }
-
-    document.getElementById('project-filter').addEventListener('change', () => {
-      currentView === 'prompts' ? loadPrompts() : loadSessions();
-    });
-    document.getElementById('rated-filter').addEventListener('change', () => {
-      currentView === 'prompts' ? loadPrompts() : loadSessions();
-    });
+    document.getElementById('project-filter').addEventListener('change', () => refreshCurrentView());
+    document.getElementById('status-filter').addEventListener('change', () => refreshCurrentView());
 
     let searchTimeout;
     document.getElementById('search-input').addEventListener('input', () => {
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
-        currentView === 'prompts' ? renderPrompts() : renderSessions();
+        const renderers = { prompts: renderPrompts, sessions: renderSessions, daily: renderDailySummaries, intentions: renderIntentions, themes: renderThemes };
+        renderers[currentView]();
       }, 200);
     });
 
-    function selectPrompt(index) {
-      selectItem(index);
-    }
-
     function selectItem(index) {
-      const cardClass = currentView === 'prompts' ? '.prompt-card' : '.session-card';
-      const cards = document.querySelectorAll(cardClass);
+      const cards = document.querySelectorAll(getCardClass());
       cards.forEach(c => c.classList.remove('focused'));
       if (index >= 0 && index < cards.length) {
         selectedIndex = index;
@@ -826,7 +739,13 @@
     }
 
     function getItemIds() {
-      return currentView === 'prompts' ? promptIds : sessionIds;
+      const ids = { prompts: promptIds, sessions: sessionIds, daily: dailyIds, intentions: intentionIds, themes: themeIds };
+      return ids[currentView] || [];
+    }
+
+    function getCardClass() {
+      const classes = { prompts: '.prompt-card', sessions: '.session-card', daily: '.daily-card', intentions: '.intention-card', themes: '.theme-card' };
+      return classes[currentView] || '.prompt-card';
     }
 
     function getRowElements(row) {
@@ -837,21 +756,19 @@
       } else if (row === 2) {
         return [
           document.getElementById('project-filter'),
-          document.getElementById('rated-filter'),
+          document.getElementById('status-filter'),
           document.getElementById('search-input'),
           document.getElementById('refresh-btn')
-        ];
+        ].filter(el => el && el.style.display !== 'none');
       } else {
-        const cardClass = currentView === 'prompts' ? '.prompt-card' : '.session-card';
-        const cards = document.querySelectorAll(cardClass);
+        const cards = document.querySelectorAll(getCardClass());
         const cardIndex = row - 3;
         return cardIndex < cards.length ? [cards[cardIndex]] : [];
       }
     }
 
     function getMaxRow() {
-      const cardClass = currentView === 'prompts' ? '.prompt-card' : '.session-card';
-      const cards = document.querySelectorAll(cardClass);
+      const cards = document.querySelectorAll(getCardClass());
       return 3 + cards.length - 1;
     }
 
@@ -917,14 +834,6 @@
           toggleHelp();
           return;
         }
-        // Clear selections on Escape
-        if (selectedIds.size > 0) {
-          selectedIds.clear();
-          document.getElementById('select-all').checked = false;
-          renderPrompts();
-          updateHelpFooter();
-          return;
-        }
       }
 
       // Skip j/k if typing in input, but allow arrows
@@ -968,37 +877,12 @@
         if (elements[focusCol]) {
           elements[focusCol].click();
         }
-      } else if (e.key >= '1' && e.key <= '5' && selectedIndex >= 0) {
-        if (currentView === 'prompts') {
-          rate(itemIds[selectedIndex], parseInt(e.key));
-        } else {
-          rateSession(itemIds[selectedIndex], parseInt(e.key));
-        }
       } else if (e.key === 't' && selectedIndex >= 0 && currentView === 'prompts') {
         const card = document.querySelectorAll('.prompt-card')[selectedIndex];
         card.querySelector('.tags-input').focus();
       } else if (e.key === 'e' && selectedIndex >= 0 && currentView === 'prompts') {
         const card = document.querySelectorAll('.prompt-card')[selectedIndex];
         card.querySelector('.prompt-text').classList.toggle('expanded');
-      } else if (e.key === ' ' && selectedIndex >= 0 && currentView === 'prompts') {
-        e.preventDefault();
-        const id = itemIds[selectedIndex];
-        toggleSelection(id, !selectedIds.has(id));
-        renderPrompts();
-        selectItem(selectedIndex);
-        updateHelpFooter();
-      } else if (e.key === 'x' && currentView === 'prompts') {
-        // Delete selected items, or focused item if nothing selected
-        if (selectedIds.size === 0 && selectedIndex >= 0) {
-          const id = itemIds[selectedIndex];
-          if (id) {
-            selectedIds.add(id);
-            updateDeleteButton();
-          }
-        }
-        if (selectedIds.size > 0) {
-          deleteSelected();
-        }
       }
     });
 

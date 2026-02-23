@@ -1,6 +1,6 @@
 ---
 name: prompts
-description: Query past prompts by project, tags, or utility
+description: Query past prompts by project or tags
 allowed-tools: Bash(sqlite3:*), Bash(pwd)
 ---
 
@@ -10,7 +10,6 @@ Search prompt history.
 
 Arguments (all optional):
 - `<project>` - filter by project name
-- `rated` - only utility 4+
 - `tag:<name>` - filter by tag (comma-separated in db)
 
 ## Build Query
@@ -18,7 +17,6 @@ Arguments (all optional):
 Base query:
 ```sql
 SELECT
-  COALESCE(utility, '-') as util,
   project,
   substr(prompt, 1, 80) as prompt,
   tags
@@ -27,7 +25,6 @@ FROM prompts
 
 Add WHERE clauses based on arguments:
 - If project specified: `WHERE project = '<project>'`
-- If `rated`: `WHERE utility >= 4`
 - If `tag:<name>`: `WHERE tags LIKE '%<name>%'`
 
 Order and limit:
@@ -45,8 +42,8 @@ sqlite3 -separator ' | ' ~/.claude/prompt-history.db "<query>"
 
 Format output as list:
 ```
-[util] project: prompt text...
-       tags: tag1, tag2
+project: prompt text...
+  tags: tag1, tag2
 ```
 
 If no results, say "No prompts found."
