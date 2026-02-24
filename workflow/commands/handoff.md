@@ -42,12 +42,17 @@ sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET summary='<escaped_summa
 sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET ended_at=datetime('now') WHERE project='<project>' AND ended_at IS NULL;"
 ```
 
-## Update CLAUDE.md
+## Update Docs
 
-1. Update "Next Steps" section:
+1. Update CLAUDE.md "Next Steps" section:
    - Remove completed items
    - Add new items from this session
    - Keep 3-5 items max
+
+2. If auto memory directory exists, update MEMORY.md with:
+   - Feature/task status changes from this session
+   - New next steps or insights
+   - Remove outdated items
 
 ## Done
 
