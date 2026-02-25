@@ -83,35 +83,35 @@ def list_sessions():
     project = request.args.get("project")
 
     # Only show sessions that have summaries
-    query = """
-        SELECT s.*, GROUP_CONCAT(c.hash || '||' || c.message, ';;') as commits_raw
-        FROM sessions s
-        LEFT JOIN commits c ON c.session_id = s.id
-        WHERE s.ended_at IS NOT NULL AND s.summary IS NOT NULL AND s.summary != ''
-    """
+    query = "SELECT * FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''"
     params = []
 
     if project:
-        query += " AND s.project = ?"
+        query += " AND project = ?"
         params.append(project)
 
-    query += " GROUP BY s.id ORDER BY s.started_at DESC"
+    query += " ORDER BY started_at DESC"
 
     with get_db() as conn:
         rows = conn.execute(query, params).fetchall()
+        sessions = [dict(row) for row in rows]
 
-    sessions = []
-    for row in rows:
-        session = dict(row)
-        raw = session.pop('commits_raw', None)
-        if raw:
-            session['commits'] = [
-                {'hash': pair.split('||', 1)[0], 'message': pair.split('||', 1)[1]}
-                for pair in raw.split(';;')
-            ]
-        else:
-            session['commits'] = []
-        sessions.append(session)
+        if sessions:
+            session_ids = [s['id'] for s in sessions]
+            placeholders = ','.join('?' * len(session_ids))
+            commits = conn.execute(
+                f"SELECT session_id, hash, message FROM commits WHERE session_id IN ({placeholders}) ORDER BY timestamp",
+                session_ids
+            ).fetchall()
+
+            commits_by_session = {}
+            for c in commits:
+                commits_by_session.setdefault(c['session_id'], []).append(
+                    {'hash': c['hash'], 'message': c['message']}
+                )
+
+            for session in sessions:
+                session['commits'] = commits_by_session.get(session['id'], [])
 
     return jsonify(sessions)
 
