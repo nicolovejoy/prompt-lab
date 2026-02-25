@@ -16,6 +16,8 @@ Opens at http://localhost:5111
 - Test full workflow end-to-end on fresh machine
 - Add tag filtering dropdown
 - Allow editing session summaries in dashboard
+- Clean up frontend TODOs: fetch error handling, rename #prompts container, remove statClick wrapper
+- Consolidate combined_stats into single query with subselects
 
 ## Backlog
 
