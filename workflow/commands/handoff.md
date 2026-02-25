@@ -4,56 +4,29 @@ description: End a session by updating docs and prepping for next time
 allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(pwd), Read, Write, Edit, Glob
 ---
 
-Quick handoff for next session.
+Close out this session. Be concise.
 
-## Capture Commits
-
-1. Get project name from `pwd`
-2. Get session ID and start time:
-   ```bash
-   sqlite3 ~/.claude/prompt-history.db "SELECT id, started_at FROM sessions WHERE project='<project>' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;"
-   ```
-3. Log commits since session start:
-   ```bash
-   git log --oneline --since="<timestamp>" --format="%H|%s"
-   ```
-4. Insert commits (if any):
-   ```bash
-   sqlite3 ~/.claude/prompt-history.db "INSERT OR IGNORE INTO commits (hash, message, session_id) VALUES ('<hash>', '<message>', <session_id>);"
-   ```
-
-## Generate Session Summary
-
-Write a brief summary (50-100 words max) covering:
-- What was accomplished this session
-- What's coming up next
-- Any key insights or decisions made
-
-Base this on the conversation context, commits made, and any changes to files.
-
-Store the summary:
-```bash
-sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET summary='<escaped_summary>' WHERE id=<session_id>;"
-```
-
-## Close Session
+## 1. Get session info
 
 ```bash
-sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET ended_at=datetime('now') WHERE project='<project>' AND ended_at IS NULL;"
+sqlite3 ~/.claude/prompt-history.db "SELECT id, started_at FROM sessions WHERE project='$(basename $PWD)' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;"
 ```
 
-## Update Docs
+## 2. Do in parallel
 
-1. Update CLAUDE.md "Next Steps" section:
-   - Remove completed items
-   - Add new items from this session
-   - Keep 3-5 items max
+- **Capture commits** since session start:
+  ```bash
+  git log --oneline --since="<started_at>" --format="%H|%s"
+  ```
+  Insert each: `INSERT OR IGNORE INTO commits (hash, message, session_id) VALUES (...);`
 
-2. If auto memory directory exists, update MEMORY.md with:
-   - Feature/task status changes from this session
-   - New next steps or insights
-   - Remove outdated items
+- **Write session summary** (50 words max): what was done, what's next. Store it:
+  ```bash
+  sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET summary='<summary>', ended_at=datetime('now') WHERE id=<session_id>;"
+  ```
 
-## Done
+- **Update CLAUDE.md** Next Steps: remove done items, add new ones (3-5 max)
 
-Suggest commit if there are changes.
+- **Update MEMORY.md** if anything changed worth remembering
+
+## 3. Commit doc changes if any

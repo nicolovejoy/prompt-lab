@@ -1,38 +1,19 @@
 ---
 name: readup
 description: Start a session by understanding project context and recent work
-allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(pwd), Read, Write, Edit, Glob, AskUserQuestion
+allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(pwd), Read, Write, Edit, Glob
 ---
 
-Orient me on this project.
+Start a session. Be concise.
 
-## Register Session Start
+## Do (in parallel)
 
-1. Get project name from `pwd` (last path component)
-2. Insert new session:
-   ```bash
-   sqlite3 ~/.claude/prompt-history.db "INSERT INTO sessions (project) VALUES ('<project>');"
-   ```
-
-## Gather Context
-
-1. Read CLAUDE.md (especially Next Steps)
-2. Run `git log --oneline -5` for recent commits
-3. Run `git status` for uncommitted changes
-
-## Clean Up Docs (while reading)
-
-Fix anything stale:
-- Remove completed Next Steps
-- Trim outdated info
-
-Keep changes minimal.
+1. Register session: `sqlite3 ~/.claude/prompt-history.db "INSERT INTO sessions (project) VALUES ('$(basename $PWD)');"`
+2. Read CLAUDE.md (focus on Next Steps)
+3. `git log --oneline -5`
 
 ## Then
 
-1. Summarize: recent work, current state, next task
-2. Suggest ONE focused task for this session
+Summarize in a few lines: what happened recently, where things stand, what's next.
 
-**Ralph Wiggum principle**: One task per session keeps context fresh. Complete it, validate it, commit it. If the task is too big, break it down first.
-
-Keep it concise.
+If the user passed arguments with this command, address those — don't suggest a separate task.
