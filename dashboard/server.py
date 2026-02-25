@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Prompt history dashboard - local web UI for reviewing and rating prompts."""
+"""Prompt history dashboard - local web UI for reviewing prompts."""
 
 import sqlite3
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 from flask import Flask, jsonify, request, send_file
 
@@ -11,10 +12,14 @@ app = Flask(__name__)
 DB_PATH = Path.home() / ".claude" / "prompt-history.db"
 
 
+@contextmanager
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 @app.route("/")
@@ -40,9 +45,8 @@ def list_prompts():
 
     query += " ORDER BY timestamp DESC"
 
-    conn = get_db()
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
+    with get_db() as conn:
+        rows = conn.execute(query, params).fetchall()
 
     return jsonify([dict(row) for row in rows])
 
@@ -50,7 +54,6 @@ def list_prompts():
 @app.route("/api/prompts/<int:prompt_id>", methods=["PATCH"])
 def update_prompt(prompt_id):
     data = request.json
-    conn = get_db()
 
     updates = []
     params = []
@@ -61,18 +64,17 @@ def update_prompt(prompt_id):
 
     if updates:
         params.append(prompt_id)
-        conn.execute(f"UPDATE prompts SET {', '.join(updates)} WHERE id = ?", params)
-        conn.commit()
+        with get_db() as conn:
+            conn.execute(f"UPDATE prompts SET {', '.join(updates)} WHERE id = ?", params)
+            conn.commit()
 
-    conn.close()
     return jsonify({"ok": True})
 
 
 @app.route("/api/projects")
 def list_projects():
-    conn = get_db()
-    rows = conn.execute("SELECT DISTINCT project FROM prompts ORDER BY project").fetchall()
-    conn.close()
+    with get_db() as conn:
+        rows = conn.execute("SELECT DISTINCT project FROM prompts ORDER BY project").fetchall()
     return jsonify([row["project"] for row in rows])
 
 
@@ -81,28 +83,35 @@ def list_sessions():
     project = request.args.get("project")
 
     # Only show sessions that have summaries
-    query = "SELECT * FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''"
+    query = """
+        SELECT s.*, GROUP_CONCAT(c.hash || '||' || c.message, ';;') as commits_raw
+        FROM sessions s
+        LEFT JOIN commits c ON c.session_id = s.id
+        WHERE s.ended_at IS NOT NULL AND s.summary IS NOT NULL AND s.summary != ''
+    """
     params = []
 
     if project:
-        query += " AND project = ?"
+        query += " AND s.project = ?"
         params.append(project)
 
-    query += " ORDER BY started_at DESC"
+    query += " GROUP BY s.id ORDER BY s.started_at DESC"
 
-    conn = get_db()
-    rows = conn.execute(query, params).fetchall()
-    sessions = [dict(row) for row in rows]
+    with get_db() as conn:
+        rows = conn.execute(query, params).fetchall()
 
-    # Attach commits to each session
-    for session in sessions:
-        commits = conn.execute(
-            "SELECT hash, message FROM commits WHERE session_id = ? ORDER BY timestamp",
-            (session['id'],)
-        ).fetchall()
-        session['commits'] = [dict(c) for c in commits]
-
-    conn.close()
+    sessions = []
+    for row in rows:
+        session = dict(row)
+        raw = session.pop('commits_raw', None)
+        if raw:
+            session['commits'] = [
+                {'hash': pair.split('||', 1)[0], 'message': pair.split('||', 1)[1]}
+                for pair in raw.split(';;')
+            ]
+        else:
+            session['commits'] = []
+        sessions.append(session)
 
     return jsonify(sessions)
 
@@ -116,9 +125,8 @@ def list_daily_summaries():
         query += " AND project = ?"
         params.append(project)
     query += " ORDER BY date DESC"
-    conn = get_db()
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
+    with get_db() as conn:
+        rows = conn.execute(query, params).fetchall()
     return jsonify([dict(row) for row in rows])
 
 
@@ -135,9 +143,8 @@ def list_intentions():
         query += " AND status = ?"
         params.append(status)
     query += " ORDER BY last_seen DESC"
-    conn = get_db()
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
+    with get_db() as conn:
+        rows = conn.execute(query, params).fetchall()
     return jsonify([dict(row) for row in rows])
 
 
@@ -150,21 +157,20 @@ def list_themes():
         query += " AND status = ?"
         params.append(status)
     query += " ORDER BY last_seen DESC"
-    conn = get_db()
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
+    with get_db() as conn:
+        rows = conn.execute(query, params).fetchall()
     return jsonify([dict(row) for row in rows])
 
 
+# TODO: Consolidate into a single query with subselects
 @app.route("/api/stats/combined")
 def combined_stats():
-    conn = get_db()
-    prompts_total = conn.execute("SELECT COUNT(*) as n FROM prompts").fetchone()["n"]
-    sessions_total = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''").fetchone()["n"]
-    daily_total = conn.execute("SELECT COUNT(*) as n FROM daily_summaries").fetchone()["n"]
-    intentions_active = conn.execute("SELECT COUNT(*) as n FROM intentions WHERE status = 'active'").fetchone()["n"]
-    themes_active = conn.execute("SELECT COUNT(*) as n FROM themes WHERE status = 'active'").fetchone()["n"]
-    conn.close()
+    with get_db() as conn:
+        prompts_total = conn.execute("SELECT COUNT(*) as n FROM prompts").fetchone()["n"]
+        sessions_total = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''").fetchone()["n"]
+        daily_total = conn.execute("SELECT COUNT(*) as n FROM daily_summaries").fetchone()["n"]
+        intentions_active = conn.execute("SELECT COUNT(*) as n FROM intentions WHERE status = 'active'").fetchone()["n"]
+        themes_active = conn.execute("SELECT COUNT(*) as n FROM themes WHERE status = 'active'").fetchone()["n"]
     return jsonify({
         "prompts": {"total": prompts_total},
         "sessions": {"total": sessions_total},
@@ -177,7 +183,6 @@ def combined_stats():
 @app.route("/api/sessions/<int:session_id>", methods=["PATCH"])
 def update_session(session_id):
     data = request.json
-    conn = get_db()
 
     updates = []
     params = []
@@ -188,10 +193,10 @@ def update_session(session_id):
 
     if updates:
         params.append(session_id)
-        conn.execute(f"UPDATE sessions SET {', '.join(updates)} WHERE id = ?", params)
-        conn.commit()
+        with get_db() as conn:
+            conn.execute(f"UPDATE sessions SET {', '.join(updates)} WHERE id = ?", params)
+            conn.commit()
 
-    conn.close()
     return jsonify({"ok": True})
 
 

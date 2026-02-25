@@ -379,6 +379,7 @@
     <button id="refresh-btn" data-row="2" data-col="3" onclick="refreshCurrentView()">Refresh</button>
   </div>
 
+  <!-- TODO: Rename this id to "content" — it's used for all views, not just prompts -->
   <div id="prompts"></div>
   <div class="help" id="help-footer"></div>
 
@@ -456,6 +457,7 @@
       }
     }
 
+    // TODO: Add .catch() error handling to fetch calls — UI fails silently if server is down
     async function loadCombinedStats() {
       const res = await fetch('/api/stats/combined');
       const data = await res.json();
@@ -472,6 +474,7 @@
       `;
     }
 
+    // TODO: Remove statClick wrapper — use setView directly in onclick handlers
     function statClick(view) {
       setView(view);
     }
