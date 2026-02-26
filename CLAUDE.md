@@ -12,7 +12,7 @@ Opens at http://localhost:5111
 
 ## Next Steps
 
-- Test /readup and /report in other repos to confirm no permission prompts
+- Test /report and /review in other repos — confirm no permission prompts after printf fix
 - Set up cron job for synthesizer.py (nightly --all) with email notifications
 - Add tag filtering dropdown
 - Allow editing session summaries in dashboard
