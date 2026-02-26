@@ -1,7 +1,7 @@
 ---
 name: readup
 description: Start a session by understanding project context and recent work
-allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(pwd), Read, Write, Edit, Glob
+allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(pwd), Bash(cd:*), Bash(ls:*), Read, Write, Edit, Glob
 ---
 
 Start a session. Be concise.

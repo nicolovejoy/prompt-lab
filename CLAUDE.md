@@ -12,12 +12,11 @@ Opens at http://localhost:5111
 
 ## Next Steps
 
-- Set up cron job for synthesizer.py (nightly --all) with email notifications on progress
-- Test full workflow end-to-end on fresh machine
+- Test /readup and /report in other repos to confirm no permission prompts
+- Set up cron job for synthesizer.py (nightly --all) with email notifications
 - Add tag filtering dropdown
 - Allow editing session summaries in dashboard
 - Clean up frontend TODOs: fetch error handling, rename #prompts container, remove statClick wrapper
-- Consolidate combined_stats into single query with subselects
 
 ## Backlog
 

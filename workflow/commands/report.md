@@ -18,23 +18,16 @@ Examples:
 
 ## Query Sessions
 
+Build the modifier as a variable to avoid shell heuristic flags on the sqlite3 command:
+
 ```bash
-sqlite3 ~/.claude/prompt-history.db "
-SELECT project, summary, started_at
-FROM sessions
-WHERE summary IS NOT NULL
-  AND started_at >= datetime('now', '-<N> days')
-ORDER BY started_at DESC;"
+MOD="-<N> days" && sqlite3 ~/.claude/prompt-history.db "SELECT project, summary, started_at FROM sessions WHERE summary IS NOT NULL AND started_at >= datetime('now', '$MOD') ORDER BY started_at DESC;"
 ```
 
 Also query daily summaries for the same window:
 
 ```bash
-sqlite3 ~/.claude/prompt-history.db "
-SELECT date, summary
-FROM daily_summaries
-WHERE date >= date('now', '-<N> days')
-ORDER BY date DESC;"
+sqlite3 ~/.claude/prompt-history.db "SELECT date, summary FROM daily_summaries WHERE date >= date('now', '$MOD') ORDER BY date DESC;"
 ```
 
 ## Format
