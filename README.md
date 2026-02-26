@@ -11,25 +11,31 @@ Every prompt you send is raw material. Some prompts unlock exactly what you need
 - **Curate examples** - Tag and collect high-quality prompts for reference
 - **Review visually** - Web dashboard with 5 views: Prompts, Summaries, Daily, Intentions, Themes
 
-## Installation
+## Setup (new machine)
 
-```bash
-git clone https://github.com/your-username/prompt-lab.git
-cd prompt-lab
-./install.sh
-```
+1. Clone this repo
+2. Copy slash commands: `cp ~/.claude/commands/*.md` won't exist yet — copy from a backup or recreate from this repo's git history (they lived in `workflow/commands/` before being moved to global)
+3. Add the prompt-logging hook to `~/.claude/settings.json`:
+   ```json
+   "hooks": {
+     "UserPromptSubmit": [{
+       "hooks": [{"type": "command", "command": "<path-to>/workflow/hooks/log-prompt.sh", "timeout": 5000}]
+     }]
+   }
+   ```
+4. Add the sqlite3 allowlist rule to `~/.claude/settings.json`:
+   ```json
+   "permissions": {
+     "allow": ["Bash(sqlite3 ~/.claude/prompt-history.db *)"]
+   }
+   ```
+5. The DB (`~/.claude/prompt-history.db`) is created automatically by the hook on first prompt
 
-This will:
-- Install slash commands to `~/.claude/commands/`
-- Configure the prompt logging hook in `~/.claude/settings.json`
-- Create the SQLite database at `~/.claude/prompt-history.db`
-- Optionally install a `CLAUDE.md` template
-
-Requirements: `jq`, `sqlite3`
+Requirements: `sqlite3`
 
 ## Slash Commands
 
-All commands live in `~/.claude/commands/` (global) — they work across every repo. This project is the source of truth; `install.sh` copies them into place.
+All commands live in `~/.claude/commands/` (global) — they work across every repo.
 
 ### /readup
 
@@ -46,12 +52,6 @@ Generate a work summary for the last N days (default: 1), grouped by project.
 ### /review
 
 Summarize recent work across sessions.
-
-### /prompts [filters]
-
-Query prompt history. Supports filters:
-- `/prompts <project>` - filter by project
-- `/prompts tag:debugging` - filter by tag
 
 ## Dashboard
 
@@ -126,12 +126,11 @@ prompt-lab/
 │   │   └── log-prompt.sh
 │   └── CLAUDE.md.template
 ├── synthesizer.py      # Daily synthesis (summaries, intentions, themes)
-├── install.sh          # Install commands + hook to ~/.claude/
 ├── dashboard.sh        # Start dashboard
 └── README.md
 ```
 
-Slash commands are installed to `~/.claude/commands/` by `install.sh` — they are not kept in this repo's tree.
+Slash commands live in `~/.claude/commands/` (global, not tracked in this repo).
 
 ## License
 
