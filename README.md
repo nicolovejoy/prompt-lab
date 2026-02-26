@@ -7,9 +7,9 @@ Workflow tools and dashboard for tracking your Claude Code prompts.
 Every prompt you send is raw material. Some prompts unlock exactly what you need in one shot. Others waste tokens going in circles. This toolkit helps you:
 
 - **Track sessions** - Auto-log prompts, link commits to sessions
-- **Learn what works** - Rate prompts by utility, spot patterns in effective requests
+- **Synthesize patterns** - Daily summaries, intention extraction, theme analysis
 - **Curate examples** - Tag and collect high-quality prompts for reference
-- **Review visually** - Web dashboard for browsing and rating prompts
+- **Review visually** - Web dashboard with 5 views: Prompts, Summaries, Daily, Intentions, Themes
 
 ## Installation
 
@@ -20,28 +20,37 @@ cd prompt-lab
 ```
 
 This will:
-- Install `/readup`, `/handoff`, `/prompts` commands to `~/.claude/commands/`
+- Install slash commands to `~/.claude/commands/`
 - Configure the prompt logging hook in `~/.claude/settings.json`
 - Create the SQLite database at `~/.claude/prompt-history.db`
 - Optionally install a `CLAUDE.md` template
 
 Requirements: `jq`, `sqlite3`
 
-## Commands
+## Slash Commands
+
+All commands live in `~/.claude/commands/` (global) — they work across every repo. This project is the source of truth; `install.sh` copies them into place.
 
 ### /readup
 
-Start a session. Registers session start time, lets you curate prompts from your last session (keep useful ones, delete noise), shows recent commits and Next Steps.
+Start a session. Registers session, reads CLAUDE.md, shows recent git history.
 
 ### /handoff
 
-End a session. Logs commits made during the session, updates CLAUDE.md with new Next Steps, appends to devlog.md.
+End a session. Logs commits, writes session summary, updates CLAUDE.md Next Steps.
 
-### /prompts
+### /report [N]
+
+Generate a work summary for the last N days (default: 1), grouped by project.
+
+### /review
+
+Summarize recent work across sessions.
+
+### /prompts [filters]
 
 Query prompt history. Supports filters:
 - `/prompts <project>` - filter by project
-- `/prompts rated` - only utility 4+ prompts
 - `/prompts tag:debugging` - filter by tag
 
 ## Dashboard
@@ -53,20 +62,18 @@ Query prompt history. Supports filters:
 Opens at http://localhost:5111
 
 Features:
-- Browse prompts by project, rated/unrated status
+- 5 views: Prompts, Summaries, Daily, Intentions, Themes
 - Search by prompt text, tags, or project name
-- Rate prompts 1-5 for utility tracking
 - Tag prompts for categorization
 - Bulk delete unwanted prompts
 
 ### Keyboard shortcuts
 
-- `j` / `k` or arrows: Navigate prompts
-- `1-5`: Rate selected prompt
+- `j` / `k` or arrows: Navigate items
 - `t`: Focus tags input
-- `e`: Expand/collapse prompt text
+- `e`: Expand/collapse text
 - `Space`: Toggle selection
-- `x`: Delete selected prompts
+- `x`: Delete selected
 - `?`: Show help
 
 ## Database schema
@@ -77,26 +84,32 @@ CREATE TABLE prompts (
     timestamp TEXT,
     project TEXT,
     prompt TEXT,
-    utility INTEGER,  -- 1-5 rating
-    tags TEXT,        -- comma-separated
+    tags TEXT,
     notes TEXT,
     session_id INTEGER,
-    context TEXT      -- last Claude response before this prompt
+    context TEXT
 );
 
 CREATE TABLE sessions (
     id INTEGER PRIMARY KEY,
     project TEXT,
     started_at TEXT,
-    ended_at TEXT
+    ended_at TEXT,
+    summary TEXT
 );
 
 CREATE TABLE commits (
     id INTEGER PRIMARY KEY,
-    prompt_id INTEGER,
+    session_id INTEGER,
     hash TEXT,
     message TEXT,
     timestamp TEXT
+);
+
+CREATE TABLE daily_summaries (
+    id INTEGER PRIMARY KEY,
+    date TEXT,
+    summary TEXT
 );
 ```
 
@@ -109,17 +122,16 @@ prompt-lab/
 │   ├── index.html
 │   └── requirements.txt
 ├── workflow/           # Claude Code integrations
-│   ├── commands/
-│   │   ├── readup.md
-│   │   ├── handoff.md
-│   │   └── prompts.md
 │   ├── hooks/
 │   │   └── log-prompt.sh
 │   └── CLAUDE.md.template
-├── install.sh          # Install workflow tools
+├── synthesizer.py      # Daily synthesis (summaries, intentions, themes)
+├── install.sh          # Install commands + hook to ~/.claude/
 ├── dashboard.sh        # Start dashboard
 └── README.md
 ```
+
+Slash commands are installed to `~/.claude/commands/` by `install.sh` — they are not kept in this repo's tree.
 
 ## License
 
