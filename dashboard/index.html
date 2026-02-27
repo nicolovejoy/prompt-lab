@@ -338,6 +338,58 @@
       border-color: var(--accent);
       box-shadow: 0 0 0 3px var(--accent-light);
     }
+    .todo-group { margin-bottom: 24px; }
+    .todo-group-header {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .todo-count {
+      font-size: 0.7rem;
+      font-weight: 600;
+      background: var(--accent-light);
+      color: var(--accent);
+      padding: 2px 8px;
+    }
+    .todo-section-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin: 12px 0 6px;
+    }
+    .todo-card {
+      background: var(--card);
+      padding: 10px 16px;
+      margin-bottom: 4px;
+      border: 1px solid var(--border);
+      font-size: 0.9rem;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      transition: box-shadow 0.15s ease;
+    }
+    .todo-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .todo-card.focused {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-light);
+    }
+    .todo-card.muted { color: var(--text-secondary); }
+    .todo-source {
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 1px 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
     /* Scrollbar styling */
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
@@ -362,6 +414,7 @@
     <button id="view-daily" data-row="1" data-col="2" onclick="setView('daily')">Daily</button>
     <button id="view-intentions" data-row="1" data-col="3" onclick="setView('intentions')">Intentions</button>
     <button id="view-themes" data-row="1" data-col="4" onclick="setView('themes')">Themes</button>
+    <button id="view-todos" data-row="1" data-col="5" onclick="setView('todos')">Todos</button>
   </div>
 
   <div class="filters" id="filters">
@@ -376,7 +429,7 @@
       <option value="abandoned">Abandoned</option>
     </select>
     <input type="text" id="search-input" data-row="2" data-col="2" placeholder="Search prompts..." style="flex: 1; padding: 8px 14px; border: 1px solid var(--border); font-family: inherit; font-size: 0.9rem;">
-    <button id="refresh-btn" data-row="2" data-col="3" onclick="refreshCurrentView()">Refresh</button>
+    <button id="refresh-btn" data-row="2" data-col="3" onclick="refreshCurrentView(true)">Refresh</button>
   </div>
 
   <!-- TODO: Rename this id to "content" — it's used for all views, not just prompts -->
@@ -410,6 +463,8 @@
     let intentionIds = [];
     let allThemes = [];
     let themeIds = [];
+    let allTodos = [];
+    let todoIds = [];
     let focusRow = 3;
     let focusCol = 0;
 
@@ -419,13 +474,13 @@
 
     function setView(view) {
       currentView = view;
-      const views = ['prompts', 'sessions', 'daily', 'intentions', 'themes'];
+      const views = ['prompts', 'sessions', 'daily', 'intentions', 'themes', 'todos'];
       views.forEach(v => document.getElementById('view-' + v).classList.toggle('active', v === view));
 
       const statusFilter = document.getElementById('status-filter');
       statusFilter.style.display = (view === 'intentions' || view === 'themes') ? '' : 'none';
 
-      const placeholders = { prompts: 'Search prompts...', sessions: 'Search summaries...', daily: 'Search daily summaries...', intentions: 'Search intentions...', themes: 'Search themes...' };
+      const placeholders = { prompts: 'Search prompts...', sessions: 'Search summaries...', daily: 'Search daily summaries...', intentions: 'Search intentions...', themes: 'Search themes...', todos: 'Search todos...' };
       document.getElementById('search-input').placeholder = placeholders[view] || 'Search...';
 
       selectedIndex = -1;
@@ -433,8 +488,8 @@
       updateHelpFooter();
     }
 
-    function refreshCurrentView() {
-      const loaders = { prompts: loadPrompts, sessions: loadSessions, daily: loadDailySummaries, intentions: loadIntentions, themes: loadThemes };
+    function refreshCurrentView(force) {
+      const loaders = { prompts: loadPrompts, sessions: loadSessions, daily: loadDailySummaries, intentions: loadIntentions, themes: loadThemes, todos: () => loadTodos(force) };
       loaders[currentView]();
       loadCombinedStats();
     }
@@ -471,6 +526,8 @@
         <button class="stat-btn" data-row="0" data-col="3" onclick="statClick('intentions')"><div class="stat-num">${data.intentions.active}</div><div class="stat-label">Intentions</div></button>
         <div class="stat-divider"></div>
         <button class="stat-btn" data-row="0" data-col="4" onclick="statClick('themes')"><div class="stat-num">${data.themes.active}</div><div class="stat-label">Themes</div></button>
+        <div class="stat-divider"></div>
+        <button class="stat-btn" data-row="0" data-col="5" onclick="statClick('todos')"><div class="stat-num">${data.todos.total}</div><div class="stat-label">Todos</div></button>
       `;
     }
 
@@ -669,6 +726,68 @@
       }).join('');
     }
 
+    async function loadTodos(force) {
+      const project = document.getElementById('project-filter').value;
+      const params = new URLSearchParams();
+      if (project) params.set('project', project);
+      if (force) params.set('force', '1');
+      const res = await fetch('/api/todos?' + params);
+      allTodos = await res.json();
+      renderTodos();
+    }
+
+    function renderTodos() {
+      const search = document.getElementById('search-input').value.toLowerCase();
+      const items = allTodos.filter(t =>
+        !search || t.text.toLowerCase().includes(search) ||
+        t.project.toLowerCase().includes(search)
+      );
+
+      const container = document.getElementById('prompts');
+      if (items.length === 0) {
+        container.innerHTML = '<div class="empty">No todos found</div>';
+        todoIds = [];
+        selectedIndex = -1;
+        return;
+      }
+
+      // Group by project, then by section
+      const grouped = {};
+      items.forEach(t => {
+        if (!grouped[t.project]) grouped[t.project] = {};
+        if (!grouped[t.project][t.section]) grouped[t.project][t.section] = [];
+        grouped[t.project][t.section].push(t);
+      });
+
+      const sectionOrder = ['next_steps', 'backlog', 'planned'];
+      const sectionLabels = { next_steps: 'Next Steps', backlog: 'Backlog', planned: 'Planned' };
+
+      let cardIndex = 0;
+      let html = '';
+      for (const project of Object.keys(grouped).sort()) {
+        const sections = grouped[project];
+        const count = Object.values(sections).reduce((sum, arr) => sum + arr.length, 0);
+        html += `<div class="todo-group">`;
+        html += `<div class="todo-group-header">${escapeHtml(project)} <span class="todo-count">${count}</span></div>`;
+        for (const section of sectionOrder) {
+          if (!sections[section]) continue;
+          html += `<div class="todo-section-label">${sectionLabels[section]}</div>`;
+          const muted = section !== 'next_steps' ? ' muted' : '';
+          for (const item of sections[section]) {
+            html += `<div class="todo-card${muted}" data-id="${cardIndex}">
+              <span style="flex:1">${escapeHtml(item.text)}</span>
+              ${item.source === 'MEMORY.md' ? '<span class="todo-source">MEMORY.md</span>' : ''}
+            </div>`;
+            cardIndex++;
+          }
+        }
+        html += `</div>`;
+      }
+
+      todoIds = Array.from({length: cardIndex}, (_, i) => i);
+      container.innerHTML = html;
+    }
+
     function renderPrompts() {
       const search = document.getElementById('search-input').value.toLowerCase();
       const prompts = allPrompts.filter(p =>
@@ -724,7 +843,7 @@
     document.getElementById('search-input').addEventListener('input', () => {
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
-        const renderers = { prompts: renderPrompts, sessions: renderSessions, daily: renderDailySummaries, intentions: renderIntentions, themes: renderThemes };
+        const renderers = { prompts: renderPrompts, sessions: renderSessions, daily: renderDailySummaries, intentions: renderIntentions, themes: renderThemes, todos: renderTodos };
         renderers[currentView]();
       }, 200);
     });
@@ -742,12 +861,12 @@
     }
 
     function getItemIds() {
-      const ids = { prompts: promptIds, sessions: sessionIds, daily: dailyIds, intentions: intentionIds, themes: themeIds };
+      const ids = { prompts: promptIds, sessions: sessionIds, daily: dailyIds, intentions: intentionIds, themes: themeIds, todos: todoIds };
       return ids[currentView] || [];
     }
 
     function getCardClass() {
-      const classes = { prompts: '.prompt-card', sessions: '.session-card', daily: '.daily-card', intentions: '.intention-card', themes: '.theme-card' };
+      const classes = { prompts: '.prompt-card', sessions: '.session-card', daily: '.daily-card', intentions: '.intention-card', themes: '.theme-card', todos: '.todo-card' };
       return classes[currentView] || '.prompt-card';
     }
 

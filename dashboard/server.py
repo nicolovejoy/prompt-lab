@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Prompt history dashboard - local web UI for reviewing prompts."""
 
+import re
 import sqlite3
 import subprocess
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from flask import Flask, jsonify, request, send_file
@@ -10,6 +12,89 @@ from flask import Flask, jsonify, request, send_file
 SCRIPT_DIR = Path(__file__).parent
 app = Flask(__name__)
 DB_PATH = Path.home() / ".claude" / "prompt-history.db"
+SRC_DIR = Path.home() / "src"
+CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
+TODOS_CACHE_TTL = 300
+
+_todos_cache = {"data": None, "timestamp": 0}
+
+# Section header patterns (case-insensitive)
+_SECTION_PATTERNS = [
+    (re.compile(r"^##\s+(Next\s+Steps|Current\s+Next\s+Steps|What'?s\s+Next|Next\s+Session\s+TODO)\s*$", re.IGNORECASE), "next_steps"),
+    (re.compile(r"^##\s+Backlog\s*$", re.IGNORECASE), "backlog"),
+    (re.compile(r"^##\s+Planned\s+Features\s*$", re.IGNORECASE), "planned"),
+]
+
+
+def _parse_todo_sections(text):
+    """Parse markdown text for todo sections, returning list of {section, text}."""
+    results = []
+    current_section = None
+
+    for line in text.splitlines():
+        stripped = line.strip()
+
+        # Check if this line is a section header
+        if stripped.startswith("## "):
+            current_section = None
+            for pattern, section_name in _SECTION_PATTERNS:
+                if pattern.match(stripped):
+                    current_section = section_name
+                    break
+            continue
+
+        # If we're in a tracked section, collect items
+        if current_section and stripped:
+            # Match list items: "- item" or "1. item"
+            m = re.match(r"^(?:-|\d+\.)\s+(.+)$", stripped)
+            if m:
+                item_text = m.group(1)
+                # Skip done/shipped items
+                if re.match(r"^(DONE|SHIPPED)\b", item_text, re.IGNORECASE):
+                    continue
+                results.append({"section": current_section, "text": item_text})
+
+    return results
+
+
+def _scan_todos():
+    """Scan CLAUDE.md and MEMORY.md files for todo items."""
+    todos = []
+
+    # Scan ~/src/*/CLAUDE.md
+    for claude_md in sorted(SRC_DIR.glob("*/CLAUDE.md")):
+        project = claude_md.parent.name
+        try:
+            text = claude_md.read_text()
+        except OSError:
+            continue
+        for item in _parse_todo_sections(text):
+            todos.append({
+                "project": project,
+                "section": item["section"],
+                "text": item["text"],
+                "source": "CLAUDE.md",
+            })
+
+    # Scan ~/.claude/projects/*/memory/MEMORY.md
+    for memory_md in sorted(CLAUDE_PROJECTS_DIR.glob("*/memory/MEMORY.md")):
+        # Extract project from path like -Users-nico-src-<project>
+        dir_name = memory_md.parent.parent.name
+        m = re.search(r"-Users-\w+-src-(.+)$", dir_name)
+        project = m.group(1) if m else dir_name
+        try:
+            text = memory_md.read_text()
+        except OSError:
+            continue
+        for item in _parse_todo_sections(text):
+            todos.append({
+                "project": project,
+                "section": item["section"],
+                "text": item["text"],
+                "source": "MEMORY.md",
+            })
+
+    return todos
 
 
 @contextmanager
@@ -171,13 +256,38 @@ def combined_stats():
         daily_total = conn.execute("SELECT COUNT(*) as n FROM daily_summaries").fetchone()["n"]
         intentions_active = conn.execute("SELECT COUNT(*) as n FROM intentions WHERE status = 'active'").fetchone()["n"]
         themes_active = conn.execute("SELECT COUNT(*) as n FROM themes WHERE status = 'active'").fetchone()["n"]
+    # Todos count (use cache if fresh, don't force scan)
+    now = time.time()
+    if _todos_cache["data"] is None or (now - _todos_cache["timestamp"]) > TODOS_CACHE_TTL:
+        _todos_cache["data"] = _scan_todos()
+        _todos_cache["timestamp"] = now
+    todos_total = len(_todos_cache["data"])
+
     return jsonify({
         "prompts": {"total": prompts_total},
         "sessions": {"total": sessions_total},
         "daily": {"total": daily_total},
         "intentions": {"active": intentions_active},
-        "themes": {"active": themes_active}
+        "themes": {"active": themes_active},
+        "todos": {"total": todos_total}
     })
+
+
+@app.route("/api/todos")
+def list_todos():
+    force = request.args.get("force") == "1"
+    project = request.args.get("project")
+
+    now = time.time()
+    if force or _todos_cache["data"] is None or (now - _todos_cache["timestamp"]) > TODOS_CACHE_TTL:
+        _todos_cache["data"] = _scan_todos()
+        _todos_cache["timestamp"] = now
+
+    todos = _todos_cache["data"]
+    if project:
+        todos = [t for t in todos if t["project"] == project]
+
+    return jsonify(todos)
 
 
 @app.route("/api/sessions/<int:session_id>", methods=["PATCH"])
