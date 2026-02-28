@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Prompt Analyst</title>
+  <title>Ground Control</title>
   <style>
     :root {
       --bg: #f5f5f5;
@@ -24,6 +24,8 @@
       min-height: 100vh;
       color: var(--text);
     }
+
+    /* Header */
     header {
       display: flex;
       justify-content: space-between;
@@ -39,9 +41,124 @@
       font-size: 1.5rem;
       font-weight: 600;
       color: var(--text);
+      cursor: pointer;
     }
+    h1:hover { color: var(--accent); }
+    .header-right { display: flex; align-items: center; gap: 16px; }
     .header-meta { font-size: 0.8rem; color: var(--text-secondary); text-align: right; }
-    .header-meta .desc { margin-bottom: 2px; }
+    .header-meta a { color: var(--text-secondary); text-decoration: none; }
+    .header-meta a:hover { color: var(--accent); }
+
+    /* Gear / Settings */
+    .gear-btn {
+      background: none; border: none; cursor: pointer; font-size: 1.2rem;
+      color: var(--text-secondary); padding: 4px; line-height: 1; position: relative;
+    }
+    .gear-btn:hover { color: var(--text); }
+    .settings-panel {
+      display: none; position: absolute; top: 100%; right: 0; z-index: 50;
+      background: var(--card); border: 1px solid var(--border);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 12px 16px;
+      min-width: 220px; max-height: 400px; overflow-y: auto;
+    }
+    .settings-panel.visible { display: block; }
+    .settings-panel-header {
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 8px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .settings-panel-header a {
+      font-size: 0.7rem; color: var(--accent); text-decoration: none;
+      text-transform: none; letter-spacing: 0; cursor: pointer;
+    }
+    .settings-panel-header a:hover { text-decoration: underline; }
+    .settings-item {
+      display: flex; align-items: center; gap: 8px; padding: 4px 0;
+      font-size: 0.85rem; cursor: pointer;
+    }
+    .settings-item:hover { color: var(--accent); }
+    .settings-item input[type="checkbox"] { margin: 0; cursor: pointer; }
+
+    /* Banner */
+    .banner {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+      padding: 0 2px;
+    }
+    .banner strong { color: var(--text); font-weight: 600; }
+
+    /* Project cards grid */
+    .project-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 700px) {
+      .project-grid { grid-template-columns: 1fr; }
+    }
+    .project-card {
+      background: var(--card);
+      padding: 16px 18px;
+      cursor: pointer;
+      transition: background 0.1s ease;
+    }
+    .project-card:hover { background: #fafafa; }
+    .project-card.focused {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--accent);
+    }
+    .project-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 6px;
+    }
+    .project-card-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: var(--text);
+    }
+    .project-card-time {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+    .project-card-summary {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+    .project-card-meta {
+      display: flex;
+      gap: 12px;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 6px;
+    }
+    .project-card-meta a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .project-card-meta a:hover { text-decoration: underline; }
+    .project-card-intentions {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      line-height: 1.4;
+    }
+
+    /* Filters bar */
     .filters {
       display: flex;
       gap: 10px;
@@ -63,55 +180,10 @@
       box-shadow: 0 0 0 3px var(--accent-light);
     }
     button { cursor: pointer; }
-    button:hover {
-      background: var(--bg);
-    }
-    button:active {
-      background: var(--border);
-    }
-    .stats {
-      background: var(--card);
-      padding: 20px;
-      margin-bottom: 20px;
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      border: 1px solid var(--border);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .stat-btn {
-      text-align: center;
-      padding: 10px 20px;
-      border: 1px solid var(--border);
-      background: var(--card);
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
-    .stat-btn:hover {
-      background: var(--bg);
-    }
-    .stat-btn:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-light);
-    }
-    .stat-num {
-      font-size: 2rem;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .stat-label {
-      font-size: 0.8rem;
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .stat-divider {
-      width: 1px;
-      background: var(--border);
-      margin: 0 10px;
-    }
-    .prompt-card {
+    button:hover { background: var(--bg); }
+
+    /* Card styles for drill-down views */
+    .session-card, .intention-card, .theme-card, .daily-card, .prompt-card {
       background: var(--card);
       padding: 16px;
       margin-bottom: 12px;
@@ -119,278 +191,144 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       transition: box-shadow 0.15s ease;
     }
-    .prompt-card:hover {
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .prompt-header { display: flex; align-items: center; margin-bottom: 10px; }
-    .prompt-meta { font-size: 0.6rem; color: var(--text-secondary); }
-    .prompt-meta strong { color: var(--text); font-weight: 600; }
-    .prompt-text {
-      font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
-      font-size: 0.85rem;
-      white-space: pre-wrap;
-      background: var(--bg);
-      padding: 12px;
-      border: 1px solid var(--border);
-      max-height: 150px;
-      overflow-y: auto;
-      cursor: pointer;
-    }
-    .prompt-text.expanded { max-height: none; }
-    .prompt-context {
-      font-size: 0.85rem;
-      color: var(--text-secondary);
-      background: var(--accent-light);
-      border-left: 3px solid var(--accent);
-      padding: 10px 14px;
-      margin-bottom: 10px;
-      max-height: 60px;
-      overflow: hidden;
-      cursor: pointer;
-    }
-    .prompt-context.expanded { max-height: none; }
-    .prompt-context::before { content: "Claude: "; font-weight: 600; color: var(--accent); }
-    .prompt-actions { display: flex; gap: 10px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
-    .tags-input {
-      flex: 1;
-      min-width: 100px;
-      padding: 5px 8px;
-      border: 1px solid var(--border);
-      font-size: 0.6rem;
-      font-family: inherit;
-      background: var(--card);
-    }
-    .tags-input:focus {
+    .session-card:hover, .intention-card:hover, .theme-card:hover,
+    .daily-card:hover, .prompt-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .session-card.focused, .intention-card.focused, .theme-card.focused,
+    .daily-card.focused, .prompt-card.focused {
       outline: none;
       border-color: var(--accent);
       box-shadow: 0 0 0 3px var(--accent-light);
     }
-    .empty {
-      text-align: center;
-      padding: 50px;
-      color: var(--text-secondary);
-      font-size: 1rem;
-      background: var(--card);
-      border: 1px solid var(--border);
-    }
-    .prompt-card.focused {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-light);
-    }
-    .help {
-      font-size: 0.8rem;
-      color: var(--text-secondary);
-      margin-top: 15px;
-      text-align: center;
-    }
-    .help kbd {
-      background: var(--bg);
-      padding: 2px 6px;
-      font-family: inherit;
-      font-size: 0.75rem;
-      border: 1px solid var(--border);
-    }
-    .help-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; }
-    .help-overlay.visible { display: flex; }
-    .help-panel {
-      background: var(--card);
-      padding: 24px 32px;
-      max-width: 420px;
-      border: 1px solid var(--border);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-    }
-    .help-panel h2 {
-      margin: 0 0 20px;
-      font-size: 1.25rem;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .help-panel dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; }
-    .help-panel dt {
-      font-family: "SF Mono", Monaco, monospace;
-      font-size: 0.8rem;
-      background: var(--bg);
-      padding: 4px 10px;
-      text-align: center;
-      border: 1px solid var(--border);
-    }
-    .help-panel dd { margin: 0; color: var(--text-secondary); display: flex; align-items: center; }
-    .help-panel .hint {
-      margin-top: 20px;
-      font-size: 0.8rem;
-      color: var(--text-secondary);
-      text-align: center;
-    }
-    .view-toggle { display: flex; gap: 0; margin-bottom: 20px; }
-    .view-toggle button {
-      border-right: none;
-      background: var(--card);
-    }
-    .view-toggle button:last-child { border-right: 1px solid var(--border); }
-    .view-toggle button.active {
-      background: var(--accent);
-      color: white;
-      border-color: var(--accent);
-    }
-    .session-card {
-      background: var(--card);
-      padding: 16px;
-      margin-bottom: 12px;
-      border: 1px solid var(--border);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      transition: box-shadow 0.15s ease;
-    }
-    .session-card:hover {
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .session-card.focused {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-light);
-    }
-    .session-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
-    .session-meta { font-size: 0.85rem; color: var(--text-secondary); }
-    .session-meta strong { color: var(--text); font-weight: 600; }
-    .session-summary { font-size: 0.9rem; line-height: 1.6; margin-bottom: 12px; color: var(--text); }
-    .session-summary.empty { color: var(--text-secondary); font-style: italic; }
-    .session-commits {
-      font-size: 0.85rem;
-      margin-top: 10px;
-      cursor: pointer;
-    }
-    .commits-header {
-      color: var(--accent);
-      font-weight: 500;
-    }
-    .commits-header::before {
-      content: '▼ ';
-      font-size: 0.7rem;
-    }
-    .session-commits.collapsed .commits-header::before {
-      content: '▶ ';
-    }
-    .session-commits.collapsed .commits-list {
-      display: none;
-    }
-    .commits-list {
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid var(--border);
-    }
-    .commit-item {
-      margin: 4px 0;
-      color: var(--text-secondary);
-    }
-    .commit-item code {
-      background: var(--bg);
-      padding: 2px 6px;
-      font-size: 0.8rem;
-    }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .card-meta { font-size: 0.85rem; color: var(--text-secondary); }
+    .card-meta strong { color: var(--text); font-weight: 600; }
+    .card-body { font-size: 0.9rem; line-height: 1.6; color: var(--text); }
+    .card-body.empty-text { color: var(--text-secondary); font-style: italic; }
+
+    /* Session commits */
+    .session-commits { font-size: 0.85rem; margin-top: 10px; cursor: pointer; }
+    .commits-header { color: var(--accent); font-weight: 500; }
+    .commits-list { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+    .commit-item { margin: 4px 0; color: var(--text-secondary); }
+    .commit-item code { background: var(--bg); padding: 2px 6px; font-size: 0.8rem; }
+
+    /* Status badges */
     .status-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      font-size: 0.7rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      display: inline-block; padding: 2px 8px; font-size: 0.7rem;
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
     }
     .status-active { background: #dcfce7; color: #166534; }
     .status-completed { background: var(--accent-light); color: #1e40af; }
     .status-stalled { background: #fef9c3; color: #854d0e; }
     .status-abandoned { background: #f3f4f6; color: #6b7280; }
-    .key-decisions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-    .key-decision-tag {
-      font-size: 0.75rem;
-      padding: 3px 8px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
-    }
-    .count-badges { display: flex; gap: 8px; margin-top: 8px; }
-    .count-badge {
-      font-size: 0.7rem;
-      color: var(--text-secondary);
-    }
-    .count-badge strong { color: var(--text); }
+
+    /* Misc */
+    .date-range { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
     .project-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .project-tag {
-      font-size: 0.75rem;
-      padding: 2px 8px;
-      background: var(--accent-light);
-      color: var(--accent);
-      font-weight: 500;
+      font-size: 0.75rem; padding: 2px 8px;
+      background: var(--accent-light); color: var(--accent); font-weight: 500;
     }
-    .date-range { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
-    .daily-card, .intention-card, .theme-card {
-      background: var(--card);
-      padding: 16px;
-      margin-bottom: 12px;
-      border: 1px solid var(--border);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      transition: box-shadow 0.15s ease;
+    .key-decisions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .key-decision-tag {
+      font-size: 0.75rem; padding: 3px 8px;
+      background: var(--bg); border: 1px solid var(--border); color: var(--text-secondary);
     }
-    .daily-card:hover, .intention-card:hover, .theme-card:hover {
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .daily-card.focused, .intention-card.focused, .theme-card.focused {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-light);
-    }
+    .count-badges { display: flex; gap: 8px; margin-top: 8px; }
+    .count-badge { font-size: 0.7rem; color: var(--text-secondary); }
+    .count-badge strong { color: var(--text); }
+
+    /* Todos */
     .todo-group { margin-bottom: 24px; }
     .todo-group-header {
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      font-size: 1rem; font-weight: 600; color: var(--text);
+      margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
     }
     .todo-count {
-      font-size: 0.7rem;
-      font-weight: 600;
-      background: var(--accent-light);
-      color: var(--accent);
-      padding: 2px 8px;
+      font-size: 0.7rem; font-weight: 600;
+      background: var(--accent-light); color: var(--accent); padding: 2px 8px;
     }
     .todo-section-label {
-      font-size: 0.7rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-secondary);
-      margin: 12px 0 6px;
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--text-secondary); margin: 12px 0 6px;
     }
     .todo-card {
-      background: var(--card);
-      padding: 10px 16px;
-      margin-bottom: 4px;
-      border: 1px solid var(--border);
-      font-size: 0.9rem;
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
+      background: var(--card); padding: 10px 16px; margin-bottom: 4px;
+      border: 1px solid var(--border); font-size: 0.9rem;
+      display: flex; align-items: baseline; gap: 10px;
       transition: box-shadow 0.15s ease;
     }
     .todo-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
     .todo-card.focused {
-      outline: none;
-      border-color: var(--accent);
+      outline: none; border-color: var(--accent);
       box-shadow: 0 0 0 3px var(--accent-light);
     }
     .todo-card.muted { color: var(--text-secondary); }
     .todo-source {
-      font-size: 0.65rem;
-      font-weight: 600;
-      padding: 1px 6px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
-      white-space: nowrap;
+      font-size: 0.65rem; font-weight: 600; padding: 1px 6px;
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text-secondary); white-space: nowrap;
     }
-    /* Scrollbar styling */
+
+    /* Prompts */
+    .prompt-text {
+      font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+      font-size: 0.85rem; white-space: pre-wrap;
+      background: var(--bg); padding: 12px; border: 1px solid var(--border);
+      max-height: 150px; overflow-y: auto; cursor: pointer;
+    }
+    .prompt-text.expanded { max-height: none; }
+    .prompt-context {
+      font-size: 0.85rem; color: var(--text-secondary);
+      background: var(--accent-light); border-left: 3px solid var(--accent);
+      padding: 10px 14px; margin-bottom: 10px;
+      max-height: 60px; overflow: hidden; cursor: pointer;
+    }
+    .prompt-context.expanded { max-height: none; }
+    .prompt-context::before { content: "Claude: "; font-weight: 600; color: var(--accent); }
+    .tags-input {
+      flex: 1; min-width: 100px; padding: 5px 8px;
+      border: 1px solid var(--border); font-size: 0.6rem;
+      font-family: inherit; background: var(--card);
+    }
+    .tags-input:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-light);
+    }
+
+    .empty-state {
+      text-align: center; padding: 50px; color: var(--text-secondary);
+      font-size: 1rem; background: var(--card); border: 1px solid var(--border);
+    }
+
+    /* Help */
+    .help-footer {
+      font-size: 0.8rem; color: var(--text-secondary);
+      margin-top: 15px; text-align: center;
+    }
+    .help-footer kbd {
+      background: var(--bg); padding: 2px 6px;
+      font-family: inherit; font-size: 0.75rem; border: 1px solid var(--border);
+    }
+    .help-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .help-overlay.visible { display: flex; }
+    .help-panel {
+      background: var(--card); padding: 24px 32px; max-width: 420px;
+      border: 1px solid var(--border); box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    }
+    .help-panel h2 { margin: 0 0 20px; font-size: 1.25rem; font-weight: 600; }
+    .help-panel dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; }
+    .help-panel dt {
+      font-family: "SF Mono", Monaco, monospace; font-size: 0.8rem;
+      background: var(--bg); padding: 4px 10px; text-align: center; border: 1px solid var(--border);
+    }
+    .help-panel dd { margin: 0; color: var(--text-secondary); display: flex; align-items: center; }
+    .help-panel .hint { margin-top: 20px; font-size: 0.8rem; color: var(--text-secondary); text-align: center; }
+
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--border); }
@@ -398,362 +336,322 @@
   </style>
 </head>
 <body>
-  <header>
-    <h1>Prompt Analyst</h1>
-    <div class="header-meta">
-      <div class="desc">Track your prompting progress · <a href="/about">About</a></div>
-      <div id="commit-info"></div>
-    </div>
-  </header>
+  <div id="app"></div>
 
-  <div class="stats" id="stats"></div>
+  <script type="module">
+    import { h, render } from 'https://esm.sh/preact@10.25.4';
+    import { useState, useEffect, useCallback, useRef } from 'https://esm.sh/preact@10.25.4/hooks';
+    import htm from 'https://esm.sh/htm@3.1.1';
 
-  <div class="view-toggle">
-    <button id="view-prompts" class="active" data-row="1" data-col="0" onclick="setView('prompts')">Prompts</button>
-    <button id="view-sessions" data-row="1" data-col="1" onclick="setView('sessions')">Summaries</button>
-    <button id="view-daily" data-row="1" data-col="2" onclick="setView('daily')">Daily</button>
-    <button id="view-intentions" data-row="1" data-col="3" onclick="setView('intentions')">Intentions</button>
-    <button id="view-themes" data-row="1" data-col="4" onclick="setView('themes')">Themes</button>
-    <button id="view-todos" data-row="1" data-col="5" onclick="setView('todos')">Todos</button>
-  </div>
+    const html = htm.bind(h);
 
-  <div class="filters" id="filters">
-    <select id="project-filter" data-row="2" data-col="0">
-      <option value="">All projects</option>
-    </select>
-    <select id="status-filter" data-row="2" data-col="1" style="display:none">
-      <option value="active">Active</option>
-      <option value="all">All statuses</option>
-      <option value="completed">Completed</option>
-      <option value="stalled">Stalled</option>
-      <option value="abandoned">Abandoned</option>
-    </select>
-    <input type="text" id="search-input" data-row="2" data-col="2" placeholder="Search prompts..." style="flex: 1; padding: 8px 14px; border: 1px solid var(--border); font-family: inherit; font-size: 0.9rem;">
-    <button id="refresh-btn" data-row="2" data-col="3" onclick="refreshCurrentView(true)">Refresh</button>
-  </div>
+    // --- Helpers ---
 
-  <!-- TODO: Rename this id to "content" — it's used for all views, not just prompts -->
-  <div id="prompts"></div>
-  <div class="help" id="help-footer"></div>
-
-  <div class="help-overlay" id="help-overlay" onclick="toggleHelp()">
-    <div class="help-panel" onclick="event.stopPropagation()">
-      <h2>Keyboard Shortcuts</h2>
-      <dl>
-        <dt>j / ↓</dt><dd>Next prompt</dd>
-        <dt>k / ↑</dt><dd>Previous prompt</dd>
-        <dt>t</dt><dd>Edit tags</dd>
-        <dt>e</dt><dd>Expand/collapse</dd>
-        <dt>?</dt><dd>Toggle this help</dd>
-      </dl>
-      <div class="hint">Press <kbd>?</kbd> or click outside to close</div>
-    </div>
-  </div>
-
-  <script>
-    let selectedIndex = -1;
-    let promptIds = [];
-    let allPrompts = [];
-    let currentView = 'prompts';
-    let allSessions = [];
-    let sessionIds = [];
-    let allDailySummaries = [];
-    let dailyIds = [];
-    let allIntentions = [];
-    let intentionIds = [];
-    let allThemes = [];
-    let themeIds = [];
-    let allTodos = [];
-    let todoIds = [];
-    let focusRow = 3;
-    let focusCol = 0;
-
-    function toggleHelp() {
-      document.getElementById('help-overlay').classList.toggle('visible');
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
     }
 
-    function setView(view) {
-      currentView = view;
-      const views = ['prompts', 'sessions', 'daily', 'intentions', 'themes', 'todos'];
-      views.forEach(v => document.getElementById('view-' + v).classList.toggle('active', v === view));
-
-      const statusFilter = document.getElementById('status-filter');
-      statusFilter.style.display = (view === 'intentions' || view === 'themes') ? '' : 'none';
-
-      const placeholders = { prompts: 'Search prompts...', sessions: 'Search summaries...', daily: 'Search daily summaries...', intentions: 'Search intentions...', themes: 'Search themes...', todos: 'Search todos...' };
-      document.getElementById('search-input').placeholder = placeholders[view] || 'Search...';
-
-      selectedIndex = -1;
-      refreshCurrentView();
-      updateHelpFooter();
+    function timeAgo(dateStr) {
+      if (!dateStr) return '';
+      const now = new Date();
+      const then = new Date(dateStr.replace(' ', 'T'));
+      const diffMs = now - then;
+      const mins = Math.floor(diffMs / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return mins + 'm ago';
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return hours + 'h ago';
+      const days = Math.floor(hours / 24);
+      if (days === 1) return 'yesterday';
+      if (days < 7) return days + 'd ago';
+      const weeks = Math.floor(days / 7);
+      return weeks + 'w ago';
     }
 
-    function refreshCurrentView(force) {
-      const loaders = { prompts: loadPrompts, sessions: loadSessions, daily: loadDailySummaries, intentions: loadIntentions, themes: loadThemes, todos: () => loadTodos(force) };
-      loaders[currentView]();
-      loadCombinedStats();
+    async function fetchJSON(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.json();
     }
 
-    function updateHelpFooter() {
-      const footer = document.getElementById('help-footer');
-      if (selectedIndex >= 0) {
-        footer.innerHTML = `<kbd>j/k</kbd> navigate · <kbd>t</kbd> tags · <kbd>e</kbd> expand · <kbd>?</kbd> help`;
-      } else {
-        footer.innerHTML = `<kbd>j/k</kbd> navigate · <kbd>?</kbd> help`;
-      }
-    }
-    async function loadInfo() {
-      const res = await fetch('/api/info');
-      const data = await res.json();
-      if (data.commit_date) {
-        const date = new Date(data.commit_date);
-        const formatted = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-        document.getElementById('commit-info').textContent = 'Updated: ' + formatted;
-      }
+    // --- Hidden projects (module-level for use in child components) ---
+    let _hiddenProjects = [];
+    function isProjectVisible(name) {
+      return !_hiddenProjects.includes(name);
     }
 
-    // TODO: Add .catch() error handling to fetch calls — UI fails silently if server is down
-    async function loadCombinedStats() {
-      const res = await fetch('/api/stats/combined');
-      const data = await res.json();
-      document.getElementById('stats').innerHTML = `
-        <button class="stat-btn" data-row="0" data-col="0" onclick="statClick('prompts')"><div class="stat-num">${data.prompts.total}</div><div class="stat-label">Prompts</div></button>
-        <div class="stat-divider"></div>
-        <button class="stat-btn" data-row="0" data-col="1" onclick="statClick('sessions')"><div class="stat-num">${data.sessions.total}</div><div class="stat-label">Summaries</div></button>
-        <div class="stat-divider"></div>
-        <button class="stat-btn" data-row="0" data-col="2" onclick="statClick('daily')"><div class="stat-num">${data.daily.total}</div><div class="stat-label">Daily</div></button>
-        <div class="stat-divider"></div>
-        <button class="stat-btn" data-row="0" data-col="3" onclick="statClick('intentions')"><div class="stat-num">${data.intentions.active}</div><div class="stat-label">Intentions</div></button>
-        <div class="stat-divider"></div>
-        <button class="stat-btn" data-row="0" data-col="4" onclick="statClick('themes')"><div class="stat-num">${data.themes.active}</div><div class="stat-label">Themes</div></button>
-        <div class="stat-divider"></div>
-        <button class="stat-btn" data-row="0" data-col="5" onclick="statClick('todos')"><div class="stat-num">${data.todos.total}</div><div class="stat-label">Todos</div></button>
+    // --- Components ---
+
+    function Header({ view, setView, updatedAt, allProjects, hiddenProjects, onToggleProject, onToggleAll }) {
+      const [settingsOpen, setSettingsOpen] = useState(false);
+      const panelRef = useRef(null);
+
+      useEffect(() => {
+        function handleClick(e) {
+          if (settingsOpen && panelRef.current && !panelRef.current.contains(e.target)) {
+            setSettingsOpen(false);
+          }
+        }
+        document.addEventListener('click', handleClick);
+        return () => document.removeEventListener('click', handleClick);
+      }, [settingsOpen]);
+
+      const allHidden = allProjects.length > 0 && hiddenProjects.length >= allProjects.length;
+
+      return html`
+        <header>
+          <h1 onClick=${() => setView('overview')}>
+            ${view === 'overview' ? 'Ground Control' : html`<span dangerouslySetInnerHTML=${{ __html: '&larr; Ground Control' }} />`}
+          </h1>
+          <div class="header-right">
+            <div style="position:relative" ref=${panelRef}>
+              <button class="gear-btn" onClick=${(e) => { e.stopPropagation(); setSettingsOpen(!settingsOpen); }} title="Settings">${'\u2699'}</button>
+              <div class=${`settings-panel ${settingsOpen ? 'visible' : ''}`}>
+                <div class="settings-panel-header">
+                  <span>Show projects</span>
+                  <a onClick=${(e) => { e.preventDefault(); e.stopPropagation(); onToggleAll(); }}>
+                    ${allHidden ? 'Show all' : 'Hide all'}
+                  </a>
+                </div>
+                ${allProjects.map(p => html`
+                  <label class="settings-item" key=${p}>
+                    <input type="checkbox" checked=${!hiddenProjects.includes(p)}
+                      onChange=${(e) => onToggleProject(p, e.target.checked)} />
+                    ${p}
+                  </label>
+                `)}
+              </div>
+            </div>
+            <div class="header-meta">
+              ${updatedAt && html`<div>Updated: ${updatedAt}</div>`}
+            </div>
+          </div>
+        </header>
       `;
     }
 
-    // TODO: Remove statClick wrapper — use setView directly in onclick handlers
-    function statClick(view) {
-      setView(view);
+    function Banner({ week }) {
+      if (!week) return null;
+      return html`
+        <div class="banner">
+          <strong>This week:</strong> ${week.sessions} sessions, ${week.prompts} prompts, ${week.commits} commits
+        </div>
+      `;
     }
 
-    async function loadProjects() {
-      const res = await fetch('/api/projects');
-      const projects = await res.json();
-      const select = document.getElementById('project-filter');
-      projects.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p;
-        opt.textContent = p;
-        select.appendChild(opt);
+    function ProjectCard({ project, focused, onClick, onTodosClick }) {
+      const { name, last_session, session_count, todo_count, intentions, last_activity } = project;
+      return html`
+        <div class=${`project-card ${focused ? 'focused' : ''}`} onClick=${onClick}>
+          <div class="project-card-header">
+            <span class="project-card-name">${name}</span>
+            <span class="project-card-time">${timeAgo(last_activity)}</span>
+          </div>
+          ${last_session && html`
+            <div class="project-card-summary">${last_session.summary}</div>
+          `}
+          <div class="project-card-meta">
+            ${session_count > 0 && html`<span>${session_count} sessions</span>`}
+            ${todo_count > 0 && html`
+              <a href="#" onClick=${(e) => { e.preventDefault(); e.stopPropagation(); onTodosClick(name); }}>
+                ${todo_count} todos
+              </a>
+            `}
+          </div>
+          ${intentions && intentions.length > 0 && html`
+            <div class="project-card-intentions">${intentions.join(' / ')}</div>
+          `}
+        </div>
+      `;
+    }
+
+    function Overview({ data, focusedIndex, onDrillDown }) {
+      const [showAll, setShowAll] = useState(false);
+      if (!data) return html`<div class="empty-state">Loading...</div>`;
+
+      const visibleProjects = data.projects.filter(p => isProjectVisible(p.name));
+      if (visibleProjects.length === 0) return html`<div class="empty-state">No projects to show</div>`;
+
+      // Split into recent (14 days) and older
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 14);
+      const cutoffStr = cutoff.toISOString().slice(0, 19).replace('T', ' ');
+
+      const recent = visibleProjects.filter(p => p.last_activity && p.last_activity >= cutoffStr);
+      const older = visibleProjects.filter(p => !p.last_activity || p.last_activity < cutoffStr);
+      const displayProjects = showAll ? visibleProjects : recent;
+
+      return html`
+        <${Banner} week=${data.week} />
+        <div class="project-grid">
+          ${displayProjects.map((p, i) => html`
+            <${ProjectCard}
+              key=${p.name}
+              project=${p}
+              focused=${i === focusedIndex}
+              onClick=${() => onDrillDown('sessions', p.name)}
+              onTodosClick=${(name) => onDrillDown('todos', name)}
+            />
+          `)}
+        </div>
+        ${older.length > 0 && !showAll && html`
+          <div style="text-align: center; margin-bottom: 20px;">
+            <a href="#" onClick=${(e) => { e.preventDefault(); setShowAll(true); }}
+              style="font-size: 0.85rem; color: var(--text-secondary); text-decoration: none;">
+              Show ${older.length} older project${older.length > 1 ? 's' : ''}
+            </a>
+          </div>
+        `}
+        ${showAll && older.length > 0 && html`
+          <div style="text-align: center; margin-bottom: 20px;">
+            <a href="#" onClick=${(e) => { e.preventDefault(); setShowAll(false); }}
+              style="font-size: 0.85rem; color: var(--text-secondary); text-decoration: none;">
+              Hide older projects
+            </a>
+          </div>
+        `}
+      `;
+    }
+
+    function Filters({ view, projectFilter, setProjectFilter, statusFilter, setStatusFilter,
+                        search, setSearch, onRefresh, visibleProjects }) {
+      const showStatus = view === 'intentions' || view === 'themes';
+      const placeholders = {
+        prompts: 'Search prompts...', sessions: 'Search summaries...', daily: 'Search daily summaries...',
+        intentions: 'Search intentions...', themes: 'Search themes...', todos: 'Search todos...',
+      };
+      return html`
+        <div class="filters">
+          <select value=${projectFilter} onChange=${(e) => setProjectFilter(e.target.value)}>
+            <option value="">All projects</option>
+            ${visibleProjects.map(p => html`<option key=${p} value=${p}>${p}</option>`)}
+          </select>
+          ${showStatus && html`
+            <select value=${statusFilter} onChange=${(e) => setStatusFilter(e.target.value)}>
+              <option value="active">Active</option>
+              <option value="all">All statuses</option>
+              <option value="completed">Completed</option>
+              <option value="stalled">Stalled</option>
+              <option value="abandoned">Abandoned</option>
+            </select>
+          `}
+          <input type="text" value=${search} onInput=${(e) => setSearch(e.target.value)}
+            placeholder=${placeholders[view] || 'Search...'}
+            style="flex: 1; padding: 8px 14px; border: 1px solid var(--border); font-family: inherit; font-size: 0.9rem;" />
+          <button onClick=${onRefresh}>Refresh</button>
+        </div>
+      `;
+    }
+
+    // --- Drill-down renderers ---
+
+    function SessionsView({ sessions, search, focusedIndex }) {
+      const filtered = sessions.filter(s =>
+        isProjectVisible(s.project) &&
+        (!search || (s.summary && s.summary.toLowerCase().includes(search.toLowerCase())) ||
+          s.project.toLowerCase().includes(search.toLowerCase()))
+      );
+      if (filtered.length === 0) return html`<div class="empty-state">No sessions found</div>`;
+
+      return filtered.map((s, i) => html`
+        <div class=${`session-card ${i === focusedIndex ? 'focused' : ''}`} key=${s.id}>
+          <div class="card-header">
+            <div class="card-meta">
+              <strong>${s.project}</strong> · ${s.started_at}${s.ended_at ? html` <span dangerouslySetInnerHTML=${{ __html: '&rarr;' }} /> ${s.ended_at.split(' ')[1]}` : ''}
+            </div>
+          </div>
+          <div class=${`card-body ${s.summary ? '' : 'empty-text'}`}>${s.summary || 'No summary'}</div>
+          ${s.commits && s.commits.length > 0 && html`
+            <${CommitsList} commits=${s.commits} />
+          `}
+        </div>
+      `);
+    }
+
+    function CommitsList({ commits }) {
+      const [collapsed, setCollapsed] = useState(true);
+      return html`
+        <div class="session-commits" onClick=${() => setCollapsed(!collapsed)}>
+          <div class="commits-header">
+            ${collapsed ? '\u25B6' : '\u25BC'} ${commits.length} commit${commits.length > 1 ? 's' : ''}
+          </div>
+          ${!collapsed && html`
+            <div class="commits-list">
+              ${commits.map(c => html`
+                <div class="commit-item" key=${c.hash}>
+                  <code>${c.hash.slice(0, 7)}</code> ${c.message}
+                </div>
+              `)}
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function IntentionsView({ intentions, search, focusedIndex }) {
+      const filtered = intentions.filter(i =>
+        isProjectVisible(i.project) &&
+        (!search || i.intention.toLowerCase().includes(search.toLowerCase()) ||
+          i.project.toLowerCase().includes(search.toLowerCase()))
+      );
+      if (filtered.length === 0) return html`<div class="empty-state">No intentions found</div>`;
+
+      return filtered.map((i, idx) => html`
+        <div class=${`intention-card ${idx === focusedIndex ? 'focused' : ''}`} key=${i.id}>
+          <div class="card-header">
+            <div class="card-meta"><strong>${i.project}</strong></div>
+            <span class=${`status-badge status-${i.status}`}>${i.status}</span>
+          </div>
+          <div class="card-body">${i.intention}</div>
+          <div class="date-range">${i.first_seen}${i.first_seen !== i.last_seen ? html` <span dangerouslySetInnerHTML=${{ __html: '&rarr;' }} /> ${i.last_seen}` : ''}</div>
+        </div>
+      `);
+    }
+
+    function ThemesView({ themes, search, focusedIndex }) {
+      const filtered = themes.filter(t => {
+        let projects = [];
+        try { projects = JSON.parse(t.projects || '[]'); } catch {}
+        const hasVisible = projects.length === 0 || projects.some(isProjectVisible);
+        return hasVisible &&
+          (!search || t.theme.toLowerCase().includes(search.toLowerCase()) ||
+            (t.projects && t.projects.toLowerCase().includes(search.toLowerCase())));
+      });
+      if (filtered.length === 0) return html`<div class="empty-state">No themes found</div>`;
+
+      return filtered.map((t, idx) => {
+        let projects = [];
+        try { projects = JSON.parse(t.projects || '[]'); } catch {}
+        return html`
+          <div class=${`theme-card ${idx === focusedIndex ? 'focused' : ''}`} key=${t.id}>
+            <div class="card-header">
+              <div class="card-meta"><strong>${t.theme}</strong></div>
+              <span class=${`status-badge status-${t.status}`}>${t.status}</span>
+            </div>
+            ${projects.length > 0 && html`
+              <div class="project-tags">
+                ${projects.map(p => html`<span class="project-tag" key=${p}>${p}</span>`)}
+              </div>
+            `}
+            <div class="date-range">${t.first_seen}${t.first_seen !== t.last_seen ? html` <span dangerouslySetInnerHTML=${{ __html: '&rarr;' }} /> ${t.last_seen}` : ''}</div>
+          </div>
+        `;
       });
     }
 
-    async function loadPrompts() {
-      const project = document.getElementById('project-filter').value;
-      const params = new URLSearchParams();
-      if (project) params.set('project', project);
-
-      const res = await fetch('/api/prompts?' + params);
-      allPrompts = await res.json();
-      renderPrompts();
-    }
-
-    async function loadSessions() {
-      const project = document.getElementById('project-filter').value;
-      const params = new URLSearchParams();
-      if (project) params.set('project', project);
-
-      const res = await fetch('/api/sessions?' + params);
-      allSessions = await res.json();
-      renderSessions();
-    }
-
-    function renderSessions() {
-      const search = document.getElementById('search-input').value.toLowerCase();
-      const sessions = allSessions.filter(s =>
-        !search || (s.summary && s.summary.toLowerCase().includes(search)) ||
-        s.project.toLowerCase().includes(search)
+    function TodosView({ todos, search, focusedIndex }) {
+      const filtered = todos.filter(t =>
+        isProjectVisible(t.project) &&
+        (!search || t.text.toLowerCase().includes(search.toLowerCase()) ||
+          t.project.toLowerCase().includes(search.toLowerCase()))
       );
+      if (filtered.length === 0) return html`<div class="empty-state">No todos found</div>`;
 
-      const container = document.getElementById('prompts');
-      if (sessions.length === 0) {
-        container.innerHTML = '<div class="empty">No summaries found</div>';
-        sessionIds = [];
-        selectedIndex = -1;
-        return;
-      }
-
-      sessionIds = sessions.map(s => s.id);
-      container.innerHTML = sessions.map((s, i) => `
-        <div class="session-card" data-id="${s.id}">
-          <div class="session-header">
-            <div class="session-meta">
-              <strong>${s.project}</strong> · ${s.started_at}${s.ended_at ? ' → ' + s.ended_at.split(' ')[1] : ''}
-            </div>
-          </div>
-          <div class="session-summary ${s.summary ? '' : 'empty'}">${s.summary ? escapeHtml(s.summary) : 'No summary'}</div>
-          ${s.commits && s.commits.length > 0 ? `
-            <div class="session-commits collapsed" onclick="this.classList.toggle('collapsed')">
-              <div class="commits-header">${s.commits.length} commit${s.commits.length > 1 ? 's' : ''}</div>
-              <div class="commits-list">
-                ${s.commits.map(c => `
-                  <div class="commit-item">
-                    <code>${c.hash.slice(0,7)}</code> ${escapeHtml(c.message)}
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          ` : ''}
-        </div>
-      `).join('');
-    }
-
-    async function loadDailySummaries() {
-      const project = document.getElementById('project-filter').value;
-      const params = new URLSearchParams();
-      if (project) params.set('project', project);
-      const res = await fetch('/api/daily-summaries?' + params);
-      allDailySummaries = await res.json();
-      renderDailySummaries();
-    }
-
-    function renderDailySummaries() {
-      const search = document.getElementById('search-input').value.toLowerCase();
-      const items = allDailySummaries.filter(d =>
-        !search || d.summary.toLowerCase().includes(search) ||
-        d.project.toLowerCase().includes(search) ||
-        (d.key_decisions && d.key_decisions.toLowerCase().includes(search))
-      );
-      const container = document.getElementById('prompts');
-      if (items.length === 0) {
-        container.innerHTML = '<div class="empty">No daily summaries found</div>';
-        dailyIds = [];
-        selectedIndex = -1;
-        return;
-      }
-      dailyIds = items.map(d => d.id);
-      container.innerHTML = items.map(d => {
-        let decisions = [];
-        try { decisions = JSON.parse(d.key_decisions || '[]'); } catch(e) {}
-        return `
-          <div class="daily-card" data-id="${d.id}">
-            <div class="session-header">
-              <div class="session-meta"><strong>${d.project}</strong> · ${d.date}</div>
-            </div>
-            <div class="session-summary">${escapeHtml(d.summary)}</div>
-            ${decisions.length ? `<div class="key-decisions">${decisions.map(dec => `<span class="key-decision-tag">${escapeHtml(dec)}</span>`).join('')}</div>` : ''}
-            <div class="count-badges">
-              <span class="count-badge"><strong>${d.prompt_count}</strong> prompts</span>
-              <span class="count-badge"><strong>${d.session_count}</strong> sessions</span>
-              <span class="count-badge"><strong>${d.commit_count}</strong> commits</span>
-            </div>
-          </div>`;
-      }).join('');
-    }
-
-    async function loadIntentions() {
-      const project = document.getElementById('project-filter').value;
-      const status = document.getElementById('status-filter').value;
-      const params = new URLSearchParams();
-      if (project) params.set('project', project);
-      if (status) params.set('status', status);
-      const res = await fetch('/api/intentions?' + params);
-      allIntentions = await res.json();
-      renderIntentions();
-    }
-
-    function renderIntentions() {
-      const search = document.getElementById('search-input').value.toLowerCase();
-      const items = allIntentions.filter(i =>
-        !search || i.intention.toLowerCase().includes(search) ||
-        i.project.toLowerCase().includes(search)
-      );
-      const container = document.getElementById('prompts');
-      if (items.length === 0) {
-        container.innerHTML = '<div class="empty">No intentions found</div>';
-        intentionIds = [];
-        selectedIndex = -1;
-        return;
-      }
-      intentionIds = items.map(i => i.id);
-      container.innerHTML = items.map(i => `
-        <div class="intention-card" data-id="${i.id}">
-          <div class="session-header">
-            <div class="session-meta"><strong>${i.project}</strong></div>
-            <span class="status-badge status-${i.status}">${i.status}</span>
-          </div>
-          <div class="session-summary">${escapeHtml(i.intention)}</div>
-          <div class="date-range">${i.first_seen}${i.first_seen !== i.last_seen ? ' → ' + i.last_seen : ''}</div>
-        </div>
-      `).join('');
-    }
-
-    async function loadThemes() {
-      const status = document.getElementById('status-filter').value;
-      const params = new URLSearchParams();
-      if (status) params.set('status', status);
-      const res = await fetch('/api/themes?' + params);
-      allThemes = await res.json();
-      renderThemes();
-    }
-
-    function renderThemes() {
-      const search = document.getElementById('search-input').value.toLowerCase();
-      const items = allThemes.filter(t =>
-        !search || t.theme.toLowerCase().includes(search) ||
-        (t.projects && t.projects.toLowerCase().includes(search))
-      );
-      const container = document.getElementById('prompts');
-      if (items.length === 0) {
-        container.innerHTML = '<div class="empty">No themes found</div>';
-        themeIds = [];
-        selectedIndex = -1;
-        return;
-      }
-      themeIds = items.map(t => t.id);
-      container.innerHTML = items.map(t => {
-        let projects = [];
-        try { projects = JSON.parse(t.projects || '[]'); } catch(e) {}
-        return `
-          <div class="theme-card" data-id="${t.id}">
-            <div class="session-header">
-              <div class="session-meta"><strong>${escapeHtml(t.theme)}</strong></div>
-              <span class="status-badge status-${t.status}">${t.status}</span>
-            </div>
-            ${projects.length ? `<div class="project-tags">${projects.map(p => `<span class="project-tag">${escapeHtml(p)}</span>`).join('')}</div>` : ''}
-            <div class="date-range">${t.first_seen}${t.first_seen !== t.last_seen ? ' → ' + t.last_seen : ''}</div>
-          </div>`;
-      }).join('');
-    }
-
-    async function loadTodos(force) {
-      const project = document.getElementById('project-filter').value;
-      const params = new URLSearchParams();
-      if (project) params.set('project', project);
-      if (force) params.set('force', '1');
-      const res = await fetch('/api/todos?' + params);
-      allTodos = await res.json();
-      renderTodos();
-    }
-
-    function renderTodos() {
-      const search = document.getElementById('search-input').value.toLowerCase();
-      const items = allTodos.filter(t =>
-        !search || t.text.toLowerCase().includes(search) ||
-        t.project.toLowerCase().includes(search)
-      );
-
-      const container = document.getElementById('prompts');
-      if (items.length === 0) {
-        container.innerHTML = '<div class="empty">No todos found</div>';
-        todoIds = [];
-        selectedIndex = -1;
-        return;
-      }
-
-      // Group by project, then by section
       const grouped = {};
-      items.forEach(t => {
+      filtered.forEach(t => {
         if (!grouped[t.project]) grouped[t.project] = {};
         if (!grouped[t.project][t.section]) grouped[t.project][t.section] = [];
         grouped[t.project][t.section].push(t);
@@ -761,263 +659,382 @@
 
       const sectionOrder = ['next_steps', 'backlog', 'planned'];
       const sectionLabels = { next_steps: 'Next Steps', backlog: 'Backlog', planned: 'Planned' };
-
       let cardIndex = 0;
-      let html = '';
-      for (const project of Object.keys(grouped).sort()) {
+
+      return Object.keys(grouped).sort().map(project => {
         const sections = grouped[project];
         const count = Object.values(sections).reduce((sum, arr) => sum + arr.length, 0);
-        html += `<div class="todo-group">`;
-        html += `<div class="todo-group-header">${escapeHtml(project)} <span class="todo-count">${count}</span></div>`;
-        for (const section of sectionOrder) {
-          if (!sections[section]) continue;
-          html += `<div class="todo-section-label">${sectionLabels[section]}</div>`;
-          const muted = section !== 'next_steps' ? ' muted' : '';
-          for (const item of sections[section]) {
-            html += `<div class="todo-card${muted}" data-id="${cardIndex}">
-              <span style="flex:1">${escapeHtml(item.text)}</span>
-              ${item.source === 'MEMORY.md' ? '<span class="todo-source">MEMORY.md</span>' : ''}
-            </div>`;
-            cardIndex++;
-          }
-        }
-        html += `</div>`;
-      }
-
-      todoIds = Array.from({length: cardIndex}, (_, i) => i);
-      container.innerHTML = html;
-    }
-
-    function renderPrompts() {
-      const search = document.getElementById('search-input').value.toLowerCase();
-      const prompts = allPrompts.filter(p =>
-        !search || p.prompt.toLowerCase().includes(search) ||
-        (p.tags && p.tags.toLowerCase().includes(search)) ||
-        p.project.toLowerCase().includes(search)
-      );
-
-      const container = document.getElementById('prompts');
-      if (prompts.length === 0) {
-        container.innerHTML = '<div class="empty">No prompts found</div>';
-        promptIds = [];
-        selectedIndex = -1;
-        return;
-      }
-
-      promptIds = prompts.map(p => p.id);
-      container.innerHTML = prompts.map((p, i) => `
-        <div class="prompt-card" data-id="${p.id}">
-          <div class="prompt-header">
-            <div class="prompt-meta">
-              <strong>${p.project}</strong> · ${p.timestamp}
-            </div>
+        return html`
+          <div class="todo-group" key=${project}>
+            <div class="todo-group-header">${project} <span class="todo-count">${count}</span></div>
+            ${sectionOrder.filter(s => sections[s]).map(section => html`
+              <div key=${section}>
+                <div class="todo-section-label">${sectionLabels[section]}</div>
+                ${sections[section].map(item => {
+                  const idx = cardIndex++;
+                  const muted = section !== 'next_steps' ? ' muted' : '';
+                  return html`
+                    <div class=${`todo-card${muted} ${idx === focusedIndex ? 'focused' : ''}`} key=${idx}>
+                      <span style="flex:1">${item.text}</span>
+                      ${item.source === 'MEMORY.md' && html`<span class="todo-source">MEMORY.md</span>`}
+                    </div>
+                  `;
+                })}
+              </div>
+            `)}
           </div>
-          ${p.context ? `<div class="prompt-context" onclick="this.classList.toggle('expanded')">${escapeHtml(p.context)}</div>` : ''}
-          <div class="prompt-text" onclick="this.classList.toggle('expanded')">${escapeHtml(p.prompt)}</div>
-          <div class="prompt-actions">
-            <input class="tags-input" placeholder="tags (comma-separated)" value="${p.tags || ''}"
-                   onchange="updateTags(${p.id}, this.value)">
-          </div>
-        </div>
-      `).join('');
-    }
-
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
-
-    async function updateTags(id, tags) {
-      await fetch(`/api/prompts/${id}`, {
-        method: 'PATCH',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({tags})
+        `;
       });
     }
 
-    document.getElementById('project-filter').addEventListener('change', () => refreshCurrentView());
-    document.getElementById('status-filter').addEventListener('change', () => refreshCurrentView());
+    function PromptsView({ prompts, search, focusedIndex, onUpdateTags }) {
+      const filtered = prompts.filter(p =>
+        isProjectVisible(p.project) &&
+        (!search || p.prompt.toLowerCase().includes(search.toLowerCase()) ||
+          (p.tags && p.tags.toLowerCase().includes(search.toLowerCase())) ||
+          p.project.toLowerCase().includes(search.toLowerCase()))
+      );
+      if (filtered.length === 0) return html`<div class="empty-state">No prompts found</div>`;
 
-    let searchTimeout;
-    document.getElementById('search-input').addEventListener('input', () => {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => {
-        const renderers = { prompts: renderPrompts, sessions: renderSessions, daily: renderDailySummaries, intentions: renderIntentions, themes: renderThemes, todos: renderTodos };
-        renderers[currentView]();
-      }, 200);
-    });
-
-    function selectItem(index) {
-      const cards = document.querySelectorAll(getCardClass());
-      cards.forEach(c => c.classList.remove('focused'));
-      if (index >= 0 && index < cards.length) {
-        selectedIndex = index;
-        focusRow = 3 + index;
-        focusCol = 0;
-        cards[index].classList.add('focused');
-        cards[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
+      return filtered.map((p, i) => html`
+        <div class=${`prompt-card ${i === focusedIndex ? 'focused' : ''}`} key=${p.id}>
+          <div class="card-header">
+            <div class="card-meta"><strong>${p.project}</strong> · ${p.timestamp}</div>
+          </div>
+          ${p.context && html`<div class="prompt-context" onClick=${(e) => e.target.classList.toggle('expanded')}>${p.context}</div>`}
+          <div class="prompt-text" onClick=${(e) => e.target.classList.toggle('expanded')}>${p.prompt}</div>
+          <div style="display: flex; gap: 10px; margin-top: 12px; align-items: center; flex-wrap: wrap;">
+            <input class="tags-input" placeholder="tags (comma-separated)" value=${p.tags || ''}
+              onChange=${(e) => onUpdateTags(p.id, e.target.value)} />
+          </div>
+        </div>
+      `);
     }
 
-    function getItemIds() {
-      const ids = { prompts: promptIds, sessions: sessionIds, daily: dailyIds, intentions: intentionIds, themes: themeIds, todos: todoIds };
-      return ids[currentView] || [];
+    function DailyView({ dailySummaries, search, focusedIndex }) {
+      const filtered = dailySummaries.filter(d =>
+        isProjectVisible(d.project) &&
+        (!search || d.summary.toLowerCase().includes(search.toLowerCase()) ||
+          d.project.toLowerCase().includes(search.toLowerCase()) ||
+          (d.key_decisions && d.key_decisions.toLowerCase().includes(search.toLowerCase())))
+      );
+      if (filtered.length === 0) return html`<div class="empty-state">No daily summaries found</div>`;
+
+      return filtered.map((d, i) => {
+        let decisions = [];
+        try { decisions = JSON.parse(d.key_decisions || '[]'); } catch {}
+        return html`
+          <div class=${`daily-card ${i === focusedIndex ? 'focused' : ''}`} key=${d.id}>
+            <div class="card-header">
+              <div class="card-meta"><strong>${d.project}</strong> · ${d.date}</div>
+            </div>
+            <div class="card-body">${d.summary}</div>
+            ${decisions.length > 0 && html`
+              <div class="key-decisions">
+                ${decisions.map(dec => html`<span class="key-decision-tag" key=${dec}>${dec}</span>`)}
+              </div>
+            `}
+            <div class="count-badges">
+              <span class="count-badge"><strong>${d.prompt_count}</strong> prompts</span>
+              <span class="count-badge"><strong>${d.session_count}</strong> sessions</span>
+              <span class="count-badge"><strong>${d.commit_count}</strong> commits</span>
+            </div>
+          </div>
+        `;
+      });
     }
 
-    function getCardClass() {
-      const classes = { prompts: '.prompt-card', sessions: '.session-card', daily: '.daily-card', intentions: '.intention-card', themes: '.theme-card', todos: '.todo-card' };
-      return classes[currentView] || '.prompt-card';
+    function HelpOverlay({ visible, onClose }) {
+      return html`
+        <div class=${`help-overlay ${visible ? 'visible' : ''}`} onClick=${onClose}>
+          <div class="help-panel" onClick=${(e) => e.stopPropagation()}>
+            <h2>Keyboard Shortcuts</h2>
+            <dl>
+              <dt>j / ↓</dt><dd>Next item</dd>
+              <dt>k / ↑</dt><dd>Previous item</dd>
+              <dt>Enter</dt><dd>Drill into project</dd>
+              <dt>Esc</dt><dd>Back to overview</dd>
+              <dt>t</dt><dd>Edit tags (prompts)</dd>
+              <dt>e</dt><dd>Expand/collapse</dd>
+              <dt>?</dt><dd>Toggle this help</dd>
+            </dl>
+            <div class="hint">Press ? or click outside to close</div>
+          </div>
+        </div>
+      `;
     }
 
-    function getRowElements(row) {
-      if (row === 0) {
-        return document.querySelectorAll('.stat-btn');
-      } else if (row === 1) {
-        return document.querySelectorAll('.view-toggle button');
-      } else if (row === 2) {
-        return [
-          document.getElementById('project-filter'),
-          document.getElementById('status-filter'),
-          document.getElementById('search-input'),
-          document.getElementById('refresh-btn')
-        ].filter(el => el && el.style.display !== 'none');
-      } else {
-        const cards = document.querySelectorAll(getCardClass());
-        const cardIndex = row - 3;
-        return cardIndex < cards.length ? [cards[cardIndex]] : [];
-      }
-    }
+    // --- App ---
 
-    function getMaxRow() {
-      const cards = document.querySelectorAll(getCardClass());
-      return 3 + cards.length - 1;
-    }
+    function App() {
+      const [view, setViewRaw] = useState('overview');
+      const [overviewData, setOverviewData] = useState(null);
+      const [updatedAt, setUpdatedAt] = useState('');
+      const [allProjects, setAllProjects] = useState([]);
+      const [projectFilter, setProjectFilter] = useState('');
+      const [statusFilter, setStatusFilter] = useState('active');
+      const [search, setSearch] = useState('');
+      const [focusedIndex, setFocusedIndex] = useState(-1);
+      const [helpVisible, setHelpVisible] = useState(false);
+      const [hiddenProjects, setHiddenProjects] = useState([]);
+      const [visibilityKey, setVisibilityKey] = useState(0);
 
-    function focusElement(row, col) {
-      // Clear previous focus
-      document.querySelectorAll('.focused').forEach(el => el.classList.remove('focused'));
-      // Blur any focused element when moving to card rows
-      if (row >= 3 && document.activeElement) {
-        document.activeElement.blur();
-      }
+      // Drill-down data
+      const [sessions, setSessions] = useState([]);
+      const [intentions, setIntentions] = useState([]);
+      const [themes, setThemes] = useState([]);
+      const [todos, setTodos] = useState([]);
+      const [prompts, setPrompts] = useState([]);
+      const [dailySummaries, setDailySummaries] = useState([]);
 
-      const elements = getRowElements(row);
-      if (elements.length === 0) return;
+      const viewRef = useRef(view);
+      const focusRef = useRef(focusedIndex);
+      viewRef.current = view;
+      focusRef.current = focusedIndex;
 
-      const clampedCol = Math.min(col, elements.length - 1);
-      focusRow = row;
-      focusCol = clampedCol;
-
-      const el = elements[clampedCol];
-      if (row >= 3) {
-        // Cards use focused class
-        selectedIndex = row - 3;
-        el.classList.add('focused');
-        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      } else {
-        // Other rows use native focus
-        el.focus();
-      }
-      updateHelpFooter();
-    }
-
-    function navigateGrid(direction) {
-      const maxRow = getMaxRow();
-      let newRow = focusRow;
-      let newCol = focusCol;
-
-      if (direction === 'left') {
-        const elements = getRowElements(focusRow);
-        newCol = Math.max(0, focusCol - 1);
-      } else if (direction === 'right') {
-        const elements = getRowElements(focusRow);
-        newCol = Math.min(elements.length - 1, focusCol + 1);
-      } else if (direction === 'up') {
-        newRow = Math.max(0, focusRow - 1);
-      } else if (direction === 'down') {
-        newRow = Math.min(maxRow, focusRow + 1);
-      }
-
-      focusElement(newRow, newCol);
-    }
-
-    document.addEventListener('keydown', (e) => {
-      // Help toggle works everywhere
-      if (e.key === '?') {
-        toggleHelp();
-        return;
-      }
-
-      // Close help on Escape
-      if (e.key === 'Escape') {
-        const overlay = document.getElementById('help-overlay');
-        if (overlay.classList.contains('visible')) {
-          toggleHelp();
-          return;
+      function setView(v) {
+        setViewRaw(v);
+        setFocusedIndex(-1);
+        setSearch('');
+        if (v === 'overview') {
+          setProjectFilter('');
+          setStatusFilter('active');
         }
       }
 
-      // Skip j/k if typing in input, but allow arrows
-      const inInput = e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT';
-      if (inInput) {
-        if (e.key === 'Escape') {
-          e.target.blur();
-          return;
-        }
-        // Allow arrow keys to navigate out of inputs
-        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-          e.preventDefault();
-          navigateGrid(e.key === 'ArrowUp' ? 'up' : 'down');
-          return;
-        }
-        return;
+      function setViewWithProject(v, project) {
+        setProjectFilter(project || '');
+        setStatusFilter('active');
+        setSearch('');
+        setFocusedIndex(-1);
+        setViewRaw(v);
       }
 
-      const itemIds = getItemIds();
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        navigateGrid('down');
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        navigateGrid('up');
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        navigateGrid('left');
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        navigateGrid('right');
-      } else if (e.key === 'j') {
-        e.preventDefault();
-        navigateGrid('down');
-      } else if (e.key === 'k') {
-        e.preventDefault();
-        navigateGrid('up');
-      } else if (e.key === 'Enter' && focusRow < 3) {
-        // Activate focused button/select in rows 0-2
-        const elements = getRowElements(focusRow);
-        if (elements[focusCol]) {
-          elements[focusCol].click();
-        }
-      } else if (e.key === 't' && selectedIndex >= 0 && currentView === 'prompts') {
-        const card = document.querySelectorAll('.prompt-card')[selectedIndex];
-        card.querySelector('.tags-input').focus();
-      } else if (e.key === 'e' && selectedIndex >= 0 && currentView === 'prompts') {
-        const card = document.querySelectorAll('.prompt-card')[selectedIndex];
-        card.querySelector('.prompt-text').classList.toggle('expanded');
-      }
-    });
+      // Sync module-level hidden list so child components can read it
+      _hiddenProjects = hiddenProjects;
 
-    loadInfo();
-    loadCombinedStats();
-    loadProjects();
-    loadPrompts().then(() => {
-      // Focus first card on page load
-      if (promptIds.length > 0) {
-        focusElement(3, 0);
+      async function saveHidden(list) {
+        const sorted = [...new Set(list)].sort();
+        setHiddenProjects(sorted);
+        await fetch('/api/settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hidden_projects: sorted })
+        });
+        setVisibilityKey(k => k + 1);
       }
-    });
-    updateHelpFooter();
+
+      function handleToggleProject(name, visible) {
+        if (visible) {
+          saveHidden(hiddenProjects.filter(p => p !== name));
+        } else {
+          saveHidden([...hiddenProjects, name]);
+        }
+      }
+
+      function handleToggleAll() {
+        const allHidden = allProjects.length > 0 && hiddenProjects.length >= allProjects.length;
+        saveHidden(allHidden ? [] : [...allProjects]);
+      }
+
+      // Load settings (hidden projects)
+      useEffect(() => {
+        fetchJSON('/api/settings').then(cfg => {
+          setHiddenProjects(cfg.hidden_projects || []);
+        }).catch(() => {});
+      }, []);
+
+      // Load overview data
+      useEffect(() => {
+        if (view === 'overview') {
+          fetchJSON('/api/overview').then(setOverviewData).catch(() => {});
+        }
+      }, [view, visibilityKey]);
+
+      // Load info (updated at)
+      // commit_date format: "2026-02-27 16:45:19 -0800" — needs massaging for Date()
+      useEffect(() => {
+        fetchJSON('/api/info').then(data => {
+          if (data.commit_date) {
+            // Convert "2026-02-27 16:45:19 -0800" → "2026-02-27T16:45:19-08:00"
+            const raw = data.commit_date;
+            const iso = raw.replace(' ', 'T').replace(/ ([+-]\d{2})(\d{2})$/, '$1:$2');
+            const date = new Date(iso);
+            if (!isNaN(date)) {
+              setUpdatedAt(date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            }
+          }
+        }).catch(() => {});
+      }, []);
+
+      // Load all project names
+      useEffect(() => {
+        fetchJSON('/api/projects/all').then(setAllProjects).catch(() => {});
+      }, [visibilityKey]);
+
+      // Load drill-down data
+      useEffect(() => {
+        if (view === 'overview') return;
+        const params = new URLSearchParams();
+        if (projectFilter) params.set('project', projectFilter);
+
+        if (view === 'sessions') {
+          fetchJSON('/api/sessions?' + params).then(setSessions).catch(() => {});
+        } else if (view === 'intentions') {
+          if (statusFilter) params.set('status', statusFilter);
+          fetchJSON('/api/intentions?' + params).then(setIntentions).catch(() => {});
+        } else if (view === 'themes') {
+          if (statusFilter) params.set('status', statusFilter);
+          fetchJSON('/api/themes?' + params).then(setThemes).catch(() => {});
+        } else if (view === 'todos') {
+          fetchJSON('/api/todos?' + params).then(setTodos).catch(() => {});
+        } else if (view === 'prompts') {
+          fetchJSON('/api/prompts?' + params).then(setPrompts).catch(() => {});
+        } else if (view === 'daily') {
+          fetchJSON('/api/daily-summaries?' + params).then(setDailySummaries).catch(() => {});
+        }
+      }, [view, projectFilter, statusFilter, visibilityKey]);
+
+      // Keyboard navigation
+      useEffect(() => {
+        function getItemCount() {
+          const v = viewRef.current;
+          const selectors = {
+            overview: '.project-card',
+            sessions: '.session-card', intentions: '.intention-card', themes: '.theme-card',
+            todos: '.todo-card', prompts: '.prompt-card', daily: '.daily-card'
+          };
+          return document.querySelectorAll(selectors[v] || '.empty-state').length;
+        }
+
+        function handleKey(e) {
+          if (e.key === '?') { setHelpVisible(v => !v); return; }
+
+          if (e.key === 'Escape') {
+            if (helpVisible) { setHelpVisible(false); return; }
+            if (viewRef.current !== 'overview') { setView('overview'); return; }
+          }
+
+          const inInput = e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT';
+          if (inInput) {
+            if (e.key === 'Escape') { e.target.blur(); return; }
+            return;
+          }
+
+          const count = getItemCount();
+
+          if (e.key === 'ArrowDown' || e.key === 'j') {
+            e.preventDefault();
+            setFocusedIndex(prev => Math.min(prev + 1, count - 1));
+          } else if (e.key === 'ArrowUp' || e.key === 'k') {
+            e.preventDefault();
+            setFocusedIndex(prev => Math.max(prev - 1, 0));
+          } else if (e.key === 'Enter') {
+            if (viewRef.current === 'overview' && focusRef.current >= 0) {
+              const cards = document.querySelectorAll('.project-card');
+              if (cards[focusRef.current]) cards[focusRef.current].click();
+            }
+          } else if (e.key === 'e' && focusRef.current >= 0 && viewRef.current === 'prompts') {
+            const cards = document.querySelectorAll('.prompt-card');
+            if (cards[focusRef.current]) {
+              const txt = cards[focusRef.current].querySelector('.prompt-text');
+              if (txt) txt.classList.toggle('expanded');
+            }
+          } else if (e.key === 't' && focusRef.current >= 0 && viewRef.current === 'prompts') {
+            const cards = document.querySelectorAll('.prompt-card');
+            if (cards[focusRef.current]) {
+              const input = cards[focusRef.current].querySelector('.tags-input');
+              if (input) input.focus();
+            }
+          }
+        }
+
+        document.addEventListener('keydown', handleKey);
+        return () => document.removeEventListener('keydown', handleKey);
+      }, [overviewData, helpVisible]);
+
+      // Scroll focused card into view
+      useEffect(() => {
+        if (focusedIndex < 0) return;
+        const focused = document.querySelector('.focused');
+        if (focused) focused.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }, [focusedIndex]);
+
+      async function updateTags(id, tags) {
+        await fetch(`/api/prompts/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tags })
+        });
+      }
+
+      function handleRefresh() {
+        if (view === 'overview') {
+          fetchJSON('/api/overview').then(setOverviewData).catch(() => {});
+        } else if (view === 'todos') {
+          const params = new URLSearchParams();
+          if (projectFilter) params.set('project', projectFilter);
+          params.set('force', '1');
+          fetchJSON('/api/todos?' + params).then(setTodos).catch(() => {});
+        } else {
+          // re-trigger effect
+          setVisibilityKey(k => k + 1);
+        }
+      }
+
+      const visibleProjects = allProjects.filter(isProjectVisible);
+
+      const helpText = view === 'overview'
+        ? html`<kbd>j</kbd>/<kbd>k</kbd> navigate · <kbd>Enter</kbd> drill in · <kbd>?</kbd> help`
+        : html`<kbd>j</kbd>/<kbd>k</kbd> navigate · <kbd>Esc</kbd> overview · <kbd>?</kbd> help`;
+
+      return html`
+        <${Header}
+          view=${view}
+          setView=${setView}
+          updatedAt=${updatedAt}
+          allProjects=${allProjects}
+          hiddenProjects=${hiddenProjects}
+          onToggleProject=${handleToggleProject}
+          onToggleAll=${handleToggleAll}
+        />
+
+        ${view === 'overview' && html`
+          <${Overview}
+            data=${overviewData}
+            focusedIndex=${focusedIndex}
+            onDrillDown=${setViewWithProject}
+          />
+        `}
+
+        ${view !== 'overview' && html`
+          <${Filters}
+            view=${view}
+            projectFilter=${projectFilter}
+            setProjectFilter=${(p) => { setProjectFilter(p); setFocusedIndex(-1); }}
+            statusFilter=${statusFilter}
+            setStatusFilter=${setStatusFilter}
+            search=${search}
+            setSearch=${setSearch}
+            onRefresh=${handleRefresh}
+            visibleProjects=${visibleProjects}
+          />
+          <div>
+            ${view === 'sessions' && html`<${SessionsView} sessions=${sessions} search=${search} focusedIndex=${focusedIndex} />`}
+            ${view === 'intentions' && html`<${IntentionsView} intentions=${intentions} search=${search} focusedIndex=${focusedIndex} />`}
+            ${view === 'themes' && html`<${ThemesView} themes=${themes} search=${search} focusedIndex=${focusedIndex} />`}
+            ${view === 'todos' && html`<${TodosView} todos=${todos} search=${search} focusedIndex=${focusedIndex} />`}
+            ${view === 'prompts' && html`<${PromptsView} prompts=${prompts} search=${search} focusedIndex=${focusedIndex} onUpdateTags=${updateTags} />`}
+            ${view === 'daily' && html`<${DailyView} dailySummaries=${dailySummaries} search=${search} focusedIndex=${focusedIndex} />`}
+          </div>
+        `}
+
+        <div class="help-footer">${helpText}</div>
+        <${HelpOverlay} visible=${helpVisible} onClose=${() => setHelpVisible(false)} />
+      `;
+    }
+
+    render(html`<${App} />`, document.getElementById('app'));
   </script>
 </body>
 </html>
