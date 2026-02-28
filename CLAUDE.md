@@ -17,6 +17,7 @@ Opens at http://localhost:5111
 - Add tag filtering dropdown
 - Allow editing session summaries in dashboard
 - Clean up frontend TODOs: fetch error handling, rename #prompts container, remove statClick wrapper
+- DONE Set up todo email digest via Resend (send-todos.py, Mon/Thu 9am cron)
 
 ## Backlog
 
