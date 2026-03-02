@@ -280,6 +280,14 @@ def list_todos():
         _todos_cache["timestamp"] = now
 
     todos = _todos_cache["data"]
+
+    # Filter out ignored/archived projects
+    with get_db() as conn:
+        non_active = {row["name"] for row in conn.execute(
+            "SELECT name FROM projects WHERE status != 'active'"
+        ).fetchall()}
+    todos = [t for t in todos if t["project"] not in non_active]
+
     if project:
         todos = [t for t in todos if t["project"] == project]
 

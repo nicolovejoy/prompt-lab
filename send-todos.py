@@ -3,11 +3,27 @@
 
 import json
 import os
+import sqlite3
 import sys
 import urllib.request
 from pathlib import Path
 
 from todos import _scan_todos
+
+DB_PATH = Path.home() / ".claude" / "prompt-history.db"
+
+
+def _active_projects():
+    """Return set of project names with status='active' (or no record) from DB."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        non_active = {row[0] for row in conn.execute(
+            "SELECT name FROM projects WHERE status != 'active'"
+        ).fetchall()}
+        conn.close()
+        return non_active
+    except Exception:
+        return set()
 
 _SECTION_LABELS = {
     "next_steps": "Next Steps",
@@ -123,7 +139,8 @@ def send_email(html, text, count, num_projects):
 def main():
     dry_run = "--dry-run" in sys.argv
 
-    todos = _scan_todos()
+    non_active = _active_projects()
+    todos = [t for t in _scan_todos() if t["project"] not in non_active]
     if not todos:
         print("No todos found.")
         return
