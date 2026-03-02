@@ -179,6 +179,57 @@ def all_projects():
     return jsonify(sorted(db_projects))
 
 
+@app.route("/api/project/<path:name>")
+def project_detail(name):
+    """Single-project detail data."""
+    with get_db() as conn:
+        conn.execute("INSERT OR IGNORE INTO projects (name) VALUES (?)", [name])
+        conn.commit()
+
+        project_row = conn.execute(
+            "SELECT * FROM projects WHERE name = ?", [name]
+        ).fetchone()
+
+        session_count = conn.execute("""
+            SELECT COUNT(*) as n FROM sessions
+            WHERE project = ? AND ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''
+        """, [name]).fetchone()["n"]
+
+        last_session_row = conn.execute("""
+            SELECT summary, started_at FROM sessions
+            WHERE project = ? AND ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''
+            ORDER BY started_at DESC LIMIT 1
+        """, [name]).fetchone()
+
+        intention_rows = conn.execute("""
+            SELECT intention FROM intentions
+            WHERE project = ? AND status = 'active'
+            ORDER BY last_seen DESC LIMIT 3
+        """, [name]).fetchall()
+
+    now = time.time()
+    if _todos_cache["data"] is None or (now - _todos_cache["timestamp"]) > TODOS_CACHE_TTL:
+        _todos_cache["data"] = _scan_todos()
+        _todos_cache["timestamp"] = now
+
+    project_todos = [t for t in _todos_cache["data"] if t["project"] == name]
+    todo_count = len(project_todos)
+    next_steps = [t["text"] for t in project_todos if t["section"] == "next_steps"][:5]
+
+    return jsonify({
+        "name": name,
+        "status": project_row["status"] if project_row else "active",
+        "category": project_row["category"] if project_row else None,
+        "notes": project_row["notes"] if project_row else None,
+        "created_at": project_row["created_at"] if project_row else None,
+        "session_count": session_count,
+        "todo_count": todo_count,
+        "last_session": dict(last_session_row) if last_session_row else None,
+        "intentions": [row["intention"] for row in intention_rows],
+        "next_steps": next_steps,
+    })
+
+
 @app.route("/api/projects/<path:name>", methods=["PATCH"])
 def update_project(name):
     data = request.json

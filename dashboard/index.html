@@ -260,6 +260,21 @@
       color: var(--text-secondary); white-space: nowrap;
     }
 
+    /* Project detail */
+    .project-detail { max-width: 680px; }
+    .project-detail-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+    .project-detail-name { font-size: 1.3rem; font-weight: 600; }
+    .project-detail-stats { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 24px; }
+    .detail-section { margin-bottom: 24px; }
+    .detail-section-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 8px; display: flex; justify-content: space-between; }
+    .ai-indicator { font-size: 0.65rem; color: var(--text-secondary); font-style: italic; font-weight: 400; text-transform: none; letter-spacing: 0; }
+    .detail-section-body { font-size: 0.9rem; line-height: 1.6; color: var(--text); }
+    .detail-item { padding: 3px 0; color: var(--text-secondary); font-size: 0.875rem; }
+    .detail-item::before { content: "\2014\00a0\00a0"; }
+    .detail-nav { margin-top: 32px; text-align: right; font-size: 0.85rem; }
+    .detail-nav a { color: var(--accent); text-decoration: none; }
+    .detail-nav a:hover { text-decoration: underline; }
+
     .empty-state {
       text-align: center; padding: 50px; color: var(--text-secondary);
       font-size: 1rem; background: var(--card); border: 1px solid var(--border);
@@ -428,7 +443,7 @@
       function cardProps(p, i) {
         return {
           key: p.name, project: p, focused: i === focusedIndex,
-          onClick: () => onDrillDown('sessions', p.name),
+          onClick: () => onDrillDown('project', p.name),
           onTodosClick: (name) => onDrillDown('todos', name),
           onStatusChange,
         };
@@ -654,6 +669,70 @@
       });
     }
 
+    function ProjectDetailView({ data, onDrillDown, onStatusChange }) {
+      if (!data) return html`<div class="empty-state">Loading...</div>`;
+
+      const { name, status, session_count, todo_count, intentions, last_session, next_steps } = data;
+
+      const parts = [];
+      if (session_count > 0) parts.push(`${session_count} session${session_count !== 1 ? 's' : ''}`);
+      if (todo_count > 0) parts.push(`${todo_count} todo${todo_count !== 1 ? 's' : ''}`);
+      if (intentions.length > 0) parts.push(`${intentions.length} intention${intentions.length !== 1 ? 's' : ''}`);
+
+      return html`
+        <div class="project-detail">
+          <div class="project-detail-header">
+            <span class="project-detail-name">${name}</span>
+            <div style="display:flex; align-items:baseline; gap:8px;">
+              <select class="status-select"
+                value=${status || 'active'}
+                onChange=${(e) => onStatusChange(name, e.target.value)}
+              >
+                <option value="active">active</option>
+                <option value="ignored">ignored</option>
+                <option value="archived">archived</option>
+              </select>
+              ${last_session && html`<span class="project-card-time">${timeAgo(last_session.started_at)}</span>`}
+            </div>
+          </div>
+          <div class="project-detail-stats">${parts.join(' · ')}</div>
+
+          ${last_session && html`
+            <div class="detail-section">
+              <div class="detail-section-label">
+                Last session
+                <span class="ai-indicator">~ AI</span>
+              </div>
+              <div class="detail-section-body">${last_session.summary}</div>
+            </div>
+          `}
+
+          ${intentions.length > 0 && html`
+            <div class="detail-section">
+              <div class="detail-section-label">
+                Intentions
+                <span class="ai-indicator">~ AI</span>
+              </div>
+              ${intentions.map(i => html`<div class="detail-item">${i}</div>`)}
+            </div>
+          `}
+
+          ${next_steps.length > 0 && html`
+            <div class="detail-section">
+              <div class="detail-section-label">Next Steps</div>
+              ${next_steps.map(t => html`<div class="detail-item">${t}</div>`)}
+            </div>
+          `}
+
+          <div class="detail-nav">
+            <a href="#" onClick=${(e) => { e.preventDefault(); onDrillDown('sessions', name); }}>
+              View all sessions →
+            </a>
+          </div>
+        </div>
+      `;
+    }
+
     function HelpOverlay({ visible, onClose }) {
       return html`
         <div class=${`help-overlay ${visible ? 'visible' : ''}`} onClick=${onClose}>
@@ -691,6 +770,7 @@
       const [intentions, setIntentions] = useState([]);
       const [todos, setTodos] = useState([]);
       const [dailySummaries, setDailySummaries] = useState([]);
+      const [projectData, setProjectData] = useState(null);
 
       const viewRef = useRef(view);
       const focusRef = useRef(focusedIndex);
@@ -722,6 +802,9 @@
           body: JSON.stringify({ status })
         });
         fetchJSON('/api/overview').then(setOverviewData).catch(() => {});
+        if (viewRef.current === 'project') {
+          fetchJSON(`/api/project/${encodeURIComponent(name)}`).then(setProjectData).catch(() => {});
+        }
       }
 
       // Load overview data
@@ -769,6 +852,15 @@
           fetchJSON('/api/daily-summaries?' + params).then(setDailySummaries).catch(() => {});
         }
       }, [view, projectFilter, statusFilter, refreshKey]);
+
+      // Load project detail data
+      useEffect(() => {
+        if (view === 'project' && projectFilter) {
+          setProjectData(null);
+          fetchJSON(`/api/project/${encodeURIComponent(projectFilter)}`)
+            .then(setProjectData).catch(() => {});
+        }
+      }, [view, projectFilter, refreshKey]);
 
       // Keyboard navigation
       useEffect(() => {
@@ -856,7 +948,15 @@
           />
         `}
 
-        ${view !== 'overview' && html`
+        ${view === 'project' && html`
+          <${ProjectDetailView}
+            data=${projectData}
+            onDrillDown=${setViewWithProject}
+            onStatusChange=${handleStatusChange}
+          />
+        `}
+
+        ${view !== 'overview' && view !== 'project' && html`
           <${Filters}
             view=${view}
             projectFilter=${projectFilter}
