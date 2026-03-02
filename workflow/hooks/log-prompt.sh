@@ -50,6 +50,9 @@ echo "$(date): Context length: ${#CONTEXT}" >> "$DEBUG_LOG"
 PROMPT_ESCAPED=$(echo "$PROMPT" | sed "s/'/''/g")
 CONTEXT_ESCAPED=$(echo "$CONTEXT" | sed "s/'/''/g")
 
+# Auto-register project if not already known
+sqlite3 ~/.claude/prompt-history.db "INSERT OR IGNORE INTO projects (name) VALUES ('$PROJECT');" 2>/dev/null
+
 # Insert into database (utility=NULL means unrated)
 if [ -n "$SESSION_ID" ]; then
     sqlite3 ~/.claude/prompt-history.db "INSERT INTO prompts (project, prompt, session_id, context) VALUES ('$PROJECT', '$PROMPT_ESCAPED', $SESSION_ID, '$CONTEXT_ESCAPED');" 2>/dev/null

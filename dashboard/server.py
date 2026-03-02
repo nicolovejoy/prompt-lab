@@ -2,20 +2,22 @@
 """Prompt history dashboard - local web UI for reviewing prompts."""
 
 import json
-import re
 import sqlite3
 import subprocess
+import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from flask import Flask, jsonify, request, send_file
 
+# Import shared todo scanner
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from todos import _scan_todos
+
 SCRIPT_DIR = Path(__file__).parent
 app = Flask(__name__)
 DB_PATH = Path.home() / ".claude" / "prompt-history.db"
 CONFIG_PATH = Path.home() / ".claude" / "ground-control.json"
-SRC_DIR = Path.home() / "src"
-CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 TODOS_CACHE_TTL = 300
 
 _todos_cache = {"data": None, "timestamp": 0}
@@ -28,91 +30,66 @@ def _load_config():
         return {}
 
 
-def _save_config(cfg):
-    CONFIG_PATH.write_text(json.dumps(cfg, indent=2) + "\n")
+# ---------------------------------------------------------------------------
+# Migration system
+# ---------------------------------------------------------------------------
+
+def _seed_from_config(conn):
+    """One-time: seed ignored projects from ground-control.json hidden_projects."""
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text())
+        for name in cfg.get("hidden_projects", []):
+            conn.execute(
+                "INSERT OR IGNORE INTO projects (name, status) VALUES (?, 'ignored')",
+                [name]
+            )
+    except (OSError, json.JSONDecodeError):
+        pass
 
 
-def _get_hidden_projects():
-    return set(_load_config().get("hidden_projects", []))
-
-# Section header patterns (case-insensitive)
-_SECTION_PATTERNS = [
-    (re.compile(r"^##\s+(Next\s+Steps|Current\s+Next\s+Steps|What'?s\s+Next|Next\s+Session\s+TODO)\s*$", re.IGNORECASE), "next_steps"),
-    (re.compile(r"^##\s+Backlog\s*$", re.IGNORECASE), "backlog"),
-    (re.compile(r"^##\s+Planned\s+Features\s*$", re.IGNORECASE), "planned"),
-]
-
-
-def _parse_todo_sections(text):
-    """Parse markdown text for todo sections, returning list of {section, text}."""
-    results = []
-    current_section = None
-
-    for line in text.splitlines():
-        stripped = line.strip()
-
-        # Check if this line is a section header
-        if stripped.startswith("## "):
-            current_section = None
-            for pattern, section_name in _SECTION_PATTERNS:
-                if pattern.match(stripped):
-                    current_section = section_name
-                    break
-            continue
-
-        # If we're in a tracked section, collect items
-        if current_section and stripped:
-            # Match list items: "- item" or "1. item"
-            m = re.match(r"^(?:-|\d+\.)\s+(.+)$", stripped)
-            if m:
-                item_text = m.group(1)
-                # Skip done/shipped items
-                if re.match(r"^(DONE|SHIPPED)\b", item_text, re.IGNORECASE):
-                    continue
-                results.append({"section": current_section, "text": item_text})
-
-    return results
+MIGRATIONS = {
+    "001_add_projects": """
+        CREATE TABLE IF NOT EXISTS projects (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT UNIQUE NOT NULL,
+            status      TEXT NOT NULL DEFAULT 'active',
+            category    TEXT,
+            path        TEXT,
+            notes       TEXT,
+            created_at  TEXT DEFAULT (datetime('now'))
+        );
+    """,
+    "002_seed_from_config": _seed_from_config,
+    "003_rename_muted_to_ignored": "UPDATE projects SET status = 'ignored' WHERE status = 'muted';",
+}
 
 
-def _scan_todos():
-    """Scan CLAUDE.md and MEMORY.md files for todo items."""
-    todos = []
+def run_migrations():
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS migrations (
+                id         TEXT PRIMARY KEY,
+                applied_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        conn.commit()
 
-    # Scan ~/src/*/CLAUDE.md
-    for claude_md in sorted(SRC_DIR.glob("*/CLAUDE.md")):
-        project = claude_md.parent.name
-        try:
-            text = claude_md.read_text()
-        except OSError:
-            continue
-        for item in _parse_todo_sections(text):
-            todos.append({
-                "project": project,
-                "section": item["section"],
-                "text": item["text"],
-                "source": "CLAUDE.md",
-            })
+        applied = {row["id"] for row in conn.execute("SELECT id FROM migrations").fetchall()}
 
-    # Scan ~/.claude/projects/*/memory/MEMORY.md
-    for memory_md in sorted(CLAUDE_PROJECTS_DIR.glob("*/memory/MEMORY.md")):
-        # Extract project from path like -Users-nico-src-<project>
-        dir_name = memory_md.parent.parent.name
-        m = re.search(r"-Users-\w+-src-(.+)$", dir_name)
-        project = m.group(1) if m else dir_name
-        try:
-            text = memory_md.read_text()
-        except OSError:
-            continue
-        for item in _parse_todo_sections(text):
-            todos.append({
-                "project": project,
-                "section": item["section"],
-                "text": item["text"],
-                "source": "MEMORY.md",
-            })
+        for mid, action in sorted(MIGRATIONS.items()):
+            if mid in applied:
+                continue
+            if callable(action):
+                action(conn)
+            else:
+                conn.executescript(action)
+            conn.execute("INSERT INTO migrations (id) VALUES (?)", [mid])
+            conn.commit()
 
-    return todos
 
+# ---------------------------------------------------------------------------
+# DB context manager
+# ---------------------------------------------------------------------------
 
 @contextmanager
 def get_db():
@@ -124,10 +101,13 @@ def get_db():
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
 @app.route("/")
 def index():
     return send_file(SCRIPT_DIR / "index.html")
-
 
 
 @app.route("/api/prompts")
@@ -189,7 +169,6 @@ def all_projects():
         """).fetchall()
     db_projects = {row["project"] for row in rows}
 
-    # Add todo projects from cache
     now = time.time()
     if _todos_cache["data"] is None or (now - _todos_cache["timestamp"]) > TODOS_CACHE_TTL:
         _todos_cache["data"] = _scan_todos()
@@ -200,11 +179,31 @@ def all_projects():
     return jsonify(sorted(db_projects))
 
 
+@app.route("/api/projects/<path:name>", methods=["PATCH"])
+def update_project(name):
+    data = request.json
+
+    updates = []
+    params = []
+    for field in ["status", "category", "notes"]:
+        if field in data:
+            updates.append(f"{field} = ?")
+            params.append(data[field])
+
+    if updates:
+        params.append(name)
+        with get_db() as conn:
+            conn.execute("INSERT OR IGNORE INTO projects (name) VALUES (?)", [name])
+            conn.execute(f"UPDATE projects SET {', '.join(updates)} WHERE name = ?", params)
+            conn.commit()
+
+    return jsonify({"ok": True})
+
+
 @app.route("/api/sessions")
 def list_sessions():
     project = request.args.get("project")
 
-    # Only show sessions that have summaries
     query = "SELECT * FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''"
     params = []
 
@@ -270,46 +269,6 @@ def list_intentions():
     return jsonify([dict(row) for row in rows])
 
 
-@app.route("/api/themes")
-def list_themes():
-    status = request.args.get("status", "active")
-    query = "SELECT * FROM themes WHERE 1=1"
-    params = []
-    if status and status != "all":
-        query += " AND status = ?"
-        params.append(status)
-    query += " ORDER BY last_seen DESC"
-    with get_db() as conn:
-        rows = conn.execute(query, params).fetchall()
-    return jsonify([dict(row) for row in rows])
-
-
-# TODO: Consolidate into a single query with subselects
-@app.route("/api/stats/combined")
-def combined_stats():
-    with get_db() as conn:
-        prompts_total = conn.execute("SELECT COUNT(*) as n FROM prompts").fetchone()["n"]
-        sessions_total = conn.execute("SELECT COUNT(*) as n FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''").fetchone()["n"]
-        daily_total = conn.execute("SELECT COUNT(*) as n FROM daily_summaries").fetchone()["n"]
-        intentions_active = conn.execute("SELECT COUNT(*) as n FROM intentions WHERE status = 'active'").fetchone()["n"]
-        themes_active = conn.execute("SELECT COUNT(*) as n FROM themes WHERE status = 'active'").fetchone()["n"]
-    # Todos count (use cache if fresh, don't force scan)
-    now = time.time()
-    if _todos_cache["data"] is None or (now - _todos_cache["timestamp"]) > TODOS_CACHE_TTL:
-        _todos_cache["data"] = _scan_todos()
-        _todos_cache["timestamp"] = now
-    todos_total = len(_todos_cache["data"])
-
-    return jsonify({
-        "prompts": {"total": prompts_total},
-        "sessions": {"total": sessions_total},
-        "daily": {"total": daily_total},
-        "intentions": {"active": intentions_active},
-        "themes": {"active": themes_active},
-        "todos": {"total": todos_total}
-    })
-
-
 @app.route("/api/todos")
 def list_todos():
     force = request.args.get("force") == "1"
@@ -347,84 +306,10 @@ def update_session(session_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/stats/weekly")
-def weekly_stats():
-    """Return everything the overview briefing needs in one request."""
-    with get_db() as conn:
-        # Week counts
-        week_prompts = conn.execute(
-            "SELECT COUNT(*) as n FROM prompts WHERE timestamp >= datetime('now', '-7 days')"
-        ).fetchone()["n"]
-        week_sessions = conn.execute(
-            "SELECT COUNT(*) as n FROM sessions WHERE started_at >= datetime('now', '-7 days') AND ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''"
-        ).fetchone()["n"]
-        week_commits = conn.execute(
-            "SELECT COUNT(*) as n FROM commits WHERE timestamp >= datetime('now', '-7 days')"
-        ).fetchone()["n"]
-
-        # Active projects (from sessions this week)
-        active_rows = conn.execute(
-            "SELECT DISTINCT project FROM sessions WHERE started_at >= datetime('now', '-7 days') AND ended_at IS NOT NULL AND summary IS NOT NULL AND summary != '' ORDER BY project"
-        ).fetchall()
-        active_projects = [r["project"] for r in active_rows]
-
-        # Recent sessions (last 3)
-        recent_rows = conn.execute(
-            "SELECT id, project, started_at, summary FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != '' ORDER BY started_at DESC LIMIT 3"
-        ).fetchall()
-        recent_sessions = [dict(r) for r in recent_rows]
-
-        # Active intentions (limit 3)
-        intention_rows = conn.execute(
-            "SELECT project, intention FROM intentions WHERE status = 'active' ORDER BY last_seen DESC LIMIT 3"
-        ).fetchall()
-        intentions = [dict(r) for r in intention_rows]
-
-        # Total active intentions count
-        intentions_total = conn.execute(
-            "SELECT COUNT(*) as n FROM intentions WHERE status = 'active'"
-        ).fetchone()["n"]
-
-        # Active themes (limit 3)
-        theme_rows = conn.execute(
-            "SELECT theme, projects FROM themes WHERE status = 'active' ORDER BY last_seen DESC LIMIT 3"
-        ).fetchall()
-        themes = [dict(r) for r in theme_rows]
-
-        # Total active themes count
-        themes_total = conn.execute(
-            "SELECT COUNT(*) as n FROM themes WHERE status = 'active'"
-        ).fetchone()["n"]
-
-    # Todos (use cache)
-    now = time.time()
-    if _todos_cache["data"] is None or (now - _todos_cache["timestamp"]) > TODOS_CACHE_TTL:
-        _todos_cache["data"] = _scan_todos()
-        _todos_cache["timestamp"] = now
-
-    todos_raw = _todos_cache["data"]
-    todos_counts = {}
-    for t in todos_raw:
-        todos_counts[t["project"]] = todos_counts.get(t["project"], 0) + 1
-
-    return jsonify({
-        "week": {"sessions": week_sessions, "prompts": week_prompts, "commits": week_commits},
-        "active_projects": active_projects,
-        "recent_sessions": recent_sessions,
-        "intentions": intentions,
-        "intentions_total": intentions_total,
-        "themes": themes,
-        "themes_total": themes_total,
-        "todos": todos_counts,
-        "todos_total": len(todos_raw),
-    })
-
-
 @app.route("/api/overview")
 def overview():
     """Per-project cards data for the overview."""
     with get_db() as conn:
-        # Week counts
         week_prompts = conn.execute(
             "SELECT COUNT(*) as n FROM prompts WHERE timestamp >= datetime('now', '-7 days')"
         ).fetchone()["n"]
@@ -445,7 +330,12 @@ def overview():
         """).fetchall()
         db_projects = {row["project"] for row in project_rows}
 
-        # Per-project: last session (summary + started_at), session count
+        # Project statuses from projects table
+        project_statuses = {}
+        for row in conn.execute("SELECT name, status FROM projects").fetchall():
+            project_statuses[row["name"]] = row["status"]
+
+        # Per-project: session count + last_started
         session_data = {}
         for row in conn.execute("""
             SELECT project,
@@ -512,15 +402,12 @@ def overview():
         todo_count = todos_by_project.get(name, 0)
         session_count = sd.get("session_count", 0)
 
-        # Skip projects with no sessions and no todos (noise)
         if session_count == 0 and todo_count == 0:
             continue
 
-        # Skip full-path project names (duplicates from old data)
         if name.startswith("/"):
             continue
 
-        # Determine last_activity as max of last session or last intention
         candidates = []
         if sd.get("last_started"):
             candidates.append(sd["last_started"])
@@ -528,18 +415,17 @@ def overview():
             candidates.append(intention_last_seen[name])
         last_activity = max(candidates) if candidates else None
 
+        status = project_statuses.get(name, "active")
+
         projects.append({
             "name": name,
+            "status": status,
             "last_session": ls,
             "session_count": session_count,
             "todo_count": todo_count,
             "intentions": intents[:3],
             "last_activity": last_activity,
         })
-
-    # Filter out server-side hidden projects
-    hidden = _get_hidden_projects()
-    projects = [p for p in projects if p["name"] not in hidden]
 
     # Sort by last_activity DESC (None last)
     projects.sort(key=lambda p: p["last_activity"] or "", reverse=True)
@@ -572,17 +458,8 @@ def get_settings():
     return jsonify(_load_config())
 
 
-@app.route("/api/settings", methods=["PATCH"])
-def update_settings():
-    data = request.json
-    cfg = _load_config()
-    if "hidden_projects" in data:
-        cfg["hidden_projects"] = sorted(set(data["hidden_projects"]))
-    _save_config(cfg)
-    return jsonify(cfg)
-
-
 if __name__ == "__main__":
     print(f"Using database: {DB_PATH}")
     print("Open http://localhost:5111")
+    run_migrations()
     app.run(port=5111, debug=True)

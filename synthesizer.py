@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Intention Tracker — synthesizes daily summaries, intentions, and themes from prompt-history.db."""
+"""Synthesizer — generates daily summaries and intentions from prompt-history.db."""
 
 import argparse
 import json
@@ -421,99 +421,19 @@ Return JSON: {"intentions": [{"intention": "...", "status": "active|completed|st
             print(f"ERROR: {e}")
 
 
-def synthesize_themes(db: sqlite3.Connection, client: Anthropic):
-    """Identify cross-project themes from all active intentions."""
-    intentions = get_all_active_intentions(db)
-    if not intentions:
-        print("No active intentions to find themes in.")
-        return
-
-    print(f"Finding themes across {len(intentions)} active intention(s)...")
-
-    # Group by project for readability
-    by_project = {}
-    for i in intentions:
-        by_project.setdefault(i["project"], []).append(i)
-
-    intention_text = ""
-    for project, items in by_project.items():
-        intention_text += f"\n{project}:\n"
-        for item in items:
-            intention_text += f"  - [ID {item['id']}] {item['intention']}\n"
-
-    current_themes = db.execute("""
-        SELECT id, theme, projects, intention_ids, status FROM themes WHERE status = 'active'
-    """).fetchall()
-
-    current_text = ""
-    if current_themes:
-        current_text = "\n\nCurrent active themes:\n" + "\n".join(
-            f"- [ID {t['id']}] {t['theme']} (projects: {t['projects']})"
-            for t in current_themes
-        )
-
-    user_msg = f"""Active intentions by project:
-{intention_text}
-{current_text}"""
-
-    system = """You identify cross-project themes from a developer's active intentions.
-Return JSON: {"themes": [{"theme": "...", "projects": ["proj1", "proj2"], "intention_ids": [1, 2], "status": "active|completed", "id": null_or_existing_id}]}
-- A theme is a pattern that spans multiple projects (e.g., "Infrastructure modernization", "Improving developer experience")
-- Only create themes that genuinely connect 2+ projects
-- For existing themes: include their ID and update if needed
-- Keep it focused: 2-5 themes max"""
-
-    try:
-        result = call_claude(client, SONNET, system, user_msg)
-        parsed = result["parsed"]
-        cost = estimate_cost_cents(result["model"], result["input_tokens"], result["output_tokens"])
-        today = datetime.now().strftime("%Y-%m-%d")
-
-        for item in parsed.get("themes", []):
-            existing_id = item.get("id")
-            status = item.get("status", "active")
-
-            if existing_id:
-                db.execute("""
-                    UPDATE themes SET status = ?, projects = ?, intention_ids = ?, last_seen = ?
-                    WHERE id = ?
-                """, (status, json.dumps(item.get("projects", [])),
-                      json.dumps(item.get("intention_ids", [])), today, existing_id))
-            else:
-                db.execute("""
-                    INSERT INTO themes (theme, projects, intention_ids, status, first_seen, last_seen, model)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (item.get("theme", ""), json.dumps(item.get("projects", [])),
-                      json.dumps(item.get("intention_ids", [])), status, today, today, result["model"]))
-
-        db.commit()
-
-        log_synthesis(db, "themes", today, None, result["model"],
-                      result["input_tokens"], result["output_tokens"],
-                      cost, result["duration_ms"], "success")
-
-        n_themes = len(parsed.get("themes", []))
-        print(f"OK ({n_themes} themes, ${cost/100:.4f})")
-
-    except Exception as e:
-        log_synthesis(db, "themes", None, None, SONNET, 0, 0, 0, 0, "error", str(e))
-        print(f"ERROR: {e}")
-
-
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Synthesize daily summaries, intentions, and themes.")
+    parser = argparse.ArgumentParser(description="Synthesize daily summaries and intentions.")
     parser.add_argument("--daily", action="store_true", help="Generate missing daily summaries")
     parser.add_argument("--intentions", action="store_true", help="Update project intentions")
-    parser.add_argument("--themes", action="store_true", help="Update cross-project themes")
     parser.add_argument("--all", action="store_true", help="Run all synthesis steps")
     parser.add_argument("--date", type=str, help="Target date (YYYY-MM-DD) for --daily")
     args = parser.parse_args()
 
-    if not any([args.daily, args.intentions, args.themes, args.all]):
+    if not any([args.daily, args.intentions, args.all]):
         parser.print_help()
         sys.exit(1)
 
@@ -536,10 +456,6 @@ def main():
     if args.all or args.intentions:
         print("\n=== Intentions ===")
         synthesize_intentions(db, client)
-
-    if args.all or args.themes:
-        print("\n=== Themes ===")
-        synthesize_themes(db, client)
 
     # Print totals from this run
     recent_logs = db.execute("""
