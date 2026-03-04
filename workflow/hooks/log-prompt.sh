@@ -100,6 +100,11 @@ for line in reversed(lines):
             echo "$SID:$DECILE" >> "${STATE_FILE}.tmp"
             mv "${STATE_FILE}.tmp" "$STATE_FILE"
         fi
+
+        # Write latest token count to sessions table
+        if [[ -n "$SESSION_ID" && -n "$TOKENS" ]]; then
+            sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET token_count=$TOKENS WHERE id=$SESSION_ID;" 2>/dev/null
+        fi
     fi
 fi
 

@@ -285,6 +285,12 @@
       font-size: 0.8rem; color: var(--text-secondary);
       margin-top: 15px; text-align: center;
     }
+    .synth-footer {
+      font-size: 0.75rem; color: var(--text-secondary);
+      margin-top: 8px; text-align: center;
+    }
+    .synth-footer .synth-ok { color: #166534; }
+    .synth-footer .synth-fail { color: #991b1b; }
     .help-footer kbd {
       background: var(--bg); padding: 2px 6px;
       font-family: inherit; font-size: 0.75rem; border: 1px solid var(--border);
@@ -382,8 +388,10 @@
       `;
     }
 
+    const CONTEXT_WINDOW = 200000;
+
     function ProjectCard({ project, focused, onClick, onTodosClick, onStatusChange }) {
-      const { name, last_session, session_count, todo_count, intentions, last_activity, status } = project;
+      const { name, last_session, session_count, todo_count, intentions, last_activity, status, peak_tokens } = project;
       return html`
         <div class=${`project-card ${focused ? 'focused' : ''}`} onClick=${onClick}>
           <div class="project-card-header">
@@ -411,6 +419,7 @@
                 ${todo_count} todos
               </a>
             `}
+            ${peak_tokens && html`<span>peak ${Math.round(peak_tokens * 100 / CONTEXT_WINDOW)}%</span>`}
           </div>
           ${intentions && intentions.length > 0 && html`
             <div class="project-card-intentions">${intentions.join(' / ')}</div>
@@ -673,6 +682,22 @@
       if (!data) return html`<div class="empty-state">Loading...</div>`;
 
       const { name, status, session_count, todo_count, intentions, last_session, next_steps } = data;
+      const [editingSummary, setEditingSummary] = useState(false);
+      const [summaryDraft, setSummaryDraft] = useState('');
+      const [savedSummary, setSavedSummary] = useState(null);
+
+      const displaySummary = savedSummary !== null ? savedSummary : (last_session ? last_session.summary : null);
+
+      async function saveSummary() {
+        if (!last_session) return;
+        await fetch(`/api/sessions/${last_session.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ summary: summaryDraft }),
+        });
+        setSavedSummary(summaryDraft);
+        setEditingSummary(false);
+      }
 
       const parts = [];
       if (session_count > 0) parts.push(`${session_count} session${session_count !== 1 ? 's' : ''}`);
@@ -702,8 +727,29 @@
               <div class="detail-section-label">
                 Last session
                 <span class="ai-indicator">~ AI</span>
+                ${!editingSummary && html`
+                  <a href="#" style="font-size:0.65rem; color:var(--text-secondary); text-decoration:none; font-weight:400; text-transform:none; letter-spacing:0;"
+                    onClick=${(e) => { e.preventDefault(); setSummaryDraft(displaySummary || ''); setEditingSummary(true); }}>
+                    edit
+                  </a>
+                `}
               </div>
-              <div class="detail-section-body">${last_session.summary}</div>
+              ${editingSummary ? html`
+                <div>
+                  <textarea
+                    style="width:100%; min-height:100px; padding:8px; border:1px solid var(--border); font-family:inherit; font-size:0.9rem; line-height:1.6; resize:vertical;"
+                    value=${summaryDraft}
+                    onInput=${(e) => setSummaryDraft(e.target.value)}
+                    autoFocus
+                  ></textarea>
+                  <div style="margin-top:6px; display:flex; gap:8px;">
+                    <button onClick=${saveSummary} style="font-size:0.8rem; padding:4px 12px;">Save</button>
+                    <button onClick=${() => setEditingSummary(false)} style="font-size:0.8rem; padding:4px 12px; background:var(--bg);">Cancel</button>
+                  </div>
+                </div>
+              ` : html`
+                <div class="detail-section-body">${displaySummary}</div>
+              `}
             </div>
           `}
 
@@ -764,6 +810,7 @@
       const [focusedIndex, setFocusedIndex] = useState(-1);
       const [helpVisible, setHelpVisible] = useState(false);
       const [refreshKey, setRefreshKey] = useState(0);
+      const [synthStatus, setSynthStatus] = useState(null);
 
       // Drill-down data
       const [sessions, setSessions] = useState([]);
@@ -813,6 +860,11 @@
           fetchJSON('/api/overview').then(setOverviewData).catch(() => {});
         }
       }, [view, refreshKey]);
+
+      // Load synthesizer status
+      useEffect(() => {
+        fetchJSON('/api/status').then(setSynthStatus).catch(() => {});
+      }, []);
 
       // Load info (updated at)
       // commit_date format: "2026-02-27 16:45:19 -0800" — needs massaging for Date()
@@ -977,6 +1029,15 @@
         `}
 
         <div class="help-footer">${helpText}</div>
+        ${synthStatus && synthStatus.last_run && html`
+          <div class="synth-footer">
+            Synthesizer: ${timeAgo(synthStatus.last_run)}
+            ${synthStatus.status === 'success'
+              ? html`<span class="synth-ok"> ✓</span>`
+              : html`<span class="synth-fail"> ⚠ (${synthStatus.status || 'failed'})</span>`
+            }
+          </div>
+        `}
         <${HelpOverlay} visible=${helpVisible} onClose=${() => setHelpVisible(false)} />
       `;
     }

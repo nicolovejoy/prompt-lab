@@ -61,6 +61,7 @@ MIGRATIONS = {
     """,
     "002_seed_from_config": _seed_from_config,
     "003_rename_muted_to_ignored": "UPDATE projects SET status = 'ignored' WHERE status = 'muted';",
+    "004_add_token_count": "ALTER TABLE sessions ADD COLUMN token_count INTEGER;",
 }
 
 
@@ -196,7 +197,7 @@ def project_detail(name):
         """, [name]).fetchone()["n"]
 
         last_session_row = conn.execute("""
-            SELECT summary, started_at FROM sessions
+            SELECT id, summary, started_at FROM sessions
             WHERE project = ? AND ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''
             ORDER BY started_at DESC LIMIT 1
         """, [name]).fetchone()
@@ -394,12 +395,14 @@ def overview():
         for row in conn.execute("SELECT name, status FROM projects").fetchall():
             project_statuses[row["name"]] = row["status"]
 
-        # Per-project: session count + last_started
+        # Per-project: session count + last_started + token stats
         session_data = {}
         for row in conn.execute("""
             SELECT project,
                    COUNT(*) as session_count,
-                   MAX(started_at) as last_started
+                   MAX(started_at) as last_started,
+                   AVG(token_count) as avg_tokens,
+                   MAX(token_count) as peak_tokens
             FROM sessions
             WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''
             GROUP BY project
@@ -407,6 +410,8 @@ def overview():
             session_data[row["project"]] = {
                 "session_count": row["session_count"],
                 "last_started": row["last_started"],
+                "avg_tokens": row["avg_tokens"],
+                "peak_tokens": row["peak_tokens"],
             }
 
         # Last session summary per project
@@ -484,6 +489,8 @@ def overview():
             "todo_count": todo_count,
             "intentions": intents[:3],
             "last_activity": last_activity,
+            "avg_tokens": sd.get("avg_tokens"),
+            "peak_tokens": sd.get("peak_tokens"),
         })
 
     # Sort by last_activity DESC (None last)
@@ -493,6 +500,24 @@ def overview():
         "week": {"sessions": week_sessions, "prompts": week_prompts, "commits": week_commits},
         "projects": projects,
     })
+
+
+@app.route("/api/status")
+def status():
+    """Return synthesizer last-run status."""
+    with get_db() as conn:
+        row = conn.execute("""
+            SELECT created_at, status, error_message
+            FROM synthesis_log
+            ORDER BY created_at DESC LIMIT 1
+        """).fetchone()
+    if row:
+        return jsonify({
+            "last_run": row["created_at"],
+            "status": row["status"],
+            "error_message": row["error_message"],
+        })
+    return jsonify({"last_run": None, "status": None, "error_message": None})
 
 
 @app.route("/api/info")
