@@ -60,4 +60,47 @@ else
     sqlite3 ~/.claude/prompt-history.db "INSERT INTO prompts (project, prompt, context) VALUES ('$PROJECT', '$PROMPT_ESCAPED', '$CONTEXT_ESCAPED');" 2>/dev/null
 fi
 
+# === Context Usage Alert ===
+CONTEXT_WINDOW=200000
+STATE_FILE="/tmp/claude-context-thresholds"
+
+if [[ -n "$TRANSCRIPT_PATH" && -f "$TRANSCRIPT_PATH" ]]; then
+    USAGE=$(python3 -c "
+import json, sys
+with open('$TRANSCRIPT_PATH') as f:
+    lines = f.readlines()
+for line in reversed(lines):
+    line = line.strip()
+    if not line: continue
+    try:
+        d = json.loads(line)
+        u = d.get('message', {}).get('usage', {})
+        if u:
+            total = u.get('input_tokens',0) + u.get('cache_creation_input_tokens',0) + u.get('cache_read_input_tokens',0)
+            sid = d.get('sessionId','')
+            print(f'{total},{sid}')
+            break
+    except: pass
+" 2>/dev/null)
+
+    if [[ -n "$USAGE" ]]; then
+        TOKENS=$(echo "$USAGE" | cut -d, -f1)
+        SID=$(echo "$USAGE" | cut -d, -f2)
+        PCT=$(( TOKENS * 100 / CONTEXT_WINDOW ))
+        DECILE=$(( PCT / 10 ))
+
+        # Load last alerted decile for this session (0 = none)
+        LAST_DECILE=$(grep "^$SID:" "$STATE_FILE" 2>/dev/null | tail -1 | cut -d: -f2)
+        LAST_DECILE=${LAST_DECILE:-0}
+
+        if (( DECILE > LAST_DECILE && DECILE > 0 )); then
+            NOTIFY="Context at ${PCT}% (${TOKENS} tokens)"
+            printf '\n⚠️  %s\n' "$NOTIFY" >&2
+            grep -v "^$SID:" "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null
+            echo "$SID:$DECILE" >> "${STATE_FILE}.tmp"
+            mv "${STATE_FILE}.tmp" "$STATE_FILE"
+        fi
+    fi
+fi
+
 exit 0
