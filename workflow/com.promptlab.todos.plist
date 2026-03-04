@@ -9,7 +9,7 @@
     <array>
         <string>/bin/bash</string>
         <string>-c</string>
-        <string>source /Users/nico/src/prompt-lab/.env && /opt/homebrew/bin/python3 /Users/nico/src/prompt-lab/send-todos.py</string>
+        <string>source __REPO_DIR__/.env &amp;&amp; __PYTHON3__ __REPO_DIR__/send-todos.py</string>
     </array>
 
     <key>StartCalendarInterval</key>
@@ -33,10 +33,10 @@
     </array>
 
     <key>StandardOutPath</key>
-    <string>/Users/nico/src/prompt-lab/send-todos.log</string>
+    <string>__REPO_DIR__/send-todos.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/nico/src/prompt-lab/send-todos.log</string>
+    <string>__REPO_DIR__/send-todos.log</string>
 
     <key>RunAtLoad</key>
     <false/>

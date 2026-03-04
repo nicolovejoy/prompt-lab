@@ -5,12 +5,13 @@
 - Ask for clarification when intentions are unclear
 - Avoid markdown tables in terminal output — use lists or plain text
 - Flag when a request seems ill-advised
+- When giving multiple shell commands to run: one per code block, blank line between each, no bullet before the block, short plain-text label above each describing what it does
 
 # Workflow
 
 - Plan before coding. Confirm approach before implementation.
 - Work iteratively: one feature at a time, test before moving on.
-- Log work to devlog.md using /handoff at session end
+- End sessions with /handoff to log summary to DB
 
 # Session Management
 

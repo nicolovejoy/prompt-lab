@@ -7,8 +7,8 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/homebrew/bin/python3</string>
-        <string>/Users/nico/src/prompt-lab/synthesizer.py</string>
+        <string>__PYTHON3__</string>
+        <string>__REPO_DIR__/synthesizer.py</string>
         <string>--all</string>
     </array>
 
@@ -21,10 +21,10 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/nico/src/prompt-lab/synthesizer.log</string>
+    <string>__REPO_DIR__/synthesizer.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/nico/src/prompt-lab/synthesizer.log</string>
+    <string>__REPO_DIR__/synthesizer.log</string>
 
     <key>RunAtLoad</key>
     <false/>
