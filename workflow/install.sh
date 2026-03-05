@@ -6,12 +6,21 @@
 set -e
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PYTHON3="$(which python3 || echo '/usr/bin/python3')"
+VENV_DIR="$REPO_DIR/.venv"
+PYTHON3="$VENV_DIR/bin/python3"
 COMMANDS_DIR="$HOME/.claude/commands"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 
 echo "Installing Ground Control from: $REPO_DIR"
-echo "Python: $PYTHON3"
+echo ""
+
+# --- Python venv ---
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Creating venv..."
+    python3 -m venv "$VENV_DIR"
+fi
+"$VENV_DIR/bin/pip" install -q anthropic python-dotenv
+echo "Venv ready: $PYTHON3"
 echo ""
 
 # --- Slash commands ---

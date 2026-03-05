@@ -15,7 +15,7 @@ Arguments (all optional):
 Examples:
 - `/review` - last 7 days, all projects
 - `/review 14` - last 14 days, all projects
-- `/review 7 musicforge` - last 7 days, musicforge only
+- `/review 7 my-project` - last 7 days, my-project only
 
 ## Query Sessions
 

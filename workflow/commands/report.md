@@ -38,7 +38,7 @@ Output a markdown report:
 
 **Header:** `## Work Report — Last <N> day(s)` with today's date
 
-Skip projects with no meaningful activity. Group related sessions under the same project name even if the path differs.
+Skip projects with no meaningful activity. Group related sessions under the same project name even if the path differs (e.g. `/home/user/src/myproject` and `myproject` are the same project).
 
 ### Default (concise)
 
