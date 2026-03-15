@@ -2,14 +2,14 @@
 
 Workflow tools and dashboard for tracking Claude Code sessions across projects.
 
-Every session is logged, summarized, and surfaced in a local web dashboard. Slash commands handle session start/end, reporting, and review.
+Every session is logged, summarized, and surfaced in a local web dashboard. Slash commands handle session start/end and review.
 
 ## What it does
 
 - **Auto-logs prompts** via a Claude Code hook on every submission
 - **Tracks sessions** with summaries, commit links, and token usage
 - **Synthesizes patterns** nightly — daily summaries and active intentions per project
-- **Emails todo digests** Mon/Thu from your CLAUDE.md and MEMORY.md files
+- **Emails session reviews** daily at 2:30am (weekly digest on Saturdays)
 - **Dashboard** at localhost:5111 — project cards, session history, todos, intentions
 
 ## Setup (new machine)
@@ -24,19 +24,20 @@ cd ~/src/prompt-lab
 
 This will:
 - Copy slash commands to `~/.claude/commands/`
-- Generate and load launchd plists (nightly synthesizer, Mon/Thu todo emails)
+- Generate and load launchd plists (nightly synthesizer, daily review email)
 - Print the `~/.claude/settings.json` snippet to add manually
 
 Then add the printed snippet to `~/.claude/settings.json` and restart Claude Code.
 
-### .env (required for todo emails)
+### .env (required for review emails)
 
 Create `~/src/prompt-lab/.env`:
 
 ```
-RESEND_API_KEY=your_key_here
-TODO_EMAIL_TO=you@example.com
+export RESEND_API_KEY=your_key_here
 ```
+
+Also needs `ANTHROPIC_API_KEY` — either in `.env` or `~/.claude/synthesizer.env`.
 
 ### CLAUDE.md template
 
@@ -66,9 +67,7 @@ All commands live in `~/.claude/commands/` and work across every repo. Source of
 
 `/handoff` — end a session: logs commits, writes summary, updates CLAUDE.md Next Steps
 
-`/report [N] [-v]` — work summary for last N days (default: 1), optional verbose mode
-
-`/review [N] [project]` — session review across projects for last N days (default: 7)
+`/review [N] [project] [-v]` — session review across projects for last N days (default: 7), optional verbose mode for non-technical audience
 
 ## Scheduled jobs
 
@@ -76,13 +75,13 @@ Two launchd jobs installed by `install.sh` (macOS only):
 
 `com.promptlab.synthesizer` — runs `synthesizer.py --all` nightly at 2am, logs to `synthesizer.log`
 
-`com.promptlab.todos` — runs `send-todos.py` Monday and Thursday at 9am, logs to `send-todos.log`
+`com.promptlab.review` — runs `send-review.py` daily at 2:30am (after synthesizer), logs to `send-review.log`. Weekly digest on Saturdays.
 
 Manage them:
 
 ```bash
 launchctl list | grep promptlab       # verify both registered
-launchctl start com.promptlab.todos   # trigger manually
+launchctl start com.promptlab.review  # trigger manually
 ```
 
 ## Repository structure
@@ -97,17 +96,16 @@ prompt-lab/
 │   ├── commands/          # Slash command source of truth
 │   │   ├── readup.md
 │   │   ├── handoff.md
-│   │   ├── report.md
 │   │   └── review.md
 │   ├── hooks/
 │   │   ├── log-prompt.sh      # UserPromptSubmit hook
 │   │   └── session-stop.sh    # Stop hook (final token count)
 │   ├── com.promptlab.synthesizer.plist
-│   ├── com.promptlab.todos.plist
+│   ├── com.promptlab.review.plist
 │   ├── CLAUDE.md.template
 │   └── install.sh
 ├── synthesizer.py         # Nightly synthesis (summaries, intentions)
-├── send-todos.py          # Todo email digest
+├── send-review.py         # Daily review email
 ├── todos.py               # Shared todo scanner
 ├── dashboard.sh           # Start dashboard
 └── README.md
