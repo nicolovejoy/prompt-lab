@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 DB_PATH = Path.home() / ".claude" / "prompt-history.db"
 REPO_DIR = Path(__file__).resolve().parent
-SONNET = "claude-sonnet-4-6"
+OPUS = "claude-opus-4-6"
 
 
 def get_db():
@@ -115,7 +115,7 @@ def call_claude(client, system, user_msg, max_retries=3):
     for attempt in range(max_retries):
         try:
             resp = client.messages.create(
-                model=SONNET,
+                model=OPUS,
                 max_tokens=16384,
                 system=system,
                 messages=[{"role": "user", "content": user_msg}],
@@ -216,7 +216,7 @@ def main():
 
     print(f"Generated review in {elapsed:.1f}s ({usage.input_tokens}+{usage.output_tokens} tokens)")
     print(f"Subject: {subject}")
-    print(f"Model: {SONNET}")
+    print(f"Model: {OPUS}")
     print(f"Mode: {'weekly (Saturday)' if is_weekly else 'daily'} — both 1d + 7d windows")
 
     if dry_run:

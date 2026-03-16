@@ -67,4 +67,6 @@ This is a narrative summary for a smart non-technical audience.
 - Mention blockers hit and how they were resolved
 - If multiple sessions exist for a project, walk through them chronologically
 
-End with a **Summary** section: 2-3 sentences on overall themes and momentum across all projects.
+Tone: matter-of-fact. This is a factual record, not a performance review. Do not praise or editorialize about productivity. Do not declare anything "complete" or "done" — work is always ongoing, just at different stages. Describe where things stand, not that they're finished.
+
+End with a **Summary** section: 2-3 sentences on overall themes and patterns across all projects.

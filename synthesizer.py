@@ -18,6 +18,7 @@ ENV_PATH = Path.home() / ".claude" / "synthesizer.env"
 
 HAIKU = "claude-haiku-4-5-20251001"
 SONNET = "claude-sonnet-4-6"
+OPUS = "claude-opus-4-6"
 
 
 def get_db():
@@ -272,8 +273,9 @@ def estimate_cost_cents(model: str, input_tokens: int, output_tokens: int) -> fl
     prices = {
         HAIKU: {"input": 100, "output": 500},       # $1/$5 per MTok
         SONNET: {"input": 300, "output": 1500},      # $3/$15 per MTok
+        OPUS: {"input": 1500, "output": 7500},       # $15/$75 per MTok
     }
-    p = prices.get(model, prices[HAIKU])
+    p = prices.get(model, prices[OPUS])
     return (input_tokens * p["input"] + output_tokens * p["output"]) / 1_000_000
 
 
@@ -327,7 +329,7 @@ Sessions ({len(data['sessions'])}):
 Focus on WHAT was done and WHY, not low-level details. Be concise."""
 
         try:
-            result = call_claude(client, HAIKU, system, user_msg, tool=SUMMARY_TOOL)
+            result = call_claude(client, OPUS, system, user_msg, tool=SUMMARY_TOOL)
             parsed = result["parsed"]
             cost = estimate_cost_cents(result["model"], result["input_tokens"], result["output_tokens"])
 
@@ -353,7 +355,7 @@ Focus on WHAT was done and WHY, not low-level details. Be concise."""
             print(f"OK ({result['input_tokens']}+{result['output_tokens']} tokens, ${cost/100:.4f})")
 
         except Exception as e:
-            log_synthesis(db, "daily", date, project, HAIKU, 0, 0, 0, 0, "error", str(e))
+            log_synthesis(db, "daily", date, project, OPUS, 0, 0, 0, 0, "error", str(e))
             print(f"ERROR: {e}")
 
 
@@ -403,7 +405,7 @@ Recent daily summaries (last 14 days):
 - Keep the list focused: 3-8 intentions per project max"""
 
         try:
-            result = call_claude(client, SONNET, system, user_msg, tool=INTENTIONS_TOOL)
+            result = call_claude(client, OPUS, system, user_msg, tool=INTENTIONS_TOOL)
             parsed = result["parsed"]
             cost = estimate_cost_cents(result["model"], result["input_tokens"], result["output_tokens"])
             today = datetime.now().strftime("%Y-%m-%d")
@@ -440,7 +442,7 @@ Recent daily summaries (last 14 days):
             print(f"OK ({n_intentions} intentions, ${cost/100:.4f})")
 
         except Exception as e:
-            log_synthesis(db, "intentions", None, project, SONNET, 0, 0, 0, 0, "error", str(e))
+            log_synthesis(db, "intentions", None, project, OPUS, 0, 0, 0, 0, "error", str(e))
             print(f"ERROR: {e}")
 
 
