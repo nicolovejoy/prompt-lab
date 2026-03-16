@@ -193,8 +193,51 @@ def get_projects_with_recent_summaries(db: sqlite3.Connection, n_days: int = 14)
 # Claude API calls with retry
 # ---------------------------------------------------------------------------
 
-def call_claude(client: Anthropic, model: str, system: str, user_msg: str, max_retries: int = 3) -> dict:
-    """Call Claude API with exponential backoff. Returns parsed JSON response + usage."""
+SUMMARY_TOOL = {
+    "name": "generate_summary",
+    "description": "Generate a daily summary of the developer's work.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string", "description": "2-4 sentence summary of what was accomplished"},
+            "key_decisions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Key decisions made during the day",
+            },
+        },
+        "required": ["summary", "key_decisions"],
+    },
+}
+
+INTENTIONS_TOOL = {
+    "name": "generate_intentions",
+    "description": "Analyze recent work and return project intentions.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "intentions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "intention": {"type": "string"},
+                        "status": {"type": "string", "enum": ["active", "completed", "stalled", "abandoned"]},
+                        "id": {"type": ["integer", "null"]},
+                    },
+                    "required": ["intention", "status", "id"],
+                },
+                "description": "List of project intentions",
+            },
+        },
+        "required": ["intentions"],
+    },
+}
+
+
+def call_claude(client: Anthropic, model: str, system: str, user_msg: str,
+                tool: dict, max_retries: int = 3) -> dict:
+    """Call Claude API with tool use for structured output. Returns parsed response + usage."""
     for attempt in range(max_retries):
         try:
             t0 = time.time()
@@ -203,21 +246,13 @@ def call_claude(client: Anthropic, model: str, system: str, user_msg: str, max_r
                 max_tokens=1024,
                 system=system,
                 messages=[{"role": "user", "content": user_msg}],
+                tools=[tool],
+                tool_choice={"type": "tool", "name": tool["name"]},
             )
             duration_ms = int((time.time() - t0) * 1000)
-            text = resp.content[0].text
 
-            # Try to parse as JSON (strip markdown fences if present)
-            text = text.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-                text = text.strip()
-
-            parsed = json.loads(text)
             return {
-                "parsed": parsed,
+                "parsed": resp.content[0].input,
                 "input_tokens": resp.usage.input_tokens,
                 "output_tokens": resp.usage.output_tokens,
                 "duration_ms": duration_ms,
@@ -230,16 +265,6 @@ def call_claude(client: Anthropic, model: str, system: str, user_msg: str, max_r
                 time.sleep(wait)
             else:
                 raise
-        except json.JSONDecodeError as e:
-            # Return raw text if JSON parsing fails
-            return {
-                "parsed": {"summary": text, "key_decisions": []},
-                "input_tokens": resp.usage.input_tokens,
-                "output_tokens": resp.usage.output_tokens,
-                "duration_ms": duration_ms,
-                "model": model,
-                "json_error": str(e),
-            }
 
 
 def estimate_cost_cents(model: str, input_tokens: int, output_tokens: int) -> float:
@@ -299,11 +324,10 @@ Sessions ({len(data['sessions'])}):
 {chr(10).join(session_texts) or '(none)'}"""
 
         system = """You summarize a developer's daily work on a project.
-Return JSON: {"summary": "2-4 sentence summary of what was accomplished", "key_decisions": ["decision 1", "decision 2"]}
 Focus on WHAT was done and WHY, not low-level details. Be concise."""
 
         try:
-            result = call_claude(client, HAIKU, system, user_msg)
+            result = call_claude(client, HAIKU, system, user_msg, tool=SUMMARY_TOOL)
             parsed = result["parsed"]
             cost = estimate_cost_cents(result["model"], result["input_tokens"], result["output_tokens"])
 
@@ -371,7 +395,6 @@ Recent daily summaries (last 14 days):
 {current_text}"""
 
         system = """You analyze a developer's recent work to identify project intentions (goals/directions).
-Return JSON: {"intentions": [{"intention": "...", "status": "active|completed|stalled|abandoned", "id": null_or_existing_id}]}
 - For existing intentions: include their ID and update status if needed
 - For new intentions: set id to null
 - An intention is a high-level goal like "Add user authentication" or "Migrate to new DB schema"
@@ -380,7 +403,7 @@ Return JSON: {"intentions": [{"intention": "...", "status": "active|completed|st
 - Keep the list focused: 3-8 intentions per project max"""
 
         try:
-            result = call_claude(client, SONNET, system, user_msg)
+            result = call_claude(client, SONNET, system, user_msg, tool=INTENTIONS_TOOL)
             parsed = result["parsed"]
             cost = estimate_cost_cents(result["model"], result["input_tokens"], result["output_tokens"])
             today = datetime.now().strftime("%Y-%m-%d")

@@ -2,19 +2,19 @@
 
 Workflow tools and dashboard for tracking Claude Code sessions across projects.
 
-Every session is logged, summarized, and surfaced in a local web dashboard. Slash commands handle session start/end and review.
+Every session is logged, summarized, and surfaced in a local web dashboard. Slash commands handle session start/end and review. Optional nightly email reviews via the Anthropic API and Resend.
 
 ## What it does
 
 - **Auto-logs prompts** via a Claude Code hook on every submission
 - **Tracks sessions** with summaries, commit links, and token usage
 - **Synthesizes patterns** nightly — daily summaries and active intentions per project
-- **Emails session reviews** daily at 2:30am (weekly digest on Saturdays)
 - **Dashboard** at localhost:5111 — project cards, session history, todos, intentions
+- **Email reviews** (optional) — daily + weekly session digests via Resend
 
-## Setup (new machine)
+## Setup
 
-Install script handles everything:
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/nicolovejoy/prompt-lab.git ~/src/prompt-lab
@@ -23,33 +23,69 @@ cd ~/src/prompt-lab
 ```
 
 This will:
+- Create a Python virtualenv and install dependencies
 - Copy slash commands to `~/.claude/commands/`
-- Generate and load launchd plists (nightly synthesizer, daily review email)
+- Generate and load launchd plists (macOS scheduled jobs)
 - Print the `~/.claude/settings.json` snippet to add manually
 
 Then add the printed snippet to `~/.claude/settings.json` and restart Claude Code.
 
-### .env (required for review emails)
+### 2. Configure environment
 
-Create `~/src/prompt-lab/.env`:
+Copy the example and fill in your values:
 
+```bash
+cp .env.example .env
 ```
-export RESEND_API_KEY=your_key_here
-```
 
-Also needs `ANTHROPIC_API_KEY` — either in `.env` or `~/.claude/synthesizer.env`.
+Edit `.env` with your keys and email addresses. See [Configuration](#configuration) below for details on each variable.
 
-### CLAUDE.md template
+### 3. Set up CLAUDE.md (optional)
 
-`workflow/CLAUDE.md.template` is a starting point for `~/.claude/CLAUDE.md`. Copy and customize:
+`workflow/CLAUDE.md.template` is a starting point for `~/.claude/CLAUDE.md`:
 
 ```bash
 cp workflow/CLAUDE.md.template ~/.claude/CLAUDE.md
 ```
 
-## Dashboard
+## Configuration
 
-Start it:
+All configuration lives in `.env` (gitignored — never committed). See `.env.example` for the template.
+
+### Required
+
+- `ANTHROPIC_API_KEY` — needed for the synthesizer (nightly summaries) and review emails. Get one at [console.anthropic.com](https://console.anthropic.com). Can also be placed in `~/.claude/synthesizer.env`.
+
+### Optional (email reviews)
+
+Review emails are entirely optional. Without these, everything else works — dashboard, slash commands, synthesizer, prompt logging.
+
+- `RESEND_API_KEY` — API key from [Resend](https://resend.com). Free tier allows 100 emails/day.
+- `REVIEW_FROM_EMAIL` — sender address (e.g. `reviews@yourdomain.com`). Must be from a domain you've verified in Resend.
+- `REVIEW_TO_EMAIL` — recipient address (e.g. `you@example.com`).
+
+#### Setting up Resend
+
+To send review emails, each user needs their own [Resend](https://resend.com) account:
+
+1. Sign up at resend.com (free tier is fine)
+2. Add and verify a sending domain (Resend walks you through adding DNS records)
+3. Create an API key
+4. Set all four email-related variables in your `.env`
+
+If you don't want email reviews, simply omit the Resend variables. The synthesizer and dashboard work independently.
+
+### What's private
+
+These files contain your personal configuration and are **never committed** (gitignored):
+
+- `.env` — API keys and email addresses
+- `~/.claude/synthesizer.env` — alternative location for `ANTHROPIC_API_KEY`
+- `~/.claude/prompt-history.db` — your session data
+
+Everything else in the repo is shared infrastructure with no personal details.
+
+## Dashboard
 
 ```bash
 ./dashboard.sh
@@ -75,7 +111,7 @@ Two launchd jobs installed by `install.sh` (macOS only):
 
 `com.promptlab.synthesizer` — runs `synthesizer.py --all` nightly at 2am, logs to `synthesizer.log`
 
-`com.promptlab.review` — runs `send-review.py` daily at 2:30am (after synthesizer), logs to `send-review.log`. Weekly digest on Saturdays.
+`com.promptlab.review` — runs `send-review.py` daily at 2:30am (after synthesizer), logs to `send-review.log`. Includes both daily and weekly recaps; Saturday emails get deeper weekly analysis. Only runs if Resend is configured.
 
 Manage them:
 
@@ -105,9 +141,10 @@ prompt-lab/
 │   ├── CLAUDE.md.template
 │   └── install.sh
 ├── synthesizer.py         # Nightly synthesis (summaries, intentions)
-├── send-review.py         # Daily review email
+├── send-review.py         # Daily review email (optional)
 ├── todos.py               # Shared todo scanner
 ├── dashboard.sh           # Start dashboard
+├── .env.example           # Configuration template
 └── README.md
 ```
 
@@ -121,4 +158,4 @@ Not included in this repo (`.gitignore`). Back up or sync separately.
 
 ## License
 
-MIT
+[MIT](LICENSE)

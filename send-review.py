@@ -84,9 +84,6 @@ Format rules:
 - Keep a warm, informative tone — this is for someone who wants to understand and appreciate the work
 - If there's no data for the daily section, say so briefly and focus on the weekly recap{weekly_emphasis}
 
-Return JSON:
-{{"subject": "one-line email subject", "html": "full HTML email body", "text": "plain text version"}}
-
 HTML style guidelines:
 - Use inline CSS only
 - Font: -apple-system, system-ui, sans-serif
@@ -99,6 +96,21 @@ HTML style guidelines:
     return system, user_msg
 
 
+REVIEW_TOOL = {
+    "name": "generate_review",
+    "description": "Generate the email review with subject, HTML body, and plain text body.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "subject": {"type": "string", "description": "One-line email subject"},
+            "html": {"type": "string", "description": "Full HTML email body"},
+            "text": {"type": "string", "description": "Plain text version of the email"},
+        },
+        "required": ["subject", "html", "text"],
+    },
+}
+
+
 def call_claude(client, system, user_msg, max_retries=3):
     for attempt in range(max_retries):
         try:
@@ -107,15 +119,10 @@ def call_claude(client, system, user_msg, max_retries=3):
                 max_tokens=16384,
                 system=system,
                 messages=[{"role": "user", "content": user_msg}],
+                tools=[REVIEW_TOOL],
+                tool_choice={"type": "tool", "name": "generate_review"},
             )
-            text = resp.content[0].text.strip()
-            # Strip markdown fences if present
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-                text = text.strip()
-            return json.loads(text), resp.usage
+            return resp.content[0].input, resp.usage
         except RateLimitError:
             if attempt < max_retries - 1:
                 wait = 2 ** (attempt + 1)
@@ -123,13 +130,6 @@ def call_claude(client, system, user_msg, max_retries=3):
                 time.sleep(wait)
             else:
                 raise
-        except json.JSONDecodeError as e:
-            print(f"Warning: JSON parse failed ({e}), using raw text")
-            return {
-                "subject": "Session Review",
-                "html": f"<pre>{text}</pre>",
-                "text": text,
-            }, resp.usage
 
 
 def send_email(subject, html, text):
@@ -140,9 +140,15 @@ def send_email(subject, html, text):
         print("Error: RESEND_API_KEY not set", file=sys.stderr)
         sys.exit(1)
 
+    from_email = os.environ.get("REVIEW_FROM_EMAIL")
+    to_email = os.environ.get("REVIEW_TO_EMAIL")
+    if not from_email or not to_email:
+        print("Error: REVIEW_FROM_EMAIL and REVIEW_TO_EMAIL must be set in .env", file=sys.stderr)
+        sys.exit(1)
+
     payload = json.dumps({
-        "from": "review@soiree.pianohouseproject.org",
-        "to": ["nlovejoy@me.com"],
+        "from": from_email,
+        "to": [to_email],
         "subject": subject,
         "html": html,
         "text": text,
