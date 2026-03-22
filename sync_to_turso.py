@@ -18,8 +18,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from dotenv import load_dotenv
-
+from claude_api import load_env
 from store.sqlite_store import SqliteKnowledgeStore
 from store.turso_store import TursoKnowledgeStore
 
@@ -52,10 +51,7 @@ def main():
             days = int(sys.argv[i + 1])
 
     # Load environment
-    repo_dir = Path(__file__).resolve().parent
-    for env_file in [repo_dir / ".env", Path.home() / ".claude" / "synthesizer.env"]:
-        if env_file.exists():
-            load_dotenv(env_file)
+    load_env()
 
     url = os.environ.get("TURSO_DATABASE_URL")
     token = os.environ.get("TURSO_AUTH_TOKEN")

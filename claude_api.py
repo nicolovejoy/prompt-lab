@@ -1,8 +1,24 @@
-"""Shared Claude API utilities for Ground Control pipeline scripts."""
+"""Shared utilities for Ground Control pipeline scripts."""
 
 import time
+from pathlib import Path
 
 from anthropic import Anthropic, RateLimitError
+from dotenv import load_dotenv
+
+REPO_DIR = Path(__file__).resolve().parent
+
+
+def load_env():
+    """Load environment variables: .env, .env.local, ~/.claude/synthesizer.env.
+
+    .env has defaults, .env.local has secrets (gitignored), synthesizer.env
+    is the legacy location. Later files don't override earlier ones.
+    """
+    for env_file in [REPO_DIR / ".env", REPO_DIR / ".env.local",
+                     Path.home() / ".claude" / "synthesizer.env"]:
+        if env_file.exists():
+            load_dotenv(env_file, override=False)
 
 HAIKU = "claude-haiku-4-5-20251001"
 SONNET = "claude-sonnet-4-6"

@@ -26,7 +26,9 @@ class TursoKnowledgeStore(KnowledgeStore):
     def __init__(self, url: str | None = None, token: str | None = None):
         self._url = url or os.environ["TURSO_DATABASE_URL"]
         self._token = token or os.environ["TURSO_AUTH_TOKEN"]
-        # Normalize URL: ensure it ends with the pipeline path
+        # Convert libsql:// to https:// for HTTP API
+        if self._url.startswith("libsql://"):
+            self._url = "https://" + self._url[len("libsql://"):]
         if not self._url.endswith("/"):
             self._url += "/"
 

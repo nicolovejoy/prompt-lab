@@ -199,7 +199,11 @@
       const handleSave = async () => {
         setTesting(true);
         setError(null);
-        localStorage.setItem('gc_turso_url', url.trim());
+        let normalizedUrl = url.trim();
+        if (normalizedUrl.startsWith('libsql://')) {
+          normalizedUrl = 'https://' + normalizedUrl.slice('libsql://'.length);
+        }
+        localStorage.setItem('gc_turso_url', normalizedUrl);
         localStorage.setItem('gc_turso_token', token.trim());
         try {
           await tursoQuery('SELECT COUNT(*) as n FROM daily_summaries');
@@ -230,11 +234,25 @@
 
     // ---- Main App ----
     function App() {
-      const [configured, setConfigured] = useState(!!getConfig());
+      const [configured, setConfigured] = useState(null); // null = checking
       const [tab, setTab] = useState('overview');
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [error, setError] = useState(null);
+
+      // On mount: try /config endpoint, then check localStorage
+      useEffect(() => {
+        if (getConfig()) { setConfigured(true); return; }
+        fetch('/config').then(r => r.json()).then(cfg => {
+          if (cfg.url && cfg.token) {
+            localStorage.setItem('gc_turso_url', cfg.url);
+            localStorage.setItem('gc_turso_token', cfg.token);
+            setConfigured(true);
+          } else {
+            setConfigured(false);
+          }
+        }).catch(() => setConfigured(false));
+      }, []);
 
       const loadData = useCallback(async () => {
         setLoading(true);
@@ -293,6 +311,7 @@
 
       useEffect(() => { if (configured) loadData(); }, [configured]);
 
+      if (configured === null) return html`<div class="loading">Connecting...</div>`;
       if (!configured) return html`<${Setup} onSave=${() => { setConfigured(true); }} />`;
 
       const disconnect = () => {

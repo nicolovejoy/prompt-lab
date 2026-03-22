@@ -9,12 +9,9 @@ from datetime import datetime
 from pathlib import Path
 
 from anthropic import Anthropic
-from dotenv import load_dotenv
 
-from claude_api import OPUS, call_claude, estimate_cost_cents
+from claude_api import OPUS, call_claude, estimate_cost_cents, load_env
 from store import get_store
-
-ENV_PATH = Path.home() / ".claude" / "synthesizer.env"
 
 
 # ---------------------------------------------------------------------------
@@ -352,13 +349,11 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    # Load API key (not needed for --snapshots alone)
+    # Load environment
     needs_api = args.all or args.daily or args.weekly or args.intentions
-    if ENV_PATH.exists():
-        load_dotenv(ENV_PATH)
+    load_env()
     if needs_api and not os.environ.get("ANTHROPIC_API_KEY"):
-        print(f"Error: ANTHROPIC_API_KEY not found. Create {ENV_PATH} with:")
-        print(f"  ANTHROPIC_API_KEY=sk-ant-...")
+        print("Error: ANTHROPIC_API_KEY not found. Set in .env.local or ~/.claude/synthesizer.env")
         sys.exit(1)
 
     client = Anthropic() if needs_api else None

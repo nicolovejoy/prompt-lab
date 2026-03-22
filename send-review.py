@@ -9,12 +9,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from anthropic import Anthropic
-from dotenv import load_dotenv
 
-from claude_api import OPUS, call_claude
+from claude_api import OPUS, call_claude, load_env
 from store import get_store
-
-REPO_DIR = Path(__file__).resolve().parent
 
 
 REVIEW_TOOL = {
@@ -148,15 +145,9 @@ def main():
     dry_run = "--dry-run" in sys.argv
 
     # Load environment
-    env_path = REPO_DIR / ".env"
-    synth_env = Path.home() / ".claude" / "synthesizer.env"
-    if env_path.exists():
-        load_dotenv(env_path)
-    if synth_env.exists():
-        load_dotenv(synth_env, override=False)
-
+    load_env()
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("Error: ANTHROPIC_API_KEY not found in .env or ~/.claude/synthesizer.env", file=sys.stderr)
+        print("Error: ANTHROPIC_API_KEY not found. Set in .env.local or ~/.claude/synthesizer.env", file=sys.stderr)
         sys.exit(1)
 
     # Saturday = more reflective weekly tone; always fetch both windows
