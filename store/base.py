@@ -73,6 +73,11 @@ class KnowledgeStore(ABC):
     @abstractmethod
     def get_projects_with_recent_summaries(self, n_days: int = 14) -> list[str]: ...
 
+    @abstractmethod
+    def get_weeks_without_rollups(self) -> list[tuple[str, str]]:
+        """Return (project, week_start_monday) pairs that have daily summaries
+        for a completed week but no weekly rollup yet."""
+
     # ---- Review snapshots ----
 
     @abstractmethod

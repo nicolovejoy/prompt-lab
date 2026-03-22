@@ -32,12 +32,29 @@ REVIEW_TOOL = {
 }
 
 
-def build_prompt(daily_sessions, daily_summaries_1d, weekly_sessions, weekly_summaries, is_weekly):
+def build_prompt(daily_sessions, daily_summaries_1d, weekly_sessions, weekly_summaries, weekly_rollups, is_weekly):
     def format_sessions(sessions):
         return chr(10).join(f"[{s['date']}] {s['project']}: {s['summary']}" for s in sessions) or "(none)"
 
     def format_summaries(summaries):
         return chr(10).join(f"[{ds['date']}] {ds['project']}: {ds['summary']}" for ds in summaries) or "(none)"
+
+    def format_rollups(rollups):
+        if not rollups:
+            return "(none)"
+        lines = []
+        for r in rollups:
+            lines.append(f"[{r['project']} / week of {r['week_start']}] {r['narrative']}")
+        return chr(10).join(lines)
+
+    rollup_section = ""
+    if weekly_rollups:
+        rollup_section = f"""
+
+== Weekly rollups (pre-synthesized) ==
+
+{format_rollups(weekly_rollups)}
+"""
 
     user_msg = f"""Date: {datetime.now().strftime('%Y-%m-%d')}
 
@@ -55,7 +72,7 @@ Session summaries ({len(weekly_sessions)}):
 {format_sessions(weekly_sessions)}
 
 Daily summaries ({len(weekly_summaries)}):
-{format_summaries(weekly_summaries)}"""
+{format_summaries(weekly_summaries)}{rollup_section}"""
 
     weekly_emphasis = """
 - The weekly recap section should be the main focus — identify themes, trajectory, and what's coming next
@@ -153,6 +170,7 @@ def main():
     daily_summaries_1d = store.get_daily_summaries(since=today_str)
     weekly_sessions = store.get_raw_sessions(since_days=7)
     weekly_summaries = store.get_daily_summaries(since=week_ago_str)
+    weekly_rollups = store.get_weekly_rollups(since=week_ago_str)
     store.close()
 
     if not weekly_sessions and not weekly_summaries:
@@ -160,7 +178,8 @@ def main():
         return
 
     system, user_msg = build_prompt(daily_sessions, daily_summaries_1d,
-                                     weekly_sessions, weekly_summaries, is_weekly)
+                                     weekly_sessions, weekly_summaries,
+                                     weekly_rollups, is_weekly)
 
     client = Anthropic()
     result = call_claude(client, model=OPUS, system=system, user_msg=user_msg,

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate a verbose narrative work review and save it to reports/."""
 
+import json
 import os
 import sys
 from datetime import datetime, timedelta
@@ -29,12 +30,23 @@ REPORT_TOOL = {
 }
 
 
-def build_prompt(sessions, daily_summaries, stats, days):
+def build_prompt(sessions, daily_summaries, weekly_rollups, stats, days):
     def format_sessions(rows):
         return chr(10).join(f"[{s['date']}] {s['project']}: {s['summary']}" for s in rows) or "(none)"
 
     def format_summaries(rows):
         return chr(10).join(f"[{ds['date']}] {ds['project']}: {ds['summary']}" for ds in rows) or "(none)"
+
+    def format_rollups(rollups):
+        if not rollups:
+            return "(none)"
+        lines = []
+        for r in rollups:
+            highlights = json.loads(r["highlights"]) if isinstance(r["highlights"], str) else (r.get("highlights") or [])
+            hl_text = "; ".join(highlights) if highlights else ""
+            lines.append(f"[{r['project']} / week of {r['week_start']}] {r['narrative']}"
+                        + (f" Highlights: {hl_text}" if hl_text else ""))
+        return chr(10).join(lines)
 
     def format_stats(st):
         lines = [f"Total: {st['total_prompts']} prompts, {st['total_sessions']} sessions, {st['total_projects']} projects"]
@@ -45,6 +57,15 @@ def build_prompt(sessions, daily_summaries, stats, days):
         return chr(10).join(lines)
 
     today = datetime.now().strftime("%A, %B %-d, %Y")
+
+    rollup_section = ""
+    if weekly_rollups:
+        rollup_section = f"""
+
+== Weekly rollups ({len(weekly_rollups)}) ==
+
+{format_rollups(weekly_rollups)}
+"""
 
     user_msg = f"""Date: {today}
 Review period: last {days} days
@@ -59,7 +80,7 @@ Review period: last {days} days
 
 == Daily summaries ({len(daily_summaries)}) ==
 
-{format_summaries(daily_summaries)}"""
+{format_summaries(daily_summaries)}{rollup_section}"""
 
     system = f"""You write narrative work reviews summarizing a developer's recent sessions across all projects.
 
@@ -112,6 +133,7 @@ def main():
     since_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     sessions = store.get_raw_sessions(since_days=days)
     daily_summaries = store.get_daily_summaries(since=since_date)
+    weekly_rollups = store.get_weekly_rollups(since=since_date)
     stats = store.get_period_stats(days)
     store.close()
 
@@ -119,7 +141,7 @@ def main():
         print("No sessions or summaries found for the period.")
         return
 
-    system, user_msg = build_prompt(sessions, daily_summaries, stats, days)
+    system, user_msg = build_prompt(sessions, daily_summaries, weekly_rollups, stats, days)
 
     if dry_run:
         print(f"Would generate {days}-day report")

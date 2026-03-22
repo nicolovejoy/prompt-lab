@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Synthesizer — generates daily summaries and intentions from prompt-history.db."""
+"""Synthesizer — generates daily summaries, weekly rollups, intentions, and project snapshots."""
 
 import argparse
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from anthropic import Anthropic
@@ -214,31 +215,153 @@ Recent daily summaries (last 14 days):
             print(f"ERROR: {e}")
 
 
+WEEKLY_ROLLUP_TOOL = {
+    "name": "generate_weekly_rollup",
+    "description": "Generate a weekly rollup from daily summaries.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "narrative": {"type": "string", "description": "3-5 sentence narrative of the week's work"},
+            "highlights": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Key accomplishments or milestones from the week",
+            },
+        },
+        "required": ["narrative", "highlights"],
+    },
+}
+
+
+def synthesize_weekly_rollups(store, client):
+    """Generate weekly rollups for completed weeks missing them."""
+    pairs = store.get_weeks_without_rollups()
+    if not pairs:
+        print("No weeks need rollups.")
+        return
+
+    print(f"Found {len(pairs)} week(s) to roll up.")
+
+    for project, week_start in pairs:
+        print(f"  Rollup {project} / week of {week_start}...", end=" ", flush=True)
+
+        summaries = store.get_daily_summaries_for_week(project, week_start)
+        if not summaries:
+            print("SKIP (no summaries)")
+            continue
+
+        summary_texts = [f"[{s['date']}] {s['summary']}" for s in summaries]
+        summary_ids = [s["id"] for s in summaries]
+        total_prompts = sum(s.get("prompt_count", 0) for s in summaries)
+        total_sessions = sum(s.get("session_count", 0) for s in summaries)
+        total_commits = sum(s.get("commit_count", 0) for s in summaries)
+
+        user_msg = f"""Project: {project}
+Week of: {week_start}
+Active days: {len(summaries)}
+
+Daily summaries:
+{chr(10).join(summary_texts)}"""
+
+        system = """You write concise weekly rollups of a developer's work on a project.
+Synthesize the daily summaries into a cohesive narrative of what happened that week.
+Focus on progress, decisions, and direction — not individual tasks."""
+
+        try:
+            result = call_claude(client, model=OPUS, system=system,
+                                 user_msg=user_msg, tool=WEEKLY_ROLLUP_TOOL)
+            parsed = result["parsed"]
+            cost = estimate_cost_cents(result["model"], result["input_tokens"],
+                                       result["output_tokens"])
+
+            store.upsert_weekly_rollup(
+                project=project, week_start=week_start,
+                narrative=parsed.get("narrative", ""),
+                highlights=parsed.get("highlights", []),
+                daily_summary_ids=summary_ids,
+                prompt_count=total_prompts,
+                session_count=total_sessions,
+                commit_count=total_commits,
+                model=result["model"],
+            )
+
+            store.log_synthesis(
+                run_type="weekly_rollup", target_date=week_start, project=project,
+                model=result["model"], input_tokens=result["input_tokens"],
+                output_tokens=result["output_tokens"], cost_cents=cost,
+                duration_ms=result["duration_ms"], status="success",
+            )
+
+            print(f"OK ({len(summaries)} days, ${cost/100:.4f})")
+
+        except Exception as e:
+            store.log_synthesis(
+                run_type="weekly_rollup", target_date=week_start, project=project,
+                model=OPUS, input_tokens=0, output_tokens=0,
+                cost_cents=0, duration_ms=0, status="error",
+                error_message=str(e),
+            )
+            print(f"ERROR: {e}")
+
+
+def generate_project_snapshots(store):
+    """Generate project snapshots from current data. Pure SQL, no Claude call."""
+    projects = store.get_projects_with_recent_summaries(n_days=7)
+    if not projects:
+        print("No projects with recent activity.")
+        return
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    print(f"Generating snapshots for {len(projects)} project(s).")
+
+    for project in projects:
+        intentions = store.get_intentions(project=project, status="active")
+        summaries_7d = store.get_daily_summaries(project=project, limit=7)
+
+        total_prompts = sum(s.get("prompt_count", 0) for s in summaries_7d)
+        total_sessions = sum(s.get("session_count", 0) for s in summaries_7d)
+        total_commits = sum(s.get("commit_count", 0) for s in summaries_7d)
+
+        data = {
+            "active_intentions": [i["intention"] for i in intentions],
+            "session_count_7d": total_sessions,
+            "prompt_count_7d": total_prompts,
+            "commit_count_7d": total_commits,
+            "active_days_7d": len(summaries_7d),
+        }
+
+        store.save_project_snapshot(project=project, date=today, data=data)
+        print(f"  {project}: {len(summaries_7d)} days, {len(intentions)} intentions")
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Synthesize daily summaries and intentions.")
+    parser = argparse.ArgumentParser(description="Synthesize daily summaries, weekly rollups, and intentions.")
     parser.add_argument("--daily", action="store_true", help="Generate missing daily summaries")
+    parser.add_argument("--weekly", action="store_true", help="Generate missing weekly rollups")
     parser.add_argument("--intentions", action="store_true", help="Update project intentions")
+    parser.add_argument("--snapshots", action="store_true", help="Generate project snapshots")
     parser.add_argument("--all", action="store_true", help="Run all synthesis steps")
     parser.add_argument("--date", type=str, help="Target date (YYYY-MM-DD) for --daily")
     args = parser.parse_args()
 
-    if not any([args.daily, args.intentions, args.all]):
+    if not any([args.daily, args.weekly, args.intentions, args.snapshots, args.all]):
         parser.print_help()
         sys.exit(1)
 
-    # Load API key
+    # Load API key (not needed for --snapshots alone)
+    needs_api = args.all or args.daily or args.weekly or args.intentions
     if ENV_PATH.exists():
         load_dotenv(ENV_PATH)
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if needs_api and not os.environ.get("ANTHROPIC_API_KEY"):
         print(f"Error: ANTHROPIC_API_KEY not found. Create {ENV_PATH} with:")
         print(f"  ANTHROPIC_API_KEY=sk-ant-...")
         sys.exit(1)
 
-    client = Anthropic()
+    client = Anthropic() if needs_api else None
     store = get_store()
     store.migrate()
 
@@ -249,6 +372,14 @@ def main():
     if args.all or args.intentions:
         print("\n=== Intentions ===")
         synthesize_intentions(store, client)
+
+    if args.all or args.weekly:
+        print("\n=== Weekly Rollups ===")
+        synthesize_weekly_rollups(store, client)
+
+    if args.all or args.snapshots:
+        print("\n=== Project Snapshots ===")
+        generate_project_snapshots(store)
 
     # Print totals from this run
     recent_logs = store.get_recent_synthesis_logs()

@@ -238,6 +238,27 @@ class SqliteKnowledgeStore(KnowledgeStore):
         ).fetchall()
         return [r["project"] for r in rows]
 
+    def get_weeks_without_rollups(self):
+        """Find (project, week_start) pairs with daily summaries for a
+        completed week (Mon-Sun, all 7 days past) but no rollup yet."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        rows = self._conn.execute("""
+            SELECT ds.project,
+                   date(ds.date, 'weekday 1', '-7 days') as week_start
+            FROM daily_summaries ds
+            WHERE ds.date < ?
+            GROUP BY ds.project, week_start
+            HAVING COUNT(DISTINCT ds.date) >= 1
+            EXCEPT
+            SELECT project, week_start FROM weekly_rollups
+        """, (today,)).fetchall()
+        return [(r["project"], r["week_start"]) for r in rows]
+
+    def get_daily_summaries_for_week(self, project, week_start):
+        """Get daily summaries for a specific project-week (7-day window from week_start)."""
+        week_end = (datetime.strptime(week_start, "%Y-%m-%d") + timedelta(days=6)).strftime("%Y-%m-%d")
+        return self.get_daily_summaries(project=project, since=week_start, until=week_end)
+
     # ---- Review snapshots ----
 
     def get_review_snapshots(self, *, review_type=None, limit=10):
