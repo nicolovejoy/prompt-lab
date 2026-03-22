@@ -2,21 +2,19 @@
 """Prompt history dashboard - local web UI for reviewing prompts."""
 
 import json
-import sqlite3
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
 from pathlib import Path
 from flask import Flask, jsonify, request, send_file
 
 # Import shared todo scanner
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from todos import _scan_todos
+from store import get_store
 
 SCRIPT_DIR = Path(__file__).parent
 app = Flask(__name__)
-DB_PATH = Path.home() / ".claude" / "prompt-history.db"
 CONFIG_PATH = Path.home() / ".claude" / "ground-control.json"
 TODOS_CACHE_TTL = 300
 
@@ -30,8 +28,16 @@ def _load_config():
         return {}
 
 
+def _get_cached_todos():
+    now = time.time()
+    if _todos_cache["data"] is None or (now - _todos_cache["timestamp"]) > TODOS_CACHE_TTL:
+        _todos_cache["data"] = _scan_todos()
+        _todos_cache["timestamp"] = now
+    return _todos_cache["data"]
+
+
 # ---------------------------------------------------------------------------
-# Migration system
+# Migration system (for tables not managed by the store)
 # ---------------------------------------------------------------------------
 
 def _seed_from_config(conn):
@@ -66,40 +72,32 @@ MIGRATIONS = {
 
 
 def run_migrations():
-    with get_db() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS migrations (
-                id         TEXT PRIMARY KEY,
-                applied_at TEXT DEFAULT (datetime('now'))
-            )
-        """)
+    """Run dashboard-specific migrations (projects table, etc.)."""
+    store = get_store()
+    conn = store.conn
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS migrations (
+            id         TEXT PRIMARY KEY,
+            applied_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.commit()
+
+    applied = {row["id"] for row in conn.execute("SELECT id FROM migrations").fetchall()}
+
+    for mid, action in sorted(MIGRATIONS.items()):
+        if mid in applied:
+            continue
+        if callable(action):
+            action(conn)
+        else:
+            conn.executescript(action)
+        conn.execute("INSERT INTO migrations (id) VALUES (?)", [mid])
         conn.commit()
 
-        applied = {row["id"] for row in conn.execute("SELECT id FROM migrations").fetchall()}
-
-        for mid, action in sorted(MIGRATIONS.items()):
-            if mid in applied:
-                continue
-            if callable(action):
-                action(conn)
-            else:
-                conn.executescript(action)
-            conn.execute("INSERT INTO migrations (id) VALUES (?)", [mid])
-            conn.commit()
-
-
-# ---------------------------------------------------------------------------
-# DB context manager
-# ---------------------------------------------------------------------------
-
-@contextmanager
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
+    # Also run store migrations (new tables)
+    store.migrate()
+    store.close()
 
 
 # ---------------------------------------------------------------------------
@@ -114,211 +112,86 @@ def index():
 @app.route("/api/prompts")
 def list_prompts():
     project = request.args.get("project")
-
-    query = "SELECT * FROM prompts WHERE 1=1"
-    params = []
-
-    if project:
-        query += " AND project = ?"
-        params.append(project)
-
-    query += " ORDER BY timestamp DESC"
-
-    with get_db() as conn:
-        rows = conn.execute(query, params).fetchall()
-
-    return jsonify([dict(row) for row in rows])
+    with get_store() as store:
+        rows = store.get_prompts(project=project)
+    return jsonify(rows)
 
 
 @app.route("/api/prompts/<int:prompt_id>", methods=["PATCH"])
 def update_prompt(prompt_id):
     data = request.json
-
-    updates = []
-    params = []
-    for field in ["tags", "notes"]:
-        if field in data:
-            updates.append(f"{field} = ?")
-            params.append(data[field] if data[field] != "" else None)
-
-    if updates:
-        params.append(prompt_id)
-        with get_db() as conn:
-            conn.execute(f"UPDATE prompts SET {', '.join(updates)} WHERE id = ?", params)
-            conn.commit()
-
+    fields = {f: data[f] for f in ["tags", "notes"] if f in data}
+    if fields:
+        with get_store() as store:
+            store.update_prompt(prompt_id, **fields)
     return jsonify({"ok": True})
 
 
 @app.route("/api/projects")
 def list_projects():
-    with get_db() as conn:
-        rows = conn.execute("SELECT DISTINCT project FROM prompts ORDER BY project").fetchall()
-    return jsonify([row["project"] for row in rows])
+    with get_store() as store:
+        rows = store.get_prompts()
+    projects = sorted({r["project"] for r in rows if r.get("project")})
+    return jsonify(projects)
 
 
 @app.route("/api/projects/all")
 def all_projects():
     """Return all distinct project names across all tables + todos."""
-    with get_db() as conn:
-        rows = conn.execute("""
-            SELECT DISTINCT project FROM (
-                SELECT DISTINCT project FROM prompts
-                UNION SELECT DISTINCT project FROM sessions WHERE project IS NOT NULL
-                UNION SELECT DISTINCT project FROM intentions WHERE project IS NOT NULL
-            ) ORDER BY project
-        """).fetchall()
-    db_projects = {row["project"] for row in rows}
-
-    now = time.time()
-    if _todos_cache["data"] is None or (now - _todos_cache["timestamp"]) > TODOS_CACHE_TTL:
-        _todos_cache["data"] = _scan_todos()
-        _todos_cache["timestamp"] = now
-    for t in _todos_cache["data"]:
+    with get_store() as store:
+        db_projects = store.get_all_project_names()
+    for t in _get_cached_todos():
         db_projects.add(t["project"])
-
     return jsonify(sorted(db_projects))
 
 
 @app.route("/api/project/<path:name>")
 def project_detail(name):
     """Single-project detail data."""
-    with get_db() as conn:
-        conn.execute("INSERT OR IGNORE INTO projects (name) VALUES (?)", [name])
-        conn.commit()
+    with get_store() as store:
+        detail = store.get_project_detail(name)
 
-        project_row = conn.execute(
-            "SELECT * FROM projects WHERE name = ?", [name]
-        ).fetchone()
+    todos = _get_cached_todos()
+    project_todos = [t for t in todos if t["project"] == name]
+    detail["todo_count"] = len(project_todos)
+    detail["next_steps"] = [t["text"] for t in project_todos if t["section"] == "next_steps"][:5]
 
-        session_count = conn.execute("""
-            SELECT COUNT(*) as n FROM sessions
-            WHERE project = ? AND ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''
-        """, [name]).fetchone()["n"]
-
-        last_session_row = conn.execute("""
-            SELECT id, summary, started_at FROM sessions
-            WHERE project = ? AND ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''
-            ORDER BY started_at DESC LIMIT 1
-        """, [name]).fetchone()
-
-        intention_rows = conn.execute("""
-            SELECT intention FROM intentions
-            WHERE project = ? AND status = 'active'
-            ORDER BY last_seen DESC LIMIT 3
-        """, [name]).fetchall()
-
-    now = time.time()
-    if _todos_cache["data"] is None or (now - _todos_cache["timestamp"]) > TODOS_CACHE_TTL:
-        _todos_cache["data"] = _scan_todos()
-        _todos_cache["timestamp"] = now
-
-    project_todos = [t for t in _todos_cache["data"] if t["project"] == name]
-    todo_count = len(project_todos)
-    next_steps = [t["text"] for t in project_todos if t["section"] == "next_steps"][:5]
-
-    return jsonify({
-        "name": name,
-        "status": project_row["status"] if project_row else "active",
-        "category": project_row["category"] if project_row else None,
-        "notes": project_row["notes"] if project_row else None,
-        "created_at": project_row["created_at"] if project_row else None,
-        "session_count": session_count,
-        "todo_count": todo_count,
-        "last_session": dict(last_session_row) if last_session_row else None,
-        "intentions": [row["intention"] for row in intention_rows],
-        "next_steps": next_steps,
-    })
+    return jsonify(detail)
 
 
 @app.route("/api/projects/<path:name>", methods=["PATCH"])
 def update_project(name):
     data = request.json
-
-    updates = []
-    params = []
-    for field in ["status", "category", "notes"]:
-        if field in data:
-            updates.append(f"{field} = ?")
-            params.append(data[field])
-
-    if updates:
-        params.append(name)
-        with get_db() as conn:
-            conn.execute("INSERT OR IGNORE INTO projects (name) VALUES (?)", [name])
-            conn.execute(f"UPDATE projects SET {', '.join(updates)} WHERE name = ?", params)
-            conn.commit()
-
+    fields = {f: data[f] for f in ["status", "category", "notes"] if f in data}
+    if fields:
+        with get_store() as store:
+            store.update_project(name, **fields)
     return jsonify({"ok": True})
 
 
 @app.route("/api/sessions")
 def list_sessions():
     project = request.args.get("project")
-
-    query = "SELECT * FROM sessions WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''"
-    params = []
-
-    if project:
-        query += " AND project = ?"
-        params.append(project)
-
-    query += " ORDER BY started_at DESC"
-
-    with get_db() as conn:
-        rows = conn.execute(query, params).fetchall()
-        sessions = [dict(row) for row in rows]
-
-        if sessions:
-            session_ids = [s['id'] for s in sessions]
-            placeholders = ','.join('?' * len(session_ids))
-            commits = conn.execute(
-                f"SELECT session_id, hash, message FROM commits WHERE session_id IN ({placeholders}) ORDER BY timestamp",
-                session_ids
-            ).fetchall()
-
-            commits_by_session = {}
-            for c in commits:
-                commits_by_session.setdefault(c['session_id'], []).append(
-                    {'hash': c['hash'], 'message': c['message']}
-                )
-
-            for session in sessions:
-                session['commits'] = commits_by_session.get(session['id'], [])
-
+    with get_store() as store:
+        sessions = store.get_sessions_with_commits(project=project)
     return jsonify(sessions)
 
 
 @app.route("/api/daily-summaries")
 def list_daily_summaries():
     project = request.args.get("project")
-    query = "SELECT * FROM daily_summaries WHERE 1=1"
-    params = []
-    if project:
-        query += " AND project = ?"
-        params.append(project)
-    query += " ORDER BY date DESC"
-    with get_db() as conn:
-        rows = conn.execute(query, params).fetchall()
-    return jsonify([dict(row) for row in rows])
+    with get_store() as store:
+        rows = store.get_daily_summaries(project=project)
+    return jsonify(rows)
 
 
 @app.route("/api/intentions")
 def list_intentions():
     project = request.args.get("project")
     status = request.args.get("status", "active")
-    query = "SELECT * FROM intentions WHERE 1=1"
-    params = []
-    if project:
-        query += " AND project = ?"
-        params.append(project)
-    if status and status != "all":
-        query += " AND status = ?"
-        params.append(status)
-    query += " ORDER BY last_seen DESC"
-    with get_db() as conn:
-        rows = conn.execute(query, params).fetchall()
-    return jsonify([dict(row) for row in rows])
+    with get_store() as store:
+        rows = store.get_intentions(project=project, status=status)
+    return jsonify(rows)
 
 
 @app.route("/api/todos")
@@ -326,18 +199,13 @@ def list_todos():
     force = request.args.get("force") == "1"
     project = request.args.get("project")
 
-    now = time.time()
-    if force or _todos_cache["data"] is None or (now - _todos_cache["timestamp"]) > TODOS_CACHE_TTL:
-        _todos_cache["data"] = _scan_todos()
-        _todos_cache["timestamp"] = now
+    if force:
+        _todos_cache["data"] = None
 
-    todos = _todos_cache["data"]
+    todos = _get_cached_todos()
 
-    # Filter out ignored/archived projects
-    with get_db() as conn:
-        non_active = {row["name"] for row in conn.execute(
-            "SELECT name FROM projects WHERE status != 'active'"
-        ).fetchall()}
+    with get_store() as store:
+        non_active = store.get_non_active_projects()
     todos = [t for t in todos if t["project"] not in non_active]
 
     if project:
@@ -349,111 +217,30 @@ def list_todos():
 @app.route("/api/sessions/<int:session_id>", methods=["PATCH"])
 def update_session(session_id):
     data = request.json
-
-    updates = []
-    params = []
-    for field in ["summary"]:
-        if field in data:
-            updates.append(f"{field} = ?")
-            params.append(data[field] if data[field] != "" else None)
-
-    if updates:
-        params.append(session_id)
-        with get_db() as conn:
-            conn.execute(f"UPDATE sessions SET {', '.join(updates)} WHERE id = ?", params)
-            conn.commit()
-
+    fields = {f: data[f] for f in ["summary"] if f in data}
+    if fields:
+        with get_store() as store:
+            store.update_session(session_id, **fields)
     return jsonify({"ok": True})
 
 
 @app.route("/api/overview")
 def overview():
     """Per-project cards data for the overview."""
-    with get_db() as conn:
-        week_prompts = conn.execute(
-            "SELECT COUNT(*) as n FROM prompts WHERE timestamp >= datetime('now', '-7 days')"
-        ).fetchone()["n"]
-        week_sessions = conn.execute(
-            "SELECT COUNT(*) as n FROM sessions WHERE started_at >= datetime('now', '-7 days') AND ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''"
-        ).fetchone()["n"]
-        week_commits = conn.execute(
-            "SELECT COUNT(*) as n FROM commits WHERE timestamp >= datetime('now', '-7 days')"
-        ).fetchone()["n"]
+    with get_store() as store:
+        overview_data = store.get_overview()
+        db_projects = store.get_all_project_names()
 
-        # All projects from DB
-        project_rows = conn.execute("""
-            SELECT DISTINCT project FROM (
-                SELECT DISTINCT project FROM prompts
-                UNION SELECT DISTINCT project FROM sessions WHERE project IS NOT NULL
-                UNION SELECT DISTINCT project FROM intentions WHERE project IS NOT NULL
-            ) ORDER BY project
-        """).fetchall()
-        db_projects = {row["project"] for row in project_rows}
+    session_data = overview_data["session_data"]
+    last_sessions = overview_data["last_sessions"]
+    intentions_by_project = overview_data["intentions_by_project"]
+    intention_last_seen = overview_data["intention_last_seen"]
+    project_statuses = overview_data["project_statuses"]
 
-        # Project statuses from projects table
-        project_statuses = {}
-        for row in conn.execute("SELECT name, status FROM projects").fetchall():
-            project_statuses[row["name"]] = row["status"]
-
-        # Per-project: session count + last_started + token stats
-        session_data = {}
-        for row in conn.execute("""
-            SELECT project,
-                   COUNT(*) as session_count,
-                   MAX(started_at) as last_started,
-                   AVG(token_count) as avg_tokens,
-                   MAX(token_count) as peak_tokens
-            FROM sessions
-            WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''
-            GROUP BY project
-        """).fetchall():
-            session_data[row["project"]] = {
-                "session_count": row["session_count"],
-                "last_started": row["last_started"],
-                "avg_tokens": row["avg_tokens"],
-                "peak_tokens": row["peak_tokens"],
-            }
-
-        # Last session summary per project
-        last_sessions = {}
-        for row in conn.execute("""
-            SELECT s.project, s.summary, s.started_at
-            FROM sessions s
-            INNER JOIN (
-                SELECT project, MAX(started_at) as max_start
-                FROM sessions
-                WHERE ended_at IS NOT NULL AND summary IS NOT NULL AND summary != ''
-                GROUP BY project
-            ) latest ON s.project = latest.project AND s.started_at = latest.max_start
-            WHERE s.ended_at IS NOT NULL AND s.summary IS NOT NULL AND s.summary != ''
-        """).fetchall():
-            last_sessions[row["project"]] = {
-                "summary": row["summary"],
-                "started_at": row["started_at"],
-            }
-
-        # Active intentions per project
-        intentions_by_project = {}
-        for row in conn.execute(
-            "SELECT project, intention FROM intentions WHERE status = 'active' ORDER BY last_seen DESC"
-        ).fetchall():
-            intentions_by_project.setdefault(row["project"], []).append(row["intention"])
-
-        # Last intention seen per project
-        intention_last_seen = {}
-        for row in conn.execute(
-            "SELECT project, MAX(last_seen) as last_seen FROM intentions WHERE status = 'active' GROUP BY project"
-        ).fetchall():
-            intention_last_seen[row["project"]] = row["last_seen"]
-
-    # Todos
-    now = time.time()
-    if _todos_cache["data"] is None or (now - _todos_cache["timestamp"]) > TODOS_CACHE_TTL:
-        _todos_cache["data"] = _scan_todos()
-        _todos_cache["timestamp"] = now
-
+    # Todos (file-based, outside the store)
+    todos = _get_cached_todos()
     todos_by_project = {}
-    for t in _todos_cache["data"]:
+    for t in todos:
         todos_by_project[t["project"]] = todos_by_project.get(t["project"], 0) + 1
         db_projects.add(t["project"])
 
@@ -493,11 +280,10 @@ def overview():
             "peak_tokens": sd.get("peak_tokens"),
         })
 
-    # Sort by last_activity DESC (None last)
     projects.sort(key=lambda p: p["last_activity"] or "", reverse=True)
 
     return jsonify({
-        "week": {"sessions": week_sessions, "prompts": week_prompts, "commits": week_commits},
+        "week": overview_data["week"],
         "projects": projects,
     })
 
@@ -505,18 +291,10 @@ def overview():
 @app.route("/api/status")
 def status():
     """Return synthesizer last-run status."""
-    with get_db() as conn:
-        row = conn.execute("""
-            SELECT created_at, status, error_message
-            FROM synthesis_log
-            ORDER BY created_at DESC LIMIT 1
-        """).fetchone()
-    if row:
-        return jsonify({
-            "last_run": row["created_at"],
-            "status": row["status"],
-            "error_message": row["error_message"],
-        })
+    with get_store() as store:
+        result = store.get_synthesis_status()
+    if result:
+        return jsonify(result)
     return jsonify({"last_run": None, "status": None, "error_message": None})
 
 
@@ -543,7 +321,8 @@ def get_settings():
 
 
 if __name__ == "__main__":
-    print(f"Using database: {DB_PATH}")
+    from store.sqlite_store import DEFAULT_DB_PATH
+    print(f"Using database: {DEFAULT_DB_PATH}")
     print("Open http://localhost:5111")
     run_migrations()
     app.run(port=5111, debug=True)

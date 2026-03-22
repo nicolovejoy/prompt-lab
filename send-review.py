@@ -3,43 +3,33 @@
 
 import json
 import os
-import sqlite3
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from anthropic import Anthropic, RateLimitError
+from anthropic import Anthropic
 from dotenv import load_dotenv
 
-DB_PATH = Path.home() / ".claude" / "prompt-history.db"
+from claude_api import OPUS, call_claude
+from store import get_store
+
 REPO_DIR = Path(__file__).resolve().parent
-OPUS = "claude-opus-4-6"
 
 
-def get_db():
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
-    return db
-
-
-def query_sessions(db, days):
-    return db.execute("""
-        SELECT project, date(started_at) as date, summary, started_at
-        FROM sessions
-        WHERE summary IS NOT NULL
-          AND started_at >= datetime('now', printf('-%d days', ?))
-        ORDER BY started_at DESC
-    """, (days,)).fetchall()
-
-
-def query_daily_summaries(db, days):
-    return db.execute("""
-        SELECT date, project, summary
-        FROM daily_summaries
-        WHERE date >= date('now', printf('-%d days', ?))
-        ORDER BY date DESC
-    """, (days,)).fetchall()
+REVIEW_TOOL = {
+    "name": "generate_review",
+    "description": "Generate the email review with subject, HTML body, and plain text body.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "subject": {"type": "string", "description": "One-line email subject"},
+            "html": {"type": "string", "description": "Full HTML email body"},
+            "text": {"type": "string", "description": "Plain text version of the email"},
+        },
+        "required": ["subject", "html", "text"],
+    },
+}
 
 
 def build_prompt(daily_sessions, daily_summaries_1d, weekly_sessions, weekly_summaries, is_weekly):
@@ -94,42 +84,6 @@ HTML style guidelines:
 """
 
     return system, user_msg
-
-
-REVIEW_TOOL = {
-    "name": "generate_review",
-    "description": "Generate the email review with subject, HTML body, and plain text body.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "subject": {"type": "string", "description": "One-line email subject"},
-            "html": {"type": "string", "description": "Full HTML email body"},
-            "text": {"type": "string", "description": "Plain text version of the email"},
-        },
-        "required": ["subject", "html", "text"],
-    },
-}
-
-
-def call_claude(client, system, user_msg, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            resp = client.messages.create(
-                model=OPUS,
-                max_tokens=16384,
-                system=system,
-                messages=[{"role": "user", "content": user_msg}],
-                tools=[REVIEW_TOOL],
-                tool_choice={"type": "tool", "name": "generate_review"},
-            )
-            return resp.content[0].input, resp.usage
-        except RateLimitError:
-            if attempt < max_retries - 1:
-                wait = 2 ** (attempt + 1)
-                print(f"Rate limited, waiting {wait}s...")
-                time.sleep(wait)
-            else:
-                raise
 
 
 def send_email(subject, html, text):
@@ -191,30 +145,33 @@ def main():
     # Saturday = more reflective weekly tone; always fetch both windows
     today = datetime.now()
     is_weekly = today.weekday() == 5
+    today_str = today.strftime("%Y-%m-%d")
+    week_ago_str = (today - timedelta(days=7)).strftime("%Y-%m-%d")
 
-    db = get_db()
-    daily_sessions = query_sessions(db, 1)
-    daily_summaries_1d = query_daily_summaries(db, 1)
-    weekly_sessions = query_sessions(db, 7)
-    weekly_summaries = query_daily_summaries(db, 7)
-    db.close()
+    store = get_store()
+    daily_sessions = store.get_raw_sessions(since_days=1)
+    daily_summaries_1d = store.get_daily_summaries(since=today_str)
+    weekly_sessions = store.get_raw_sessions(since_days=7)
+    weekly_summaries = store.get_daily_summaries(since=week_ago_str)
+    store.close()
 
     if not weekly_sessions and not weekly_summaries:
         print("No sessions or summaries found for the period.")
         return
 
-    system, user_msg = build_prompt(daily_sessions, daily_summaries_1d, weekly_sessions, weekly_summaries, is_weekly)
+    system, user_msg = build_prompt(daily_sessions, daily_summaries_1d,
+                                     weekly_sessions, weekly_summaries, is_weekly)
 
     client = Anthropic()
-    t0 = time.time()
-    result, usage = call_claude(client, system, user_msg)
-    elapsed = time.time() - t0
+    result = call_claude(client, model=OPUS, system=system, user_msg=user_msg,
+                         tool=REVIEW_TOOL, max_tokens=16384)
 
-    subject = result.get("subject", "Session Review")
-    html = result.get("html", "")
-    text = result.get("text", "")
+    subject = result["parsed"].get("subject", "Session Review")
+    html = result["parsed"].get("html", "")
+    text = result["parsed"].get("text", "")
 
-    print(f"Generated review in {elapsed:.1f}s ({usage.input_tokens}+{usage.output_tokens} tokens)")
+    print(f"Generated review in {result['duration_ms']/1000:.1f}s "
+          f"({result['input_tokens']}+{result['output_tokens']} tokens)")
     print(f"Subject: {subject}")
     print(f"Model: {OPUS}")
     print(f"Mode: {'weekly (Saturday)' if is_weekly else 'daily'} — both 1d + 7d windows")
@@ -226,8 +183,20 @@ def main():
         print("(dry run, not sent)")
         return
 
-    result = send_email(subject, html, text)
-    print(f"Sent (id: {result.get('id', '?')})")
+    email_result = send_email(subject, html, text)
+    print(f"Sent (id: {email_result.get('id', '?')})")
+
+    # Persist the review
+    store = get_store()
+    store.migrate()
+    store.save_review_snapshot(
+        review_type="weekly_email" if is_weekly else "daily_email",
+        date=today_str, subject=subject,
+        content_html=html, content_text=text,
+        model=OPUS, input_tokens=result["input_tokens"],
+        output_tokens=result["output_tokens"],
+    )
+    store.close()
 
 
 if __name__ == "__main__":

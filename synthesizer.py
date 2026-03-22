@@ -4,194 +4,20 @@
 import argparse
 import json
 import os
-import sqlite3
 import sys
-import time
-from datetime import datetime, timedelta
 from pathlib import Path
 
-from anthropic import Anthropic, RateLimitError
+from anthropic import Anthropic
 from dotenv import load_dotenv
 
-DB_PATH = Path.home() / ".claude" / "prompt-history.db"
+from claude_api import OPUS, call_claude, estimate_cost_cents
+from store import get_store
+
 ENV_PATH = Path.home() / ".claude" / "synthesizer.env"
 
-HAIKU = "claude-haiku-4-5-20251001"
-SONNET = "claude-sonnet-4-6"
-OPUS = "claude-opus-4-6"
-
-
-def get_db():
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
-    return db
-
-
-def migrate(db: sqlite3.Connection):
-    db.executescript("""
-        CREATE TABLE IF NOT EXISTS daily_summaries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            project TEXT NOT NULL,
-            date TEXT NOT NULL,
-            summary TEXT NOT NULL,
-            key_decisions TEXT,  -- JSON array
-            prompt_count INTEGER DEFAULT 0,
-            session_count INTEGER DEFAULT 0,
-            commit_count INTEGER DEFAULT 0,
-            model TEXT,
-            created_at TEXT DEFAULT (datetime('now')),
-            UNIQUE(project, date)
-        );
-
-        CREATE TABLE IF NOT EXISTS intentions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            project TEXT NOT NULL,
-            intention TEXT NOT NULL,
-            evidence TEXT,  -- JSON array of daily_summary IDs
-            status TEXT DEFAULT 'active' CHECK(status IN ('active','completed','stalled','abandoned')),
-            first_seen TEXT NOT NULL,
-            last_seen TEXT NOT NULL,
-            model TEXT,
-            created_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS themes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            theme TEXT NOT NULL,
-            projects TEXT,  -- JSON array
-            intention_ids TEXT,  -- JSON array
-            status TEXT DEFAULT 'active' CHECK(status IN ('active','completed','stalled','abandoned')),
-            first_seen TEXT NOT NULL,
-            last_seen TEXT NOT NULL,
-            model TEXT,
-            created_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS synthesis_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            run_type TEXT NOT NULL,
-            target_date TEXT,
-            project TEXT,
-            model TEXT,
-            input_tokens INTEGER,
-            output_tokens INTEGER,
-            cost_cents REAL,
-            duration_ms INTEGER,
-            status TEXT NOT NULL,
-            error_message TEXT,
-            created_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_daily_summaries_project_date ON daily_summaries(project, date);
-        CREATE INDEX IF NOT EXISTS idx_intentions_project ON intentions(project);
-        CREATE INDEX IF NOT EXISTS idx_intentions_status ON intentions(status);
-        CREATE INDEX IF NOT EXISTS idx_themes_status ON themes(status);
-    """)
-    db.commit()
-
 
 # ---------------------------------------------------------------------------
-# Data gathering
-# ---------------------------------------------------------------------------
-
-def get_unsummarized_days(db: sqlite3.Connection, target_date: str | None = None):
-    """Find (project, date) pairs with prompts but no daily_summary row."""
-    date_filter = ""
-    params = []
-    if target_date:
-        date_filter = "AND date(p.timestamp) = ?"
-        params.append(target_date)
-
-    rows = db.execute(f"""
-        SELECT p.project, date(p.timestamp) as day
-        FROM prompts p
-        WHERE p.project IS NOT NULL
-          {date_filter}
-        GROUP BY p.project, day
-        HAVING COUNT(*) > 0
-        EXCEPT
-        SELECT ds.project, ds.date FROM daily_summaries ds
-    """, params).fetchall()
-    return [(r["project"], r["day"]) for r in rows]
-
-
-def get_day_data(db: sqlite3.Connection, project: str, date: str) -> dict:
-    """Fetch all prompts, sessions, commits for a project+date."""
-    prompts = db.execute("""
-        SELECT id, prompt, outcome, utility, tags, context
-        FROM prompts
-        WHERE project = ? AND date(timestamp) = ?
-        ORDER BY timestamp
-    """, (project, date)).fetchall()
-
-    sessions = db.execute("""
-        SELECT id, started_at, ended_at, summary, utility
-        FROM sessions
-        WHERE project = ? AND date(started_at) = ?
-        ORDER BY started_at
-    """, (project, date)).fetchall()
-
-    commits = db.execute("""
-        SELECT c.hash, c.message, c.timestamp
-        FROM commits c
-        JOIN prompts p ON c.prompt_id = p.id
-        WHERE p.project = ? AND date(c.timestamp) = ?
-        ORDER BY c.timestamp
-    """, (project, date)).fetchall()
-
-    # Also get commits linked via session
-    session_commits = db.execute("""
-        SELECT c.hash, c.message, c.timestamp
-        FROM commits c
-        JOIN sessions s ON c.session_id = s.id
-        WHERE s.project = ? AND date(c.timestamp) = ?
-        ORDER BY c.timestamp
-    """, (project, date)).fetchall()
-
-    # Dedupe commits by hash
-    seen_hashes = set()
-    all_commits = []
-    for c in list(commits) + list(session_commits):
-        if c["hash"] not in seen_hashes:
-            seen_hashes.add(c["hash"])
-            all_commits.append(c)
-
-    return {
-        "prompts": [dict(p) for p in prompts],
-        "sessions": [dict(s) for s in sessions],
-        "commits": [dict(c) for c in all_commits],
-    }
-
-
-def get_recent_summaries(db: sqlite3.Connection, project: str, n_days: int = 14):
-    return db.execute("""
-        SELECT id, project, date, summary, key_decisions
-        FROM daily_summaries
-        WHERE project = ?
-        ORDER BY date DESC
-        LIMIT ?
-    """, (project, n_days)).fetchall()
-
-
-def get_all_active_intentions(db: sqlite3.Connection):
-    return db.execute("""
-        SELECT id, project, intention, evidence, status, first_seen, last_seen
-        FROM intentions
-        WHERE status = 'active'
-        ORDER BY project, last_seen DESC
-    """).fetchall()
-
-
-def get_projects_with_recent_summaries(db: sqlite3.Connection, n_days: int = 14):
-    cutoff = (datetime.now() - timedelta(days=n_days)).strftime("%Y-%m-%d")
-    rows = db.execute("""
-        SELECT DISTINCT project FROM daily_summaries WHERE date >= ?
-    """, (cutoff,)).fetchall()
-    return [r["project"] for r in rows]
-
-
-# ---------------------------------------------------------------------------
-# Claude API calls with retry
+# Tool definitions for structured output
 # ---------------------------------------------------------------------------
 
 SUMMARY_TOOL = {
@@ -236,68 +62,13 @@ INTENTIONS_TOOL = {
 }
 
 
-def call_claude(client: Anthropic, model: str, system: str, user_msg: str,
-                tool: dict, max_retries: int = 3) -> dict:
-    """Call Claude API with tool use for structured output. Returns parsed response + usage."""
-    for attempt in range(max_retries):
-        try:
-            t0 = time.time()
-            resp = client.messages.create(
-                model=model,
-                max_tokens=1024,
-                system=system,
-                messages=[{"role": "user", "content": user_msg}],
-                tools=[tool],
-                tool_choice={"type": "tool", "name": tool["name"]},
-            )
-            duration_ms = int((time.time() - t0) * 1000)
-
-            return {
-                "parsed": resp.content[0].input,
-                "input_tokens": resp.usage.input_tokens,
-                "output_tokens": resp.usage.output_tokens,
-                "duration_ms": duration_ms,
-                "model": model,
-            }
-        except RateLimitError:
-            if attempt < max_retries - 1:
-                wait = 2 ** (attempt + 1)
-                print(f"  Rate limited, waiting {wait}s...")
-                time.sleep(wait)
-            else:
-                raise
-
-
-def estimate_cost_cents(model: str, input_tokens: int, output_tokens: int) -> float:
-    # Pricing per million tokens (as of 2025)
-    prices = {
-        HAIKU: {"input": 100, "output": 500},       # $1/$5 per MTok
-        SONNET: {"input": 300, "output": 1500},      # $3/$15 per MTok
-        OPUS: {"input": 1500, "output": 7500},       # $15/$75 per MTok
-    }
-    p = prices.get(model, prices[OPUS])
-    return (input_tokens * p["input"] + output_tokens * p["output"]) / 1_000_000
-
-
-def log_synthesis(db: sqlite3.Connection, run_type: str, target_date: str | None,
-                  project: str | None, model: str, input_tokens: int, output_tokens: int,
-                  cost_cents: float, duration_ms: int, status: str, error_message: str | None = None):
-    db.execute("""
-        INSERT INTO synthesis_log (run_type, target_date, project, model, input_tokens,
-                                   output_tokens, cost_cents, duration_ms, status, error_message)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (run_type, target_date, project, model, input_tokens, output_tokens,
-          cost_cents, duration_ms, status, error_message))
-    db.commit()
-
-
 # ---------------------------------------------------------------------------
 # Synthesis functions
 # ---------------------------------------------------------------------------
 
-def synthesize_daily_summaries(db: sqlite3.Connection, client: Anthropic, target_date: str | None = None):
+def synthesize_daily_summaries(store, client, target_date=None):
     """Generate daily summaries for all unsummarized (project, date) pairs."""
-    pairs = get_unsummarized_days(db, target_date)
+    pairs = store.get_unsummarized_days(target_date)
     if not pairs:
         print("No unsummarized days found.")
         return
@@ -306,9 +77,8 @@ def synthesize_daily_summaries(db: sqlite3.Connection, client: Anthropic, target
 
     for project, date in pairs:
         print(f"  Summarizing {project} / {date}...", end=" ", flush=True)
-        data = get_day_data(db, project, date)
+        data = store.get_day_data(project, date)
 
-        # Build prompt
         prompt_texts = [f"- {p['prompt']}" for p in data["prompts"] if p.get("prompt")]
         commit_texts = [f"- {c['hash'][:8]}: {c['message']}" for c in data["commits"] if c.get("message")]
         session_texts = [f"- {s.get('summary', '(no summary)')}" for s in data["sessions"]]
@@ -329,39 +99,44 @@ Sessions ({len(data['sessions'])}):
 Focus on WHAT was done and WHY, not low-level details. Be concise."""
 
         try:
-            result = call_claude(client, OPUS, system, user_msg, tool=SUMMARY_TOOL)
+            result = call_claude(client, model=OPUS, system=system,
+                                 user_msg=user_msg, tool=SUMMARY_TOOL)
             parsed = result["parsed"]
-            cost = estimate_cost_cents(result["model"], result["input_tokens"], result["output_tokens"])
+            cost = estimate_cost_cents(result["model"], result["input_tokens"],
+                                       result["output_tokens"])
 
-            db.execute("""
-                INSERT OR REPLACE INTO daily_summaries
-                    (project, date, summary, key_decisions, prompt_count, session_count, commit_count, model)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                project, date,
-                parsed.get("summary", ""),
-                json.dumps(parsed.get("key_decisions", [])),
-                len(data["prompts"]),
-                len(data["sessions"]),
-                len(data["commits"]),
-                result["model"],
-            ))
-            db.commit()
+            store.upsert_daily_summary(
+                project=project, date=date,
+                summary=parsed.get("summary", ""),
+                key_decisions=parsed.get("key_decisions", []),
+                prompt_count=len(data["prompts"]),
+                session_count=len(data["sessions"]),
+                commit_count=len(data["commits"]),
+                model=result["model"],
+            )
 
-            log_synthesis(db, "daily", date, project, result["model"],
-                          result["input_tokens"], result["output_tokens"],
-                          cost, result["duration_ms"], "success")
+            store.log_synthesis(
+                run_type="daily", target_date=date, project=project,
+                model=result["model"], input_tokens=result["input_tokens"],
+                output_tokens=result["output_tokens"], cost_cents=cost,
+                duration_ms=result["duration_ms"], status="success",
+            )
 
             print(f"OK ({result['input_tokens']}+{result['output_tokens']} tokens, ${cost/100:.4f})")
 
         except Exception as e:
-            log_synthesis(db, "daily", date, project, OPUS, 0, 0, 0, 0, "error", str(e))
+            store.log_synthesis(
+                run_type="daily", target_date=date, project=project,
+                model=OPUS, input_tokens=0, output_tokens=0,
+                cost_cents=0, duration_ms=0, status="error",
+                error_message=str(e),
+            )
             print(f"ERROR: {e}")
 
 
-def synthesize_intentions(db: sqlite3.Connection, client: Anthropic):
+def synthesize_intentions(store, client):
     """Update/create/close intentions for each project with recent summaries."""
-    projects = get_projects_with_recent_summaries(db)
+    projects = store.get_projects_with_recent_summaries()
     if not projects:
         print("No projects with recent summaries.")
         return
@@ -371,17 +146,14 @@ def synthesize_intentions(db: sqlite3.Connection, client: Anthropic):
     for project in projects:
         print(f"  Intentions for {project}...", end=" ", flush=True)
 
-        summaries = get_recent_summaries(db, project, 14)
+        summaries = store.get_daily_summaries(project=project, limit=14)
         summary_texts = []
         summary_ids = []
         for s in summaries:
             summary_texts.append(f"[{s['date']}] {s['summary']}")
             summary_ids.append(s["id"])
 
-        current_intentions = db.execute("""
-            SELECT id, intention, status, first_seen, last_seen
-            FROM intentions WHERE project = ? AND status = 'active'
-        """, (project,)).fetchall()
+        current_intentions = store.get_intentions(project=project, status="active")
 
         current_text = ""
         if current_intentions:
@@ -405,44 +177,40 @@ Recent daily summaries (last 14 days):
 - Keep the list focused: 3-8 intentions per project max"""
 
         try:
-            result = call_claude(client, OPUS, system, user_msg, tool=INTENTIONS_TOOL)
+            result = call_claude(client, model=OPUS, system=system,
+                                 user_msg=user_msg, tool=INTENTIONS_TOOL)
             parsed = result["parsed"]
-            cost = estimate_cost_cents(result["model"], result["input_tokens"], result["output_tokens"])
-            today = datetime.now().strftime("%Y-%m-%d")
+            cost = estimate_cost_cents(result["model"], result["input_tokens"],
+                                       result["output_tokens"])
 
             for item in parsed.get("intentions", []):
-                existing_id = item.get("id")
-                status = item.get("status", "active")
-                intention_text = item.get("intention", "")
+                store.upsert_intention(
+                    id=item.get("id"),
+                    project=project,
+                    intention=item.get("intention", ""),
+                    evidence_summary_ids=summary_ids,
+                    status=item.get("status", "active"),
+                    model=result["model"],
+                )
 
-                if existing_id:
-                    # Update existing
-                    db.execute("""
-                        UPDATE intentions SET status = ?, last_seen = ?,
-                               evidence = (SELECT json_group_array(value) FROM (
-                                   SELECT value FROM json_each(evidence)
-                                   UNION SELECT ? as value
-                               ))
-                        WHERE id = ?
-                    """, (status, today, json.dumps(summary_ids), existing_id))
-                else:
-                    # Create new
-                    db.execute("""
-                        INSERT INTO intentions (project, intention, evidence, status, first_seen, last_seen, model)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """, (project, intention_text, json.dumps(summary_ids), status, today, today, result["model"]))
-
-            db.commit()
-
-            log_synthesis(db, "intentions", today, project, result["model"],
-                          result["input_tokens"], result["output_tokens"],
-                          cost, result["duration_ms"], "success")
+            today = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+            store.log_synthesis(
+                run_type="intentions", target_date=today, project=project,
+                model=result["model"], input_tokens=result["input_tokens"],
+                output_tokens=result["output_tokens"], cost_cents=cost,
+                duration_ms=result["duration_ms"], status="success",
+            )
 
             n_intentions = len(parsed.get("intentions", []))
             print(f"OK ({n_intentions} intentions, ${cost/100:.4f})")
 
         except Exception as e:
-            log_synthesis(db, "intentions", None, project, OPUS, 0, 0, 0, 0, "error", str(e))
+            store.log_synthesis(
+                run_type="intentions", target_date=None, project=project,
+                model=OPUS, input_tokens=0, output_tokens=0,
+                cost_cents=0, duration_ms=0, status="error",
+                error_message=str(e),
+            )
             print(f"ERROR: {e}")
 
 
@@ -471,25 +239,19 @@ def main():
         sys.exit(1)
 
     client = Anthropic()
-    db = get_db()
-    migrate(db)
+    store = get_store()
+    store.migrate()
 
     if args.all or args.daily:
         print("\n=== Daily Summaries ===")
-        synthesize_daily_summaries(db, client, args.date)
+        synthesize_daily_summaries(store, client, args.date)
 
     if args.all or args.intentions:
         print("\n=== Intentions ===")
-        synthesize_intentions(db, client)
+        synthesize_intentions(store, client)
 
     # Print totals from this run
-    recent_logs = db.execute("""
-        SELECT run_type, SUM(cost_cents) as total_cost, COUNT(*) as calls,
-               SUM(input_tokens) as total_in, SUM(output_tokens) as total_out
-        FROM synthesis_log
-        WHERE created_at > datetime('now', '-5 minutes')
-        GROUP BY run_type
-    """).fetchall()
+    recent_logs = store.get_recent_synthesis_logs()
 
     if recent_logs:
         print("\n=== Run Summary ===")
@@ -500,7 +262,7 @@ def main():
             total_cost += log["total_cost"]
         print(f"  Total cost: ${total_cost/100:.4f}")
 
-    db.close()
+    store.close()
 
 
 if __name__ == "__main__":
