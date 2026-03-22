@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1a1a2e">
+  <link rel="manifest" href="manifest.json">
+  <title>Ground Control</title>
+  <style>
+    :root {
+      --bg: #0f0f1a;
+      --card: #1a1a2e;
+      --card-hover: #222240;
+      --text: #e0e0e0;
+      --text-secondary: #888;
+      --border: #2a2a4a;
+      --accent: #6366f1;
+      --accent-light: #818cf8;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      padding: var(--safe-top) 16px var(--safe-bottom);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Setup screen */
+    .setup { max-width: 400px; margin: 60px auto; text-align: center; }
+    .setup h2 { margin-bottom: 16px; font-size: 1.3rem; }
+    .setup p { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.5; }
+    .setup input {
+      width: 100%; padding: 12px; margin-bottom: 12px;
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      font-size: 0.9rem; font-family: monospace;
+    }
+    .setup button {
+      width: 100%; padding: 12px; background: var(--accent); color: white;
+      border: none; font-size: 1rem; font-weight: 600; cursor: pointer;
+    }
+
+    /* Header */
+    header {
+      padding: 16px 0 12px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.5px; }
+    .sync-status { font-size: 0.75rem; color: var(--text-secondary); }
+
+    /* Nav tabs */
+    .tabs {
+      display: flex; gap: 2px; margin-bottom: 16px;
+      background: var(--card); padding: 3px; border-radius: 10px;
+    }
+    .tab {
+      flex: 1; padding: 8px 0; text-align: center; font-size: 0.8rem;
+      font-weight: 600; color: var(--text-secondary); background: none;
+      border: none; cursor: pointer; border-radius: 8px;
+    }
+    .tab.active { background: var(--accent); color: white; }
+
+    /* Stats bar */
+    .stats {
+      display: flex; gap: 8px; margin-bottom: 16px;
+    }
+    .stat {
+      flex: 1; background: var(--card); padding: 12px;
+      border: 1px solid var(--border); text-align: center;
+    }
+    .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--accent-light); }
+    .stat-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* Cards */
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      padding: 14px; margin-bottom: 10px;
+    }
+    .card-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 8px;
+    }
+    .card-title { font-size: 0.95rem; font-weight: 600; }
+    .card-date { font-size: 0.75rem; color: var(--text-secondary); }
+    .card-body { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; }
+    .card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .tag {
+      font-size: 0.7rem; padding: 2px 8px; background: var(--border);
+      color: var(--text-secondary);
+    }
+    .tag.active { background: rgba(99, 102, 241, 0.2); color: var(--accent-light); }
+    .tag.completed { background: rgba(34, 197, 94, 0.2); color: var(--green); }
+    .tag.stalled { background: rgba(234, 179, 8, 0.2); color: var(--yellow); }
+
+    /* Review snapshots */
+    .review-card { border-left: 3px solid var(--accent); }
+    .review-content {
+      max-height: 200px; overflow: hidden; position: relative;
+      transition: max-height 0.3s;
+    }
+    .review-content.expanded { max-height: none; }
+    .review-expand {
+      font-size: 0.8rem; color: var(--accent-light); background: none;
+      border: none; cursor: pointer; margin-top: 8px; padding: 0;
+    }
+
+    /* Loading */
+    .loading { text-align: center; padding: 40px; color: var(--text-secondary); }
+    .error { color: var(--red); text-align: center; padding: 20px; }
+    .empty { color: var(--text-secondary); text-align: center; padding: 30px; font-size: 0.9rem; }
+
+    /* Section title */
+    .section-title {
+      font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;
+    }
+
+    /* Pull to refresh hint */
+    .refresh-hint {
+      text-align: center; font-size: 0.75rem; color: var(--text-secondary);
+      padding: 8px; display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+  <script type="module">
+    import { h, render, Component } from 'https://esm.sh/preact@10.19.3';
+    import { useState, useEffect, useCallback } from 'https://esm.sh/preact@10.19.3/hooks';
+    import htm from 'https://esm.sh/htm@3.1.1';
+    const html = htm.bind(h);
+
+    // ---- Turso HTTP client ----
+    function getConfig() {
+      const url = localStorage.getItem('gc_turso_url');
+      const token = localStorage.getItem('gc_turso_token');
+      return (url && token) ? { url, token } : null;
+    }
+
+    async function tursoQuery(sql, args = []) {
+      const config = getConfig();
+      if (!config) throw new Error('Not configured');
+
+      const stmt = { sql };
+      if (args.length) {
+        stmt.args = args.map(v => ({
+          type: v === null ? 'null' : typeof v === 'number' ? 'integer' : 'text',
+          value: v === null ? null : String(v),
+        }));
+      }
+
+      const resp = await fetch(config.url + (config.url.endsWith('/') ? '' : '/') + 'v3/pipeline', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: [
+            { type: 'execute', stmt },
+            { type: 'close' },
+          ],
+        }),
+      });
+
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const result = data.results?.[0];
+      if (result?.type === 'error') throw new Error(result.error.message);
+
+      const cols = result?.response?.result?.cols?.map(c => c.name) || [];
+      const rows = result?.response?.result?.rows || [];
+      return rows.map(row =>
+        Object.fromEntries(cols.map((col, i) => [col, row[i]?.value ?? null]))
+      );
+    }
+
+    // ---- Setup Screen ----
+    function Setup({ onSave }) {
+      const [url, setUrl] = useState('');
+      const [token, setToken] = useState('');
+      const [error, setError] = useState(null);
+      const [testing, setTesting] = useState(false);
+
+      const handleSave = async () => {
+        setTesting(true);
+        setError(null);
+        localStorage.setItem('gc_turso_url', url.trim());
+        localStorage.setItem('gc_turso_token', token.trim());
+        try {
+          await tursoQuery('SELECT COUNT(*) as n FROM daily_summaries');
+          onSave();
+        } catch (e) {
+          setError('Connection failed: ' + e.message);
+          localStorage.removeItem('gc_turso_url');
+          localStorage.removeItem('gc_turso_token');
+        }
+        setTesting(false);
+      };
+
+      return html`
+        <div class="setup">
+          <h2>Ground Control</h2>
+          <p>Connect to your Turso database to view your work history from anywhere.</p>
+          <input type="url" placeholder="TURSO_DATABASE_URL (libsql://...)"
+            value=${url} onInput=${e => setUrl(e.target.value)} />
+          <input type="password" placeholder="TURSO_AUTH_TOKEN"
+            value=${token} onInput=${e => setToken(e.target.value)} />
+          ${error && html`<p class="error">${error}</p>`}
+          <button onClick=${handleSave} disabled=${testing || !url || !token}>
+            ${testing ? 'Testing...' : 'Connect'}
+          </button>
+        </div>
+      `;
+    }
+
+    // ---- Main App ----
+    function App() {
+      const [configured, setConfigured] = useState(!!getConfig());
+      const [tab, setTab] = useState('overview');
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+
+      const loadData = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const now = new Date();
+          const weekAgo = new Date(now - 7 * 86400000).toISOString().slice(0, 10);
+          const monthAgo = new Date(now - 30 * 86400000).toISOString().slice(0, 10);
+
+          const [summaries, rollups, intentions, reviews, snapshots] = await Promise.all([
+            tursoQuery('SELECT * FROM daily_summaries WHERE date >= ? ORDER BY date DESC', [weekAgo]),
+            tursoQuery('SELECT * FROM weekly_rollups ORDER BY week_start DESC LIMIT 20'),
+            tursoQuery('SELECT * FROM intentions WHERE status = ? ORDER BY last_seen DESC', ['active']),
+            tursoQuery('SELECT id, review_type, date, subject, content_text, content_markdown, model FROM review_snapshots ORDER BY created_at DESC LIMIT 10'),
+            tursoQuery('SELECT * FROM project_snapshots ORDER BY snapshot_date DESC'),
+          ]);
+
+          // Compute week stats from summaries
+          const weekStats = { prompts: 0, sessions: 0, commits: 0 };
+          for (const s of summaries) {
+            weekStats.prompts += parseInt(s.prompt_count || 0);
+            weekStats.sessions += parseInt(s.session_count || 0);
+            weekStats.commits += parseInt(s.commit_count || 0);
+          }
+
+          // Group summaries by project
+          const byProject = {};
+          for (const s of summaries) {
+            if (!byProject[s.project]) byProject[s.project] = [];
+            byProject[s.project].push(s);
+          }
+
+          // Group intentions by project
+          const intentionsByProject = {};
+          for (const i of intentions) {
+            if (!intentionsByProject[i.project]) intentionsByProject[i.project] = [];
+            intentionsByProject[i.project].push(i);
+          }
+
+          // Latest snapshot per project
+          const latestSnapshots = {};
+          for (const s of snapshots) {
+            if (!latestSnapshots[s.project]) latestSnapshots[s.project] = s;
+          }
+
+          setData({
+            weekStats, summaries, rollups, intentions, reviews,
+            byProject, intentionsByProject, latestSnapshots,
+            projects: Object.keys(byProject).sort(),
+          });
+        } catch (e) {
+          setError(e.message);
+        }
+        setLoading(false);
+      }, []);
+
+      useEffect(() => { if (configured) loadData(); }, [configured]);
+
+      if (!configured) return html`<${Setup} onSave=${() => { setConfigured(true); }} />`;
+
+      const disconnect = () => {
+        localStorage.removeItem('gc_turso_url');
+        localStorage.removeItem('gc_turso_token');
+        setConfigured(false);
+        setData(null);
+      };
+
+      if (loading) return html`<div class="loading">Loading...</div>`;
+      if (error) return html`
+        <div class="error">
+          <p>${error}</p>
+          <button onClick=${loadData} style="margin-top: 12px; padding: 8px 16px; background: var(--accent); color: white; border: none;">Retry</button>
+          <button onClick=${disconnect} style="margin-top: 12px; margin-left: 8px; padding: 8px 16px; background: var(--card); color: var(--text); border: 1px solid var(--border);">Disconnect</button>
+        </div>`;
+
+      const tabs = ['overview', 'rollups', 'intentions', 'reviews'];
+
+      return html`
+        <header>
+          <h1 onClick=${loadData} style="cursor: pointer">Ground Control</h1>
+          <span class="sync-status" onClick=${disconnect} style="cursor: pointer">disconnect</span>
+        </header>
+
+        <div class="tabs">
+          ${tabs.map(t => html`
+            <button class="tab ${tab === t ? 'active' : ''}" onClick=${() => setTab(t)}>
+              ${t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>
+          `)}
+        </div>
+
+        ${tab === 'overview' && html`<${OverviewTab} data=${data} />`}
+        ${tab === 'rollups' && html`<${RollupsTab} rollups=${data.rollups} />`}
+        ${tab === 'intentions' && html`<${IntentionsTab} intentions=${data.intentions} />`}
+        ${tab === 'reviews' && html`<${ReviewsTab} reviews=${data.reviews} />`}
+      `;
+    }
+
+    // ---- Tabs ----
+    function OverviewTab({ data }) {
+      const { weekStats, projects, byProject, intentionsByProject } = data;
+
+      return html`
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-value">${weekStats.sessions}</div>
+            <div class="stat-label">Sessions</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${weekStats.prompts}</div>
+            <div class="stat-label">Prompts</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${weekStats.commits}</div>
+            <div class="stat-label">Commits</div>
+          </div>
+        </div>
+
+        <div class="section-title">Projects this week</div>
+        ${projects.length === 0 && html`<div class="empty">No activity this week</div>`}
+        ${projects.map(p => html`
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">${p}</span>
+              <span class="card-date">${byProject[p].length}d active</span>
+            </div>
+            <div class="card-body">
+              ${byProject[p][0]?.summary || ''}
+            </div>
+            ${intentionsByProject[p]?.length > 0 && html`
+              <div class="card-tags">
+                ${intentionsByProject[p].slice(0, 3).map(i => html`
+                  <span class="tag active">${i.intention.length > 40 ? i.intention.slice(0, 40) + '...' : i.intention}</span>
+                `)}
+              </div>
+            `}
+          </div>
+        `)}
+      `;
+    }
+
+    function RollupsTab({ rollups }) {
+      if (!rollups.length) return html`<div class="empty">No weekly rollups yet</div>`;
+
+      return html`
+        <div class="section-title">Weekly Rollups</div>
+        ${rollups.map(r => {
+          let highlights = [];
+          try { highlights = JSON.parse(r.highlights || '[]'); } catch {}
+          return html`
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">${r.project}</span>
+                <span class="card-date">Week of ${r.week_start}</span>
+              </div>
+              <div class="card-body">${r.narrative}</div>
+              ${highlights.length > 0 && html`
+                <div class="card-tags">
+                  ${highlights.map(h => html`<span class="tag">${h}</span>`)}
+                </div>
+              `}
+            </div>
+          `;
+        })}
+      `;
+    }
+
+    function IntentionsTab({ intentions }) {
+      if (!intentions.length) return html`<div class="empty">No active intentions</div>`;
+
+      // Group by project
+      const byProject = {};
+      for (const i of intentions) {
+        if (!byProject[i.project]) byProject[i.project] = [];
+        byProject[i.project].push(i);
+      }
+
+      return html`
+        ${Object.entries(byProject).map(([project, items]) => html`
+          <div class="section-title">${project}</div>
+          ${items.map(i => html`
+            <div class="card">
+              <div class="card-header">
+                <span class="card-body">${i.intention}</span>
+                <span class="tag ${i.status}">${i.status}</span>
+              </div>
+              <div class="card-date" style="margin-top: 4px">
+                since ${i.first_seen}${i.last_seen !== i.first_seen ? ` · last seen ${i.last_seen}` : ''}
+              </div>
+            </div>
+          `)}
+        `)}
+      `;
+    }
+
+    function ReviewsTab({ reviews }) {
+      if (!reviews.length) return html`<div class="empty">No reviews yet</div>`;
+      const [expanded, setExpanded] = useState({});
+
+      const toggle = (id) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+
+      return html`
+        <div class="section-title">Recent Reviews</div>
+        ${reviews.map(r => html`
+          <div class="card review-card">
+            <div class="card-header">
+              <span class="card-title">${r.subject || r.review_type}</span>
+              <span class="card-date">${r.date}</span>
+            </div>
+            <div class="review-content ${expanded[r.id] ? 'expanded' : ''}">
+              <div class="card-body" style="white-space: pre-wrap">
+                ${r.content_text || r.content_markdown || '(no text content)'}
+              </div>
+            </div>
+            <button class="review-expand" onClick=${() => toggle(r.id)}>
+              ${expanded[r.id] ? 'Show less' : 'Show more'}
+            </button>
+          </div>
+        `)}
+      `;
+    }
+
+    render(html`<${App} />`, document.getElementById('app'));
+  </script>
+</body>
+</html>
