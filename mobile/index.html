@@ -123,6 +123,37 @@
       text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;
     }
 
+    /* Project filter */
+    .project-filter {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;
+      padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    }
+    .filter-pill {
+      font-size: 0.75rem; padding: 4px 10px; background: var(--card);
+      border: 1px solid var(--border); color: var(--text-secondary);
+      cursor: pointer; white-space: nowrap;
+    }
+    .filter-pill.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+    /* Ask tab */
+    .ask-input-row { display: flex; gap: 8px; margin-bottom: 16px; }
+    .ask-input {
+      flex: 1; padding: 12px; background: var(--card); border: 1px solid var(--border);
+      color: var(--text); font-size: 0.9rem; font-family: inherit;
+    }
+    .ask-input::placeholder { color: var(--text-secondary); }
+    .ask-btn {
+      padding: 12px 20px; background: var(--accent); color: white;
+      border: none; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+      white-space: nowrap;
+    }
+    .ask-btn:disabled { opacity: 0.5; }
+    .ask-answer {
+      background: var(--card); border: 1px solid var(--border);
+      padding: 16px; font-size: 0.9rem; line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
     /* Pull to refresh hint */
     .refresh-hint {
       text-align: center; font-size: 0.75rem; color: var(--text-secondary);
@@ -239,6 +270,8 @@
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [error, setError] = useState(null);
+      const [selectedProject, setSelectedProject] = useState(null); // null = all
+      const [askEnabled, setAskEnabled] = useState(false);
 
       // On mount: try /config endpoint, then check localStorage
       useEffect(() => {
@@ -247,6 +280,7 @@
           if (cfg.url && cfg.token) {
             localStorage.setItem('gc_turso_url', cfg.url);
             localStorage.setItem('gc_turso_token', cfg.token);
+            if (cfg.ask_enabled) setAskEnabled(true);
             setConfigured(true);
           } else {
             setConfigured(false);
@@ -298,10 +332,17 @@
             if (!latestSnapshots[s.project]) latestSnapshots[s.project] = s;
           }
 
+          // All project names across all data
+          const allProjects = new Set();
+          summaries.forEach(s => allProjects.add(s.project));
+          rollups.forEach(r => allProjects.add(r.project));
+          intentions.forEach(i => allProjects.add(i.project));
+
           setData({
             weekStats, summaries, rollups, intentions, reviews,
             byProject, intentionsByProject, latestSnapshots,
             projects: Object.keys(byProject).sort(),
+            allProjects: [...allProjects].sort(),
           });
         } catch (e) {
           setError(e.message);
@@ -329,13 +370,39 @@
           <button onClick=${disconnect} style="margin-top: 12px; margin-left: 8px; padding: 8px 16px; background: var(--card); color: var(--text); border: 1px solid var(--border);">Disconnect</button>
         </div>`;
 
-      const tabs = ['overview', 'rollups', 'intentions', 'reviews'];
+      const tabs = ['overview', 'rollups', 'intentions', ...(askEnabled ? ['ask'] : []), 'reviews'];
+
+      // Filter data by selected project
+      const fp = selectedProject;
+      const filtered = {
+        ...data,
+        projects: fp ? data.projects.filter(p => p === fp) : data.projects,
+        byProject: fp ? { [fp]: data.byProject[fp] || [] } : data.byProject,
+        intentionsByProject: fp ? { [fp]: data.intentionsByProject[fp] || [] } : data.intentionsByProject,
+        weekStats: fp ? (() => {
+          const s = (data.byProject[fp] || []);
+          return { prompts: s.reduce((a, x) => a + parseInt(x.prompt_count || 0), 0),
+                   sessions: s.reduce((a, x) => a + parseInt(x.session_count || 0), 0),
+                   commits: s.reduce((a, x) => a + parseInt(x.commit_count || 0), 0) };
+        })() : data.weekStats,
+      };
+      const filteredRollups = fp ? data.rollups.filter(r => r.project === fp) : data.rollups;
+      const filteredIntentions = fp ? data.intentions.filter(i => i.project === fp) : data.intentions;
 
       return html`
         <header>
           <h1 onClick=${loadData} style="cursor: pointer">Ground Control</h1>
           <span class="sync-status" onClick=${disconnect} style="cursor: pointer">disconnect</span>
         </header>
+
+        <div class="project-filter">
+          <button class="filter-pill ${!fp ? 'active' : ''}"
+            onClick=${() => setSelectedProject(null)}>All</button>
+          ${data.allProjects.map(p => html`
+            <button class="filter-pill ${fp === p ? 'active' : ''}"
+              onClick=${() => setSelectedProject(fp === p ? null : p)}>${p}</button>
+          `)}
+        </div>
 
         <div class="tabs">
           ${tabs.map(t => html`
@@ -345,9 +412,10 @@
           `)}
         </div>
 
-        ${tab === 'overview' && html`<${OverviewTab} data=${data} />`}
-        ${tab === 'rollups' && html`<${RollupsTab} rollups=${data.rollups} />`}
-        ${tab === 'intentions' && html`<${IntentionsTab} intentions=${data.intentions} />`}
+        ${tab === 'overview' && html`<${OverviewTab} data=${filtered} />`}
+        ${tab === 'rollups' && html`<${RollupsTab} rollups=${filteredRollups} />`}
+        ${tab === 'intentions' && html`<${IntentionsTab} intentions=${filteredIntentions} />`}
+        ${tab === 'ask' && html`<${AskTab} data=${data} project=${fp} />`}
         ${tab === 'reviews' && html`<${ReviewsTab} reviews=${data.reviews} />`}
       `;
     }
@@ -473,6 +541,75 @@
             </button>
           </div>
         `)}
+      `;
+    }
+
+    function AskTab({ data, project }) {
+      const [question, setQuestion] = useState('');
+      const [answer, setAnswer] = useState(null);
+      const [asking, setAsking] = useState(false);
+      const [error, setError] = useState(null);
+
+      const handleAsk = async () => {
+        if (!question.trim()) return;
+        setAsking(true);
+        setError(null);
+        setAnswer(null);
+
+        // Build context from loaded data
+        const summaries = project
+          ? data.summaries.filter(s => s.project === project)
+          : data.summaries;
+        const rollups = project
+          ? data.rollups.filter(r => r.project === project)
+          : data.rollups;
+        const intentions = project
+          ? data.intentions.filter(i => i.project === project)
+          : data.intentions;
+
+        const ctx = [
+          '== Daily summaries (last 7 days) ==',
+          ...summaries.slice(0, 30).map(s => `[${s.date}] ${s.project}: ${s.summary}`),
+          '',
+          '== Weekly rollups ==',
+          ...rollups.slice(0, 12).map(r => `[${r.project} / week of ${r.week_start}] ${r.narrative}`),
+          '',
+          '== Active intentions ==',
+          ...intentions.map(i => `[${i.project}] ${i.intention} (${i.status}, since ${i.first_seen})`),
+        ].join('\n');
+
+        try {
+          const resp = await fetch('/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: question.trim(), context: ctx }),
+          });
+          const result = await resp.json();
+          if (result.error) throw new Error(result.error);
+          setAnswer(result.answer);
+        } catch (e) {
+          setError(e.message);
+        }
+        setAsking(false);
+      };
+
+      const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAsk(); }
+      };
+
+      return html`
+        <div class="section-title">Ask${project ? ` about ${project}` : ''}</div>
+        <div class="ask-input-row">
+          <input class="ask-input" type="text"
+            placeholder=${project ? `Ask about ${project}...` : 'Ask about your work...'}
+            value=${question} onInput=${e => setQuestion(e.target.value)}
+            onKeyDown=${handleKeyDown} disabled=${asking} />
+          <button class="ask-btn" onClick=${handleAsk} disabled=${asking || !question.trim()}>
+            ${asking ? '...' : 'Ask'}
+          </button>
+        </div>
+        ${error && html`<div class="error">${error}</div>`}
+        ${answer && html`<div class="ask-answer">${answer}</div>`}
       `;
     }
 
