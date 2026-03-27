@@ -68,6 +68,10 @@ MIGRATIONS = {
     "002_seed_from_config": _seed_from_config,
     "003_rename_muted_to_ignored": "UPDATE projects SET status = 'ignored' WHERE status = 'muted';",
     "004_add_token_count": "ALTER TABLE sessions ADD COLUMN token_count INTEGER;",
+    "005_add_hostname": """
+        ALTER TABLE prompts ADD COLUMN hostname TEXT;
+        ALTER TABLE sessions ADD COLUMN hostname TEXT;
+    """,
 }
 
 

@@ -46,6 +46,9 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
 fi
 echo "$(date): Context length: ${#CONTEXT}" >> "$DEBUG_LOG"
 
+# Capture hostname for multi-machine tracking
+MACHINE=$(hostname -s)
+
 # Escape single quotes for SQL
 PROMPT_ESCAPED=$(echo "$PROMPT" | sed "s/'/''/g")
 CONTEXT_ESCAPED=$(echo "$CONTEXT" | sed "s/'/''/g")
@@ -55,9 +58,9 @@ sqlite3 ~/.claude/prompt-history.db "INSERT OR IGNORE INTO projects (name) VALUE
 
 # Insert into database (utility=NULL means unrated)
 if [ -n "$SESSION_ID" ]; then
-    sqlite3 ~/.claude/prompt-history.db "INSERT INTO prompts (project, prompt, session_id, context) VALUES ('$PROJECT', '$PROMPT_ESCAPED', $SESSION_ID, '$CONTEXT_ESCAPED');" 2>/dev/null
+    sqlite3 ~/.claude/prompt-history.db "INSERT INTO prompts (project, prompt, session_id, context, hostname) VALUES ('$PROJECT', '$PROMPT_ESCAPED', $SESSION_ID, '$CONTEXT_ESCAPED', '$MACHINE');" 2>/dev/null
 else
-    sqlite3 ~/.claude/prompt-history.db "INSERT INTO prompts (project, prompt, context) VALUES ('$PROJECT', '$PROMPT_ESCAPED', '$CONTEXT_ESCAPED');" 2>/dev/null
+    sqlite3 ~/.claude/prompt-history.db "INSERT INTO prompts (project, prompt, context, hostname) VALUES ('$PROJECT', '$PROMPT_ESCAPED', '$CONTEXT_ESCAPED', '$MACHINE');" 2>/dev/null
 fi
 
 # === Context Usage Alert ===

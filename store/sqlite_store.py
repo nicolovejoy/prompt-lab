@@ -366,13 +366,13 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
     def get_day_data(self, project, date):
         prompts = [dict(r) for r in self._conn.execute("""
-            SELECT id, prompt, outcome, utility, tags, context
+            SELECT id, prompt, outcome, utility, tags, context, hostname
             FROM prompts WHERE project = ? AND date(timestamp) = ?
             ORDER BY timestamp
         """, (project, date)).fetchall()]
 
         sessions = [dict(r) for r in self._conn.execute("""
-            SELECT id, started_at, ended_at, summary, utility
+            SELECT id, started_at, ended_at, summary, utility, hostname
             FROM sessions WHERE project = ? AND date(started_at) = ?
             ORDER BY started_at
         """, (project, date)).fetchall()]
@@ -410,7 +410,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
             clauses.append("started_at >= datetime('now', printf('-%d days', ?))")
             params.append(since_days)
         sql = f"""
-            SELECT project, date(started_at) as date, summary, started_at
+            SELECT project, date(started_at) as date, summary, started_at, hostname
             FROM sessions WHERE {' AND '.join(clauses)}
             ORDER BY started_at DESC
         """
