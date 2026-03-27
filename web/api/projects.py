@@ -3,8 +3,8 @@
 import json
 from http.server import BaseHTTPRequestHandler
 
-from _auth import is_authenticated
-from _turso import turso_query
+from auth_helper import is_authenticated
+from turso_helper import turso_query
 
 
 class handler(BaseHTTPRequestHandler):

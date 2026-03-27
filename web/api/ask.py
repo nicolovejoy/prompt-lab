@@ -4,7 +4,7 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler
 
-from _auth import is_authenticated
+from auth_helper import is_authenticated
 
 
 class handler(BaseHTTPRequestHandler):

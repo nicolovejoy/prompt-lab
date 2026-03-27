@@ -5,7 +5,7 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler
 
-from _auth import (
+from auth_helper import (
     clear_cookie_header,
     is_authenticated,
     set_cookie_header,

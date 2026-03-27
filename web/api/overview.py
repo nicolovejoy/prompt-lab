@@ -4,8 +4,8 @@ import json
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler
 
-from _auth import is_authenticated, unauthorized_response
-from _turso import turso_query
+from auth_helper import is_authenticated
+from turso_helper import turso_query
 
 
 class handler(BaseHTTPRequestHandler):

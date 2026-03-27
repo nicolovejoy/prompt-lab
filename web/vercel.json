@@ -1,12 +1,7 @@
 {
-  "build": {
-    "env": {
-      "PYTHONPATH": "api"
-    }
-  },
   "functions": {
     "api/**/*.py": {
-      "includeFiles": "api/_*.py"
+      "includeFiles": "{auth_helper.py,turso_helper.py}"
     }
   },
   "rewrites": [
