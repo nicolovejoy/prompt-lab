@@ -2,16 +2,18 @@
 # Auto-log prompts to SQLite on submission
 
 DEBUG_LOG=~/.claude/hooks/debug.log
-echo "$(date): Hook called" >> "$DEBUG_LOG"
 
 # Read JSON from stdin
 INPUT=$(cat)
-echo "$(date): Input length: ${#INPUT}" >> "$DEBUG_LOG"
-echo "$(date): Raw input: $INPUT" >> "$DEBUG_LOG"
 
 # Extract prompt text (jq required)
 PROMPT=$(echo "$INPUT" | jq -r '.prompt // empty')
-echo "$(date): Prompt length: ${#PROMPT}, first 50: ${PROMPT:0:50}" >> "$DEBUG_LOG"
+
+if [ -n "$CLAUDE_HOOK_DEBUG" ]; then
+    echo "$(date): Hook called" >> "$DEBUG_LOG"
+    echo "$(date): Input length: ${#INPUT}" >> "$DEBUG_LOG"
+    echo "$(date): Prompt length: ${#PROMPT}, first 50: ${PROMPT:0:50}" >> "$DEBUG_LOG"
+fi
 
 # Skip if empty or too short
 if [ -z "$PROMPT" ] || [ ${#PROMPT} -lt 20 ]; then
@@ -44,7 +46,9 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
         head -1 | \
         head -c 500)
 fi
-echo "$(date): Context length: ${#CONTEXT}" >> "$DEBUG_LOG"
+if [ -n "$CLAUDE_HOOK_DEBUG" ]; then
+    echo "$(date): Context length: ${#CONTEXT}" >> "$DEBUG_LOG"
+fi
 
 # Capture hostname for multi-machine tracking
 MACHINE=$(hostname -s)

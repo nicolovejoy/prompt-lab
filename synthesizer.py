@@ -191,7 +191,7 @@ Recent daily summaries (last 14 days):
                     model=result["model"],
                 )
 
-            today = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+            today = datetime.now().strftime("%Y-%m-%d")
             store.log_synthesis(
                 run_type="intentions", target_date=today, project=project,
                 model=result["model"], input_tokens=result["input_tokens"],
