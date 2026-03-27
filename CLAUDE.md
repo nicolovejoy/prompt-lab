@@ -20,6 +20,7 @@
 - `mobile/` — static PWA (Preact+HTM) reads from Turso, local /ask proxy
 - `/handoff` generates daily summaries + weekly rollups inline (no API call)
 - `/ask` queries the knowledge store with natural language
+- `workflow/` — slash commands (`commands/`), hooks, and `statusline-command.sh` (copy to `~/.claude/`)
 
 ## Next Steps
 
