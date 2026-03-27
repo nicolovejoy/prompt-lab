@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Ground Control</title>
+  <style>
+    :root {
+      --bg: #0f0f1a;
+      --card: #1a1a2e;
+      --card-hover: #222240;
+      --text: #e0e0e0;
+      --text-secondary: #888;
+      --border: #2a2a4a;
+      --accent: #6366f1;
+      --accent-light: #818cf8;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f5f5f5;
+        --card: #ffffff;
+        --card-hover: #fafafa;
+        --text: #1a1a1a;
+        --text-secondary: #666;
+        --border: #e0e0e0;
+        --accent: #4f46e5;
+        --accent-light: #818cf8;
+        --green: #16a34a;
+        --yellow: #ca8a04;
+        --red: #dc2626;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: var(--safe-top) 16px var(--safe-bottom);
+    }
+
+    /* Login */
+    .login { max-width: 360px; margin: 80px auto; text-align: center; }
+    .login h2 { margin-bottom: 8px; font-size: 1.3rem; }
+    .login p { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 24px; }
+    .login input {
+      width: 100%; padding: 12px; margin-bottom: 12px;
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      font-size: 1rem; font-family: inherit; text-align: center;
+    }
+    .login input:focus { outline: none; border-color: var(--accent); }
+    .login button {
+      width: 100%; padding: 12px; background: var(--accent); color: white;
+      border: none; font-size: 1rem; font-weight: 600; cursor: pointer;
+    }
+    .login button:disabled { opacity: 0.5; }
+
+    /* Header */
+    header {
+      padding: 16px 0 12px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.5px; cursor: pointer; }
+    .header-actions { display: flex; align-items: center; gap: 12px; }
+    .header-link {
+      font-size: 0.75rem; color: var(--text-secondary); cursor: pointer;
+      background: none; border: none; font-family: inherit;
+    }
+    .header-link:hover { color: var(--accent-light); }
+
+    /* Nav tabs */
+    .tabs {
+      display: flex; gap: 2px; margin-bottom: 16px;
+      background: var(--card); padding: 3px; border-radius: 10px;
+    }
+    .tab {
+      flex: 1; padding: 8px 0; text-align: center; font-size: 0.8rem;
+      font-weight: 600; color: var(--text-secondary); background: none;
+      border: none; cursor: pointer; border-radius: 8px; font-family: inherit;
+    }
+    .tab.active { background: var(--accent); color: white; }
+
+    /* Stats bar */
+    .stats { display: flex; gap: 8px; margin-bottom: 16px; }
+    .stat {
+      flex: 1; background: var(--card); padding: 12px;
+      border: 1px solid var(--border); text-align: center;
+    }
+    .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--accent-light); }
+    .stat-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* Project grid */
+    .project-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 700px) {
+      .project-grid { grid-template-columns: 1fr; }
+    }
+    .project-card {
+      background: var(--card); padding: 14px 16px;
+      border: 1px solid var(--border);
+      cursor: pointer; transition: background 0.1s;
+    }
+    .project-card:hover { background: var(--card-hover); }
+    .project-card-header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 6px;
+    }
+    .project-card-name { font-weight: 600; font-size: 0.95rem; }
+    .project-card-time { font-size: 0.75rem; color: var(--text-secondary); }
+    .project-card-summary {
+      font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; margin-bottom: 4px;
+    }
+    .project-card-meta {
+      display: flex; gap: 10px; font-size: 0.75rem; color: var(--text-secondary); margin-top: 6px;
+    }
+    .project-card-intentions {
+      font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; line-height: 1.4;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      padding: 14px; margin-bottom: 10px;
+    }
+    .card-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 8px;
+    }
+    .card-title { font-size: 0.95rem; font-weight: 600; }
+    .card-date { font-size: 0.75rem; color: var(--text-secondary); }
+    .card-body { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; }
+    .card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .tag {
+      font-size: 0.7rem; padding: 2px 8px; background: var(--border);
+      color: var(--text-secondary);
+    }
+    .tag.active { background: rgba(99, 102, 241, 0.2); color: var(--accent-light); }
+    .tag.completed { background: rgba(34, 197, 94, 0.2); color: var(--green); }
+    .tag.stalled { background: rgba(234, 179, 8, 0.2); color: var(--yellow); }
+
+    /* Status badges */
+    .status-badge {
+      display: inline-block; padding: 2px 8px; font-size: 0.7rem;
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .status-active { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+    .status-completed { background: rgba(99, 102, 241, 0.15); color: var(--accent-light); }
+    .status-stalled { background: rgba(234, 179, 8, 0.15); color: var(--yellow); }
+
+    /* Key decisions */
+    .key-decisions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .key-decision-tag {
+      font-size: 0.75rem; padding: 3px 8px;
+      background: var(--border); color: var(--text-secondary);
+    }
+
+    /* Count badges */
+    .count-badges { display: flex; gap: 8px; margin-top: 8px; }
+    .count-badge { font-size: 0.7rem; color: var(--text-secondary); }
+    .count-badge strong { color: var(--text); }
+
+    /* Review snapshots */
+    .review-card { border-left: 3px solid var(--accent); }
+    .review-content {
+      max-height: 200px; overflow: hidden; position: relative;
+      transition: max-height 0.3s;
+    }
+    .review-content.expanded { max-height: none; }
+    .review-expand {
+      font-size: 0.8rem; color: var(--accent-light); background: none;
+      border: none; cursor: pointer; margin-top: 8px; padding: 0; font-family: inherit;
+    }
+
+    /* Project detail */
+    .project-detail { max-width: 700px; }
+    .back-link {
+      font-size: 0.85rem; color: var(--accent-light); cursor: pointer;
+      background: none; border: none; margin-bottom: 16px; padding: 0; font-family: inherit;
+    }
+    .detail-name { font-size: 1.3rem; font-weight: 600; margin-bottom: 4px; }
+    .detail-stats { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px; }
+    .detail-section { margin-bottom: 20px; }
+    .detail-section-label {
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 8px;
+    }
+
+    /* Project filter pills */
+    .project-filter {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;
+      padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    }
+    .filter-pill {
+      font-size: 0.75rem; padding: 4px 10px; background: var(--card);
+      border: 1px solid var(--border); color: var(--text-secondary);
+      cursor: pointer; white-space: nowrap; font-family: inherit;
+    }
+    .filter-pill.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+    /* Ask */
+    .ask-input-row { display: flex; gap: 8px; margin-bottom: 16px; }
+    .ask-input {
+      flex: 1; padding: 12px; background: var(--card); border: 1px solid var(--border);
+      color: var(--text); font-size: 0.9rem; font-family: inherit;
+    }
+    .ask-input::placeholder { color: var(--text-secondary); }
+    .ask-btn {
+      padding: 12px 20px; background: var(--accent); color: white;
+      border: none; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+      white-space: nowrap; font-family: inherit;
+    }
+    .ask-btn:disabled { opacity: 0.5; }
+    .ask-answer {
+      background: var(--card); border: 1px solid var(--border);
+      padding: 16px; font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap;
+    }
+
+    /* Misc */
+    .loading { text-align: center; padding: 40px; color: var(--text-secondary); }
+    .error { color: var(--red); text-align: center; padding: 20px; }
+    .empty { color: var(--text-secondary); text-align: center; padding: 30px; font-size: 0.9rem; }
+    .section-title {
+      font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;
+    }
+    .show-more {
+      text-align: center; margin-bottom: 16px;
+    }
+    .show-more a {
+      font-size: 0.85rem; color: var(--text-secondary); cursor: pointer;
+      text-decoration: none;
+    }
+    .show-more a:hover { color: var(--accent-light); }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="module">
+    import { h, render } from 'https://esm.sh/preact@10.19.3';
+    import { useState, useEffect, useCallback } from 'https://esm.sh/preact@10.19.3/hooks';
+    import htm from 'https://esm.sh/htm@3.1.1';
+    const html = htm.bind(h);
+
+    // ---- API helpers ----
+    async function api(path) {
+      const resp = await fetch(path);
+      if (resp.status === 401) throw new Error('unauthorized');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    }
+
+    async function apiPost(path, body) {
+      const resp = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (resp.status === 401) throw new Error('unauthorized');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    }
+
+    function timeAgo(dateStr) {
+      if (!dateStr) return '';
+      const now = new Date();
+      const then = new Date(dateStr.replace(' ', 'T'));
+      const days = Math.floor((now - then) / 86400000);
+      if (days === 0) return 'today';
+      if (days === 1) return 'yesterday';
+      if (days < 7) return days + 'd ago';
+      if (days < 30) return Math.floor(days / 7) + 'w ago';
+      return Math.floor(days / 30) + 'mo ago';
+    }
+
+    // ---- Login ----
+    function Login({ onLogin }) {
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState(null);
+      const [loading, setLoading] = useState(false);
+
+      const submit = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const resp = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password }),
+          });
+          if (resp.ok) onLogin();
+          else setError('Wrong password');
+        } catch (e) {
+          setError(e.message);
+        }
+        setLoading(false);
+      };
+
+      const onKeyDown = (e) => { if (e.key === 'Enter') submit(); };
+
+      return html`
+        <div class="container">
+          <div class="login">
+            <h2>Ground Control</h2>
+            <p>Enter password to continue</p>
+            <input type="password" placeholder="Password" autofocus
+              value=${password} onInput=${e => setPassword(e.target.value)}
+              onKeyDown=${onKeyDown} />
+            ${error && html`<p class="error" style="margin-bottom: 12px">${error}</p>`}
+            <button onClick=${submit} disabled=${loading || !password}>
+              ${loading ? 'Signing in...' : 'Sign in'}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // ---- Main App ----
+    function App() {
+      const [authed, setAuthed] = useState(null); // null = checking
+      const [tab, setTab] = useState('overview');
+      const [overview, setOverview] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+      const [selectedProject, setSelectedProject] = useState(null);
+      const [detailProject, setDetailProject] = useState(null);
+      const [detailData, setDetailData] = useState(null);
+
+      // Check auth on mount
+      useEffect(() => {
+        api('/api/login').then(() => setAuthed(true)).catch(() => setAuthed(false));
+      }, []);
+
+      const loadOverview = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const data = await api('/api/overview');
+          setOverview(data);
+        } catch (e) {
+          if (e.message === 'unauthorized') { setAuthed(false); return; }
+          setError(e.message);
+        }
+        setLoading(false);
+      }, []);
+
+      useEffect(() => { if (authed) loadOverview(); }, [authed]);
+
+      const openProject = async (name) => {
+        setDetailProject(name);
+        setDetailData(null);
+        try {
+          const data = await api('/api/project?name=' + encodeURIComponent(name));
+          setDetailData(data);
+        } catch (e) {
+          if (e.message === 'unauthorized') { setAuthed(false); return; }
+          setDetailData({ error: e.message });
+        }
+      };
+
+      const closeProject = () => { setDetailProject(null); setDetailData(null); };
+
+      const logout = async () => {
+        await fetch('/api/login', { method: 'DELETE' });
+        setAuthed(false);
+        setOverview(null);
+      };
+
+      if (authed === null) return html`<div class="loading">Loading...</div>`;
+      if (!authed) return html`<${Login} onLogin=${() => { setAuthed(true); }} />`;
+
+      if (loading) return html`<div class="loading">Loading...</div>`;
+      if (error) return html`
+        <div class="container">
+          <div class="error">
+            <p>${error}</p>
+            <button onClick=${loadOverview} style="margin-top: 12px; padding: 8px 16px;
+              background: var(--accent); color: white; border: none; cursor: pointer;">Retry</button>
+          </div>
+        </div>`;
+
+      // Project detail view
+      if (detailProject) return html`
+        <div class="container">
+          <header>
+            <h1 onClick=${closeProject}>Ground Control</h1>
+            <div class="header-actions">
+              <button class="header-link" onClick=${logout}>log out</button>
+            </div>
+          </header>
+          <${ProjectDetail} name=${detailProject} data=${detailData} onBack=${closeProject} />
+        </div>
+      `;
+
+      const fp = selectedProject;
+      const tabs = ['overview', 'rollups', 'intentions', 'ask', 'reviews'];
+
+      return html`
+        <div class="container">
+          <header>
+            <h1 onClick=${loadOverview}>Ground Control</h1>
+            <div class="header-actions">
+              <button class="header-link" onClick=${logout}>log out</button>
+            </div>
+          </header>
+
+          ${overview?.all_projects?.length > 1 && html`
+            <div class="project-filter">
+              <button class="filter-pill ${!fp ? 'active' : ''}"
+                onClick=${() => setSelectedProject(null)}>All</button>
+              ${overview.all_projects.map(p => html`
+                <button class="filter-pill ${fp === p ? 'active' : ''}"
+                  onClick=${() => setSelectedProject(fp === p ? null : p)}>${p}</button>
+              `)}
+            </div>
+          `}
+
+          <div class="tabs">
+            ${tabs.map(t => html`
+              <button class="tab ${tab === t ? 'active' : ''}" onClick=${() => setTab(t)}>
+                ${t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            `)}
+          </div>
+
+          ${tab === 'overview' && html`<${OverviewTab} overview=${overview} project=${fp}
+            onDrillDown=${openProject} />`}
+          ${tab === 'rollups' && html`<${RollupsTab} project=${fp} />`}
+          ${tab === 'intentions' && html`<${IntentionsTab} project=${fp} />`}
+          ${tab === 'ask' && html`<${AskTab} overview=${overview} project=${fp} />`}
+          ${tab === 'reviews' && html`<${ReviewsTab} />`}
+        </div>
+      `;
+    }
+
+    // ---- Overview Tab ----
+    function OverviewTab({ overview, project, onDrillDown }) {
+      const { week, by_project, intentions_by_project, all_projects } = overview;
+      const [showAll, setShowAll] = useState(false);
+
+      const projects = project ? [project] : all_projects;
+
+      // Compute per-project stats for display
+      const weekStats = project
+        ? (() => {
+            const s = by_project[project]?.summaries || [];
+            return {
+              prompts: s.reduce((a, x) => a + parseInt(x.prompt_count || 0), 0),
+              sessions: s.reduce((a, x) => a + parseInt(x.session_count || 0), 0),
+              commits: s.reduce((a, x) => a + parseInt(x.commit_count || 0), 0),
+            };
+          })()
+        : week;
+
+      // Split into recent (7 days) and older
+      const now = new Date();
+      const cutoff = new Date(now - 14 * 86400000).toISOString().slice(0, 10);
+      const recent = projects.filter(p => {
+        const summaries = by_project[p]?.summaries;
+        return summaries && summaries.length > 0 && summaries[0].date >= cutoff;
+      });
+      const older = projects.filter(p => !recent.includes(p));
+      const display = showAll ? projects : recent;
+
+      return html`
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-value">${weekStats.sessions}</div>
+            <div class="stat-label">Sessions</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${weekStats.prompts}</div>
+            <div class="stat-label">Prompts</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${weekStats.commits}</div>
+            <div class="stat-label">Commits</div>
+          </div>
+        </div>
+
+        <div class="section-title">Projects this week</div>
+        ${display.length === 0 && html`<div class="empty">No activity this week</div>`}
+        <div class="project-grid">
+          ${display.map(p => {
+            const data = by_project[p] || { summaries: [], days: 0 };
+            const intentions = intentions_by_project[p] || [];
+            const latest = data.summaries[0];
+            return html`
+              <div class="project-card" onClick=${() => onDrillDown(p)}>
+                <div class="project-card-header">
+                  <span class="project-card-name">${p}</span>
+                  <span class="project-card-time">${data.days}d active</span>
+                </div>
+                ${latest && html`
+                  <div class="project-card-summary">${latest.summary}</div>
+                `}
+                <div class="project-card-meta">
+                  ${data.summaries.length > 0 && html`
+                    <span>${data.summaries.reduce((a, s) => a + parseInt(s.session_count || 0), 0)} sessions</span>
+                  `}
+                  ${data.summaries.length > 0 && html`
+                    <span>${data.summaries.reduce((a, s) => a + parseInt(s.commit_count || 0), 0)} commits</span>
+                  `}
+                </div>
+                ${intentions.length > 0 && html`
+                  <div class="project-card-intentions">
+                    ${intentions.slice(0, 3).map(i => i.intention).join(' / ')}
+                  </div>
+                `}
+              </div>
+            `;
+          })}
+        </div>
+        ${older.length > 0 && !showAll && html`
+          <div class="show-more">
+            <a onClick=${() => setShowAll(true)}>
+              Show ${older.length} older project${older.length > 1 ? 's' : ''}
+            </a>
+          </div>
+        `}
+        ${showAll && older.length > 0 && html`
+          <div class="show-more">
+            <a onClick=${() => setShowAll(false)}>Hide older projects</a>
+          </div>
+        `}
+      `;
+    }
+
+    // ---- Project Detail ----
+    function ProjectDetail({ name, data, onBack }) {
+      if (!data) return html`<div class="loading">Loading ${name}...</div>`;
+      if (data.error) return html`<div class="error">${data.error}</div>`;
+
+      const { summaries, intentions, rollups, snapshot } = data;
+
+      return html`
+        <div class="project-detail">
+          <button class="back-link" onClick=${onBack}>\u2190 Back</button>
+          <div class="detail-name">${name}</div>
+          ${snapshot && html`
+            <div class="detail-stats">
+              ${snapshot.session_count_7d || 0} sessions (7d)
+              ${snapshot.commit_count_7d ? ` \u00b7 ${snapshot.commit_count_7d} commits` : ''}
+            </div>
+          `}
+
+          ${intentions.length > 0 && html`
+            <div class="detail-section">
+              <div class="detail-section-label">Active Intentions</div>
+              ${intentions.map(i => html`
+                <div class="card">
+                  <div class="card-body">${i.intention}</div>
+                  <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px">
+                    since ${i.first_seen}${i.last_seen !== i.first_seen ? ` \u00b7 last seen ${i.last_seen}` : ''}
+                  </div>
+                </div>
+              `)}
+            </div>
+          `}
+
+          ${rollups.length > 0 && html`
+            <div class="detail-section">
+              <div class="detail-section-label">Recent Weekly Rollups</div>
+              ${rollups.map(r => {
+                let highlights = [];
+                try { highlights = JSON.parse(r.highlights || '[]'); } catch {}
+                return html`
+                  <div class="card">
+                    <div class="card-header">
+                      <span class="card-date">Week of ${r.week_start}</span>
+                    </div>
+                    <div class="card-body">${r.narrative}</div>
+                    ${highlights.length > 0 && html`
+                      <div class="card-tags">
+                        ${highlights.map(h => html`<span class="tag">${h}</span>`)}
+                      </div>
+                    `}
+                    <div class="count-badges">
+                      <span class="count-badge"><strong>${r.prompt_count || 0}</strong> prompts</span>
+                      <span class="count-badge"><strong>${r.session_count || 0}</strong> sessions</span>
+                      <span class="count-badge"><strong>${r.commit_count || 0}</strong> commits</span>
+                    </div>
+                  </div>
+                `;
+              })}
+            </div>
+          `}
+
+          ${summaries.length > 0 && html`
+            <div class="detail-section">
+              <div class="detail-section-label">Daily Summaries</div>
+              ${summaries.map(s => {
+                let decisions = [];
+                try { decisions = JSON.parse(s.key_decisions || '[]'); } catch {}
+                return html`
+                  <div class="card">
+                    <div class="card-header">
+                      <span class="card-date">${s.date}</span>
+                    </div>
+                    <div class="card-body">${s.summary}</div>
+                    ${decisions.length > 0 && html`
+                      <div class="key-decisions">
+                        ${decisions.map(d => html`<span class="key-decision-tag">${d}</span>`)}
+                      </div>
+                    `}
+                    <div class="count-badges">
+                      <span class="count-badge"><strong>${s.prompt_count || 0}</strong> prompts</span>
+                      <span class="count-badge"><strong>${s.session_count || 0}</strong> sessions</span>
+                      <span class="count-badge"><strong>${s.commit_count || 0}</strong> commits</span>
+                    </div>
+                  </div>
+                `;
+              })}
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    // ---- Rollups Tab ----
+    function RollupsTab({ project }) {
+      const [rollups, setRollups] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        setLoading(true);
+        const params = project ? '?project=' + encodeURIComponent(project) : '';
+        api('/api/rollups' + params).then(d => { setRollups(d.rollups); setLoading(false); });
+      }, [project]);
+
+      if (loading) return html`<div class="loading">Loading...</div>`;
+      if (!rollups?.length) return html`<div class="empty">No weekly rollups yet</div>`;
+
+      return html`
+        <div class="section-title">Weekly Rollups</div>
+        ${rollups.map(r => {
+          let highlights = [];
+          try { highlights = JSON.parse(r.highlights || '[]'); } catch {}
+          return html`
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">${r.project}</span>
+                <span class="card-date">Week of ${r.week_start}</span>
+              </div>
+              <div class="card-body">${r.narrative}</div>
+              ${highlights.length > 0 && html`
+                <div class="card-tags">
+                  ${highlights.map(h => html`<span class="tag">${h}</span>`)}
+                </div>
+              `}
+              <div class="count-badges">
+                <span class="count-badge"><strong>${r.prompt_count || 0}</strong> prompts</span>
+                <span class="count-badge"><strong>${r.session_count || 0}</strong> sessions</span>
+                <span class="count-badge"><strong>${r.commit_count || 0}</strong> commits</span>
+              </div>
+            </div>
+          `;
+        })}
+      `;
+    }
+
+    // ---- Intentions Tab ----
+    function IntentionsTab({ project }) {
+      const [intentions, setIntentions] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        setLoading(true);
+        const params = project ? '?project=' + encodeURIComponent(project) : '';
+        api('/api/intentions' + params).then(d => { setIntentions(d.intentions); setLoading(false); });
+      }, [project]);
+
+      if (loading) return html`<div class="loading">Loading...</div>`;
+      if (!intentions?.length) return html`<div class="empty">No active intentions</div>`;
+
+      const byProject = {};
+      for (const i of intentions) {
+        if (!byProject[i.project]) byProject[i.project] = [];
+        byProject[i.project].push(i);
+      }
+
+      return html`
+        ${Object.entries(byProject).map(([proj, items]) => html`
+          <div class="section-title">${proj}</div>
+          ${items.map(i => html`
+            <div class="card">
+              <div class="card-header">
+                <span class="card-body" style="margin-bottom: 0">${i.intention}</span>
+                <span class="status-badge status-${i.status}">${i.status}</span>
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px">
+                since ${i.first_seen}${i.last_seen !== i.first_seen ? ` \u00b7 last seen ${i.last_seen}` : ''}
+              </div>
+            </div>
+          `)}
+        `)}
+      `;
+    }
+
+    // ---- Ask Tab ----
+    function AskTab({ overview, project }) {
+      const [question, setQuestion] = useState('');
+      const [answer, setAnswer] = useState(null);
+      const [asking, setAsking] = useState(false);
+      const [error, setError] = useState(null);
+
+      const handleAsk = async () => {
+        if (!question.trim()) return;
+        setAsking(true);
+        setError(null);
+        setAnswer(null);
+
+        // Build context from overview data
+        const bp = overview.by_project || {};
+        const ip = overview.intentions_by_project || {};
+
+        const allSummaries = [];
+        for (const [p, data] of Object.entries(bp)) {
+          if (project && p !== project) continue;
+          for (const s of data.summaries || []) {
+            allSummaries.push(`[${s.date}] ${p}: ${s.summary}`);
+          }
+        }
+
+        const allIntentions = [];
+        for (const [p, items] of Object.entries(ip)) {
+          if (project && p !== project) continue;
+          for (const i of items) {
+            allIntentions.push(`[${p}] ${i.intention} (${i.status}, since ${i.first_seen})`);
+          }
+        }
+
+        const ctx = [
+          '== Daily summaries (last 7 days) ==',
+          ...allSummaries.slice(0, 30),
+          '',
+          '== Active intentions ==',
+          ...allIntentions,
+        ].join('\n');
+
+        try {
+          const result = await apiPost('/api/ask', {
+            question: question.trim(),
+            context: ctx,
+          });
+          if (result.error) throw new Error(result.error);
+          setAnswer(result.answer);
+        } catch (e) {
+          setError(e.message);
+        }
+        setAsking(false);
+      };
+
+      const onKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAsk(); }
+      };
+
+      return html`
+        <div class="section-title">Ask${project ? ` about ${project}` : ''}</div>
+        <div class="ask-input-row">
+          <input class="ask-input" type="text"
+            placeholder=${project ? 'Ask about ' + project + '...' : 'Ask about your work...'}
+            value=${question} onInput=${e => setQuestion(e.target.value)}
+            onKeyDown=${onKeyDown} disabled=${asking} />
+          <button class="ask-btn" onClick=${handleAsk} disabled=${asking || !question.trim()}>
+            ${asking ? '...' : 'Ask'}
+          </button>
+        </div>
+        ${error && html`<div class="error">${error}</div>`}
+        ${answer && html`<div class="ask-answer">${answer}</div>`}
+      `;
+    }
+
+    // ---- Reviews Tab ----
+    function ReviewsTab() {
+      const [reviews, setReviews] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [expanded, setExpanded] = useState({});
+
+      useEffect(() => {
+        api('/api/reviews').then(d => { setReviews(d.reviews); setLoading(false); });
+      }, []);
+
+      if (loading) return html`<div class="loading">Loading...</div>`;
+      if (!reviews?.length) return html`<div class="empty">No reviews yet</div>`;
+
+      const toggle = (id) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+
+      return html`
+        <div class="section-title">Recent Reviews</div>
+        ${reviews.map(r => html`
+          <div class="card review-card">
+            <div class="card-header">
+              <span class="card-title">${r.subject || r.review_type}</span>
+              <span class="card-date">${r.date}</span>
+            </div>
+            <div class="review-content ${expanded[r.id] ? 'expanded' : ''}">
+              <div class="card-body" style="white-space: pre-wrap">
+                ${r.content_text || r.content_markdown || '(no text content)'}
+              </div>
+            </div>
+            <button class="review-expand" onClick=${() => toggle(r.id)}>
+              ${expanded[r.id] ? 'Show less' : 'Show more'}
+            </button>
+          </div>
+        `)}
+      `;
+    }
+
+    render(html`<${App} />`, document.getElementById('app'));
+  </script>
+</body>
+</html>

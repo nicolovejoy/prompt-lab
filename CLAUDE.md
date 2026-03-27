@@ -5,9 +5,19 @@
 ## Run
 
 ```bash
-./dashboard.sh        # main dashboard → localhost:5111
-.venv/bin/python mobile/serve.py  # mobile PWA → localhost:8080
+./dashboard.sh        # local dashboard → localhost:5111
+.venv/bin/python mobile/serve.py  # local mobile PWA → localhost:8080
 ```
+
+## Deploy (cloud dashboard)
+
+```bash
+cd web && vercel --prod
+```
+
+Env vars needed in Vercel: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `AUTH_SECRET`, `ANTHROPIC_API_KEY`
+
+To self-host: fork the repo, create a Turso database, set the env vars above, deploy `web/` to Vercel.
 
 ## Architecture
 
@@ -17,35 +27,23 @@
 - `send-review.py` — nightly email via Resend, saves to review_snapshots
 - `generate-report.py` — bi-monthly markdown report, saves to review_snapshots
 - `sync_to_turso.py` — pushes processed tables to Turso (no raw prompts)
-- `mobile/` — static PWA (Preact+HTM) reads from Turso, local /ask proxy
+- `web/` — cloud dashboard (Preact+HTM + Vercel Python serverless), auth-protected, reads from Turso
+- `dashboard/` — local dashboard (Flask), reads from SQLite (raw prompts, sessions, todos)
+- `mobile/` — legacy local mobile PWA, reads from Turso directly
 - `/handoff` generates daily summaries + weekly rollups inline (no API call)
 - `/ask` queries the knowledge store with natural language
 - `workflow/` — slash commands (`commands/`), hooks, and `statusline-command.sh` (copy to `~/.claude/`)
 
 ## Next Steps
 
-### Deploy mobile PWA to Vercel
-- Convert `mobile/serve.py` endpoints to Vercel serverless functions (`api/config.py`, `api/ask.py`)
-- Set TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, ANTHROPIC_API_KEY as Vercel env vars
-- Deploy `mobile/` as static site with `/api` functions
-- Add basic auth or token check so /config doesn't serve credentials to the public
-- PWA manifest + icons so it's installable on phone
-- Wire a custom domain or use the Vercel default URL
-
 ### Wire Turso sync into nightly pipeline
 - Add sync step to synthesizer.py `--all` (after snapshots, push to Turso)
 - Or add to the launchd schedule as a separate step after synthesizer
 
-### Dashboard improvements
-- Add weekly rollups view to main dashboard (localhost:5111)
-- Add review snapshots view (browse past emails/reports)
-- Show project snapshots on project detail page
-
-### Mobile PWA UX polish
-- Generate PWA icons (icon-192.png, icon-512.png)
-- Improve card layout and typography
+### Cloud dashboard polish
+- Generate PWA icons (icon-192.png, icon-512.png) and add manifest.json + sw.js
+- Wire a custom domain or use the Vercel default URL
 - Add date range selector (currently hardcoded to 7 days for overview)
-- Better loading states and error handling
 
 ### Backfill and maintenance
 - Verify nightly cron generates rollups for all projects (not just /handoff ones)
