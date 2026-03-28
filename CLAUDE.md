@@ -40,9 +40,10 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 - Add sync step to synthesizer.py `--all` (after snapshots, push to Turso)
 - Or add to the launchd schedule as a separate step after synthesizer
 
-### Cloud dashboard polish
+### Cloud dashboard UX overhaul
+- Improve visual design: too busy, needs lighter feel and better layout
+- Add project archiving from cloud dashboard (sync projects table to Turso, add archive mutation endpoint)
 - Generate PWA icons (icon-192.png, icon-512.png) and add manifest.json + sw.js
-- Wire a custom domain or use the Vercel default URL
 - Add date range selector (currently hardcoded to 7 days for overview)
 
 ### Backfill and maintenance
