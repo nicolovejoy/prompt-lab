@@ -18,11 +18,23 @@ class handler(BaseHTTPRequestHandler):
             return
 
         week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 
         summaries = turso_query(
             "SELECT * FROM daily_summaries WHERE date >= ? ORDER BY date DESC",
             [week_ago],
         )
+
+        # Activity data for last 30 days (dates + prompt counts for heat coloring)
+        activity_rows = turso_query(
+            "SELECT project, date, prompt_count FROM daily_summaries WHERE date >= ? ORDER BY date",
+            [month_ago],
+        )
+        activity_by_project = {}
+        for row in activity_rows:
+            activity_by_project.setdefault(row["project"], []).append(
+                {"date": row["date"], "prompts": int(row.get("prompt_count") or 0)}
+            )
         intentions = turso_query(
             "SELECT * FROM intentions WHERE status = ? ORDER BY last_seen DESC",
             ["active"],
@@ -70,6 +82,7 @@ class handler(BaseHTTPRequestHandler):
             "latest_snapshots": {
                 p: s.get("data") for p, s in latest_snapshots.items()
             },
+            "activity_by_project": activity_by_project,
             "all_projects": all_projects,
         })
 

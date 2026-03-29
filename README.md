@@ -1,16 +1,18 @@
 # prompt-lab / Ground Control
 
-Workflow tools and dashboard for tracking Claude Code sessions across projects.
+Workflow tools and dashboards for tracking Claude Code sessions across projects.
 
-Every session is logged, summarized, and surfaced in a local web dashboard. Slash commands handle session start/end and review. Optional nightly email reviews via the Anthropic API and Resend.
+Every session is logged, summarized, and surfaced in local and cloud dashboards. Slash commands handle session start/end and review. Nightly synthesis generates daily summaries, weekly rollups, intentions, and project snapshots. Optional email reviews and bi-monthly reports via the Anthropic API and Resend.
 
 ## What it does
 
 - **Auto-logs prompts** via a Claude Code hook on every submission
 - **Tracks sessions** with summaries, commit links, and token usage
-- **Synthesizes patterns** nightly — daily summaries and active intentions per project
-- **Dashboard** at localhost:5111 — project cards, session history, todos, intentions
+- **Synthesizes patterns** nightly — daily summaries, weekly rollups, active intentions, project snapshots
+- **Local dashboard** at localhost:5111 — project cards, session history, todos, intentions
+- **Cloud dashboard** on Vercel — auth-protected, reads from Turso, includes Ask (NLP Q&A)
 - **Email reviews** (optional) — daily + weekly session digests via Resend
+- **Bi-monthly reports** (optional) — longer-form markdown reports saved locally
 
 ## Setup
 
@@ -58,7 +60,7 @@ All configuration lives in `.env` (gitignored — never committed). See `.env.ex
 
 ### Optional (email reviews)
 
-Review emails are entirely optional. Without these, everything else works — dashboard, slash commands, synthesizer, prompt logging.
+Review emails are entirely optional. Without these, everything else works — dashboards, slash commands, synthesizer, prompt logging.
 
 - `RESEND_API_KEY` — API key from [Resend](https://resend.com). Free tier allows 100 emails/day.
 - `REVIEW_FROM_EMAIL` — sender address (e.g. `reviews@yourdomain.com`). Must be from a domain you've verified in Resend.
@@ -73,7 +75,18 @@ To send review emails, each user needs their own [Resend](https://resend.com) ac
 3. Create an API key
 4. Set all four email-related variables in your `.env`
 
-If you don't want email reviews, simply omit the Resend variables. The synthesizer and dashboard work independently.
+If you don't want email reviews, simply omit the Resend variables. The synthesizer and dashboards work independently.
+
+### Optional (cloud dashboard)
+
+The cloud dashboard reads from Turso (hosted SQLite) and is deployed to Vercel.
+
+- `TURSO_DATABASE_URL` — Turso database URL
+- `TURSO_AUTH_TOKEN` — Turso auth token
+- `AUTH_SECRET` — password for the cloud dashboard login
+- `ANTHROPIC_API_KEY` — also used for the cloud dashboard's Ask feature
+
+To self-host: fork the repo, create a Turso database, set the env vars above in Vercel, deploy `web/` to Vercel.
 
 ### What's private
 
@@ -82,10 +95,13 @@ These files contain your personal configuration and are **never committed** (git
 - `.env` — API keys and email addresses
 - `~/.claude/synthesizer.env` — alternative location for `ANTHROPIC_API_KEY`
 - `~/.claude/prompt-history.db` — your session data
+- `reports/` — generated reports (personal project details)
 
 Everything else in the repo is shared infrastructure with no personal details.
 
-## Dashboard
+## Dashboards
+
+### Local dashboard
 
 ```bash
 ./dashboard.sh
@@ -94,6 +110,14 @@ Everything else in the repo is shared infrastructure with no personal details.
 Opens at http://localhost:5111
 
 Project cards show: last session summary, todo count, active intentions, peak context usage. Click a card for the detail view — edit session summaries inline, manage status.
+
+### Cloud dashboard
+
+```bash
+cd web && vercel --prod
+```
+
+Auth-protected (cookie-based, single password). Features: overview stats, project detail, weekly rollups, intentions, review snapshots, and Ask (NLP Q&A powered by Claude).
 
 ## Slash commands
 
@@ -105,18 +129,22 @@ All commands live in `~/.claude/commands/` and work across every repo. Source of
 
 `/review [N] [project] [-v]` — session review across projects for last N days (default: 7), optional verbose mode for non-technical audience
 
+`/ask` — query the knowledge store with natural language
+
 ## Scheduled jobs
 
-Two launchd jobs installed by `install.sh` (macOS only):
+Three launchd jobs installed by `install.sh` (macOS only):
 
 `com.promptlab.synthesizer` — runs `synthesizer.py --all` nightly at 2am, logs to `synthesizer.log`
 
 `com.promptlab.review` — runs `send-review.py` daily at 2:30am (after synthesizer), logs to `send-review.log`. Includes both daily and weekly recaps; Saturday emails get deeper weekly analysis. Only runs if Resend is configured.
 
+`com.promptlab.report` — runs `generate-report.py` bi-monthly (1st and 16th at 3am), logs to `generate-report.log`. Generates longer-form markdown reports saved to `reports/`.
+
 Manage them:
 
 ```bash
-launchctl list | grep promptlab       # verify both registered
+launchctl list | grep promptlab       # verify all registered
 launchctl start com.promptlab.review  # trigger manually
 ```
 
@@ -124,26 +152,44 @@ launchctl start com.promptlab.review  # trigger manually
 
 ```
 prompt-lab/
+├── store/
+│   ├── base.py            # KnowledgeStore ABC (backend-agnostic)
+│   ├── sqlite_store.py    # SQLite backend (local, default)
+│   └── turso_store.py     # Turso HTTP backend (cloud)
 ├── dashboard/
 │   ├── server.py          # Flask API (port 5111)
 │   ├── index.html         # Frontend (Preact + HTM, no build step)
 │   └── requirements.txt
+├── web/
+│   ├── index.html         # Cloud frontend (Preact + HTM)
+│   ├── auth_helper.py     # Cookie-based auth
+│   ├── turso_helper.py    # Turso HTTP client
+│   ├── vercel.json        # Vercel config
+│   └── api/               # Python serverless functions (9 endpoints)
+├── mobile/
+│   ├── index.html         # Legacy PWA (reads from Turso)
+│   └── serve.py           # Local dev server
 ├── workflow/
 │   ├── commands/          # Slash command source of truth
 │   │   ├── readup.md
 │   │   ├── handoff.md
-│   │   └── review.md
+│   │   ├── review.md
+│   │   └── ask.md
 │   ├── hooks/
 │   │   ├── log-prompt.sh      # UserPromptSubmit hook
 │   │   └── session-stop.sh    # Stop hook (final token count)
 │   ├── com.promptlab.synthesizer.plist
 │   ├── com.promptlab.review.plist
+│   ├── com.promptlab.report.plist
 │   ├── CLAUDE.md.template
 │   └── install.sh
-├── synthesizer.py         # Nightly synthesis (summaries, intentions)
+├── claude_api.py          # Shared Claude API utilities + env loading
+├── synthesizer.py         # Nightly synthesis (summaries, rollups, intentions, snapshots)
 ├── send-review.py         # Daily review email (optional)
+├── generate-report.py     # Bi-monthly report generator (optional)
+├── sync_to_turso.py       # Push processed tables to Turso (no raw prompts)
 ├── todos.py               # Shared todo scanner
-├── dashboard.sh           # Start dashboard
+├── dashboard.sh           # Start local dashboard
 ├── .env.example           # Configuration template
 └── README.md
 ```
@@ -152,7 +198,7 @@ prompt-lab/
 
 SQLite at `~/.claude/prompt-history.db` — created automatically on first prompt.
 
-Key tables: `prompts`, `sessions` (with `token_count`), `commits`, `daily_summaries`, `intentions`, `projects`, `synthesis_log`.
+Key tables: `prompts`, `sessions` (with `token_count`), `commits`, `daily_summaries`, `weekly_rollups`, `intentions`, `projects`, `project_snapshots`, `review_snapshots`, `synthesis_log`.
 
 Not included in this repo (`.gitignore`). Back up or sync separately.
 
