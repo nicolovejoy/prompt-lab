@@ -36,16 +36,16 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 
 ## Next Steps
 
+### Rework project detail pages
+- Redesign timeline view: expand entries on click, show full summary inline
+- Improve rollups view: better visual hierarchy, narrative formatting
+- Consider removing or deprioritizing Intentions sub-tab (data is noisy/stale)
+- Distill key decisions on timeline to short phrases (match card style)
+
 ### Wire Turso sync into nightly pipeline
 - Add sync step to synthesizer.py `--all` (after snapshots, push to Turso)
 - Or add to the launchd schedule as a separate step after synthesizer
 
-### Cloud dashboard UX overhaul
-- ~~Improve visual design: too busy, needs lighter feel and better layout~~ (done — c657903)
-- Add project archiving from cloud dashboard (sync projects table to Turso, add archive mutation endpoint)
-- Generate PWA icons (icon-192.png, icon-512.png) and add manifest.json + sw.js
-- Add date range selector (currently hardcoded to 7 days for overview)
-
 ### Backfill and maintenance
-- Verify nightly cron generates rollups for all projects (not just /handoff ones)
-- Check first automated report on April 1 (generate-report.py via launchd) — 3 days away
+- Check first automated report on April 1 (generate-report.py via launchd)
+- Verify nightly cron generates rollups for all projects
