@@ -8,6 +8,24 @@ from auth_helper import is_authenticated
 from turso_helper import turso_query
 
 
+def _load_alias_map():
+    """Build alias→canonical and canonical→[aliases] maps."""
+    try:
+        rows = turso_query("SELECT alias, canonical FROM project_aliases")
+    except Exception:
+        return {}, {}
+    alias_to_canonical = {r["alias"]: r["canonical"] for r in rows}
+    canonical_to_aliases = {}
+    for r in rows:
+        canonical_to_aliases.setdefault(r["canonical"], []).append(r["alias"])
+    return alias_to_canonical, canonical_to_aliases
+
+
+def _resolve(name, alias_to_canonical):
+    """Return canonical name for a project."""
+    return alias_to_canonical.get(name, name)
+
+
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not is_authenticated(self.headers):
@@ -19,6 +37,9 @@ class handler(BaseHTTPRequestHandler):
 
         week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
         month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+
+        # Load aliases
+        alias_to_canonical, canonical_to_aliases = _load_alias_map()
 
         summaries = turso_query(
             "SELECT * FROM daily_summaries WHERE date >= ? ORDER BY date DESC",
@@ -32,7 +53,8 @@ class handler(BaseHTTPRequestHandler):
         )
         activity_by_project = {}
         for row in activity_rows:
-            activity_by_project.setdefault(row["project"], []).append(
+            p = _resolve(row["project"], alias_to_canonical)
+            activity_by_project.setdefault(p, []).append(
                 {"date": row["date"], "prompts": int(row.get("prompt_count") or 0)}
             )
         intentions = turso_query(
@@ -43,11 +65,11 @@ class handler(BaseHTTPRequestHandler):
             "SELECT * FROM project_snapshots ORDER BY snapshot_date DESC"
         )
 
-        # Aggregate week stats
+        # Aggregate week stats — resolve aliases
         week = {"prompts": 0, "sessions": 0, "commits": 0}
         by_project = {}
         for s in summaries:
-            p = s["project"]
+            p = _resolve(s["project"], alias_to_canonical)
             week["prompts"] += int(s.get("prompt_count") or 0)
             week["sessions"] += int(s.get("session_count") or 0)
             week["commits"] += int(s.get("commit_count") or 0)
@@ -58,14 +80,16 @@ class handler(BaseHTTPRequestHandler):
 
         intentions_by_project = {}
         for i in intentions:
-            intentions_by_project.setdefault(i["project"], []).append(i)
+            p = _resolve(i["project"], alias_to_canonical)
+            intentions_by_project.setdefault(p, []).append(i)
 
         latest_snapshots = {}
         for s in snapshots:
-            if s["project"] not in latest_snapshots:
-                latest_snapshots[s["project"]] = s
+            p = _resolve(s["project"], alias_to_canonical)
+            if p not in latest_snapshots:
+                latest_snapshots[p] = s
 
-        # All known projects
+        # All known projects (excluding aliases)
         all_projects = sorted(
             set(by_project) | set(intentions_by_project)
         )

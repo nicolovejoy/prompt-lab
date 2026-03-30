@@ -4,16 +4,23 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler
 
-from auth_helper import is_authenticated
+from auth_helper import get_role
 
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        if not is_authenticated(self.headers):
+        role = get_role(self.headers)
+        if not role:
             self.send_response(401)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+            return
+        if role != "admin":
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Ask requires admin access"}).encode())
             return
 
         api_key = os.environ.get("ANTHROPIC_API_KEY")

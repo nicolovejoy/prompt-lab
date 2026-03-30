@@ -55,6 +55,24 @@ def turso_query(sql, args=None):
     ]
 
 
+def resolve_project_names(name):
+    """Return list of project names: canonical + all aliases pointing to it.
+
+    If `name` is itself an alias, resolves to the canonical first.
+    """
+    # Check if this name is an alias
+    canonical_rows = turso_query(
+        "SELECT canonical FROM project_aliases WHERE alias = ?", [name]
+    )
+    canonical = canonical_rows[0]["canonical"] if canonical_rows else name
+
+    # Get all aliases for the canonical name
+    alias_rows = turso_query(
+        "SELECT alias FROM project_aliases WHERE canonical = ?", [canonical]
+    )
+    return [canonical] + [r["alias"] for r in alias_rows]
+
+
 def _type(value):
     if value is None:
         return "null"

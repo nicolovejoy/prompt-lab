@@ -157,6 +157,29 @@ def main():
         dry_run,
     )
 
+    # Project aliases
+    try:
+        alias_rows = [
+            dict(r) for r in local._conn.execute(
+                "SELECT alias, canonical FROM project_aliases"
+            ).fetchall()
+        ]
+        if alias_rows:
+            if dry_run:
+                print(f"  project_aliases: {len(alias_rows)} rows (dry run)")
+            else:
+                for row in alias_rows:
+                    remote._execute(
+                        "INSERT OR REPLACE INTO project_aliases (alias, canonical) VALUES (?, ?)",
+                        [row["alias"], row["canonical"]],
+                    )
+                print(f"  project_aliases: {len(alias_rows)} rows synced")
+            total += len(alias_rows)
+        else:
+            print("  project_aliases: 0 rows (skip)")
+    except Exception as e:
+        print(f"  project_aliases: {e}")
+
     local.close()
     remote.close()
 

@@ -178,6 +178,12 @@ class TursoKnowledgeStore(KnowledgeStore):
                     created_at TEXT DEFAULT (datetime('now'))
                 )
             """},
+            {"sql": """
+                CREATE TABLE IF NOT EXISTS project_aliases (
+                    alias     TEXT PRIMARY KEY,
+                    canonical TEXT NOT NULL
+                )
+            """},
         ])
 
     # ---- Daily summaries ----

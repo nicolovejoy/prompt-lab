@@ -16,29 +16,31 @@ def _secret():
     return os.environ.get("AUTH_SECRET", "")
 
 
-def make_token():
-    """Create a signed, time-limited auth token."""
+def make_token(role="admin"):
+    """Create a signed, time-limited auth token with role."""
     secret = _secret()
-    payload = json.dumps({"exp": int(time.time()) + MAX_AGE})
+    payload = json.dumps({"exp": int(time.time()) + MAX_AGE, "role": role})
     data = base64.urlsafe_b64encode(payload.encode()).decode()
     sig = hmac.new(secret.encode(), data.encode(), hashlib.sha256).hexdigest()
     return f"{data}.{sig}"
 
 
 def verify_token(token):
-    """Verify token signature and expiry."""
+    """Verify token signature and expiry. Returns role or None."""
     secret = _secret()
     if not secret or "." not in token:
-        return False
+        return None
     data, sig = token.rsplit(".", 1)
     expected = hmac.new(secret.encode(), data.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(sig, expected):
-        return False
+        return None
     try:
         payload = json.loads(base64.urlsafe_b64decode(data))
-        return payload["exp"] > time.time()
+        if payload["exp"] <= time.time():
+            return None
+        return payload.get("role", "admin")
     except Exception:
-        return False
+        return None
 
 
 def get_cookie(headers):
@@ -54,12 +56,20 @@ def get_cookie(headers):
 def is_authenticated(headers):
     """Check if request has a valid auth cookie."""
     token = get_cookie(headers)
-    return token and verify_token(token)
+    return verify_token(token) is not None if token else False
 
 
-def set_cookie_header():
+def get_role(headers):
+    """Return the user's role ('admin' or 'reader'), or None if not authenticated."""
+    token = get_cookie(headers)
+    if not token:
+        return None
+    return verify_token(token)
+
+
+def set_cookie_header(role="admin"):
     """Return Set-Cookie header value for a new auth token."""
-    token = make_token()
+    token = make_token(role)
     parts = [
         f"{COOKIE_NAME}={token}",
         f"Max-Age={MAX_AGE}",

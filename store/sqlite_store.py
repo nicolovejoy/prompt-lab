@@ -133,6 +133,11 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 ON weekly_rollups(project, week_start);
             CREATE INDEX IF NOT EXISTS idx_review_snapshots_type_date
                 ON review_snapshots(review_type, date);
+
+            CREATE TABLE IF NOT EXISTS project_aliases (
+                alias     TEXT PRIMARY KEY,
+                canonical TEXT NOT NULL
+            );
         """)
         self._conn.commit()
 
@@ -615,7 +620,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
         self._conn.commit()
 
     def update_project(self, name, **fields):
-        allowed = {"status", "category", "notes"}
+        allowed = {"status", "category", "notes", "github_url", "site_url"}
         updates, params = [], []
         for field in allowed:
             if field in fields:

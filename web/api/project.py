@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from auth_helper import is_authenticated
-from turso_helper import turso_query
+from turso_helper import turso_query, resolve_project_names
 
 
 class handler(BaseHTTPRequestHandler):
@@ -26,22 +26,37 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "name parameter required"}).encode())
             return
 
+        # Resolve aliases: combine data from canonical + aliased project names
+        names = resolve_project_names(name)
+        placeholders = ", ".join("?" for _ in names)
+
         summaries = turso_query(
-            "SELECT * FROM daily_summaries WHERE project = ? ORDER BY date DESC LIMIT 14",
-            [name],
+            f"SELECT * FROM daily_summaries WHERE project IN ({placeholders}) ORDER BY date DESC LIMIT 30",
+            names,
         )
         intentions = turso_query(
-            "SELECT * FROM intentions WHERE project = ? AND status = ? ORDER BY last_seen DESC",
-            [name, "active"],
+            f"SELECT * FROM intentions WHERE project IN ({placeholders}) AND status = ? ORDER BY last_seen DESC",
+            names + ["active"],
         )
         snapshot = turso_query(
-            "SELECT * FROM project_snapshots WHERE project = ? ORDER BY snapshot_date DESC LIMIT 1",
-            [name],
+            f"SELECT * FROM project_snapshots WHERE project IN ({placeholders}) ORDER BY snapshot_date DESC LIMIT 1",
+            names,
         )
         rollups = turso_query(
-            "SELECT * FROM weekly_rollups WHERE project = ? ORDER BY week_start DESC LIMIT 4",
-            [name],
+            f"SELECT * FROM weekly_rollups WHERE project IN ({placeholders}) ORDER BY week_start DESC LIMIT 8",
+            names,
         )
+
+        # Activity heatmap: all daily summaries for this project (up to 12 months)
+        activity = turso_query(
+            f"SELECT date, SUM(prompt_count) as prompt_count, SUM(session_count) as session_count, "
+            f"SUM(commit_count) as commit_count "
+            f"FROM daily_summaries WHERE project IN ({placeholders}) GROUP BY date ORDER BY date ASC",
+            names,
+        )
+
+        # Inception date: earliest daily summary
+        inception = activity[0]["date"] if activity else None
 
         snapshot_data = None
         if snapshot:
@@ -60,4 +75,6 @@ class handler(BaseHTTPRequestHandler):
             "intentions": intentions,
             "rollups": rollups,
             "snapshot": snapshot_data,
+            "activity": activity,
+            "inception": inception,
         }).encode())

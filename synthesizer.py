@@ -10,7 +10,7 @@ from pathlib import Path
 
 from anthropic import Anthropic
 
-from claude_api import OPUS, call_claude, estimate_cost_cents, load_env
+from claude_api import OPUS, SONNET, call_claude, estimate_cost_cents, load_env
 from store import get_store
 
 
@@ -301,6 +301,104 @@ Focus on progress, decisions, and direction — not individual tasks."""
             print(f"ERROR: {e}")
 
 
+PROJECT_STATE_TOOL = {
+    "name": "generate_project_state",
+    "description": "Generate a concise project state summary.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "state_summary": {
+                "type": "string",
+                "description": "2-4 sentence summary of where this project stands right now: what it is, recent direction, current status, and what's next",
+            },
+        },
+        "required": ["state_summary"],
+    },
+}
+
+
+def synthesize_project_states(store, client):
+    """Generate weekly project state summaries. Runs on Sundays."""
+    projects = store.get_projects_with_recent_summaries(n_days=14)
+    if not projects:
+        print("No projects with recent activity.")
+        return
+
+    print(f"Generating state summaries for {len(projects)} project(s).")
+
+    for project in projects:
+        print(f"  State for {project}...", end=" ", flush=True)
+
+        rollups = store.get_weekly_rollups(project=project, limit=3)
+        intentions = store.get_intentions(project=project, status="active")
+        summaries = store.get_daily_summaries(project=project, limit=7)
+
+        rollup_texts = [f"[Week of {r['week_start']}] {r['narrative']}" for r in rollups]
+        intention_texts = [f"- {i['intention']}" for i in intentions]
+        decision_texts = []
+        for s in summaries:
+            kd = s.get("key_decisions", "[]")
+            if isinstance(kd, str):
+                try:
+                    kd = json.loads(kd)
+                except Exception:
+                    kd = []
+            for d in (kd or []):
+                decision_texts.append(f"- {d}")
+
+        user_msg = f"""Project: {project}
+
+Recent weekly rollups:
+{chr(10).join(rollup_texts) or '(none)'}
+
+Active intentions:
+{chr(10).join(intention_texts) or '(none)'}
+
+Recent key decisions:
+{chr(10).join(decision_texts[:10]) or '(none)'}"""
+
+        system = """You write concise project state summaries for a developer's dashboard.
+Describe what this project IS, what's been happening recently, where it's headed, and its current momentum.
+Be direct and specific — no filler. 2-4 sentences max."""
+
+        try:
+            result = call_claude(client, model=SONNET, system=system,
+                                 user_msg=user_msg, tool=PROJECT_STATE_TOOL)
+            parsed = result["parsed"]
+            cost = estimate_cost_cents(result["model"], result["input_tokens"],
+                                       result["output_tokens"])
+
+            # Store in project_snapshots data blob
+            existing = store.get_project_snapshot(project)
+            snapshot_data = {}
+            if existing and existing.get("data"):
+                d = existing["data"]
+                snapshot_data = d if isinstance(d, dict) else json.loads(d)
+
+            snapshot_data["state_summary"] = parsed.get("state_summary", "")
+
+            today = datetime.now().strftime("%Y-%m-%d")
+            store.save_project_snapshot(project=project, date=today, data=snapshot_data)
+
+            store.log_synthesis(
+                run_type="project_state", target_date=today, project=project,
+                model=result["model"], input_tokens=result["input_tokens"],
+                output_tokens=result["output_tokens"], cost_cents=cost,
+                duration_ms=result["duration_ms"], status="success",
+            )
+
+            print(f"OK (${cost/100:.4f})")
+
+        except Exception as e:
+            store.log_synthesis(
+                run_type="project_state", target_date=None, project=project,
+                model=SONNET, input_tokens=0, output_tokens=0,
+                cost_cents=0, duration_ms=0, status="error",
+                error_message=str(e),
+            )
+            print(f"ERROR: {e}")
+
+
 def generate_project_snapshots(store):
     """Generate project snapshots from current data. Pure SQL, no Claude call."""
     projects = store.get_projects_with_recent_summaries(n_days=7)
@@ -310,6 +408,19 @@ def generate_project_snapshots(store):
 
     today = datetime.now().strftime("%Y-%m-%d")
     print(f"Generating snapshots for {len(projects)} project(s).")
+
+    # Load project metadata (github_url, site_url) if available
+    project_meta = {}
+    try:
+        for row in store._conn.execute(
+            "SELECT name, github_url, site_url FROM projects"
+        ).fetchall():
+            project_meta[row["name"]] = {
+                "github_url": row["github_url"],
+                "site_url": row["site_url"],
+            }
+    except Exception:
+        pass  # Turso or missing columns — skip gracefully
 
     for project in projects:
         intentions = store.get_intentions(project=project, status="active")
@@ -327,6 +438,13 @@ def generate_project_snapshots(store):
             "active_days_7d": len(summaries_7d),
         }
 
+        # Include URLs from projects table if available
+        meta = project_meta.get(project, {})
+        if meta.get("github_url"):
+            data["github_url"] = meta["github_url"]
+        if meta.get("site_url"):
+            data["site_url"] = meta["site_url"]
+
         store.save_project_snapshot(project=project, date=today, data=data)
         print(f"  {project}: {len(summaries_7d)} days, {len(intentions)} intentions")
 
@@ -341,16 +459,17 @@ def main():
     parser.add_argument("--weekly", action="store_true", help="Generate missing weekly rollups")
     parser.add_argument("--intentions", action="store_true", help="Update project intentions")
     parser.add_argument("--snapshots", action="store_true", help="Generate project snapshots")
+    parser.add_argument("--states", action="store_true", help="Generate project state summaries (weekly)")
     parser.add_argument("--all", action="store_true", help="Run all synthesis steps")
     parser.add_argument("--date", type=str, help="Target date (YYYY-MM-DD) for --daily")
     args = parser.parse_args()
 
-    if not any([args.daily, args.weekly, args.intentions, args.snapshots, args.all]):
+    if not any([args.daily, args.weekly, args.intentions, args.snapshots, args.states, args.all]):
         parser.print_help()
         sys.exit(1)
 
     # Load environment
-    needs_api = args.all or args.daily or args.weekly or args.intentions
+    needs_api = args.all or args.daily or args.weekly or args.intentions or args.states
     load_env()
     if needs_api and not os.environ.get("ANTHROPIC_API_KEY"):
         print("Error: ANTHROPIC_API_KEY not found. Set in .env.local or ~/.claude/synthesizer.env")
@@ -371,6 +490,16 @@ def main():
     if args.all or args.weekly:
         print("\n=== Weekly Rollups ===")
         synthesize_weekly_rollups(store, client)
+
+    if args.all or args.states:
+        # Only run states on Sundays (or when explicitly requested)
+        is_sunday = datetime.now().weekday() == 6
+        if args.states or is_sunday:
+            print("\n=== Project State Summaries ===")
+            synthesize_project_states(store, client)
+        elif args.all:
+            print("\n=== Project State Summaries ===")
+            print("Skipped (runs on Sundays only; use --states to force)")
 
     if args.all or args.snapshots:
         print("\n=== Project Snapshots ===")

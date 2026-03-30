@@ -1,6 +1,6 @@
 # prompt-lab
 
-**Ground Control** — overview dashboard for tracking agent sessions, todos, intentions, and themes across projects. Data from `~/.claude/prompt-history.db`.
+**Prompt Lab** — overview dashboard for tracking agent sessions, todos, intentions, and themes across projects. Data from `~/.claude/prompt-history.db`.
 
 ## Run
 
@@ -36,15 +36,14 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 
 ## Next Steps
 
-### Rework project detail pages
-- Redesign timeline view: expand entries on click, show full summary inline
-- Improve rollups view: better visual hierarchy, narrative formatting
-- Consider removing or deprioritizing Intentions sub-tab (data is noisy/stale)
-- Distill key decisions on timeline to short phrases (match card style)
+### Auth and sharing
+- Set AUTH_READ_SECRET env var in Vercel to enable reader access for friends
+- Consider contextual Ask/Reviews on project pages (inline, not nav bar)
 
-### Wire Turso sync into nightly pipeline
-- Add sync step to synthesizer.py `--all` (after snapshots, push to Turso)
-- Or add to the launchd schedule as a separate step after synthesizer
+### Dashboard polish
+- Review project detail layout on mobile (sidebar stacking)
+- Add ability to set/toggle project status (active/dormant) from detail page
+- Wire `--states` into the launchd Sunday schedule
 
 ### Backfill and maintenance
 - Check first automated report on April 1 (generate-report.py via launchd)

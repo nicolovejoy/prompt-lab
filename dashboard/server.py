@@ -72,6 +72,16 @@ MIGRATIONS = {
         ALTER TABLE prompts ADD COLUMN hostname TEXT;
         ALTER TABLE sessions ADD COLUMN hostname TEXT;
     """,
+    "006_add_project_urls": """
+        ALTER TABLE projects ADD COLUMN github_url TEXT;
+        ALTER TABLE projects ADD COLUMN site_url TEXT;
+    """,
+    "007_add_project_aliases": """
+        CREATE TABLE IF NOT EXISTS project_aliases (
+            alias     TEXT PRIMARY KEY,
+            canonical TEXT NOT NULL
+        );
+    """,
 }
 
 

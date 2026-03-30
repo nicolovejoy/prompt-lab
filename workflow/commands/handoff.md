@@ -104,4 +104,40 @@ print('Weekly rollup saved for', d['project'], d['week_start'])
 
 If no weeks need rollups, skip silently.
 
-## 5. Commit doc changes if any
+## 5. Update project metadata
+
+Auto-detect and save the GitHub URL for this project:
+
+```bash
+python3 -c "
+import subprocess, sys, os
+sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.path.expanduser('~/src/prompt-lab')))
+from store import get_store
+result = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True, text=True)
+if result.returncode == 0:
+    url = result.stdout.strip()
+    if url.startswith('git@github.com:'):
+        url = 'https://github.com/' + url[len('git@github.com:'):]
+    if url.endswith('.git'):
+        url = url[:-4]
+    if 'github.com' in url:
+        s = get_store(); s.migrate()
+        s.update_project(os.path.basename(os.getcwd()), github_url=url)
+        s.close()
+        print('GitHub URL saved:', url)
+"
+```
+
+If this fails, skip silently.
+
+## 6. Sync to Turso
+
+Push today's summaries to the cloud dashboard:
+
+```bash
+python3 ~/src/prompt-lab/sync_to_turso.py --days 1
+```
+
+If this fails (missing creds, network error), warn but don't block the handoff.
+
+## 7. Commit doc changes if any

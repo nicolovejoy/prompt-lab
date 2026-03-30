@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#111">
-  <title>Ground Control</title>
+  <title>Prompt Lab</title>
   <style>
     :root {
       --bg: #111;
@@ -51,7 +51,7 @@
       background: var(--bg); color: var(--text);
       min-height: 100dvh; -webkit-font-smoothing: antialiased;
     }
-    .container { max-width: 900px; margin: 0 auto; padding: var(--safe-top) 10% var(--safe-bottom); }
+    .container { max-width: 1100px; margin: 0 auto; padding: var(--safe-top) 24px var(--safe-bottom); }
 
     /* Login */
     .login { max-width: 320px; margin: 120px auto; text-align: center; }
@@ -139,9 +139,48 @@
     }
 
     /* Project page */
-    .project-header { margin-bottom: 20px; }
-    .project-name { font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; letter-spacing: -0.3px; }
-    .project-stats { font-size: 0.9rem; color: var(--text-secondary); }
+    .project-header { margin-bottom: 24px; }
+    .project-title-row { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+    .project-name { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.3px; }
+    .project-links { display: flex; gap: 8px; align-items: center; }
+    .project-link {
+      font-size: 0.72rem; color: var(--text-secondary); text-decoration: none;
+      padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px;
+      font-family: "SF Mono", ui-monospace, monospace; transition: border-color 0.15s;
+    }
+    .project-link:hover { border-color: var(--text-secondary); color: var(--text); }
+    .project-meta {
+      font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 10px;
+      font-family: "SF Mono", ui-monospace, monospace;
+    }
+    .project-summary { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px; }
+    .project-layout { display: grid; grid-template-columns: 1fr 300px; gap: 24px; }
+    @media (max-width: 800px) { .project-layout { grid-template-columns: 1fr; } }
+    .project-sidebar > * + * { margin-top: 16px; }
+    .sidebar-section {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 16px;
+    }
+    .sidebar-label {
+      font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 8px;
+    }
+
+    /* Activity heatmap */
+    .heatmap { display: flex; gap: 2px; flex-wrap: nowrap; margin-bottom: 16px; overflow-x: auto; }
+    .heatmap-month { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+    .heatmap-cell { width: 8px; height: 8px; border-radius: 2px; }
+    .heatmap-cell-0 { background: var(--border); }
+    .heatmap-cell-1 { background: var(--accent); opacity: 0.25; }
+    .heatmap-cell-2 { background: var(--accent); opacity: 0.5; }
+    .heatmap-cell-3 { background: var(--accent); opacity: 0.75; }
+    .heatmap-cell-4 { background: var(--accent); opacity: 1; }
+    .heatmap-labels {
+      display: flex; justify-content: space-between;
+      font-size: 0.6rem; color: var(--text-secondary);
+      font-family: "SF Mono", ui-monospace, monospace; margin-bottom: 4px;
+    }
+
     .sub-tabs {
       display: flex; gap: 2px; margin-bottom: 18px;
       background: var(--card); padding: 3px; border-radius: var(--radius);
@@ -194,15 +233,44 @@
     .timeline-date:first-child { margin-top: 0; }
     .timeline-entry {
       position: relative; font-size: 0.88rem; color: var(--text-secondary);
-      line-height: 1.6; padding: 3px 0;
+      line-height: 1.6; padding: 6px 0; cursor: pointer;
+      border-radius: 6px; transition: background 0.15s;
     }
+    .timeline-entry:hover { background: var(--card); margin: 0 -8px; padding: 6px 8px; }
     .timeline-entry::before {
-      content: ''; position: absolute; left: -20px; top: 8px;
+      content: ''; position: absolute; left: -20px; top: 12px;
       width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
     }
+    .timeline-entry:hover::before { left: -12px; }
+    .timeline-entry.rollup { cursor: default; }
+    .timeline-entry.rollup:hover { background: none; margin: 0; padding: 6px 0; }
     .timeline-entry.rollup::before { background: var(--green); }
-    .timeline-rollup-text {
+    .timeline-entry.rollup:hover::before { left: -20px; }
+    .timeline-phrase { font-size: 0.88rem; }
+    .timeline-expand {
+      margin-top: 8px; padding: 10px 12px; background: var(--card);
+      border: 1px solid var(--border); border-radius: 6px;
+    }
+    .timeline-expand-summary {
+      font-size: 0.82rem; color: var(--text); line-height: 1.6; margin-bottom: 8px;
+    }
+    .timeline-expand-decisions {
+      list-style: none; padding: 0; margin: 0 0 8px;
+    }
+    .timeline-expand-decisions li {
       font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5;
+      padding: 2px 0 2px 12px; position: relative;
+    }
+    .timeline-expand-decisions li::before {
+      content: '·'; position: absolute; left: 0; font-weight: 700;
+    }
+    .timeline-expand-counts {
+      display: flex; gap: 12px; font-size: 0.7rem; color: var(--text-secondary);
+      font-family: "SF Mono", ui-monospace, monospace;
+    }
+    .timeline-expand-counts strong { color: var(--text); }
+    .timeline-rollup-text {
+      font-size: 0.82rem; color: var(--text-secondary); line-height: 1.55;
       padding: 6px 0 2px;
     }
     .timeline-rollup-label {
@@ -356,7 +424,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password }),
           });
-          if (resp.ok) onLogin();
+          if (resp.ok) { const d = await resp.json(); onLogin(d.role); }
           else setError('Wrong password');
         } catch (e) { setError(e.message); }
         setLoading(false);
@@ -365,7 +433,7 @@
       return html`
         <div class="container">
           <div class="login">
-            <h2>Ground Control</h2>
+            <h2>Prompt Lab</h2>
             <p>Enter password to continue</p>
             <input type="password" placeholder="Password" autofocus
               value=${password} onInput=${e => setPassword(e.target.value)}
@@ -380,14 +448,14 @@
     }
 
     // ---- Header ----
-    function Header({ route, info, onLogout, onAsk }) {
+    function Header({ route, info, role, onLogout, onAsk }) {
       const freshness = info?.data_freshness ? timeAgo(info.data_freshness) : null;
-      const sha = info?.commit_sha || '';
+      const buildTime = info?.build_time || '';
 
       return html`
         <header>
           <div class="header-left">
-            <a class="header-logo" onClick=${() => navigate('#/')}>Ground Control</a>
+            <a class="header-logo" onClick=${() => navigate('#/')}>Prompt Lab</a>
             ${route.view === 'project' && html`
               <span class="header-sep">/</span>
               <span class="breadcrumb">${route.project}</span>
@@ -400,9 +468,9 @@
             `}
           </div>
           <div class="header-right">
+            ${buildTime && html`<span class="header-meta">built ${buildTime}</span>`}
             ${freshness && html`<span class="header-meta">synced ${freshness}</span>`}
-            ${sha && html`<span class="header-meta">${sha}</span>`}
-            <button class="header-btn" onClick=${onAsk} title="Ask (/)">Ask</button>
+            ${onAsk && html`<button class="header-btn" onClick=${onAsk} title="Ask (/)">Ask</button>`}
             <button class="header-btn" onClick=${() => navigate('#/reviews')}>Reviews</button>
             <button class="header-btn" onClick=${onLogout}>Log out</button>
           </div>
@@ -426,6 +494,7 @@
     // ---- Main App ----
     function App() {
       const [authed, setAuthed] = useState(null);
+      const [role, setRole] = useState(null);
       const [overview, setOverview] = useState(null);
       const [info, setInfo] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -434,7 +503,7 @@
       const route = useRoute();
 
       useEffect(() => {
-        api('/api/login').then(() => setAuthed(true)).catch(() => setAuthed(false));
+        api('/api/login').then(d => { setAuthed(true); setRole(d.role || 'admin'); }).catch(() => setAuthed(false));
       }, []);
 
       const loadOverview = useCallback(async () => {
@@ -456,10 +525,10 @@
         }
       }, [authed]);
 
-      // Keyboard shortcut: / to open Ask
+      // Keyboard shortcut: / to open Ask (admin only)
       useEffect(() => {
         const onKey = (e) => {
-          if (e.key === '/' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT') {
+          if (e.key === '/' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT' && role === 'admin') {
             e.preventDefault();
             setAskOpen(true);
           }
@@ -467,7 +536,7 @@
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-      }, []);
+      }, [role]);
 
       const logout = async () => {
         await fetch('/api/login', { method: 'DELETE' });
@@ -475,12 +544,12 @@
       };
 
       if (authed === null) return html`<div class="loading">Loading...</div>`;
-      if (!authed) return html`<${Login} onLogin=${() => setAuthed(true)} />`;
+      if (!authed) return html`<${Login} onLogin=${(r) => { setAuthed(true); setRole(r || 'admin'); }} />`;
 
       return html`
         <div class="container">
-          <${Header} route=${route} info=${info} onLogout=${logout}
-            onAsk=${() => setAskOpen(true)} />
+          <${Header} route=${route} info=${info} role=${role} onLogout=${logout}
+            onAsk=${role === 'admin' ? () => setAskOpen(true) : null} />
 
           ${loading && !overview && html`<${SkeletonGrid} />`}
           ${error && html`
@@ -496,13 +565,13 @@
             <${ProjectGrid} overview=${overview} />
           `}
           ${overview && route.view === 'project' && html`
-            <${ProjectPage} name=${route.project} section=${route.section} overview=${overview} />
+            <${ProjectPage} name=${route.project} overview=${overview} />
           `}
           ${overview && route.view === 'reviews' && html`
             <${ReviewsPage} />
           `}
 
-          ${askOpen && html`<${AskModal} overview=${overview} onClose=${() => setAskOpen(false)} />`}
+          ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
         </div>
       `;
     }
@@ -555,6 +624,7 @@
     // ---- Project Grid (Home) ----
     function ProjectGrid({ overview }) {
       const { week, by_project, activity_by_project } = overview;
+      const [showDormant, setShowDormant] = useState(false);
 
       const activeProjects = Object.keys(by_project)
         .filter(p => by_project[p]?.summaries?.length > 0)
@@ -563,6 +633,38 @@
           const db = by_project[b]?.summaries?.[0]?.date || '';
           return db.localeCompare(da);
         });
+
+      const dormantProjects = (overview.all_projects || [])
+        .filter(p => !activeProjects.includes(p))
+        .sort();
+
+      const renderCard = (p, dormant) => {
+        const data = by_project[p] || { summaries: [], days: 0 };
+        const latest = data.summaries?.[0];
+        const activity = activity_by_project?.[p] || [];
+        const lastDate = latest?.date;
+        const daysAgo = lastDate
+          ? Math.floor((new Date() - new Date(lastDate + 'T00:00:00')) / 86400000)
+          : 999;
+        const healthClass = dormant ? 'health-gray' : daysAgo <= 1 ? 'health-green' : daysAgo <= 7 ? 'health-yellow' : 'health-gray';
+        const bullets = dormant ? [] : distillBullets(data.summaries);
+
+        return html`
+          <div class="project-card" style="${dormant ? 'opacity: 0.5' : ''}"
+            onClick=${() => navigate('#/project/' + encodeURIComponent(p))}>
+            <div class="project-card-top">
+              <div class="health-dot ${healthClass}"></div>
+              <span class="project-card-name">${p}</span>
+              <${ActivityDots} activity=${activity} />
+            </div>
+            ${bullets.length > 0 && html`
+              <ul class="project-card-bullets">
+                ${bullets.map(b => html`<li>${b}</li>`)}
+              </ul>
+            `}
+          </div>
+        `;
+      };
 
       return html`
         <div class="overview-stats">
@@ -574,46 +676,139 @@
         `}
 
         <div class="project-grid">
-          ${activeProjects.map(p => {
-            const data = by_project[p] || { summaries: [], days: 0 };
-            const latest = data.summaries[0];
-            const activity = activity_by_project?.[p] || [];
-            const lastDate = latest?.date;
-            const daysAgo = lastDate
-              ? Math.floor((new Date() - new Date(lastDate + 'T00:00:00')) / 86400000)
-              : 999;
-            const healthClass = daysAgo <= 1 ? 'health-green' : daysAgo <= 7 ? 'health-yellow' : 'health-gray';
-            const bullets = distillBullets(data.summaries);
+          ${activeProjects.map(p => renderCard(p, false))}
+        </div>
 
+        ${dormantProjects.length > 0 && html`
+          <div style="text-align: center; margin-bottom: 20px">
+            <button style="font-size: 0.85rem; color: var(--text-secondary); background: none;
+              border: none; cursor: pointer; font-family: inherit; padding: 6px 12px"
+              onClick=${() => setShowDormant(!showDormant)}>
+              ${showDormant ? 'Hide' : 'Show'} ${dormantProjects.length} dormant project${dormantProjects.length > 1 ? 's' : ''}
+            </button>
+          </div>
+
+          ${showDormant && html`
+            <div class="project-grid">
+              ${dormantProjects.map(p => renderCard(p, true))}
+            </div>
+          `}
+        `}
+      `;
+    }
+
+    // ---- Activity Heatmap (GitHub-style, up to 12 months) ----
+    function ActivityHeatmap({ activity }) {
+      if (!activity?.length) return null;
+
+      // Build a date->count map
+      const byDate = {};
+      for (const a of activity) byDate[a.date] = (a.prompt_count || 0);
+
+      // Generate last 365 days grouped by week
+      const today = new Date();
+      const weeks = [];
+      const monthLabels = [];
+      let lastMonth = -1;
+
+      // Start from the most recent Sunday
+      const start = new Date(today);
+      start.setDate(start.getDate() - 364);
+      // Align to Sunday
+      start.setDate(start.getDate() - start.getDay());
+
+      let week = [];
+      for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+        const ds = d.toISOString().slice(0, 10);
+        const count = byDate[ds] || 0;
+        const level = count === 0 ? 0 : count <= 3 ? 1 : count <= 8 ? 2 : count <= 15 ? 3 : 4;
+        week.push({ date: ds, level });
+
+        // Track month labels (first week of each month)
+        if (d.getMonth() !== lastMonth && d.getDay() === 0) {
+          monthLabels.push({ idx: weeks.length, label: d.toLocaleDateString('en', { month: 'short' }) });
+          lastMonth = d.getMonth();
+        }
+
+        if (d.getDay() === 6 || d.getTime() >= today.getTime()) {
+          weeks.push(week);
+          week = [];
+        }
+      }
+      if (week.length) weeks.push(week);
+
+      return html`
+        <div>
+          <div class="heatmap-labels">
+            ${monthLabels.map(m => html`<span>${m.label}</span>`)}
+          </div>
+          <div class="heatmap" style="display: flex; gap: 2px">
+            ${weeks.map(w => html`
+              <div class="heatmap-month">
+                ${w.map(cell => html`
+                  <div class="heatmap-cell heatmap-cell-${cell.level}" title="${cell.date}: ${byDate[cell.date] || 0} prompts"></div>
+                `)}
+              </div>
+            `)}
+          </div>
+        </div>
+      `;
+    }
+
+    // ---- Sidebar: All Rollups ----
+    function SidebarRollups({ rollups }) {
+      if (!rollups?.length) return null;
+      return html`
+        <div class="sidebar-section" style="max-height: 60vh; overflow-y: auto">
+          <div class="sidebar-label">Weekly rollups</div>
+          ${rollups.map((r, i) => {
+            const highlights = tryParseJson(r.highlights);
             return html`
-              <div class="project-card" onClick=${() => navigate('#/project/' + encodeURIComponent(p))}>
-                <div class="project-card-top">
-                  <div class="health-dot ${healthClass}"></div>
-                  <span class="project-card-name">${p}</span>
-                  <${ActivityDots} activity=${activity} />
+              <div style="padding-bottom: ${i < rollups.length - 1 ? '12px' : '0'};
+                margin-bottom: ${i < rollups.length - 1 ? '12px' : '0'};
+                border-bottom: ${i < rollups.length - 1 ? '1px solid var(--border)' : 'none'}">
+                <div style="font-size: 0.68rem; font-weight: 600; color: var(--text-secondary);
+                  font-family: 'SF Mono', ui-monospace, monospace; margin-bottom: 6px">
+                  Week of ${r.week_start}
+                  <span style="float: right; font-weight: 400">
+                    ${r.prompt_count || 0}p · ${r.session_count || 0}s · ${r.commit_count || 0}c
+                  </span>
                 </div>
-                ${bullets.length > 0 && html`
-                  <ul class="project-card-bullets">
-                    ${bullets.map(b => html`<li>${b}</li>`)}
-                  </ul>
+                <div style="font-size: 0.8rem; color: var(--text); line-height: 1.55; margin-bottom: 6px">
+                  ${r.narrative}
+                </div>
+                ${highlights.length > 0 && html`
+                  <div style="display: flex; gap: 4px; flex-wrap: wrap">
+                    ${highlights.map(h => html`
+                      <span style="font-size: 0.65rem; padding: 2px 6px; background: var(--accent-dim);
+                        color: var(--accent-light); border-radius: 3px">${h}</span>
+                    `)}
+                  </div>
                 `}
               </div>
             `;
           })}
         </div>
+      `;
+    }
 
-        ${overview.all_projects?.length > activeProjects.length && html`
-          <div style="text-align: center; margin-bottom: 20px">
-            <span style="font-size: 0.85rem; color: var(--text-secondary)">
-              ${overview.all_projects.length - activeProjects.length} dormant project${overview.all_projects.length - activeProjects.length > 1 ? 's' : ''} hidden
-            </span>
-          </div>
-        `}
+    // ---- Sidebar: Active Intentions ----
+    function SidebarIntentions({ intentions }) {
+      if (!intentions?.length) return null;
+      return html`
+        <div class="sidebar-section">
+          <div class="sidebar-label">Active intentions</div>
+          ${intentions.slice(0, 3).map(i => html`
+            <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; padding: 3px 0">
+              ${i.intention}
+            </div>
+          `)}
+        </div>
       `;
     }
 
     // ---- Project Page ----
-    function ProjectPage({ name, section, overview }) {
+    function ProjectPage({ name, overview }) {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
 
@@ -624,65 +819,74 @@
           .catch(e => { setData({ error: e.message }); setLoading(false); });
       }, [name]);
 
-      const tabs = [
-        { id: 'timeline', label: 'Timeline' },
-        { id: 'intentions', label: 'Intentions' },
-        { id: 'rollups', label: 'Rollups' },
-      ];
+      if (loading) return html`<${SkeletonList} />`;
+      if (data?.error) return html`<div class="error">${data.error}</div>`;
+      if (!data) return null;
+
+      const snapshot = data.snapshot || {};
+      const githubUrl = snapshot.github_url;
+      const siteUrl = snapshot.site_url;
+      const inception = data.inception;
+
+      // Use project state summary if available, fall back to latest daily summary
+      const stateSummary = snapshot.state_summary || null;
+      const latestSummary = stateSummary || data.summaries?.[0]?.summary || null;
 
       return html`
         <div>
+          <!-- Header -->
           <div class="project-header">
-            <div class="project-name">${name}</div>
-            ${data?.snapshot && html`
-              <div class="project-stats">
-                ${data.snapshot.session_count_7d || 0} sessions ·
-                ${data.snapshot.commit_count_7d || 0} commits (7d)
+            <div class="project-title-row">
+              <span class="project-name">${name}</span>
+              <div class="project-links">
+                ${githubUrl && html`<a class="project-link" href=${githubUrl} target="_blank" rel="noopener">GitHub</a>`}
+                ${siteUrl && html`<a class="project-link" href=${siteUrl} target="_blank" rel="noopener">Site</a>`}
               </div>
-            `}
+            </div>
+            <div class="project-meta">
+              ${inception && html`<span>Since ${inception}</span>`}
+              ${inception && (snapshot.session_count_7d || snapshot.commit_count_7d) && html`<span> · </span>`}
+              ${snapshot.session_count_7d ? html`<span>${snapshot.session_count_7d} sessions</span>` : null}
+              ${snapshot.commit_count_7d ? html`<span> · ${snapshot.commit_count_7d} commits (7d)</span>` : null}
+            </div>
+            ${latestSummary && html`<div class="project-summary">${latestSummary}</div>`}
+            <${ActivityHeatmap} activity=${data.activity} />
           </div>
 
-          <div class="sub-tabs">
-            ${tabs.map(t => html`
-              <button class="sub-tab ${section === t.id ? 'active' : ''}"
-                onClick=${() => navigate('#/project/' + encodeURIComponent(name) + '/' + t.id)}>
-                ${t.label}
-              </button>
-            `)}
+          <!-- Two-column layout: timeline left, rollups + intentions right -->
+          <div class="project-layout">
+            <div class="project-main">
+              <div class="sidebar-label">Timeline</div>
+              <${TimelineView} data=${data} />
+            </div>
+
+            <div class="project-sidebar">
+              <${SidebarRollups} rollups=${data.rollups} />
+              <${SidebarIntentions} intentions=${data.intentions} />
+            </div>
           </div>
-
-          ${loading && html`<${SkeletonList} />`}
-          ${data?.error && html`<div class="error">${data.error}</div>`}
-
-          ${data && !data.error && section === 'timeline' && html`
-            <${TimelineView} data=${data} />
-          `}
-          ${data && !data.error && section === 'intentions' && html`
-            <${IntentionsView} intentions=${data.intentions} />
-          `}
-          ${data && !data.error && section === 'rollups' && html`
-            <${RollupsView} rollups=${data.rollups} />
-          `}
         </div>
       `;
     }
 
-    // ---- Timeline View (vertical line with dates and short entries) ----
+    // ---- Timeline View (vertical line with expandable entries) ----
     function TimelineView({ data }) {
       const { summaries, rollups } = data;
+      const [expanded, setExpanded] = useState({});
+
+      const toggle = (id) => setExpanded(p => ({ ...p, [id]: !p[id] }));
 
       // Build timeline items sorted by date desc
       const items = [];
       for (const s of summaries) {
         const decisions = tryParseJson(s.key_decisions);
-        // Use first key decision as the short phrase, fallback to summary truncated
         const phrase = decisions.length > 0
           ? decisions[0]
-          : (s.summary || '').split(' ').slice(0, 12).join(' ') + ((s.summary || '').split(' ').length > 12 ? '...' : '');
-        items.push({ type: 'summary', date: s.date, phrase, decisions: decisions.slice(1), data: s });
+          : (s.summary || '').split(' ').slice(0, 10).join(' ') + ((s.summary || '').split(' ').length > 10 ? '...' : '');
+        items.push({ type: 'summary', id: 's-' + s.date, date: s.date, phrase, decisions, data: s });
       }
       for (const r of rollups) {
-        items.push({ type: 'rollup', date: r.week_start, data: r });
+        items.push({ type: 'rollup', id: 'r-' + r.week_start, date: r.week_start, data: r });
       }
       items.sort((a, b) => b.date.localeCompare(a.date));
 
@@ -705,12 +909,26 @@
             <div class="timeline-date">${g.date}</div>
             ${g.items.map(item => {
               if (item.type === 'summary') {
+                const isOpen = expanded[item.id];
+                const s = item.data;
                 return html`
-                  <div class="timeline-entry">
-                    ${item.phrase}
-                    ${item.decisions.length > 0 && item.decisions.map(d => html`
-                      <div class="timeline-entry" style="opacity: 0.7; padding-left: 4px">${d}</div>
-                    `)}
+                  <div class="timeline-entry" onClick=${() => toggle(item.id)}>
+                    <span class="timeline-phrase">${item.phrase}</span>
+                    ${isOpen && html`
+                      <div class="timeline-expand">
+                        <div class="timeline-expand-summary">${s.summary}</div>
+                        ${item.decisions.length > 0 && html`
+                          <ul class="timeline-expand-decisions">
+                            ${item.decisions.map(d => html`<li>${d}</li>`)}
+                          </ul>
+                        `}
+                        <div class="timeline-expand-counts">
+                          <span><strong>${s.prompt_count || 0}</strong> prompts</span>
+                          <span><strong>${s.session_count || 0}</strong> sessions</span>
+                          <span><strong>${s.commit_count || 0}</strong> commits</span>
+                        </div>
+                      </div>
+                    `}
                   </div>
                 `;
               }
@@ -735,73 +953,10 @@
       `;
     }
 
-    // ---- Intentions View ----
-    function IntentionsView({ intentions }) {
-      if (!intentions?.length) return html`<div class="empty">No intentions tracked for this project.</div>`;
-
-      const active = intentions.filter(i => i.status === 'active');
-      const other = intentions.filter(i => i.status !== 'active');
-
-      return html`
-        ${active.length > 0 && html`
-          <div class="page-title">Active</div>
-          ${active.map(i => html`
-            <div class="card">
-              <div class="card-header">
-                <span class="card-body" style="margin: 0">${i.intention}</span>
-                <span class="status-badge status-active">active</span>
-              </div>
-              <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 4px">
-                since ${i.first_seen}${i.last_seen !== i.first_seen ? ' · updated ' + i.last_seen : ''}
-              </div>
-            </div>
-          `)}
-        `}
-        ${other.length > 0 && html`
-          <div class="page-title" style="margin-top: 16px">Resolved</div>
-          ${other.map(i => html`
-            <div class="card" style="opacity: 0.7">
-              <div class="card-header">
-                <span class="card-body" style="margin: 0">${i.intention}</span>
-                <span class="status-badge status-${i.status}">${i.status}</span>
-              </div>
-              <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 4px">
-                ${i.first_seen} — ${i.last_seen}
-              </div>
-            </div>
-          `)}
-        `}
-      `;
-    }
+    // (Intentions view removed — now shown in project sidebar)
 
     // ---- Rollups View ----
-    function RollupsView({ rollups }) {
-      if (!rollups?.length) return html`<div class="empty">No weekly rollups yet.</div>`;
-
-      return html`
-        ${rollups.map(r => {
-          const highlights = tryParseJson(r.highlights);
-          return html`
-            <div class="card">
-              <div class="card-header">
-                <span class="card-title">Week of ${r.week_start}</span>
-              </div>
-              <div class="card-body">${r.narrative}</div>
-              ${highlights.length > 0 && html`
-                <div class="card-tags">
-                  ${highlights.map(h => html`<span class="tag">${h}</span>`)}
-                </div>
-              `}
-              <div class="count-badges">
-                <span class="count-badge"><strong>${r.prompt_count || 0}</strong> prompts</span>
-                <span class="count-badge"><strong>${r.session_count || 0}</strong> sessions</span>
-                <span class="count-badge"><strong>${r.commit_count || 0}</strong> commits</span>
-              </div>
-            </div>
-          `;
-        })}
-      `;
-    }
+    // (RollupsView removed — now in sidebar via SidebarRollups)
 
     // ---- Reviews Page ----
     function ReviewsPage() {
@@ -840,12 +995,33 @@
     }
 
     // ---- Ask Modal ----
-    function AskModal({ overview, onClose }) {
+    function AskModal({ overview, project, onClose }) {
       const [question, setQuestion] = useState('');
       const [answer, setAnswer] = useState(null);
       const [asking, setAsking] = useState(false);
       const [error, setError] = useState(null);
+      const [showHistory, setShowHistory] = useState(false);
+      const [copied, setCopied] = useState(false);
       const inputRef = useRef(null);
+
+      // Persist ask history in localStorage
+      const historyKey = 'promptlab_ask_history';
+      const getHistory = () => {
+        try { return JSON.parse(localStorage.getItem(historyKey) || '[]'); } catch { return []; }
+      };
+      const saveToHistory = (q, a) => {
+        const h = getHistory();
+        h.unshift({ q, a, date: new Date().toISOString().slice(0, 16), project: project || 'all' });
+        if (h.length > 20) h.length = 20; // keep last 20
+        localStorage.setItem(historyKey, JSON.stringify(h));
+      };
+      const copyAnswer = () => {
+        if (answer) {
+          navigator.clipboard.writeText(answer);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }
+      };
 
       useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -858,17 +1034,20 @@
         const allSummaries = [];
         const allIntentions = [];
 
-        for (const [p, data] of Object.entries(bp)) {
-          for (const s of data.summaries || [])
+        // Scope to project if specified
+        const projects = project ? [project] : Object.keys(bp);
+        for (const p of projects) {
+          for (const s of (bp[p]?.summaries || []))
             allSummaries.push('[' + s.date + '] ' + p + ': ' + s.summary);
         }
-        for (const [p, items] of Object.entries(ip)) {
-          for (const i of items)
+        const intentionProjects = project ? [project] : Object.keys(ip);
+        for (const p of intentionProjects) {
+          for (const i of (ip[p] || []))
             allIntentions.push('[' + p + '] ' + i.intention + ' (' + i.status + ', since ' + i.first_seen + ')');
         }
 
         const ctx = [
-          '== Daily summaries (last 7 days) ==',
+          project ? '== ' + project + ' summaries (last 7 days) ==' : '== Daily summaries (last 7 days) ==',
           ...allSummaries.slice(0, 30), '',
           '== Active intentions ==',
           ...allIntentions,
@@ -878,13 +1057,18 @@
           const result = await apiPost('/api/ask', { question: question.trim(), context: ctx });
           if (result.error) throw new Error(result.error);
           setAnswer(result.answer);
+          saveToHistory(question.trim(), result.answer);
         } catch (e) { setError(e.message); }
         setAsking(false);
       };
 
       const setQ = (q) => { setQuestion(q); setTimeout(() => inputRef.current?.focus(), 0); };
 
-      const examples = [
+      const examples = project ? [
+        'What did I do this week?',
+        'What decisions were made recently?',
+        'What should I focus on next?',
+      ] : [
         'What did I work on this week?',
         'Which project needs attention?',
         'Summarize my active intentions',
@@ -893,7 +1077,7 @@
       return html`
         <div class="ask-overlay" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
           <div class="ask-modal">
-            <div class="ask-modal-title">Ask about your work</div>
+            <div class="ask-modal-title">${project ? 'Ask about ' + project : 'Ask about your work'}</div>
             ${!answer && !asking && html`
               <div class="ask-examples">
                 ${examples.map(q => html`
@@ -911,8 +1095,48 @@
                 ${asking ? '...' : 'Ask'}
               </button>
             </div>
+            ${asking && html`
+              <div style="padding: 14px; color: var(--text-secondary); font-size: 0.82rem; display: flex; align-items: center; gap: 8px">
+                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite"></span>
+                Thinking...
+              </div>
+            `}
             ${error && html`<div class="error" style="padding: 8px">${error}</div>`}
-            ${answer && html`<div class="ask-answer">${answer}</div>`}
+            ${answer && html`
+              <div class="ask-answer">${answer}</div>
+              <button style="font-size: 0.72rem; color: var(--accent-light); background: none;
+                border: none; cursor: pointer; margin-top: 6px; padding: 0; font-family: inherit"
+                onClick=${copyAnswer}>${copied ? 'Copied' : 'Copy response'}</button>
+            `}
+
+            ${!asking && !answer && html`
+              <button style="font-size: 0.72rem; color: var(--text-secondary); background: none;
+                border: none; cursor: pointer; margin-top: 4px; padding: 0; font-family: inherit"
+                onClick=${() => setShowHistory(!showHistory)}>
+                ${showHistory ? 'Hide' : 'Show'} previous asks
+              </button>
+            `}
+            ${showHistory && html`
+              <div style="margin-top: 10px; max-height: 40vh; overflow-y: auto">
+                ${getHistory().map(h => html`
+                  <div style="border-bottom: 1px solid var(--border); padding: 8px 0">
+                    <div style="font-size: 0.75rem; color: var(--text); font-weight: 600; margin-bottom: 4px">
+                      ${h.q}
+                      <span style="font-weight: 400; color: var(--text-secondary); margin-left: 6px;
+                        font-family: 'SF Mono', ui-monospace, monospace; font-size: 0.65rem">
+                        ${h.date}${h.project !== 'all' ? ' · ' + h.project : ''}
+                      </span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.5; white-space: pre-wrap">
+                      ${(h.a || '').slice(0, 300)}${(h.a || '').length > 300 ? '...' : ''}
+                    </div>
+                  </div>
+                `)}
+                ${getHistory().length === 0 && html`
+                  <div style="font-size: 0.75rem; color: var(--text-secondary); padding: 8px 0">No previous asks.</div>
+                `}
+              </div>
+            `}
           </div>
         </div>
       `;
