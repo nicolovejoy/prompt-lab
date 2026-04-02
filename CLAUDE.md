@@ -46,5 +46,6 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 - Wire `--states` into the launchd Sunday schedule
 
 ### Backfill and maintenance
-- Check first automated report on April 1 (generate-report.py via launchd)
 - Verify nightly cron generates rollups for all projects
+- Delete `.env.backup` after 2026-04-05 if 1Password flow works
+- Migrate other projects' `.env` files to 1Password `.env.tpl` pattern
