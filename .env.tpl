@@ -6,8 +6,8 @@ ANTHROPIC_API_KEY=op://dev-secrets/Anthropic/api-key
 
 # Required for review emails only
 RESEND_API_KEY=op://dev-secrets/Resend/api-key
-REVIEW_FROM_EMAIL=reviews@anomatom.com
-REVIEW_TO_EMAIL=nico@anomatom.com
+REVIEW_FROM_EMAIL=reviews@send.anomatom.com
+REVIEW_TO_EMAIL=nlovejoy@me.com
 
 # Turso remote sync (cloud dashboard and mobile access)
 TURSO_DATABASE_URL=op://dev-secrets/Turso/url
