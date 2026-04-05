@@ -47,5 +47,5 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 
 ### Backfill and maintenance
 - Verify nightly cron generates rollups for all projects
-- Delete `.env.backup` after 2026-04-05 if 1Password flow works
+- Confirm review email arrives tonight (first run after plist fix)
 - Migrate other projects' `.env` files to 1Password `.env.tpl` pattern
