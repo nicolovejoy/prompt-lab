@@ -7,9 +7,8 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/bash</string>
-        <string>-c</string>
-        <string>source __REPO_DIR__/.env &amp;&amp; __PYTHON3__ __REPO_DIR__/send-review.py</string>
+        <string>__PYTHON3__</string>
+        <string>__REPO_DIR__/send-review.py</string>
     </array>
 
     <key>StartCalendarInterval</key>

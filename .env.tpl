@@ -2,7 +2,7 @@
 # Generate .env.local with: op inject -i .env.tpl -o .env.local
 
 # Required for nightly synthesis (synthesizer.py) and review emails (send-review.py)
-ANTHROPIC_API_KEY=op://dev-secrets/Anthropic/api-key
+ANTHROPIC_API_KEY=op://dev-secrets/Anthropic - notemaxxing API key/api-key
 
 # Required for review emails only
 RESEND_API_KEY=op://dev-secrets/Resend/api-key
