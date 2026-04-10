@@ -39,6 +39,7 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 ### Auth and sharing
 - Set AUTH_READ_SECRET env var in Vercel to enable reader access for friends
 - Consider contextual Ask/Reviews on project pages (inline, not nav bar)
+- Migrate to Google login (OAuth) and track logins per user; admin = just me
 
 ### Dashboard polish
 - Review project detail layout on mobile (sidebar stacking)
