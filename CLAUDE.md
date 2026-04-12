@@ -46,7 +46,11 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 - Add ability to set/toggle project status (active/dormant) from detail page
 - Wire `--states` into the launchd Sunday schedule
 
+### Slash command improvements
+- Consider adding active intentions/todos to readup output
+- Track session duration (ended_at - started_at) and surface in /review
+- Add error resilience to handoff synthesis step (don't block on Python failures)
+
 ### Backfill and maintenance
 - Verify nightly cron generates rollups for all projects
-- Confirm review email arrives tonight (first run after plist fix)
 - Migrate other projects' `.env` files to 1Password `.env.tpl` pattern
