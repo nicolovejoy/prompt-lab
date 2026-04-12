@@ -12,9 +12,10 @@ Start a session. Be concise.
 2. Read CLAUDE.md (focus on Next Steps)
 3. `git log --oneline -5`
 4. `date "+Today is %A, %B %-d, %Y"` — state this explicitly at the top of your summary
+5. Last session: `sqlite3 ~/.claude/prompt-history.db "SELECT summary, ended_at FROM sessions WHERE project='$(basename $PWD)' AND ended_at IS NOT NULL ORDER BY started_at DESC LIMIT 1;"`
 
 ## Then
 
-Summarize in a few lines: what happened recently, where things stand, what's next.
+Start with "Last session (<relative time ago>): <summary>" if a prior session exists. Then summarize in a few lines: what happened recently, where things stand, what's next.
 
 If the user passed arguments with this command, address those — don't suggest a separate task.

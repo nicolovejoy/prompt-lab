@@ -6,6 +6,14 @@ allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(python3:*), Bash(pwd), Read, W
 
 Close out this session. Be concise.
 
+## 0. Check for uncommitted changes
+
+```bash
+git status --porcelain
+```
+
+If there are uncommitted changes, list the changed files and ask the user whether to continue the handoff or stop so they can commit first. If clean, proceed silently.
+
 ## 1. Get session info
 
 ```bash
