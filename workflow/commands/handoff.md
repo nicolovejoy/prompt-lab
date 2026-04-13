@@ -143,7 +143,7 @@ If this fails, skip silently.
 Push today's summaries to the cloud dashboard:
 
 ```bash
-python3 ~/src/prompt-lab/sync_to_turso.py --days 1
+~/src/prompt-lab/.venv/bin/python ~/src/prompt-lab/sync_to_turso.py --days 1
 ```
 
 If this fails (missing creds, network error), warn but don't block the handoff.
