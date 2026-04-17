@@ -54,3 +54,11 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 ### Backfill and maintenance
 - Verify nightly cron generates rollups for all projects
 - Migrate other projects' `.env` files to 1Password `.env.tpl` pattern
+
+### Per-project Anthropic API keys
+Separate keys for usage/cost visibility and independent revocation. Verify with `grep -r claude-sonnet-4-20250514 ~/src/` (model migration complete as of 2026-04-14, only SDK internals remain).
+- [x] notemaxxing — own Anthropic workspace + key
+- [x] prntd — own Anthropic workspace created, key still needs wiring
+- [x] musicforge — own Anthropic workspace created (no SDK in code currently)
+- [ ] prompt-lab — still using shared key, needs workspace
+- [ ] ibuild4you — still using shared key, needs workspace (also watch posture-model behavior on 4.6 vs 4.0)
