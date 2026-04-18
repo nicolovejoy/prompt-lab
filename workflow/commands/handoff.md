@@ -45,7 +45,7 @@ Get today's counts:
 sqlite3 ~/.claude/prompt-history.db "SELECT COUNT(*) as prompts FROM prompts WHERE project='$(basename $PWD)' AND date(timestamp) = date('now'); SELECT COUNT(*) as sessions FROM sessions WHERE project='$(basename $PWD)' AND date(started_at) = date('now'); SELECT COUNT(DISTINCT c.hash) as commits FROM commits c JOIN sessions s ON c.session_id = s.id WHERE s.project='$(basename $PWD)' AND date(c.timestamp) = date('now');"
 ```
 
-Using what you know from this session, write a daily summary to `/tmp/gc-daily-summary.json` with this structure:
+Using what you know from this session, write a daily summary to `/tmp/gc-daily-<project>-<session_id>.json` (substitute the actual project basename and session_id from step 1 — this avoids races when handoff runs in multiple repos concurrently) with this structure:
 
 ```json
 {
@@ -65,7 +65,7 @@ IMPORTANT: use these exact command forms to persist the daily summary:
 python3 -c "
 import json, sys, os; sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.path.expanduser('~/src/prompt-lab')))
 from store import get_store
-d = json.load(open('/tmp/gc-daily-summary.json'))
+d = json.load(open('/tmp/gc-daily-<project>-<session_id>.json'))
 s = get_store(); s.migrate()
 s.upsert_daily_summary(model='claude-code', **d)
 s.close()
@@ -81,7 +81,7 @@ Check if any completed weeks for this project need a rollup:
 sqlite3 -header ~/.claude/prompt-history.db "SELECT ds.week_start, ds.days, ds.ids, ds.summaries, ds.prompts, ds.sessions, ds.commits FROM (SELECT date(date, 'weekday 1', '-7 days') as week_start, COUNT(*) as days, GROUP_CONCAT(id) as ids, GROUP_CONCAT(summary, ' | ') as summaries, SUM(prompt_count) as prompts, SUM(session_count) as sessions, SUM(commit_count) as commits FROM daily_summaries WHERE project='$(basename $PWD)' AND date < date('now', 'weekday 1') GROUP BY week_start) ds LEFT JOIN weekly_rollups wr ON wr.project='$(basename $PWD)' AND wr.week_start = ds.week_start WHERE wr.id IS NULL ORDER BY ds.week_start DESC;"
 ```
 
-If results come back, generate a weekly rollup for each week. Write to `/tmp/gc-weekly-rollup.json`:
+If results come back, generate a weekly rollup for each week. Write to `/tmp/gc-weekly-<project>-<session_id>-<week_start>.json` (substitute actual values — one file per week if multiple):
 
 ```json
 {
@@ -102,7 +102,7 @@ IMPORTANT: use these exact command forms to persist:
 python3 -c "
 import json, sys, os; sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.path.expanduser('~/src/prompt-lab')))
 from store import get_store
-d = json.load(open('/tmp/gc-weekly-rollup.json'))
+d = json.load(open('/tmp/gc-weekly-<project>-<session_id>-<week_start>.json'))
 s = get_store(); s.migrate()
 s.upsert_weekly_rollup(model='claude-code', **d)
 s.close()
