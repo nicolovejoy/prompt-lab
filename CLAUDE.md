@@ -44,7 +44,6 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 ### Dashboard polish
 - Review project detail layout on mobile (sidebar stacking)
 - Add ability to set/toggle project status (active/dormant) from detail page
-- Wire `--states` into the launchd Sunday schedule
 
 ### Slash command improvements
 - Consider adding active intentions/todos to readup output
