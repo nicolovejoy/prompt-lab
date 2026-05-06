@@ -11,7 +11,38 @@ PYTHON3="$VENV_DIR/bin/python3"
 COMMANDS_DIR="$HOME/.claude/commands"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 
+FORCE=0
+for arg in "$@"; do
+    case "$arg" in
+        -f|--force) FORCE=1 ;;
+        -h|--help)
+            echo "Usage: $0 [--force]"
+            echo "  --force  overwrite existing files without backing them up"
+            exit 0
+            ;;
+    esac
+done
+
+# install_file SRC DEST LABEL
+# Copies SRC to DEST. If DEST exists and differs, backs it up to
+# DEST.bak.YYYYMMDD-HHMMSS first (unless --force was passed).
+install_file() {
+    local src="$1" dest="$2" label="$3"
+    if [ -f "$dest" ] && ! cmp -s "$src" "$dest"; then
+        if [ "$FORCE" = "1" ]; then
+            echo "Overwriting (--force): $label"
+        else
+            local backup="$dest.bak.$(date +%Y%m%d-%H%M%S)"
+            echo "WARN: $label differs from installed version"
+            echo "  → backing up existing to $backup"
+            cp "$dest" "$backup"
+        fi
+    fi
+    cp "$src" "$dest"
+}
+
 echo "Installing Ground Control from: $REPO_DIR"
+[ "$FORCE" = "1" ] && echo "(--force: existing files will be overwritten without backup)"
 echo ""
 
 # --- Python venv ---
@@ -27,7 +58,7 @@ echo ""
 mkdir -p "$COMMANDS_DIR"
 for cmd in "$REPO_DIR/workflow/commands/"*.md; do
     name=$(basename "$cmd")
-    cp "$cmd" "$COMMANDS_DIR/$name"
+    install_file "$cmd" "$COMMANDS_DIR/$name" "command $name"
     echo "Copied command: $name → $COMMANDS_DIR/"
 done
 
@@ -39,14 +70,21 @@ if [[ "$OSTYPE" == darwin* ]] && command -v launchctl &>/dev/null; then
         label="${name%.plist}"
         dest="$LAUNCH_AGENTS/$name"
 
-        # Unload if already registered
-        launchctl unload "$dest" 2>/dev/null || true
-
-        # Substitute placeholders
+        # Render plist with placeholder substitution to a temp file so we can
+        # diff against the existing dest before clobbering.
+        rendered=$(mktemp -t "gc-plist.XXXXXX")
         sed \
             -e "s|__REPO_DIR__|$REPO_DIR|g" \
             -e "s|__PYTHON3__|$PYTHON3|g" \
-            "$plist" > "$dest"
+            "$plist" > "$rendered"
+
+        # Only unload if the dest exists and the agent is currently loaded.
+        if [ -f "$dest" ] && launchctl list "$label" &>/dev/null; then
+            launchctl unload "$dest" 2>/dev/null || true
+        fi
+
+        install_file "$rendered" "$dest" "plist $name"
+        rm -f "$rendered"
 
         launchctl load "$dest"
         echo "Loaded plist: $name"
