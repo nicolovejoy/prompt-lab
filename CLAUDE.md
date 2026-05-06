@@ -50,7 +50,6 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 - Consider adding active intentions/todos to readup output
 - Track session duration (ended_at - started_at) and surface in /review
 - Add error resilience to handoff synthesis step (don't block on Python failures)
-- Harden `workflow/install.sh` per issue #1 (cmp + timestamped backup before clobbering ~/.claude commands and plists)
 
 ### Backfill and maintenance
 - Verify nightly cron generates rollups for all projects
