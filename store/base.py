@@ -54,6 +54,29 @@ class KnowledgeStore(ABC):
                               prompt_count: int, session_count: int,
                               commit_count: int, model: str) -> None: ...
 
+    # ---- Public summaries (for external consumers like pianohouse) ----
+
+    @abstractmethod
+    def upsert_public_session_summary(self, *, project: str, session_id: int,
+                                        started_at: str,
+                                        public_summary: str | None) -> None: ...
+
+    @abstractmethod
+    def get_public_session_summaries(self, *, project: str | None = None,
+                                       since: str | None = None,
+                                       limit: int | None = None) -> list[dict]: ...
+
+    @abstractmethod
+    def upsert_public_weekly_rollup(self, *, project: str, week_of: str,
+                                      public_summary: str | None,
+                                      session_count: int,
+                                      commit_count: int) -> None: ...
+
+    @abstractmethod
+    def get_public_weekly_rollups(self, *, project: str | None = None,
+                                    since: str | None = None,
+                                    limit: int | None = None) -> list[dict]: ...
+
     # ---- Intentions ----
 
     @abstractmethod

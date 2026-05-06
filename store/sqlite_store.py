@@ -138,6 +138,27 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 alias     TEXT PRIMARY KEY,
                 canonical TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS public_session_summaries (
+                project        TEXT NOT NULL,
+                session_id     INTEGER NOT NULL,
+                started_at     TEXT NOT NULL,
+                public_summary TEXT,
+                PRIMARY KEY (project, session_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_pss_project_started
+                ON public_session_summaries(project, started_at DESC);
+
+            CREATE TABLE IF NOT EXISTS public_weekly_rollups (
+                project        TEXT NOT NULL,
+                week_of        TEXT NOT NULL,
+                public_summary TEXT,
+                session_count  INTEGER NOT NULL DEFAULT 0,
+                commit_count   INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (project, week_of)
+            );
+            CREATE INDEX IF NOT EXISTS idx_pwr_project_week
+                ON public_weekly_rollups(project, week_of DESC);
         """)
         self._conn.commit()
 
@@ -200,6 +221,57 @@ class SqliteKnowledgeStore(KnowledgeStore):
               json.dumps(daily_summary_ids), prompt_count, session_count,
               commit_count, model))
         self._conn.commit()
+
+    # ---- Public summaries ----
+
+    def upsert_public_session_summary(self, *, project, session_id, started_at,
+                                        public_summary):
+        self._conn.execute("""
+            INSERT OR REPLACE INTO public_session_summaries
+                (project, session_id, started_at, public_summary)
+            VALUES (?, ?, ?, ?)
+        """, (project, session_id, started_at, public_summary))
+        self._conn.commit()
+
+    def get_public_session_summaries(self, *, project=None, since=None,
+                                       limit=None):
+        clauses, params = ["1=1"], []
+        if project:
+            clauses.append("project = ?")
+            params.append(project)
+        if since:
+            clauses.append("started_at >= ?")
+            params.append(since)
+        sql = (f"SELECT * FROM public_session_summaries "
+               f"WHERE {' AND '.join(clauses)} ORDER BY started_at DESC")
+        if limit:
+            sql += " LIMIT ?"
+            params.append(limit)
+        return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
+
+    def upsert_public_weekly_rollup(self, *, project, week_of, public_summary,
+                                      session_count, commit_count):
+        self._conn.execute("""
+            INSERT OR REPLACE INTO public_weekly_rollups
+                (project, week_of, public_summary, session_count, commit_count)
+            VALUES (?, ?, ?, ?, ?)
+        """, (project, week_of, public_summary, session_count, commit_count))
+        self._conn.commit()
+
+    def get_public_weekly_rollups(self, *, project=None, since=None, limit=None):
+        clauses, params = ["1=1"], []
+        if project:
+            clauses.append("project = ?")
+            params.append(project)
+        if since:
+            clauses.append("week_of >= ?")
+            params.append(since)
+        sql = (f"SELECT * FROM public_weekly_rollups "
+               f"WHERE {' AND '.join(clauses)} ORDER BY week_of DESC")
+        if limit:
+            sql += " LIMIT ?"
+            params.append(limit)
+        return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
 
     # ---- Intentions ----
 

@@ -2,7 +2,9 @@
 """Sync processed knowledge from local SQLite to Turso.
 
 Pushes daily_summaries, weekly_rollups, intentions, review_snapshots,
-and project_snapshots. Does NOT sync raw prompts or sessions (privacy).
+project_snapshots, and the public_* tables consumed by external sites
+(e.g. pianohouseproject.org). Does NOT sync raw prompts or sessions
+(privacy).
 
 Usage:
   python sync_to_turso.py              # sync all processed tables
@@ -153,6 +155,31 @@ def main():
         lambda r, row: r.save_project_snapshot(
             project=row["project"], date=row["snapshot_date"],
             data=row["data"] if isinstance(row["data"], dict) else json.loads(row["data"]),
+        ),
+        dry_run,
+    )
+
+    # Public session summaries (consumed by external sites; safe-by-construction)
+    total += sync_table(
+        local, remote, "public_session_summaries",
+        lambda s: s.get_public_session_summaries(since=since),
+        lambda r, row: r.upsert_public_session_summary(
+            project=row["project"], session_id=row["session_id"],
+            started_at=row["started_at"],
+            public_summary=row.get("public_summary"),
+        ),
+        dry_run,
+    )
+
+    # Public weekly rollups
+    total += sync_table(
+        local, remote, "public_weekly_rollups",
+        lambda s: s.get_public_weekly_rollups(since=since),
+        lambda r, row: r.upsert_public_weekly_rollup(
+            project=row["project"], week_of=row["week_of"],
+            public_summary=row.get("public_summary"),
+            session_count=row.get("session_count", 0) or 0,
+            commit_count=row.get("commit_count", 0) or 0,
         ),
         dry_run,
     )
