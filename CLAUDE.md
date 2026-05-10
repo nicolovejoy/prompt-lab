@@ -33,6 +33,7 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 - `/handoff` generates daily summaries + weekly rollups inline (no API call)
 - `/ask` queries the knowledge store with natural language
 - `workflow/` — slash commands (`commands/`), hooks, and `statusline-command.sh` (copy to `~/.claude/`)
+- `web/api/public_history.py` — unauthenticated `GET /api/public_history?project=<name>` for portfolio About pages, gated by hardcoded `PUBLIC_PROJECTS` allowlist. Adding a project to the allowlist is the deliberate moment its data goes public — review SQLite rows first.
 
 ## Cross-agent handoff
 
@@ -43,6 +44,7 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 ### Auth and sharing
 - Consider contextual Ask/Reviews on project pages (inline, not nav bar)
 - Migrate to Google login (OAuth) and track logins per user; admin = just me
+- Investigate how selected-projects currently consumes `public_session_summaries` / `public_weekly_rollups` — if it reads Turso directly, consider migrating it to `/api/public_history` so the allowlist gates both consumers (offer-builder + selected-projects).
 
 ### Dashboard polish
 - Review project detail layout on mobile (sidebar stacking)
