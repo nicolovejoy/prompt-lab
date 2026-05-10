@@ -139,10 +139,16 @@ def synthesize_intentions(store, client):
         print("No projects with recent summaries.")
         return
 
+    aliases = store.get_project_aliases()
+
+    def canonical(name):
+        return aliases.get(name, name)
+
     print(f"Updating intentions for {len(projects)} project(s).")
 
     for project in projects:
-        print(f"  Intentions for {project}...", end=" ", flush=True)
+        canon = canonical(project)
+        print(f"  Intentions for {canon}...", end=" ", flush=True)
 
         summaries = store.get_daily_summaries(project=project, limit=14)
         summary_texts = []
@@ -151,7 +157,7 @@ def synthesize_intentions(store, client):
             summary_texts.append(f"[{s['date']}] {s['summary']}")
             summary_ids.append(s["id"])
 
-        current_intentions = store.get_intentions(project=project, status="active")
+        current_intentions = store.get_intentions(project=canon, status="active")
 
         current_text = ""
         if current_intentions:
@@ -184,7 +190,7 @@ Recent daily summaries (last 14 days):
             for item in parsed.get("intentions", []):
                 store.upsert_intention(
                     id=item.get("id"),
-                    project=project,
+                    project=canon,
                     intention=item.get("intention", ""),
                     evidence_summary_ids=summary_ids,
                     status=item.get("status", "active"),

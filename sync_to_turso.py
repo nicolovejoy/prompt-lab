@@ -25,8 +25,13 @@ from store.sqlite_store import SqliteKnowledgeStore
 from store.turso_store import TursoKnowledgeStore
 
 
-def sync_table(local, remote, table_name, query_fn, upsert_fn, dry_run=False):
-    """Sync rows from local to remote using query/upsert functions."""
+def sync_table(local, remote, table_name, query_fn, upsert_fn, dry_run=False, chunk=100):
+    """Sync rows from local to remote, batching writes via _execute_many.
+
+    Buffers each upsert_fn's _execute call into (sql, args) tuples, then flushes
+    in chunks via remote._execute_many. ~50–100x fewer HTTP round-trips than
+    one-row-per-request.
+    """
     rows = query_fn(local)
     if not rows:
         print(f"  {table_name}: 0 rows (skip)")
@@ -36,16 +41,34 @@ def sync_table(local, remote, table_name, query_fn, upsert_fn, dry_run=False):
         print(f"  {table_name}: {len(rows)} rows (dry run)")
         return len(rows)
 
-    for row in rows:
-        try:
-            upsert_fn(remote, row)
-        except Exception as e:
-            print(f"  {table_name}: error on row {row.get('id', '?')}: {e}")
+    buffer = []
+    orig_execute = remote._execute
+
+    def buffered_execute(sql, args=None):
+        buffer.append((sql, args or []))
+
+    remote._execute = buffered_execute
+    try:
+        for row in rows:
+            try:
+                upsert_fn(remote, row)
+            except Exception as e:
+                print(f"  {table_name}: error on row {row.get('id', '?')}: {e}")
+    finally:
+        remote._execute = orig_execute
+
+    n = len(buffer)
+    for i in range(0, n, chunk):
+        remote._execute_many(buffer[i:i + chunk])
+        done = min(i + chunk, n)
+        if n > chunk:
+            print(f"  {table_name}: {done}/{n} synced")
     print(f"  {table_name}: {len(rows)} rows synced")
     return len(rows)
 
 
 def main():
+    sys.stdout.reconfigure(line_buffering=True)
     dry_run = "--dry-run" in sys.argv
     days = None
     for i, arg in enumerate(sys.argv[1:], 1):

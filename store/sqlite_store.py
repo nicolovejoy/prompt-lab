@@ -127,6 +127,8 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 ON intentions(project);
             CREATE INDEX IF NOT EXISTS idx_intentions_status
                 ON intentions(status);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_intentions_project_intention
+                ON intentions(project, intention);
             CREATE INDEX IF NOT EXISTS idx_themes_status
                 ON themes(status);
             CREATE INDEX IF NOT EXISTS idx_weekly_rollups_project_week
@@ -289,22 +291,25 @@ class SqliteKnowledgeStore(KnowledgeStore):
     def upsert_intention(self, *, id, project, intention,
                          evidence_summary_ids, status, model):
         today = datetime.now().strftime("%Y-%m-%d")
-        if id is not None:
-            self._conn.execute("""
-                UPDATE intentions SET status = ?, last_seen = ?,
-                       evidence = (SELECT json_group_array(value) FROM (
-                           SELECT value FROM json_each(evidence)
-                           UNION SELECT ? as value
-                       ))
-                WHERE id = ?
-            """, (status, today, json.dumps(evidence_summary_ids), id))
-        else:
-            self._conn.execute("""
-                INSERT INTO intentions
-                    (project, intention, evidence, status, first_seen, last_seen, model)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (project, intention, json.dumps(evidence_summary_ids),
-                  status, today, today, model))
+        self._conn.execute("""
+            INSERT INTO intentions
+                (project, intention, evidence, status, first_seen, last_seen, model)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(project, intention) DO UPDATE SET
+                status = excluded.status,
+                last_seen = excluded.last_seen,
+                model = excluded.model,
+                evidence = (
+                    SELECT json_group_array(value) FROM (
+                        SELECT DISTINCT value FROM (
+                            SELECT value FROM json_each(intentions.evidence)
+                            UNION ALL
+                            SELECT value FROM json_each(excluded.evidence)
+                        )
+                    )
+                )
+        """, (project, intention, json.dumps(evidence_summary_ids),
+              status, today, today, model))
         self._conn.commit()
 
     def get_projects_with_recent_summaries(self, n_days=14):
@@ -314,6 +319,12 @@ class SqliteKnowledgeStore(KnowledgeStore):
             (cutoff,)
         ).fetchall()
         return [r["project"] for r in rows]
+
+    def get_project_aliases(self):
+        rows = self._conn.execute(
+            "SELECT alias, canonical FROM project_aliases"
+        ).fetchall()
+        return {r["alias"]: r["canonical"] for r in rows}
 
     def get_weeks_without_rollups(self):
         """Find (project, week_start) pairs with daily summaries for a

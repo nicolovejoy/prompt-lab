@@ -97,6 +97,10 @@ class KnowledgeStore(ABC):
     def get_projects_with_recent_summaries(self, n_days: int = 14) -> list[str]: ...
 
     @abstractmethod
+    def get_project_aliases(self) -> dict[str, str]:
+        """Return {alias: canonical} mapping from project_aliases table."""
+
+    @abstractmethod
     def get_weeks_without_rollups(self) -> list[tuple[str, str]]:
         """Return (project, week_start_monday) pairs that have daily summaries
         for a completed week but no weekly rollup yet."""

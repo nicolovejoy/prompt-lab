@@ -138,6 +138,10 @@ class TursoKnowledgeStore(KnowledgeStore):
                 )
             """},
             {"sql": """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_intentions_project_intention
+                    ON intentions(project, intention)
+            """},
+            {"sql": """
                 CREATE TABLE IF NOT EXISTS review_snapshots (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     review_type TEXT NOT NULL,
@@ -336,18 +340,25 @@ class TursoKnowledgeStore(KnowledgeStore):
     def upsert_intention(self, *, id, project, intention,
                          evidence_summary_ids, status, model):
         today = datetime.now().strftime("%Y-%m-%d")
-        if id is not None:
-            self._execute("""
-                UPDATE intentions SET status = ?, last_seen = ?,
-                       evidence = ? WHERE id = ?
-            """, [status, today, json.dumps(evidence_summary_ids), id])
-        else:
-            self._execute("""
-                INSERT INTO intentions
-                    (project, intention, evidence, status, first_seen, last_seen, model)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, [project, intention, json.dumps(evidence_summary_ids),
-                  status, today, today, model])
+        self._execute("""
+            INSERT INTO intentions
+                (project, intention, evidence, status, first_seen, last_seen, model)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(project, intention) DO UPDATE SET
+                status = excluded.status,
+                last_seen = excluded.last_seen,
+                model = excluded.model,
+                evidence = (
+                    SELECT json_group_array(value) FROM (
+                        SELECT DISTINCT value FROM (
+                            SELECT value FROM json_each(intentions.evidence)
+                            UNION ALL
+                            SELECT value FROM json_each(excluded.evidence)
+                        )
+                    )
+                )
+        """, [project, intention, json.dumps(evidence_summary_ids),
+              status, today, today, model])
 
     def get_projects_with_recent_summaries(self, n_days=14):
         cutoff = (datetime.now() - timedelta(days=n_days)).strftime("%Y-%m-%d")
@@ -356,6 +367,10 @@ class TursoKnowledgeStore(KnowledgeStore):
             [cutoff]
         )
         return [r["project"] for r in self._rows_to_dicts(result)]
+
+    def get_project_aliases(self):
+        result = self._execute("SELECT alias, canonical FROM project_aliases")
+        return {r["alias"]: r["canonical"] for r in self._rows_to_dicts(result)}
 
     def get_weeks_without_rollups(self):
         today = datetime.now().strftime("%Y-%m-%d")
