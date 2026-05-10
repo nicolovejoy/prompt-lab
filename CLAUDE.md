@@ -41,7 +41,6 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 ## Next Steps
 
 ### Auth and sharing
-- Set AUTH_READ_SECRET env var in Vercel to enable reader access for friends
 - Consider contextual Ask/Reviews on project pages (inline, not nav bar)
 - Migrate to Google login (OAuth) and track logins per user; admin = just me
 
@@ -57,6 +56,7 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 ### Backfill and maintenance
 - Verify nightly cron generates rollups for all projects
 - Migrate other projects' `.env` files to 1Password `.env.tpl` pattern
+- Cloud/local dashboards still query intentions by raw project name — stale-alias project pages (`MusicForge`, `pianohouse`, `dashboard`) will now render empty. Consider redirecting to canonical (`musicforge`, `selected-projects`, `sentiment-arbitrage`) at the route layer.
 
 ### Per-project Anthropic API keys
 Separate keys for usage/cost visibility and independent revocation. Verify with `grep -r claude-sonnet-4-20250514 ~/src/` (model migration complete as of 2026-04-14, only SDK internals remain).
