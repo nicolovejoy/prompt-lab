@@ -12,9 +12,12 @@ import json
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from turso_helper import turso_query
+from turso_helper import resolve_project_names, turso_query
 
-PUBLIC_PROJECTS = {"offer-builder"}
+# Canonical project names whose data may be served publicly. After a rename,
+# update this set to the new canonical name; requests using the old alias
+# still work because we resolve to canonical before this check.
+PUBLIC_PROJECTS = {"byside"}
 
 DEFAULT_SESSION_LIMIT = 20
 MAX_SESSION_LIMIT = 100
@@ -35,23 +38,26 @@ class handler(BaseHTTPRequestHandler):
         if not project:
             return self._send(400, {"error": "project required"})
 
-        if project not in PUBLIC_PROJECTS:
+        names = resolve_project_names(project)
+        canonical = names[0]
+        if canonical not in PUBLIC_PROJECTS:
             return self._send(404, {"error": "not found"})
 
         limit = _int_or(params.get("limit", [None])[0], DEFAULT_SESSION_LIMIT)
         limit = max(1, min(limit, MAX_SESSION_LIMIT))
 
+        ph = ",".join("?" * len(names))
         session_rows = turso_query(
-            "SELECT session_id, started_at, public_summary "
-            "FROM public_session_summaries "
-            "WHERE project = ? ORDER BY started_at DESC LIMIT ?",
-            [project, limit],
+            f"SELECT session_id, started_at, public_summary "
+            f"FROM public_session_summaries "
+            f"WHERE project IN ({ph}) ORDER BY started_at DESC LIMIT ?",
+            [*names, limit],
         )
         rollup_rows = turso_query(
-            "SELECT week_of, public_summary, session_count, commit_count "
-            "FROM public_weekly_rollups "
-            "WHERE project = ? ORDER BY week_of DESC",
-            [project],
+            f"SELECT week_of, public_summary, session_count, commit_count "
+            f"FROM public_weekly_rollups "
+            f"WHERE project IN ({ph}) ORDER BY week_of DESC",
+            names,
         )
 
         sessions = [

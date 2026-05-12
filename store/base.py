@@ -3,6 +3,47 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Callable
+
+
+def fold_by_canonical(d: dict, aliases: dict[str, str],
+                      merge: Callable) -> dict:
+    """Collapse alias-keyed entries in `d` into canonical keys, merging values.
+
+    `merge(existing, incoming)` combines two values that landed under the same
+    canonical key. Iteration order is preserved for non-conflicting keys.
+    """
+    out: dict = {}
+    for k, v in d.items():
+        c = aliases.get(k, k)
+        out[c] = merge(out[c], v) if c in out else v
+    return out
+
+
+def merge_session_data(a: dict, b: dict) -> dict:
+    """Merge two get_overview session_data entries."""
+    sa = a.get("session_count") or 0
+    sb = b.get("session_count") or 0
+    total = sa + sb
+    avg_a = a.get("avg_tokens") or 0
+    avg_b = b.get("avg_tokens") or 0
+    return {
+        "session_count": total,
+        "last_started": max(
+            x for x in (a.get("last_started"), b.get("last_started")) if x
+        ) if (a.get("last_started") or b.get("last_started")) else None,
+        "avg_tokens": (avg_a * sa + avg_b * sb) / total if total else None,
+        "peak_tokens": max(a.get("peak_tokens") or 0, b.get("peak_tokens") or 0),
+    }
+
+
+def keep_latest_session(a: dict, b: dict) -> dict:
+    """Pick the entry with the later started_at."""
+    if not a.get("started_at"):
+        return b
+    if not b.get("started_at"):
+        return a
+    return a if a["started_at"] >= b["started_at"] else b
 
 
 class KnowledgeStore(ABC):
@@ -99,6 +140,33 @@ class KnowledgeStore(ABC):
     @abstractmethod
     def get_project_aliases(self) -> dict[str, str]:
         """Return {alias: canonical} mapping from project_aliases table."""
+
+    def expand_project(self, name: str) -> list[str]:
+        """Return [canonical, *aliases] for `name`.
+
+        If `name` is an alias, resolves to its canonical first. If `name` is
+        unknown (neither canonical nor alias), returns [name] unchanged.
+        Used by read paths to build `WHERE project IN (...)` clauses.
+        """
+        if not name:
+            return [name]
+        aliases = self.get_project_aliases()
+        canonical = aliases.get(name, name)
+        return [canonical] + sorted(a for a, c in aliases.items() if c == canonical)
+
+    def canonical_projects(self, names: list[str]) -> list[str]:
+        """Collapse a list of project names to canonical names, deduped.
+
+        Used by distinct-project aggregators so alias rows don't show up
+        as separate projects in overviews.
+        """
+        aliases = self.get_project_aliases()
+        seen = []
+        for n in names:
+            c = aliases.get(n, n)
+            if c not in seen:
+                seen.append(c)
+        return seen
 
     @abstractmethod
     def get_weeks_without_rollups(self) -> list[tuple[str, str]]:

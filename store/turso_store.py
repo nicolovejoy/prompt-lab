@@ -18,7 +18,12 @@ import os
 import urllib.request
 from datetime import datetime, timedelta
 
-from .base import KnowledgeStore
+from .base import (
+    KnowledgeStore,
+    fold_by_canonical,
+    keep_latest_session,
+    merge_session_data,
+)
 
 
 class TursoKnowledgeStore(KnowledgeStore):
@@ -138,10 +143,6 @@ class TursoKnowledgeStore(KnowledgeStore):
                 )
             """},
             {"sql": """
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_intentions_project_intention
-                    ON intentions(project, intention)
-            """},
-            {"sql": """
                 CREATE TABLE IF NOT EXISTS review_snapshots (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     review_type TEXT NOT NULL,
@@ -216,6 +217,41 @@ class TursoKnowledgeStore(KnowledgeStore):
                     ON public_weekly_rollups(project, week_of DESC)
             """},
         ])
+        self._dedupe_intentions()
+        self._execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_intentions_project_intention "
+            "ON intentions(project, intention)"
+        )
+
+    def _dedupe_intentions(self) -> None:
+        """Collapse duplicate (project, intention) rows before the unique index is created.
+
+        Keeps the row with MAX(last_seen); promotes first_seen to MIN across the group.
+        Idempotent: a no-op when no duplicates exist.
+        """
+        result = self._execute("""
+            SELECT project, intention,
+                   MIN(first_seen) AS min_first_seen,
+                   MAX(last_seen)  AS max_last_seen
+            FROM intentions
+            GROUP BY project, intention
+            HAVING COUNT(*) > 1
+        """)
+        for g in self._rows_to_dicts(result):
+            keeper = self._row_to_dict(self._execute(
+                "SELECT id FROM intentions "
+                "WHERE project = ? AND intention = ? AND last_seen = ? "
+                "ORDER BY id LIMIT 1",
+                [g["project"], g["intention"], g["max_last_seen"]],
+            ))
+            if not keeper:
+                continue
+            self._execute_many([
+                ("UPDATE intentions SET first_seen = ? WHERE id = ?",
+                 [g["min_first_seen"], keeper["id"]]),
+                ("DELETE FROM intentions WHERE project = ? AND intention = ? AND id != ?",
+                 [g["project"], g["intention"], keeper["id"]]),
+            ])
 
     # ---- Daily summaries ----
 
@@ -223,8 +259,9 @@ class TursoKnowledgeStore(KnowledgeStore):
                             limit=None):
         clauses, args = ["1=1"], []
         if project:
-            clauses.append("project = ?")
-            args.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            args.extend(pa)
         if since:
             clauses.append("date >= ?")
             args.append(since)
@@ -252,8 +289,9 @@ class TursoKnowledgeStore(KnowledgeStore):
     def get_weekly_rollups(self, *, project=None, since=None, limit=None):
         clauses, args = ["1=1"], []
         if project:
-            clauses.append("project = ?")
-            args.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            args.extend(pa)
         if since:
             clauses.append("week_start >= ?")
             args.append(since)
@@ -289,8 +327,9 @@ class TursoKnowledgeStore(KnowledgeStore):
                                        limit=None):
         clauses, args = ["1=1"], []
         if project:
-            clauses.append("project = ?")
-            args.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            args.extend(pa)
         if since:
             clauses.append("started_at >= ?")
             args.append(since)
@@ -312,8 +351,9 @@ class TursoKnowledgeStore(KnowledgeStore):
     def get_public_weekly_rollups(self, *, project=None, since=None, limit=None):
         clauses, args = ["1=1"], []
         if project:
-            clauses.append("project = ?")
-            args.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            args.extend(pa)
         if since:
             clauses.append("week_of >= ?")
             args.append(since)
@@ -329,8 +369,9 @@ class TursoKnowledgeStore(KnowledgeStore):
     def get_intentions(self, *, project=None, status="active"):
         clauses, args = ["1=1"], []
         if project:
-            clauses.append("project = ?")
-            args.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            args.extend(pa)
         if status and status != "all":
             clauses.append("status = ?")
             args.append(status)
@@ -369,19 +410,47 @@ class TursoKnowledgeStore(KnowledgeStore):
         return [r["project"] for r in self._rows_to_dicts(result)]
 
     def get_project_aliases(self):
+        cached = getattr(self, "_alias_cache", None)
+        if cached is not None:
+            return cached
         result = self._execute("SELECT alias, canonical FROM project_aliases")
-        return {r["alias"]: r["canonical"] for r in self._rows_to_dicts(result)}
+        self._alias_cache = {r["alias"]: r["canonical"] for r in self._rows_to_dicts(result)}
+        return self._alias_cache
+
+    def invalidate_alias_cache(self) -> None:
+        self._alias_cache = None
+
+    def _project_clause(self, project: str | None) -> tuple[str, list]:
+        """Return (sql_clause, args) for filtering by project, alias-expanded.
+
+        Returns ("", []) when project is falsy.
+        """
+        if not project:
+            return "", []
+        names = self.expand_project(project)
+        return f"project IN ({','.join('?' * len(names))})", names
 
     def get_weeks_without_rollups(self):
+        # Canonicalize project on both sides so aliased rows don't generate
+        # duplicate rollups that already exist under the canonical name.
         today = datetime.now().strftime("%Y-%m-%d")
         result = self._execute("""
             SELECT ds.project, ds.week_start FROM (
-                SELECT project, date(date, 'weekday 1', '-7 days') as week_start
-                FROM daily_summaries WHERE date < ?
-                GROUP BY project, week_start HAVING COUNT(DISTINCT date) >= 1
-            ) ds LEFT JOIN weekly_rollups wr
+                SELECT COALESCE(cd.canonical, daily_summaries.project) AS project,
+                       date(date, 'weekday 1', '-7 days') as week_start
+                FROM daily_summaries
+                LEFT JOIN project_aliases cd ON cd.alias = daily_summaries.project
+                WHERE date < ?
+                GROUP BY COALESCE(cd.canonical, daily_summaries.project), week_start
+                HAVING COUNT(DISTINCT date) >= 1
+            ) ds LEFT JOIN (
+                SELECT COALESCE(cw.canonical, weekly_rollups.project) AS project,
+                       week_start
+                FROM weekly_rollups
+                LEFT JOIN project_aliases cw ON cw.alias = weekly_rollups.project
+            ) wr
                 ON wr.project = ds.project AND wr.week_start = ds.week_start
-            WHERE wr.id IS NULL
+            WHERE wr.project IS NULL
         """, [today])
         return [(r["project"], r["week_start"]) for r in self._rows_to_dicts(result)]
 
@@ -411,15 +480,17 @@ class TursoKnowledgeStore(KnowledgeStore):
     # ---- Project snapshots ----
 
     def get_project_snapshot(self, project, *, date=None):
+        names = self.expand_project(project)
+        ph = ",".join("?" * len(names))
         if date:
             result = self._execute(
-                "SELECT * FROM project_snapshots WHERE project = ? AND snapshot_date = ?",
-                [project, date]
+                f"SELECT * FROM project_snapshots WHERE project IN ({ph}) AND snapshot_date = ?",
+                [*names, date]
             )
         else:
             result = self._execute(
-                "SELECT * FROM project_snapshots WHERE project = ? ORDER BY snapshot_date DESC LIMIT 1",
-                [project]
+                f"SELECT * FROM project_snapshots WHERE project IN ({ph}) ORDER BY snapshot_date DESC LIMIT 1",
+                names
             )
         row = self._row_to_dict(result)
         if row and row.get("data"):
@@ -481,7 +552,9 @@ class TursoKnowledgeStore(KnowledgeStore):
                 UNION SELECT DISTINCT project FROM weekly_rollups
             ) ORDER BY project
         """)
-        return {r["project"] for r in self._rows_to_dicts(result)}
+        return set(self.canonical_projects(
+            [r["project"] for r in self._rows_to_dicts(result)]
+        ))
 
     def get_non_active_projects(self):
         return set()  # No projects table in Turso
@@ -508,11 +581,12 @@ class TursoKnowledgeStore(KnowledgeStore):
             since=(datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
         )
         intentions = self.get_intentions(status="active")
+        aliases = self.get_project_aliases()
 
-        # Aggregate from summaries
+        # Aggregate from summaries, folding aliases into canonicals
         projects_data = {}
         for s in summaries_7d:
-            p = s["project"]
+            p = aliases.get(s["project"], s["project"])
             if p not in projects_data:
                 projects_data[p] = {"prompts": 0, "sessions": 0, "commits": 0, "days": 0}
             projects_data[p]["prompts"] += s.get("prompt_count", 0) or 0
@@ -522,7 +596,8 @@ class TursoKnowledgeStore(KnowledgeStore):
 
         intentions_by_project = {}
         for i in intentions:
-            intentions_by_project.setdefault(i["project"], []).append(i["intention"])
+            p = aliases.get(i["project"], i["project"])
+            intentions_by_project.setdefault(p, []).append(i["intention"])
 
         total_prompts = sum(d["prompts"] for d in projects_data.values())
         total_sessions = sum(d["sessions"] for d in projects_data.values())

@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from auth_helper import is_authenticated
-from turso_helper import turso_query
+from turso_helper import resolve_project_names, turso_query
 
 
 class handler(BaseHTTPRequestHandler):
@@ -25,8 +25,9 @@ class handler(BaseHTTPRequestHandler):
 
         clauses, args = ["1=1"], []
         if project:
-            clauses.append("project = ?")
-            args.append(project)
+            names = resolve_project_names(project)
+            clauses.append(f"project IN ({','.join('?' * len(names))})")
+            args.extend(names)
         if since:
             clauses.append("date >= ?")
             args.append(since)

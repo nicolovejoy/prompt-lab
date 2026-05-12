@@ -34,6 +34,7 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 - `/ask` queries the knowledge store with natural language
 - `workflow/` — slash commands (`commands/`), hooks, and `statusline-command.sh` (copy to `~/.claude/`)
 - `web/api/public_history.py` — unauthenticated `GET /api/public_history?project=<name>` for portfolio About pages, gated by hardcoded `PUBLIC_PROJECTS` allowlist. Adding a project to the allowlist is the deliberate moment its data goes public — review SQLite rows first.
+- `project_aliases` table + `scripts/alias.py` CLI — project renames are non-destructive: aliases stay in the table, rows keep their original `project` value, and every read expands `WHERE project = ?` into `WHERE project IN (canonical, …aliases)` via `store.expand_project()` / `web.turso_helper.resolve_project_names()`. Run `python scripts/alias.py add <old> <new>` to alias; run `python sync_to_turso.py` to propagate to the cloud dashboard. Design rationale in `docs/alias-layer-plan.md`.
 
 ## Cross-agent handoff
 
@@ -56,10 +57,9 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 - Add error resilience to handoff synthesis step (don't block on Python failures)
 
 ### Backfill and maintenance
-- **Intentions dedupe blocking all handoffs** — `store/sqlite_store.py::migrate()` fails at the `CREATE UNIQUE INDEX idx_intentions_project_intention` step because the table has 22 dup `(project, intention)` sets (carryover from before 677c39d's upsert logic). Every project's `/handoff` is broken until this is fixed; gates `public_session_summaries` creation and full Turso sync. Plan: add a self-healing dedupe step in `migrate()` that runs before the index creation — per group, keep the row with max `last_seen` (preserves latest status/model), update its `first_seen` to min across the group, delete the rest, then create the index. Evidence is already identical per group (verified on musicforge sample) so no JSON merge needed. Same fix likely needed in `turso_store.py::migrate()` — check whether Turso has dupes before assuming. Back up `~/.claude/prompt-history.db` before applying.
 - Verify nightly cron generates rollups for all projects
 - Migrate other projects' `.env` files to 1Password `.env.tpl` pattern
-- Cloud/local dashboards still query intentions by raw project name — stale-alias project pages (`MusicForge`, `pianohouse`, `dashboard`) will now render empty. Consider redirecting to canonical (`musicforge`, `selected-projects`, `sentiment-arbitrage`) at the route layer.
+- Pre-existing schema drift to revisit: `get_overview` references a `token_count` column that doesn't exist on local `sessions`; `get_project_detail` calls `ensure_project` against a `projects` table that's only created by `dashboard/server.py` migration `007`, not by `store.migrate()`. Both fail on a clean store-only install.
 
 ### Per-project Anthropic API keys
 Separate keys for usage/cost visibility and independent revocation. Verify with `grep -r claude-sonnet-4-20250514 ~/src/` (model migration complete as of 2026-04-14, only SDK internals remain).

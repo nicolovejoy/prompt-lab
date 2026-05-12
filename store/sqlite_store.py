@@ -7,7 +7,12 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .base import KnowledgeStore
+from .base import (
+    KnowledgeStore,
+    fold_by_canonical,
+    keep_latest_session,
+    merge_session_data,
+)
 
 DEFAULT_DB_PATH = Path.home() / ".claude" / "prompt-history.db"
 
@@ -25,6 +30,37 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
     def close(self) -> None:
         self._conn.close()
+
+    def _dedupe_intentions(self) -> None:
+        """Collapse duplicate (project, intention) rows before the unique index is created.
+
+        Keeps the row with MAX(last_seen); promotes first_seen to MIN across the group.
+        Idempotent: a no-op when no duplicates exist.
+        """
+        dup_groups = self._conn.execute("""
+            SELECT project, intention, COUNT(*) AS n,
+                   MIN(first_seen) AS min_first_seen,
+                   MAX(last_seen)  AS max_last_seen
+            FROM intentions
+            GROUP BY project, intention
+            HAVING COUNT(*) > 1
+        """).fetchall()
+        for g in dup_groups:
+            keeper = self._conn.execute(
+                "SELECT id FROM intentions "
+                "WHERE project = ? AND intention = ? AND last_seen = ? "
+                "ORDER BY id LIMIT 1",
+                (g["project"], g["intention"], g["max_last_seen"]),
+            ).fetchone()
+            self._conn.execute(
+                "UPDATE intentions SET first_seen = ? WHERE id = ?",
+                (g["min_first_seen"], keeper["id"]),
+            )
+            self._conn.execute(
+                "DELETE FROM intentions "
+                "WHERE project = ? AND intention = ? AND id != ?",
+                (g["project"], g["intention"], keeper["id"]),
+            )
 
     def migrate(self) -> None:
         self._conn.executescript("""
@@ -127,8 +163,6 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 ON intentions(project);
             CREATE INDEX IF NOT EXISTS idx_intentions_status
                 ON intentions(status);
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_intentions_project_intention
-                ON intentions(project, intention);
             CREATE INDEX IF NOT EXISTS idx_themes_status
                 ON themes(status);
             CREATE INDEX IF NOT EXISTS idx_weekly_rollups_project_week
@@ -162,6 +196,11 @@ class SqliteKnowledgeStore(KnowledgeStore):
             CREATE INDEX IF NOT EXISTS idx_pwr_project_week
                 ON public_weekly_rollups(project, week_of DESC);
         """)
+        self._dedupe_intentions()
+        self._conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_intentions_project_intention "
+            "ON intentions(project, intention)"
+        )
         self._conn.commit()
 
     # ---- Daily summaries ----
@@ -170,8 +209,9 @@ class SqliteKnowledgeStore(KnowledgeStore):
                             limit=None):
         clauses, params = ["1=1"], []
         if project:
-            clauses.append("project = ?")
-            params.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            params.extend(pa)
         if since:
             clauses.append("date >= ?")
             params.append(since)
@@ -200,8 +240,9 @@ class SqliteKnowledgeStore(KnowledgeStore):
     def get_weekly_rollups(self, *, project=None, since=None, limit=None):
         clauses, params = ["1=1"], []
         if project:
-            clauses.append("project = ?")
-            params.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            params.extend(pa)
         if since:
             clauses.append("week_start >= ?")
             params.append(since)
@@ -239,8 +280,9 @@ class SqliteKnowledgeStore(KnowledgeStore):
                                        limit=None):
         clauses, params = ["1=1"], []
         if project:
-            clauses.append("project = ?")
-            params.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            params.extend(pa)
         if since:
             clauses.append("started_at >= ?")
             params.append(since)
@@ -263,8 +305,9 @@ class SqliteKnowledgeStore(KnowledgeStore):
     def get_public_weekly_rollups(self, *, project=None, since=None, limit=None):
         clauses, params = ["1=1"], []
         if project:
-            clauses.append("project = ?")
-            params.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            params.extend(pa)
         if since:
             clauses.append("week_of >= ?")
             params.append(since)
@@ -280,8 +323,9 @@ class SqliteKnowledgeStore(KnowledgeStore):
     def get_intentions(self, *, project=None, status="active"):
         clauses, params = ["1=1"], []
         if project:
-            clauses.append("project = ?")
-            params.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            params.extend(pa)
         if status and status != "all":
             clauses.append("status = ?")
             params.append(status)
@@ -321,24 +365,48 @@ class SqliteKnowledgeStore(KnowledgeStore):
         return [r["project"] for r in rows]
 
     def get_project_aliases(self):
+        cached = getattr(self, "_alias_cache", None)
+        if cached is not None:
+            return cached
         rows = self._conn.execute(
             "SELECT alias, canonical FROM project_aliases"
         ).fetchall()
-        return {r["alias"]: r["canonical"] for r in rows}
+        self._alias_cache = {r["alias"]: r["canonical"] for r in rows}
+        return self._alias_cache
+
+    def invalidate_alias_cache(self) -> None:
+        self._alias_cache = None
+
+    def _project_clause(self, project: str | None) -> tuple[str, list]:
+        """Return (sql_clause, params) for filtering by project, alias-expanded.
+
+        Returns ("", []) when project is falsy.
+        """
+        if not project:
+            return "", []
+        names = self.expand_project(project)
+        return f"project IN ({','.join('?' * len(names))})", names
 
     def get_weeks_without_rollups(self):
         """Find (project, week_start) pairs with daily summaries for a
-        completed week (Mon-Sun, all 7 days past) but no rollup yet."""
+        completed week (Mon-Sun, all 7 days past) but no rollup yet.
+
+        Canonicalizes project on both sides so aliased rows don't generate
+        duplicate weekly rollups that already exist under the canonical name.
+        """
         today = datetime.now().strftime("%Y-%m-%d")
         rows = self._conn.execute("""
-            SELECT ds.project,
+            SELECT COALESCE(cd.canonical, ds.project) AS project,
                    date(ds.date, 'weekday 1', '-7 days') as week_start
             FROM daily_summaries ds
+            LEFT JOIN project_aliases cd ON cd.alias = ds.project
             WHERE ds.date < ?
-            GROUP BY ds.project, week_start
+            GROUP BY COALESCE(cd.canonical, ds.project), week_start
             HAVING COUNT(DISTINCT ds.date) >= 1
             EXCEPT
-            SELECT project, week_start FROM weekly_rollups
+            SELECT COALESCE(cw.canonical, wr.project), wr.week_start
+            FROM weekly_rollups wr
+            LEFT JOIN project_aliases cw ON cw.alias = wr.project
         """, (today,)).fetchall()
         return [(r["project"], r["week_start"]) for r in rows]
 
@@ -374,15 +442,17 @@ class SqliteKnowledgeStore(KnowledgeStore):
     # ---- Project snapshots ----
 
     def get_project_snapshot(self, project, *, date=None):
+        names = self.expand_project(project)
+        ph = ",".join("?" * len(names))
         if date:
             row = self._conn.execute(
-                "SELECT * FROM project_snapshots WHERE project = ? AND snapshot_date = ?",
-                (project, date)
+                f"SELECT * FROM project_snapshots WHERE project IN ({ph}) AND snapshot_date = ?",
+                (*names, date)
             ).fetchone()
         else:
             row = self._conn.execute(
-                "SELECT * FROM project_snapshots WHERE project = ? ORDER BY snapshot_date DESC LIMIT 1",
-                (project,)
+                f"SELECT * FROM project_snapshots WHERE project IN ({ph}) ORDER BY snapshot_date DESC LIMIT 1",
+                names
             ).fetchone()
         if row:
             result = dict(row)
@@ -441,43 +511,51 @@ class SqliteKnowledgeStore(KnowledgeStore):
         if target_date:
             date_filter = "AND date(p.timestamp) = ?"
             params.append(target_date)
+        # Canonicalize project on both sides of the EXCEPT so prompts under an
+        # alias don't generate duplicate summaries that already exist under the
+        # canonical name.
         rows = self._conn.execute(f"""
-            SELECT p.project, date(p.timestamp) as day
+            SELECT COALESCE(cp.canonical, p.project) AS project, date(p.timestamp) AS day
             FROM prompts p
+            LEFT JOIN project_aliases cp ON cp.alias = p.project
             WHERE p.project IS NOT NULL {date_filter}
-            GROUP BY p.project, day
+            GROUP BY COALESCE(cp.canonical, p.project), day
             HAVING COUNT(*) > 0
             EXCEPT
-            SELECT ds.project, ds.date FROM daily_summaries ds
+            SELECT COALESCE(cd.canonical, ds.project) AS project, ds.date
+            FROM daily_summaries ds
+            LEFT JOIN project_aliases cd ON cd.alias = ds.project
         """, params).fetchall()
         return [(r["project"], r["day"]) for r in rows]
 
     def get_day_data(self, project, date):
-        prompts = [dict(r) for r in self._conn.execute("""
+        names = self.expand_project(project)
+        ph = ",".join("?" * len(names))
+        prompts = [dict(r) for r in self._conn.execute(f"""
             SELECT id, prompt, outcome, utility, tags, context, hostname
-            FROM prompts WHERE project = ? AND date(timestamp) = ?
+            FROM prompts WHERE project IN ({ph}) AND date(timestamp) = ?
             ORDER BY timestamp
-        """, (project, date)).fetchall()]
+        """, (*names, date)).fetchall()]
 
-        sessions = [dict(r) for r in self._conn.execute("""
+        sessions = [dict(r) for r in self._conn.execute(f"""
             SELECT id, started_at, ended_at, summary, utility, hostname
-            FROM sessions WHERE project = ? AND date(started_at) = ?
+            FROM sessions WHERE project IN ({ph}) AND date(started_at) = ?
             ORDER BY started_at
-        """, (project, date)).fetchall()]
+        """, (*names, date)).fetchall()]
 
-        commits_from_prompts = self._conn.execute("""
+        commits_from_prompts = self._conn.execute(f"""
             SELECT c.hash, c.message, c.timestamp
             FROM commits c JOIN prompts p ON c.prompt_id = p.id
-            WHERE p.project = ? AND date(c.timestamp) = ?
+            WHERE p.project IN ({ph}) AND date(c.timestamp) = ?
             ORDER BY c.timestamp
-        """, (project, date)).fetchall()
+        """, (*names, date)).fetchall()
 
-        commits_from_sessions = self._conn.execute("""
+        commits_from_sessions = self._conn.execute(f"""
             SELECT c.hash, c.message, c.timestamp
             FROM commits c JOIN sessions s ON c.session_id = s.id
-            WHERE s.project = ? AND date(c.timestamp) = ?
+            WHERE s.project IN ({ph}) AND date(c.timestamp) = ?
             ORDER BY c.timestamp
-        """, (project, date)).fetchall()
+        """, (*names, date)).fetchall()
 
         seen_hashes = set()
         all_commits = []
@@ -492,8 +570,9 @@ class SqliteKnowledgeStore(KnowledgeStore):
         clauses = ["summary IS NOT NULL"]
         params = []
         if project:
-            clauses.append("project = ?")
-            params.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            params.extend(pa)
         if since_days is not None:
             clauses.append("started_at >= datetime('now', printf('-%d days', ?))")
             params.append(since_days)
@@ -541,8 +620,9 @@ class SqliteKnowledgeStore(KnowledgeStore):
         clauses = ["ended_at IS NOT NULL", "summary IS NOT NULL", "summary != ''"]
         params = []
         if project:
-            clauses.append("project = ?")
-            params.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            params.extend(pa)
         sql = f"SELECT * FROM sessions WHERE {' AND '.join(clauses)} ORDER BY started_at DESC"
         rows = self._conn.execute(sql, params).fetchall()
         sessions = [dict(r) for r in rows]
@@ -573,7 +653,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 UNION SELECT DISTINCT project FROM intentions WHERE project IS NOT NULL
             ) ORDER BY project
         """).fetchall()
-        return {r["project"] for r in rows}
+        return set(self.canonical_projects([r["project"] for r in rows]))
 
     def get_non_active_projects(self):
         rows = self._conn.execute(
@@ -588,24 +668,27 @@ class SqliteKnowledgeStore(KnowledgeStore):
             "SELECT * FROM projects WHERE name = ?", (name,)
         ).fetchone()
 
-        session_count = self._conn.execute("""
-            SELECT COUNT(*) as n FROM sessions
-            WHERE project = ? AND ended_at IS NOT NULL
-                  AND summary IS NOT NULL AND summary != ''
-        """, (name,)).fetchone()["n"]
+        names = self.expand_project(name)
+        ph = ",".join("?" * len(names))
 
-        last_session_row = self._conn.execute("""
+        session_count = self._conn.execute(f"""
+            SELECT COUNT(*) as n FROM sessions
+            WHERE project IN ({ph}) AND ended_at IS NOT NULL
+                  AND summary IS NOT NULL AND summary != ''
+        """, names).fetchone()["n"]
+
+        last_session_row = self._conn.execute(f"""
             SELECT id, summary, started_at FROM sessions
-            WHERE project = ? AND ended_at IS NOT NULL
+            WHERE project IN ({ph}) AND ended_at IS NOT NULL
                   AND summary IS NOT NULL AND summary != ''
             ORDER BY started_at DESC LIMIT 1
-        """, (name,)).fetchone()
+        """, names).fetchone()
 
-        intention_rows = self._conn.execute("""
+        intention_rows = self._conn.execute(f"""
             SELECT intention FROM intentions
-            WHERE project = ? AND status = 'active'
+            WHERE project IN ({ph}) AND status = 'active'
             ORDER BY last_seen DESC LIMIT 3
-        """, (name,)).fetchall()
+        """, names).fetchall()
 
         return {
             "name": name,
@@ -677,6 +760,14 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
         project_statuses = self._get_project_statuses_map()
 
+        aliases = self.get_project_aliases()
+        session_data = fold_by_canonical(session_data, aliases, merge_session_data)
+        last_sessions = fold_by_canonical(last_sessions, aliases, keep_latest_session)
+        intentions_by_project = fold_by_canonical(
+            intentions_by_project, aliases, lambda a, b: a + b)
+        intention_last_seen = fold_by_canonical(
+            intention_last_seen, aliases, max)
+
         return {
             "week": {"sessions": week_sessions, "prompts": week_prompts, "commits": week_commits},
             "session_data": session_data,
@@ -689,8 +780,9 @@ class SqliteKnowledgeStore(KnowledgeStore):
     def get_prompts(self, *, project=None):
         clauses, params = ["1=1"], []
         if project:
-            clauses.append("project = ?")
-            params.append(project)
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            params.extend(pa)
         sql = f"SELECT * FROM prompts WHERE {' AND '.join(clauses)} ORDER BY timestamp DESC"
         return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
 
