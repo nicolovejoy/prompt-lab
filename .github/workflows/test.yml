@@ -53,6 +53,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install uv (required by Vercel's Python builder)
+        uses: astral-sh/setup-uv@v3
+
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 

@@ -61,6 +61,11 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 - Migrate other projects' `.env` files to 1Password `.env.tpl` pattern
 - Pre-existing schema drift to revisit: `get_overview` references a `token_count` column that doesn't exist on local `sessions`; `get_project_detail` calls `ensure_project` against a `projects` table that's only created by `dashboard/server.py` migration `007`, not by `store.migrate()`. Both fail on a clean store-only install.
 
+### CI/CD follow-ups (fresh from 2026-05-11)
+- Watch the first CI run on main (`github.com/nicolovejoy/prompt-lab/actions`) and confirm the deploy job actually shipped to `anomatom.com`. If the Vercel CLI step needs tweaking, fix it before the next push.
+- Stale-alias URL UX: `/project/frontend` now renders musicforge data but the URL/title still say "frontend". Consider redirecting `/project/<alias>` → `/project/<canonical>` at the SPA route layer.
+- Decide whether to keep the GitHub Actions deploy path forever or eventually switch to Vercel's native git integration (simpler but loses test-gates-deploy semantics). Native is fine if you trust your tests; current setup is more conservative.
+
 ### Per-project Anthropic API keys
 Separate keys for usage/cost visibility and independent revocation. Verify with `grep -r claude-sonnet-4-20250514 ~/src/` (model migration complete as of 2026-04-14, only SDK internals remain).
 - [x] notemaxxing — own Anthropic workspace + key
