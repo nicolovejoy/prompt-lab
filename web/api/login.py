@@ -8,9 +8,7 @@ from http.server import BaseHTTPRequestHandler
 from auth_helper import (
     clear_cookie_header,
     get_role,
-    is_authenticated,
     set_cookie_header,
-    unauthorized_response,
 )
 
 import hmac

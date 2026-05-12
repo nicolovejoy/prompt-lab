@@ -20,9 +20,6 @@ from datetime import datetime, timedelta
 
 from .base import (
     KnowledgeStore,
-    fold_by_canonical,
-    keep_latest_session,
-    merge_session_data,
 )
 
 

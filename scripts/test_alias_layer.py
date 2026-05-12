@@ -381,7 +381,6 @@ def main() -> int:
     if not _results:
         print("no tests ran")
         return 1
-    width = max(len(n) for n, _, _ in _results)
     passed = 0
     for name, ok, err in _results:
         mark = "PASS" if ok else "FAIL"

@@ -18,7 +18,6 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from claude_api import load_env
 from store.sqlite_store import SqliteKnowledgeStore
