@@ -1,7 +1,7 @@
 ---
 name: handoff
 description: End a session by updating docs and prepping for next time
-allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(python3:*), Bash(pwd), Read, Write, Edit, Glob
+allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(python3:*), Bash(pwd), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Read, Write, Edit, Glob
 ---
 
 Close out this session. Be concise.
@@ -17,7 +17,7 @@ If there are uncommitted changes, list the changed files and ask the user whethe
 ## 1. Get session info
 
 ```bash
-sqlite3 ~/.claude/prompt-history.db "SELECT id, started_at FROM sessions WHERE project='$(basename $PWD)' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;"
+~/.claude/bin/gc-read.sh current-session
 ```
 
 ## 2. Do in parallel
@@ -68,7 +68,7 @@ sqlite3 ~/.claude/prompt-history.db "SELECT id, started_at FROM sessions WHERE p
 Get today's counts:
 
 ```bash
-sqlite3 ~/.claude/prompt-history.db "SELECT COUNT(*) as prompts FROM prompts WHERE project='$(basename $PWD)' AND date(timestamp) = date('now'); SELECT COUNT(*) as sessions FROM sessions WHERE project='$(basename $PWD)' AND date(started_at) = date('now'); SELECT COUNT(DISTINCT c.hash) as commits FROM commits c JOIN sessions s ON c.session_id = s.id WHERE s.project='$(basename $PWD)' AND date(c.timestamp) = date('now');"
+~/.claude/bin/gc-read.sh today-counts
 ```
 
 Using what you know from this session, write a daily summary to `/tmp/gc-daily-<project>-<session_id>.json` (substitute the actual project basename and session_id from step 1 — this avoids races when handoff runs in multiple repos concurrently) with this structure:
@@ -104,7 +104,7 @@ print('Daily summary saved for', d['project'], d['date'])
 Check if any completed weeks for this project need a rollup:
 
 ```bash
-sqlite3 -header ~/.claude/prompt-history.db "SELECT ds.week_start, ds.days, ds.ids, ds.summaries, ds.prompts, ds.sessions, ds.commits FROM (SELECT date(date, 'weekday 1', '-7 days') as week_start, COUNT(*) as days, GROUP_CONCAT(id) as ids, GROUP_CONCAT(summary, ' | ') as summaries, SUM(prompt_count) as prompts, SUM(session_count) as sessions, SUM(commit_count) as commits FROM daily_summaries WHERE project='$(basename $PWD)' AND date < date('now', 'weekday 1') GROUP BY week_start) ds LEFT JOIN weekly_rollups wr ON wr.project='$(basename $PWD)' AND wr.week_start = ds.week_start WHERE wr.id IS NULL ORDER BY ds.week_start DESC;"
+~/.claude/bin/gc-read.sh weekly-rollup-check
 ```
 
 If results come back, generate a weekly rollup for each week. Write to `/tmp/gc-weekly-<project>-<session_id>-<week_start>.json` (substitute actual values — one file per week if multiple):
