@@ -51,22 +51,48 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 - Review project detail layout on mobile (sidebar stacking)
 - Add ability to set/toggle project status (active/dormant) from detail page
 
-### Slash command improvements
-- Consider adding active intentions/todos to readup output
-- Track session duration (ended_at - started_at) and surface in /review
-- Add error resilience to handoff synthesis step (don't block on Python failures)
-- `/pulse` is now wired up — terse session status (5 lines). Reads go through `~/.claude/bin/gc-read.sh` so they bypass the simple_expansion permission gate. Consider auto-allowing `Bash(~/.claude/bin/gc-write.sh *)` once you trust the write subcommands (register-session, update-session-summary); right now /readup and /handoff still prompt once each for those.
-- `gc-write.sh update-session-summary` is brittle on summaries containing single quotes / shell metacharacters (bash word-splitting before sqlite escaping). Either pipe summary via stdin or switch to a heredoc-friendly invocation.
+### Slash commands (current state, 2026-05-13)
+
+Now installed: `/pulse` (session status), `/roadmap` (project digest), `/bulletin` (cross-project conventions). All read through `~/.claude/bin/gc-read.sh` wrappers so they bypass the simple_expansion permission gate. `/pulse` is a 5-line digest tied to the current open session; `/roadmap` flattens CLAUDE.md Next Steps + open GH issues + active intentions; `/bulletin` reads `BULLETIN.md` at the repo root.
+
+The SessionStart hook (`workflow/hooks/session-start.sh`) auto-injects date + last-session summary + recent commits + bulletin headlines on every Claude launch under `~/src/*`. /readup now only does the things the hook deliberately skips: register session row, `git fetch --quiet && git status -sb` (no auto-pull), full CLAUDE.md read.
+
+**Still to do:**
+- Auto-allow `Bash(~/.claude/bin/gc-write.sh *)` once you trust register-session and update-session-summary. Right now /readup and /handoff each prompt once for the writes.
+- Track session duration (ended_at − started_at) and surface in /review.
+
+### /handoff trimming (in-progress design discussion, 2026-05-13)
+
+Discussed five potential cuts. Decisions so far:
+- **Point 1 — SHIPPED** (commit `342ceae`): dropped Turso sync from /handoff; moved to async SessionStart hook at `~/.claude/bin/turso-sync-maybe.sh` (per-machine, max once per 24h). Synchronous hook warns when stale >48h. Cuts ~10s + a failure mode from every /handoff.
+- **Point 2 — pending decision**: drop weekly rollup generation from /handoff and rely on the nightly synthesizer instead. Risk: synthesizer reliability isn't verified, so might leave a gap. Pre-req: verify synthesizer actually runs on both machines before pulling this rip cord.
+- **Point 3 — pending discussion**: drop the GitHub URL upsert from /handoff (it was the schema-drift culprit; URL essentially never changes). Move to a one-time script under `scripts/`.
+- **Point 4 — pending discussion**: batch the ~5 remaining `python3 -c "..."` invocations in /handoff into a single helper script. Worth doing only AFTER cuts 2 and 3 land.
+- **Point 5 — pending discussion**: a Stop hook that captures commits + sets `ended_at` on session rows even when /handoff is skipped. Worth it only if you actually have many abandoned sessions.
+
+### Cross-machine sync needed
+
+These live in `~/.claude/` (machine-local, not in repo) and exist only on the mini right now. Mirror to the laptop manually:
+- `~/.claude/bin/gc-read.sh`
+- `~/.claude/bin/gc-write.sh`
+- `~/.claude/bin/_update_session_summary.py`
+- `~/.claude/bin/turso-sync-maybe.sh`
+- `~/.claude/commands/{pulse,roadmap,bulletin,readup,handoff}.md`
+- `~/.claude/settings.json` additions: allow rules + the SessionStart hook entries
+
+Consider committing a `scripts/install-machine-local.sh` that materializes these from the repo, so future machines come online with one command. Files in `~/.claude/bin/` are essentially infra and probably belong in the repo under `workflow/bin/`, then symlinked or copied into place.
 
 ### Backfill and maintenance
-- Verify nightly cron generates rollups for all projects
-- Migrate other projects' `.env` files to 1Password `.env.tpl` pattern
-- Pre-existing schema drift to revisit: `get_overview` references a `token_count` column that doesn't exist on local `sessions`; `get_project_detail` calls `ensure_project` against a `projects` table that's only created by `dashboard/server.py` migration `007`, not by `store.migrate()`. Both fail on a clean store-only install.
+- Verify nightly synthesizer actually runs on both machines (pre-req for point 2 of /handoff trimming). On the laptop in particular — LaunchAgents pause when the lid is closed.
+- Migrate other projects' `.env` files to 1Password `.env.tpl` pattern.
+- The schema-drift fixes shipped in `242d343` (`projects` table + `token_count`/`hostname` ALTER) are tested only via `scripts/test_imports.py` (compile check) + `scripts/test_alias_layer.py` (in-memory store). No dedicated regression test that exercises the drift scenario specifically — Task #9 from this session, deferred.
 
 ### CI/CD follow-ups
-- Watch the CI run on the slash-command-wrappers commit (`fe654b7`) — it only touches `workflow/commands/`, so a green build mostly confirms the pipeline still runs, not that the wrappers work. Real verification is `/pulse` running silently in a fresh window.
 - Stale-alias URL UX: `/project/frontend` now renders musicforge data but the URL/title still say "frontend". Consider redirecting `/project/<alias>` → `/project/<canonical>` at the SPA route layer.
 - Decide whether to keep the GitHub Actions deploy path forever or eventually switch to Vercel's native git integration (simpler but loses test-gates-deploy semantics). Native is fine if you trust your tests; current setup is more conservative.
+
+### Browser automation
+- Playwright MCP installed at user scope (`claude mcp add playwright -s user`). Available after next Claude restart. Scope convention is in `BULLETIN.md` — production read-only, localhost + preview URLs full access.
 
 ### Cost tracking (issue #2)
 - Filed `nicolovejoy/prompt-lab#2`: auto cost tracking across projects after a ~$50 exploited-API-key incident on notemaxxing. MVP would be a nightly pull from Anthropic Admin API (`/v1/organizations/usage_report`) into a new `api_costs` table, rendered on project detail + overview. Blocked on the remaining workspace migrations (prompt-lab, ibuild4you) and a new `ANTHROPIC_ADMIN_KEY` in 1Password.
