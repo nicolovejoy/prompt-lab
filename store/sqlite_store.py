@@ -195,13 +195,42 @@ class SqliteKnowledgeStore(KnowledgeStore):
             );
             CREATE INDEX IF NOT EXISTS idx_pwr_project_week
                 ON public_weekly_rollups(project, week_of DESC);
+
+            CREATE TABLE IF NOT EXISTS projects (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT UNIQUE NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'active',
+                category    TEXT,
+                path        TEXT,
+                notes       TEXT,
+                created_at  TEXT DEFAULT (datetime('now'))
+            );
         """)
         self._dedupe_intentions()
         self._conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_intentions_project_intention "
             "ON intentions(project, intention)"
         )
+
+        # Backfill columns added by dashboard migrations 004-006 so store-only
+        # consumers (synthesizer, sync_to_turso, slash commands) don't blow up
+        # on installs where dashboard/server.py hasn't run.
+        self._add_column_if_missing("sessions", "token_count", "INTEGER")
+        self._add_column_if_missing("sessions", "hostname", "TEXT")
+        self._add_column_if_missing("prompts", "hostname", "TEXT")
+        self._add_column_if_missing("projects", "github_url", "TEXT")
+        self._add_column_if_missing("projects", "site_url", "TEXT")
+
         self._conn.commit()
+
+    def _add_column_if_missing(self, table: str, column: str, decl: str) -> None:
+        """Idempotent ADD COLUMN — SQLite has no IF NOT EXISTS for columns.
+        No-op if the table itself doesn't exist (sessions/prompts are created
+        by the prompt-log hook on first write, not by migrate)."""
+        cols = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})")}
+        if not cols or column in cols:
+            return
+        self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     # ---- Daily summaries ----
 

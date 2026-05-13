@@ -28,9 +28,11 @@ If there are uncommitted changes, list the changed files and ask the user whethe
   ```
   Insert each: `INSERT OR IGNORE INTO commits (hash, message, session_id) VALUES (...);`
 
-- **Write session summary** (50 words max): what was done, what's next. Store it:
+- **Write session summary** (50 words max): what was done, what's next. Pipe the summary via stdin so single quotes / metacharacters don't break escaping:
   ```bash
-  sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET summary='<summary>', ended_at=datetime('now') WHERE id=<session_id>;"
+  ~/.claude/bin/gc-write.sh update-session-summary <session_id> <<'SUMMARY'
+  <your 50-word summary here>
+  SUMMARY
   ```
 
 - **Write public session summary** (1-2 sentences): a portfolio-safe rewrite of the session, suitable for a public project page. Describe what was built, shipped, or decided in plain language.
