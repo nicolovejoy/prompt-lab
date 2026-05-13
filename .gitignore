@@ -9,3 +9,4 @@ __pycache__/
 synthesizer.env
 reports/
 .DS_Store
+.claude/
