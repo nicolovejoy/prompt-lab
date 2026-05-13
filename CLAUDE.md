@@ -64,23 +64,17 @@ The SessionStart hook (`workflow/hooks/session-start.sh`) auto-injects date + la
 ### /handoff trimming (in-progress design discussion, 2026-05-13)
 
 Discussed five potential cuts. Decisions so far:
-- **Point 1 — SHIPPED** (commit `342ceae`): dropped Turso sync from /handoff; moved to async SessionStart hook at `~/.claude/bin/turso-sync-maybe.sh` (per-machine, max once per 24h). Synchronous hook warns when stale >48h. Cuts ~10s + a failure mode from every /handoff.
-- **Point 2 — pending decision**: drop weekly rollup generation from /handoff and rely on the nightly synthesizer instead. Risk: synthesizer reliability isn't verified, so might leave a gap. Pre-req: verify synthesizer actually runs on both machines before pulling this rip cord.
-- **Point 3 — pending discussion**: drop the GitHub URL upsert from /handoff (it was the schema-drift culprit; URL essentially never changes). Move to a one-time script under `scripts/`.
-- **Point 4 — pending discussion**: batch the ~5 remaining `python3 -c "..."` invocations in /handoff into a single helper script. Worth doing only AFTER cuts 2 and 3 land.
+- **Point 1 — SHIPPED** (commit `342ceae`): dropped Turso sync from /handoff; moved to async SessionStart hook at `~/.claude/bin/turso-sync-maybe.sh` (per-machine, max once per 8h, was 24h). Synchronous hook warns when stale >24h (3 missed cycles). Cuts ~10s + a failure mode from every /handoff.
+- **Point 2 — UNBLOCKED, pending one verified nightly run**: synthesizer was crashing on schema drift but mini ran today (2026-05-13 02:25) before the `242d343` fix shipped at 13:14. Schema is verified healthy now (`migrate()` + `get_day_data()` both succeed). Watch the 2026-05-14 02:00 run; if it logs a clean pass, drop weekly rollup from /handoff. Laptop verification still TBD.
+- **Point 3 — SHIPPED** (this session): /handoff no longer upserts the GitHub URL. Moved to one-time `scripts/backfill_project_urls.py`; already populated all 15 projects under ~/src.
+- **Point 4 — pending discussion**: batch the ~5 remaining `python3 -c "..."` invocations in /handoff into a single helper script. Worth doing only AFTER Point 2 lands.
 - **Point 5 — pending discussion**: a Stop hook that captures commits + sets `ended_at` on session rows even when /handoff is skipped. Worth it only if you actually have many abandoned sessions.
 
-### Cross-machine sync needed
+### Cross-machine sync
 
-These live in `~/.claude/` (machine-local, not in repo) and exist only on the mini right now. Mirror to the laptop manually:
-- `~/.claude/bin/gc-read.sh`
-- `~/.claude/bin/gc-write.sh`
-- `~/.claude/bin/_update_session_summary.py`
-- `~/.claude/bin/turso-sync-maybe.sh`
-- `~/.claude/commands/{pulse,roadmap,bulletin,readup,handoff}.md`
-- `~/.claude/settings.json` additions: allow rules + the SessionStart hook entries
+SHIPPED (this session): bin scripts moved into the repo under `workflow/bin/` and `workflow/install.sh` extended to install them to `~/.claude/bin/`. The manual-step block at the end of install.sh now prints the full settings.json additions (allow rules + SessionStart hook entries).
 
-Consider committing a `scripts/install-machine-local.sh` that materializes these from the repo, so future machines come online with one command. Files in `~/.claude/bin/` are essentially infra and probably belong in the repo under `workflow/bin/`, then symlinked or copied into place.
+To bring the laptop online: `git pull && bash workflow/install.sh`, then paste the printed settings.json snippet into `~/.claude/settings.json` (or just the SessionStart hook entry if you already have the allow rules). Auto-allow for `~/.claude/bin/gc-write.sh *` is in `~/.claude/settings.json` on the mini and needs mirroring.
 
 ### Backfill and maintenance
 - Verify nightly synthesizer actually runs on both machines (pre-req for point 2 of /handoff trimming). On the laptop in particular — LaunchAgents pause when the lid is closed.

@@ -9,6 +9,7 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VENV_DIR="$REPO_DIR/.venv"
 PYTHON3="$VENV_DIR/bin/python3"
 COMMANDS_DIR="$HOME/.claude/commands"
+BIN_DIR="$HOME/.claude/bin"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 
 FORCE=0
@@ -62,6 +63,18 @@ for cmd in "$REPO_DIR/workflow/commands/"*.md; do
     echo "Copied command: $name → $COMMANDS_DIR/"
 done
 
+# --- bin scripts (gc-read, gc-write, _update_session_summary, turso-sync-maybe) ---
+mkdir -p "$BIN_DIR"
+for src in "$REPO_DIR/workflow/bin/"*; do
+    name=$(basename "$src")
+    dest="$BIN_DIR/$name"
+    install_file "$src" "$dest" "bin $name"
+    case "$name" in
+        *.sh) chmod +x "$dest" ;;
+    esac
+    echo "Copied bin: $name → $BIN_DIR/"
+done
+
 # --- launchd plists (macOS only) ---
 if [[ "$OSTYPE" == darwin* ]] && command -v launchctl &>/dev/null; then
     mkdir -p "$LAUNCH_AGENTS"
@@ -101,7 +114,11 @@ echo "────────────────────────�
 cat <<EOF
 {
   "permissions": {
-    "allow": ["Bash(sqlite3 ~/.claude/prompt-history.db *)"]
+    "allow": [
+      "Bash(sqlite3 ~/.claude/prompt-history.db *)",
+      "Bash(~/.claude/bin/gc-read.sh *)",
+      "Bash(~/.claude/bin/gc-write.sh *)"
+    ]
   },
   "hooks": {
     "UserPromptSubmit": [{
@@ -109,6 +126,12 @@ cat <<EOF
     }],
     "Stop": [{
       "hooks": [{"type": "command", "command": "$REPO_DIR/workflow/hooks/session-stop.sh", "timeout": 5000}]
+    }],
+    "SessionStart": [{
+      "hooks": [
+        {"type": "command", "command": "$REPO_DIR/workflow/hooks/session-start.sh", "timeout": 5000},
+        {"type": "command", "command": "$HOME/.claude/bin/turso-sync-maybe.sh", "async": true, "timeout": 60}
+      ]
     }]
   }
 }

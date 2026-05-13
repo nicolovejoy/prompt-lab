@@ -162,32 +162,8 @@ else:
 
 If no weeks need rollups, skip silently.
 
-## 5. Update project metadata
+## 5. Commit doc changes if any
 
-Auto-detect and save the GitHub URL for this project:
+Note: Turso sync used to run here. It now runs automatically via the async SessionStart hook (`~/.claude/bin/turso-sync-maybe.sh`) at most once per 8h on each machine. If you need to force a sync right now: `~/src/prompt-lab/.venv/bin/python ~/src/prompt-lab/sync_to_turso.py --days 1`.
 
-```bash
-python3 -c "
-import subprocess, sys, os
-sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.path.expanduser('~/src/prompt-lab')))
-from store import get_store
-result = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True, text=True)
-if result.returncode == 0:
-    url = result.stdout.strip()
-    if url.startswith('git@github.com:'):
-        url = 'https://github.com/' + url[len('git@github.com:'):]
-    if url.endswith('.git'):
-        url = url[:-4]
-    if 'github.com' in url:
-        s = get_store(); s.migrate()
-        s.update_project(os.path.basename(os.getcwd()), github_url=url)
-        s.close()
-        print('GitHub URL saved:', url)
-"
-```
-
-If this fails, skip silently.
-
-## 6. Commit doc changes if any
-
-Note: Turso sync used to run here. It now runs automatically via the async SessionStart hook (`~/.claude/bin/turso-sync-maybe.sh`) at most once per 24h on each machine. If you need to force a sync right now: `~/src/prompt-lab/.venv/bin/python ~/src/prompt-lab/sync_to_turso.py --days 1`.
+GitHub URL upsert used to live here too — moved to a one-time script at `scripts/backfill_project_urls.py`. Re-run it if you add a new project or rename a remote.

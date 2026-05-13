@@ -74,10 +74,11 @@ $BULLETIN
 "
 fi
 
-# Turso staleness check: warn if last sync >48h ago (or missing despite this
+# Turso staleness check: warn if last sync >24h ago (or missing despite this
 # being a project session — meaning we've never synced from this machine).
+# Sync cadence is 8h, so 24h = 3 missed cycles.
 TURSO_STAMP="$HOME/.claude/.turso-last-sync"
-if [ -f "$TURSO_STAMP" ] && [ -z "$(find "$TURSO_STAMP" -mmin -2880 2>/dev/null)" ]; then
+if [ -f "$TURSO_STAMP" ] && [ -z "$(find "$TURSO_STAMP" -mmin -1440 2>/dev/null)" ]; then
   LAST_SYNC="$(stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$TURSO_STAMP" 2>/dev/null || stat -c '%y' "$TURSO_STAMP" 2>/dev/null | cut -d. -f1)"
   CTX+="
 ⚠️ Turso sync last succeeded $LAST_SYNC on this machine. If you've been using this machine recently, something's broken — check ~/.claude/.turso-last-sync.log for the failure reason. The async sync hook will retry on every session, but it keeps failing.
