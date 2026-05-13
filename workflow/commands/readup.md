@@ -1,28 +1,24 @@
 ---
 name: readup
-description: Start a session by understanding project context and recent work
-allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(date:*), Bash(head:*), Bash(grep:*), Read, Write, Edit, Glob
+description: Start a session — register a session row, sync to remote, read project context
+allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Read, Write, Edit, Glob
 ---
 
 Start a session. Be concise.
 
+Note: the SessionStart hook already injected today's date, last-session summary, recent commits, working-tree state, and bulletin headlines. **Do not re-fetch any of that.** This command exists for the side effects (session row, remote check, full CLAUDE.md read) that the hook deliberately skips.
+
 ## Do (in parallel)
 
 1. Register session: `~/.claude/bin/gc-write.sh register-session` (this will prompt — writes aren't auto-allowed)
-2. Pull remote changes: `git pull --rebase` — if it fails (conflicts, detached HEAD, no upstream), report the error and stop so the user can resolve it before the session starts
-3. Read CLAUDE.md (focus on Next Steps)
-4. `git log --oneline -5`
-5. `date "+Today is %A, %B %-d, %Y"` — state this explicitly at the top of your summary
-6. Last session: `~/.claude/bin/gc-read.sh last-summary`
-7. Cross-project bulletin headlines: `grep -E '^## ' ~/src/prompt-lab/BULLETIN.md 2>/dev/null | head -5` (skip silently if file missing)
+2. Remote check (no pull): `git fetch --quiet && git status -sb` — fetch is cheap, never modifies the tree. If status shows "behind N commits", flag it in the summary so the user can decide whether to `git pull --rebase` manually. If status shows "ahead", flag that too. If clean, say nothing.
+3. Read CLAUDE.md in full (focus on Next Steps + project conventions). The hook's injected context covers recent activity, but not project intent.
 
 ## Then
 
-Start with "Last session (<relative time ago>): <summary>" if a prior session exists. Then summarize in a few lines: what happened recently, where things stand, what's next.
+Summarize in a few lines: where the project stands (from CLAUDE.md), what's next, and whether the working tree needs attention (uncommitted changes, behind/ahead of remote).
 
-If step 7 returned any bulletin headlines, append a single line at the end:
-> 📌 Bulletin (`/bulletin` for details): N item(s) — <first headline>, <second headline if any>
-
-Do not paste the full bulletin content in /readup. Headlines only.
+If `git status -sb` showed "behind N commits", end with:
+> ⚠️ Behind origin by N commits. Run `git pull --rebase` when ready to integrate.
 
 If the user passed arguments with this command, address those — don't suggest a separate task.
