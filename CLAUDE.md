@@ -58,7 +58,7 @@ Now installed: `/pulse` (session status), `/roadmap` (project digest), `/bulleti
 The SessionStart hook (`workflow/hooks/session-start.sh`) auto-injects date + last-session summary + recent commits + bulletin headlines on every Claude launch under `~/src/*`. /readup now only does the things the hook deliberately skips: register session row, `git fetch --quiet && git status -sb` (no auto-pull), full CLAUDE.md read.
 
 **Still to do:**
-- Auto-allow `Bash(~/.claude/bin/gc-write.sh *)` once you trust register-session and update-session-summary. Right now /readup and /handoff each prompt once for the writes.
+- Auto-allow `Bash(~/.claude/bin/gc-write.sh *)` on the mini (already on laptop as of 2026-05-13).
 - Track session duration (ended_at − started_at) and surface in /review.
 
 ### /handoff trimming (in-progress design discussion, 2026-05-13)
