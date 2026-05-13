@@ -55,16 +55,21 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 - Consider adding active intentions/todos to readup output
 - Track session duration (ended_at - started_at) and surface in /review
 - Add error resilience to handoff synthesis step (don't block on Python failures)
+- `/pulse` is now wired up — terse session status (5 lines). Reads go through `~/.claude/bin/gc-read.sh` so they bypass the simple_expansion permission gate. Consider auto-allowing `Bash(~/.claude/bin/gc-write.sh *)` once you trust the write subcommands (register-session, update-session-summary); right now /readup and /handoff still prompt once each for those.
+- `gc-write.sh update-session-summary` is brittle on summaries containing single quotes / shell metacharacters (bash word-splitting before sqlite escaping). Either pipe summary via stdin or switch to a heredoc-friendly invocation.
 
 ### Backfill and maintenance
 - Verify nightly cron generates rollups for all projects
 - Migrate other projects' `.env` files to 1Password `.env.tpl` pattern
 - Pre-existing schema drift to revisit: `get_overview` references a `token_count` column that doesn't exist on local `sessions`; `get_project_detail` calls `ensure_project` against a `projects` table that's only created by `dashboard/server.py` migration `007`, not by `store.migrate()`. Both fail on a clean store-only install.
 
-### CI/CD follow-ups (fresh from 2026-05-11)
-- Watch the first CI run on main (`github.com/nicolovejoy/prompt-lab/actions`) and confirm the deploy job actually shipped to `anomatom.com`. If the Vercel CLI step needs tweaking, fix it before the next push.
+### CI/CD follow-ups
+- Watch the CI run on the slash-command-wrappers commit (`fe654b7`) — it only touches `workflow/commands/`, so a green build mostly confirms the pipeline still runs, not that the wrappers work. Real verification is `/pulse` running silently in a fresh window.
 - Stale-alias URL UX: `/project/frontend` now renders musicforge data but the URL/title still say "frontend". Consider redirecting `/project/<alias>` → `/project/<canonical>` at the SPA route layer.
 - Decide whether to keep the GitHub Actions deploy path forever or eventually switch to Vercel's native git integration (simpler but loses test-gates-deploy semantics). Native is fine if you trust your tests; current setup is more conservative.
+
+### Cost tracking (issue #2)
+- Filed `nicolovejoy/prompt-lab#2`: auto cost tracking across projects after a ~$50 exploited-API-key incident on notemaxxing. MVP would be a nightly pull from Anthropic Admin API (`/v1/organizations/usage_report`) into a new `api_costs` table, rendered on project detail + overview. Blocked on the remaining workspace migrations (prompt-lab, ibuild4you) and a new `ANTHROPIC_ADMIN_KEY` in 1Password.
 
 ### Per-project Anthropic API keys
 Separate keys for usage/cost visibility and independent revocation. Verify with `grep -r claude-sonnet-4-20250514 ~/src/` (model migration complete as of 2026-04-14, only SDK internals remain).
