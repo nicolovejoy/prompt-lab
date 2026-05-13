@@ -74,6 +74,16 @@ $BULLETIN
 "
 fi
 
+# Turso staleness check: warn if last sync >48h ago (or missing despite this
+# being a project session — meaning we've never synced from this machine).
+TURSO_STAMP="$HOME/.claude/.turso-last-sync"
+if [ -f "$TURSO_STAMP" ] && [ -z "$(find "$TURSO_STAMP" -mmin -2880 2>/dev/null)" ]; then
+  LAST_SYNC="$(stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$TURSO_STAMP" 2>/dev/null || stat -c '%y' "$TURSO_STAMP" 2>/dev/null | cut -d. -f1)"
+  CTX+="
+⚠️ Turso sync last succeeded $LAST_SYNC on this machine. If you've been using this machine recently, something's broken — check ~/.claude/.turso-last-sync.log for the failure reason. The async sync hook will retry on every session, but it keeps failing.
+"
+fi
+
 CTX+="
 The user has NOT run /readup yet — they may or may not. Do not preemptively summarize. Use this context to answer their first message in an informed way."
 

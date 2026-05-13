@@ -188,14 +188,6 @@ if result.returncode == 0:
 
 If this fails, skip silently.
 
-## 6. Sync to Turso
+## 6. Commit doc changes if any
 
-Push today's summaries to the cloud dashboard:
-
-```bash
-~/src/prompt-lab/.venv/bin/python ~/src/prompt-lab/sync_to_turso.py --days 1
-```
-
-If this fails (missing creds, network error), warn but don't block the handoff.
-
-## 7. Commit doc changes if any
+Note: Turso sync used to run here. It now runs automatically via the async SessionStart hook (`~/.claude/bin/turso-sync-maybe.sh`) at most once per 24h on each machine. If you need to force a sync right now: `~/src/prompt-lab/.venv/bin/python ~/src/prompt-lab/sync_to_turso.py --days 1`.
