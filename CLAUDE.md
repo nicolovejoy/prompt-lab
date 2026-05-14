@@ -45,7 +45,7 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 ### Auth and sharing
 - Consider contextual Ask/Reviews on project pages (inline, not nav bar)
 - Migrate to Google login (OAuth) and track logins per user; admin = just me
-- Investigate how selected-projects currently consumes `public_session_summaries` / `public_weekly_rollups` — if it reads Turso directly, consider migrating it to `/api/public_history` so the allowlist gates both consumers (offer-builder + selected-projects).
+- Verify selected-projects' consumer pattern (direct Turso vs `/api/public_history`) and execute the migration if needed. Plan + effort estimate (~1hr) captured in `docs/selected-projects-api-migration.md`; selected-projects isn't checked out under `~/src/`, so first step is confirming the consumer.
 
 ### Dashboard polish
 - Review project detail layout on mobile (sidebar stacking)
