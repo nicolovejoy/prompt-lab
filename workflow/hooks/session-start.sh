@@ -28,6 +28,14 @@ git -C "$CWD" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 PROJECT="$(basename "$CWD")"
 TODAY="$(date "+%A, %B %-d, %Y")"
 
+# Machine label, derived from hostname. Update the case below if you rename a host.
+HOSTNAME_SHORT="$(hostname -s)"
+case "$HOSTNAME_SHORT" in
+  *[Mm]ini*) MACHINE="mini" ;;
+  *[Mm][Bb][Pp]*|*[Mm]ac[Bb]ook*) MACHINE="laptop" ;;
+  *) MACHINE="$HOSTNAME_SHORT" ;;
+esac
+
 # Last ended session for this project
 LAST_SUMMARY="$(sqlite3 "$HOME/.claude/prompt-history.db" \
   "SELECT substr(summary, 1, 400) || '|' || ended_at FROM sessions WHERE project='$PROJECT' AND ended_at IS NOT NULL ORDER BY started_at DESC LIMIT 1;" 2>/dev/null)"
@@ -43,6 +51,7 @@ BULLETIN="$(grep -E '^## ' "$HOME/src/prompt-lab/BULLETIN.md" 2>/dev/null | head
 CTX="Session-start context (auto-injected, not a /readup invocation):
 
 Today: $TODAY
+Machine: $MACHINE
 Project: $PROJECT
 Working dir: $CWD
 "
