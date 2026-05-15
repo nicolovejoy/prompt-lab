@@ -62,7 +62,6 @@ Now installed: `/pulse` (session status), `/roadmap` (project digest), `/bulleti
 The SessionStart hook (`workflow/hooks/session-start.sh`) auto-injects date + last-session summary + recent commits + bulletin headlines on every Claude launch under `~/src/*`. /readup now only does the things the hook deliberately skips: register session row, `git fetch --quiet && git status -sb` (no auto-pull), full CLAUDE.md read.
 
 **Still to do:**
-- Auto-allow `Bash(~/.claude/bin/gc-write.sh *)` on the mini (already on laptop as of 2026-05-13).
 - Track session duration (ended_at − started_at) and surface in /review.
 
 ### /handoff trimming (in-progress design discussion, 2026-05-13)
@@ -79,8 +78,10 @@ Discussed five potential cuts. Decisions so far:
 SHIPPED (this session): bin scripts moved into the repo under `workflow/bin/` and `workflow/install.sh` extended to install them to `~/.claude/bin/`. The manual-step block at the end of install.sh now prints the full settings.json additions (allow rules + SessionStart hook entries).
 
 Status by machine:
-- **Laptop (this session's working machine)**: `~/.claude/bin/turso-sync-maybe.sh` patched to 8h cadence; `~/.claude/settings.json` has the `gc-write.sh` auto-allow. Already operating from the new state.
-- **Mini**: needs `git pull && bash workflow/install.sh`, then paste the printed settings.json snippet (or just the new `gc-write.sh` allow + confirm the SessionStart hook entries exist).
+- **Laptop**: 8h Turso sync cadence; `~/.claude/settings.json` has gc-write/gc-read allows + SessionStart hooks. Operating from the new state.
+- **Mini**: synced 2026-05-15 — pulled, install.sh ran, settings.json patched with allows + SessionStart hooks. Restart needed before hooks take effect.
+
+Open: verify mini nightly synthesizer (`migrate()` + `get_day_data()` smoke test) — the Point 2 prereq.
 
 ### Backfill and maintenance
 - Verify nightly synthesizer actually runs on both machines (pre-req for point 2 of /handoff trimming). On the laptop in particular — LaunchAgents pause when the lid is closed.
