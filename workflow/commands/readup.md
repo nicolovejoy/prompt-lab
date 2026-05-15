@@ -11,14 +11,13 @@ Note: the SessionStart hook already injected today's date, last-session summary,
 ## Do (in parallel)
 
 1. Register session: `~/.claude/bin/gc-write.sh register-session` (this will prompt — writes aren't auto-allowed)
-2. Remote check (no pull): `git fetch --quiet && git status -sb` — fetch is cheap, never modifies the tree. If status shows "behind N commits", flag it in the summary so the user can decide whether to `git pull --rebase` manually. If status shows "ahead", flag that too. If clean, say nothing.
+2. Remote check (no pull): `git fetch --quiet --all --prune && git status -sb` for the current branch, then `git for-each-ref --format='%(refname:short) %(upstream:short) %(upstream:track)' refs/heads | awk '$3 != ""'` to catch other local branches that are ahead/behind their upstream (useful when work happened on another machine). Also list remote branches with no local tracking: `git branch -r --no-merged | grep -v HEAD`. Fetch is cheap, never modifies the tree. If anything is behind/ahead or there are unfamiliar remote branches, flag them in the summary so the user can decide whether to `git pull --rebase` or `git checkout` manually. If everything is clean, say nothing.
 3. Read CLAUDE.md in full (focus on Next Steps + project conventions). The hook's injected context covers recent activity, but not project intent.
 
 ## Then
 
 Summarize in a few lines: where the project stands (from CLAUDE.md), what's next, and whether the working tree needs attention (uncommitted changes, behind/ahead of remote).
 
-If `git status -sb` showed "behind N commits", end with:
-> ⚠️ Behind origin by N commits. Run `git pull --rebase` when ready to integrate.
+If any branch (current or otherwise) is behind origin, end with a short ⚠️ block listing each behind branch and the suggested `git pull --rebase` / `git checkout` command. If there are remote-only branches that look like in-progress work from another machine, mention them too.
 
 If the user passed arguments with this command, address those — don't suggest a separate task.
