@@ -9,7 +9,7 @@ from datetime import datetime
 
 from anthropic import Anthropic
 
-from claude_api import OPUS, SONNET, call_claude, estimate_cost_cents, load_env
+from claude_api import SONNET, call_claude, estimate_cost_cents, load_env
 from store import get_store
 
 
@@ -96,7 +96,7 @@ Sessions ({len(data['sessions'])}):
 Focus on WHAT was done and WHY, not low-level details. Be concise."""
 
         try:
-            result = call_claude(client, model=OPUS, system=system,
+            result = call_claude(client, model=SONNET, system=system,
                                  user_msg=user_msg, tool=SUMMARY_TOOL)
             parsed = result["parsed"]
             cost = estimate_cost_cents(result["model"], result["input_tokens"],
@@ -124,7 +124,7 @@ Focus on WHAT was done and WHY, not low-level details. Be concise."""
         except Exception as e:
             store.log_synthesis(
                 run_type="daily", target_date=date, project=project,
-                model=OPUS, input_tokens=0, output_tokens=0,
+                model=SONNET, input_tokens=0, output_tokens=0,
                 cost_cents=0, duration_ms=0, status="error",
                 error_message=str(e),
             )
@@ -180,7 +180,7 @@ Recent daily summaries (last 14 days):
 - Keep the list focused: 3-8 intentions per project max"""
 
         try:
-            result = call_claude(client, model=OPUS, system=system,
+            result = call_claude(client, model=SONNET, system=system,
                                  user_msg=user_msg, tool=INTENTIONS_TOOL)
             parsed = result["parsed"]
             cost = estimate_cost_cents(result["model"], result["input_tokens"],
@@ -210,7 +210,7 @@ Recent daily summaries (last 14 days):
         except Exception as e:
             store.log_synthesis(
                 run_type="intentions", target_date=None, project=project,
-                model=OPUS, input_tokens=0, output_tokens=0,
+                model=SONNET, input_tokens=0, output_tokens=0,
                 cost_cents=0, duration_ms=0, status="error",
                 error_message=str(e),
             )
@@ -270,7 +270,7 @@ Synthesize the daily summaries into a cohesive narrative of what happened that w
 Focus on progress, decisions, and direction — not individual tasks."""
 
         try:
-            result = call_claude(client, model=OPUS, system=system,
+            result = call_claude(client, model=SONNET, system=system,
                                  user_msg=user_msg, tool=WEEKLY_ROLLUP_TOOL)
             parsed = result["parsed"]
             cost = estimate_cost_cents(result["model"], result["input_tokens"],
@@ -299,7 +299,7 @@ Focus on progress, decisions, and direction — not individual tasks."""
         except Exception as e:
             store.log_synthesis(
                 run_type="weekly_rollup", target_date=week_start, project=project,
-                model=OPUS, input_tokens=0, output_tokens=0,
+                model=SONNET, input_tokens=0, output_tokens=0,
                 cost_cents=0, duration_ms=0, status="error",
                 error_message=str(e),
             )

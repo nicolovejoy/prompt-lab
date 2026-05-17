@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from anthropic import Anthropic
 
-from claude_api import OPUS, call_claude, load_env
+from claude_api import SONNET, call_claude, load_env
 from store import get_store
 
 
@@ -171,7 +171,7 @@ def main():
                                      weekly_rollups, is_weekly)
 
     client = Anthropic()
-    result = call_claude(client, model=OPUS, system=system, user_msg=user_msg,
+    result = call_claude(client, model=SONNET, system=system, user_msg=user_msg,
                          tool=REVIEW_TOOL, max_tokens=16384)
 
     subject = result["parsed"].get("subject", "Session Review")
@@ -181,7 +181,7 @@ def main():
     print(f"Generated review in {result['duration_ms']/1000:.1f}s "
           f"({result['input_tokens']}+{result['output_tokens']} tokens)")
     print(f"Subject: {subject}")
-    print(f"Model: {OPUS}")
+    print(f"Model: {SONNET}")
     print(f"Mode: {'weekly (Saturday)' if is_weekly else 'daily'} — both 1d + 7d windows")
 
     if dry_run:
@@ -201,7 +201,7 @@ def main():
         review_type="weekly_email" if is_weekly else "daily_email",
         date=today_str, subject=subject,
         content_html=html, content_text=text,
-        model=OPUS, input_tokens=result["input_tokens"],
+        model=SONNET, input_tokens=result["input_tokens"],
         output_tokens=result["output_tokens"],
     )
     store.close()

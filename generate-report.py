@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from anthropic import Anthropic
 
-from claude_api import OPUS, REPO_DIR, call_claude, load_env
+from claude_api import SONNET, REPO_DIR, call_claude, load_env
 from store import get_store
 
 REPORTS_DIR = REPO_DIR / "reports"
@@ -143,7 +143,7 @@ def main():
         return
 
     client = Anthropic()
-    result = call_claude(client, model=OPUS, system=system, user_msg=user_msg,
+    result = call_claude(client, model=SONNET, system=system, user_msg=user_msg,
                          tool=REPORT_TOOL, max_tokens=16384)
 
     markdown = result["parsed"].get("markdown", "")
@@ -158,7 +158,7 @@ def main():
 
     print(f"Generated {days}-day report in {result['duration_ms']/1000:.1f}s "
           f"({result['input_tokens']}+{result['output_tokens']} tokens)")
-    print(f"Model: {OPUS}")
+    print(f"Model: {SONNET}")
     print(f"Saved: {filepath}")
 
     # Persist the review
@@ -166,7 +166,7 @@ def main():
     store.migrate()
     store.save_review_snapshot(
         review_type="monthly_report", date=today, subject=f"{days}-day review",
-        content_markdown=markdown, model=OPUS,
+        content_markdown=markdown, model=SONNET,
         input_tokens=result["input_tokens"],
         output_tokens=result["output_tokens"],
     )

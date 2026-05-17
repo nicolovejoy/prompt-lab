@@ -83,6 +83,14 @@ Status by machine:
 
 Open: verify mini nightly synthesizer (`migrate()` + `get_day_data()` smoke test) — the Point 2 prereq.
 
+### Synthesizer cost reduction (in progress, 2026-05-17)
+
+API spend hit ~$100 / 2 weeks driven mostly by the nightly LaunchAgent running Opus across 21 projects (intentions every night, daily summaries, weekly rollups). Three-phase migration to bring it back near $0 by moving synthesis into Claude Code sessions:
+
+- **Phase 1 — SHIPPED (this session)**: swapped `OPUS` → `SONNET` across all unattended API call sites — `synthesizer.py` (daily, intentions, weekly; project state was already Sonnet), `send-review.py` (nightly review email), `generate-report.py` (bi-monthly report). ~5x reduction. Validate by watching tomorrow's nightly logs (`synthesizer.log`, `review.log`) Run Summary lines.
+- **Phase 2 — queued**: move intentions into `/handoff` (current project, `model='claude-code'`, no API charge). Nightly LaunchAgent's `synthesize_intentions` becomes a safety net — only runs for projects with a daily summary from today but no fresh intentions (strategy 2a). Removes ~21 calls/night.
+- **Phase 3 — queued**: add lazy synthesis to `/readup` for any unsummarized days on the project being opened. Nightly LaunchAgent shrinks to snapshots-only (free) or is disabled entirely. Keep a Sonnet safety-net pass for daily summaries on projects where `/handoff` was skipped.
+
 ### Backfill and maintenance
 - Verify nightly synthesizer actually runs on both machines (pre-req for point 2 of /handoff trimming). On the laptop in particular — LaunchAgents pause when the lid is closed.
 - Migrate other projects' `.env` files to 1Password `.env.tpl` pattern.
