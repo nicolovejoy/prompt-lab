@@ -42,14 +42,18 @@ The SessionStart hook (`workflow/hooks/session-start.sh`) injects a `Machine:` l
 
 ## Cross-agent handoff
 
-This repo coordinates with selected-projects (the consumer of `public_session_summaries` / `public_weekly_rollups`, lives at https://pianohouseproject.org) via an append-only shared file at `~/src/.handoff/selected-projects-prompt-lab.md`. Read it at session start alongside `/readup`. New cross-repo asks go there as a new entry under `## Active`. When an entry is acted on, move it under `## Archived` with a one-line outcome.
+This repo coordinates with selected-projects (the consumer of `public_session_summaries` / `public_weekly_rollups`, lives at https://PianoHouseProject.org) via an append-only shared file at `~/src/.handoff/selected-projects-prompt-lab.md`. Read it at session start alongside `/readup`. New cross-repo asks go there as a new entry under `## Active`. When an entry is acted on, move it under `## Archived` with a one-line outcome.
 
 ## Next Steps
 
 ### Auth and sharing
 - Consider contextual Ask/Reviews on project pages (inline, not nav bar)
 - Migrate to Google login (OAuth) and track logins per user; admin = just me
-- selected-projects → `/api/public_history` migration SHIPPED (this session): prompt-lab `73c7de9` added 7 historyKeys to PUBLIC_PROJECTS + 3 aggregate fields to API; selected-projects `c895eb6` switched `lib/history.ts` to a single fetch. Still TODO: (1) verify `pianohouseproject.org/projects/musicforge` Evolution section renders post-deploy, (2) delete `HISTORY_TURSO_DATABASE_URL` + `HISTORY_TURSO_AUTH_TOKEN` from selected-projects Vercel env (keep plain `TURSO_*`), (3) rotate prompt-lab Turso auth token and update `web/`'s env on Vercel. `docs/selected-projects-api-migration.md` is now historical.
+- **selected-projects → `/api/public_history` migration: complete on the code side** (prompt-lab `73c7de9` + `c53c04c`, selected-projects `c895eb6`). Manual cleanup still owed: (1) visual-verify PianoHouseProject.org `/projects/musicforge` Evolution section after the Vercel rebuild, (2) delete `HISTORY_TURSO_DATABASE_URL` + `HISTORY_TURSO_AUTH_TOKEN` from selected-projects Vercel env (keep plain `TURSO_*` — those serve pianohouse's own DB), (3) rotate prompt-lab Turso auth token and update `web/`'s env on Vercel. `docs/selected-projects-api-migration.md` is now historical.
+
+### Responsible AI use paradigm (started 2026-05-17)
+- "Machine voice" visual convention shipped on PianoHouseProject.org (`73cea5b` + `7475d88`): italic + muted + `↳ from claude` mono uppercase marker for any AI-authored text, including the Evolution rollups on each project page and a `<MachineNote>` MDX component for one-off blocks. First `/tenets` page in the nav documents the principle.
+- Open: grow the `/tenets` list past tenet #1; consider applying the same convention to the anomatom.com cloud dashboard (state summaries, weekly rollup text).
 
 ### Dashboard polish
 - Review project detail layout on mobile (sidebar stacking)
@@ -83,13 +87,16 @@ Status by machine:
 
 Open: verify mini nightly synthesizer (`migrate()` + `get_day_data()` smoke test) — the Point 2 prereq.
 
-### Synthesizer cost reduction (in progress, 2026-05-17)
+### Synthesizer cost reduction (shipped 2026-05-17)
 
-API spend hit ~$100 / 2 weeks driven mostly by the nightly LaunchAgent running Opus across 21 projects (intentions every night, daily summaries, weekly rollups). Three-phase migration to bring it back near $0 by moving synthesis into Claude Code sessions:
+Three-phase migration shipped this session in response to ~$100/2-week Opus spend on the nightly LaunchAgent:
 
-- **Phase 1 — SHIPPED (this session)**: swapped `OPUS` → `SONNET` across all unattended API call sites — `synthesizer.py` (daily, intentions, weekly; project state was already Sonnet), `send-review.py` (nightly review email), `generate-report.py` (bi-monthly report). ~5x reduction. Validate by watching tomorrow's nightly logs (`synthesizer.log`, `review.log`) Run Summary lines.
-- **Phase 2 — SHIPPED (this session)**: `/handoff` step §3.5 generates intentions inline (`model='claude-code'`, no API charge) using context from new `gc-read.sh intentions-context` helper (14 days of summaries + active intentions with IDs). Nightly `synthesize_intentions` switched to safety-net filter `get_projects_needing_intentions_refresh(today)` — active projects (summary in last 14 days) whose intentions weren't refreshed yesterday or today. Added to `store/base.py`, `store/sqlite_store.py`, `store/turso_store.py`. Validated: 0 projects need refresh today (synthesizer just ran), 20 would need refresh 2 days out.
-- **Phase 3 — SHIPPED (this session)**: `/readup` step §4 backfills up to 5 recent unsummarized days inline (`model='claude-code'`, no API charge) via new `gc-read.sh unsummarized-context` helper that emits JSON `{total, days: [{date, prompts, commits, sessions}]}`. If `total > 5`, /readup prints a one-line note and skips — the nightly safety net handles bulk cases. LaunchAgent stays put as the safety net per design choice (not retired).
+- **Phase 1** (`598401c`): `OPUS` → `SONNET` across all unattended API call sites (`synthesizer.py`, `send-review.py`, `generate-report.py`). ~5x reduction.
+- **Phase 2** (`8bea382`): `/handoff` step §3.5 refreshes intentions inline (`model='claude-code'`, free under subscription). Nightly `synthesize_intentions` now uses `get_projects_needing_intentions_refresh(today)` as a safety net (active project + no intention touched yesterday/today).
+- **Phase 3** (`9ab9c25`): `/readup` step §4 backfills up to 5 recent unsummarized days inline. If >5 stale, skips with a note and lets the nightly catch them.
+- **Bug-prevention** (`48802e6`): `scripts/test_imports.py` Phase 3 instantiates concrete stores so abstract-method drift breaks the test instead of silently breaking `/handoff`; `handoff.md` got a top-of-file guard telling Claude to stop on Python tracebacks.
+
+Open: validate tomorrow's `synthesizer.log` and `review.log` Run Summary lines show the expected drop. Also: anomatom.com project detail page activity heatmap looked empty in one spot-check — could just be the async Turso sync hadn't pushed today's local rows yet (max once per 8h), worth a re-check after the next sync window.
 
 ### Backfill and maintenance
 - Verify nightly synthesizer actually runs on both machines (pre-req for point 2 of /handoff trimming). On the laptop in particular — LaunchAgents pause when the lid is closed.
@@ -111,5 +118,7 @@ Separate keys for usage/cost visibility and independent revocation. Verify with 
 - [x] notemaxxing — own Anthropic workspace + key
 - [x] prntd — own Anthropic workspace created, key still needs wiring
 - [x] musicforge — own Anthropic workspace created (no SDK in code currently)
-- [ ] prompt-lab — still using shared key, needs workspace
-- [ ] ibuild4you — still using shared key, needs workspace (also watch posture-model behavior on 4.6 vs 4.0)
+- [x] prompt-lab — own workspace + key wired via `.env.tpl` op:// reference (2026-05-17)
+- [x] ibuild4you — own workspace + key (2026-05-17)
+
+Cost-tracking issue #2 is now unblocked on the workspace prerequisite. Next step there: add `ANTHROPIC_ADMIN_KEY` to 1Password, then build the MVP nightly pull from `/v1/organizations/usage_report` into an `api_costs` table.
