@@ -17,7 +17,17 @@ from turso_helper import resolve_project_names, turso_query
 # Canonical project names whose data may be served publicly. After a rename,
 # update this set to the new canonical name; requests using the old alias
 # still work because we resolve to canonical before this check.
-PUBLIC_PROJECTS = {"byside"}
+PUBLIC_PROJECTS = {
+    "byside",
+    # selected-projects (pianohouseproject.org) consumes these via /projects/[slug]
+    "selected-projects",
+    "musicforge",
+    "prntd",
+    "showcase",
+    "ibuild4you",
+    "prompt-lab",
+    "am-i-an-ai",
+}
 
 DEFAULT_SESSION_LIMIT = 20
 MAX_SESSION_LIMIT = 100
@@ -59,6 +69,14 @@ class handler(BaseHTTPRequestHandler):
             f"WHERE project IN ({ph}) ORDER BY week_of DESC",
             names,
         )
+        agg_rows = turso_query(
+            f"SELECT MIN(started_at) AS first_at, MAX(started_at) AS last_at, "
+            f"COUNT(*) AS n "
+            f"FROM public_session_summaries "
+            f"WHERE project IN ({ph})",
+            names,
+        )
+        agg = agg_rows[0] if agg_rows else {}
 
         sessions = [
             {
@@ -78,7 +96,14 @@ class handler(BaseHTTPRequestHandler):
             for r in rollup_rows
         ]
 
-        self._send(200, {"project": project, "sessions": sessions, "rollups": rollups})
+        self._send(200, {
+            "project": project,
+            "sessions": sessions,
+            "rollups": rollups,
+            "first_activity_at": agg.get("first_at"),
+            "last_activity_at": agg.get("last_at"),
+            "total_sessions": _int_or(agg.get("n"), 0),
+        })
 
     def _send(self, status, body):
         self.send_response(status)
