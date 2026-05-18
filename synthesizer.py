@@ -132,10 +132,15 @@ Focus on WHAT was done and WHY, not low-level details. Be concise."""
 
 
 def synthesize_intentions(store, client):
-    """Update/create/close intentions for each project with recent summaries."""
-    projects = store.get_projects_with_recent_summaries()
+    """Refresh intentions for projects whose /handoff hasn't already done so today.
+
+    Safety net for the inline /handoff intentions step: catches projects with a
+    daily summary today but no intention updated today.
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    projects = store.get_projects_needing_intentions_refresh(today)
     if not projects:
-        print("No projects with recent summaries.")
+        print("No projects need intentions refresh (all caught up by /handoff).")
         return
 
     aliases = store.get_project_aliases()

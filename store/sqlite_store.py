@@ -393,6 +393,25 @@ class SqliteKnowledgeStore(KnowledgeStore):
         ).fetchall()
         return [r["project"] for r in rows]
 
+    def get_projects_needing_intentions_refresh(self, today):
+        today_dt = datetime.strptime(today, "%Y-%m-%d")
+        active_since = (today_dt - timedelta(days=14)).strftime("%Y-%m-%d")
+        fresh_since = (today_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+        rows = self._conn.execute("""
+            SELECT DISTINCT ds.project
+            FROM daily_summaries ds
+            WHERE ds.date >= ?
+              AND NOT EXISTS (
+                SELECT 1 FROM intentions i
+                WHERE i.project = COALESCE(
+                    (SELECT canonical FROM project_aliases WHERE alias = ds.project),
+                    ds.project
+                )
+                AND i.last_seen >= ?
+              )
+        """, (active_since, fresh_since)).fetchall()
+        return [r["project"] for r in rows]
+
     def get_project_aliases(self):
         cached = getattr(self, "_alias_cache", None)
         if cached is not None:

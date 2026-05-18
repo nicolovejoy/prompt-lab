@@ -138,6 +138,18 @@ class KnowledgeStore(ABC):
     def get_projects_with_recent_summaries(self, n_days: int = 14) -> list[str]: ...
 
     @abstractmethod
+    def get_projects_needing_intentions_refresh(self, today: str) -> list[str]:
+        """Active projects whose intentions weren't refreshed yesterday or today.
+
+        Active = has a daily summary within the last 14 days from `today`.
+        Fresh = at least one intention with `last_seen` ≥ yesterday.
+
+        Used by the nightly synthesizer as a safety net for projects that
+        skipped /handoff. Alias-aware: `daily_summaries.project` (raw) is
+        mapped to `intentions.project` (canonical) via project_aliases.
+        """
+
+    @abstractmethod
     def get_project_aliases(self) -> dict[str, str]:
         """Return {alias: canonical} mapping from project_aliases table."""
 

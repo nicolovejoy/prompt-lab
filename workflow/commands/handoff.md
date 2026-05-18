@@ -101,6 +101,58 @@ print('Daily summary saved for', d['project'], d['date'])
 "
 ```
 
+## 3.5 Update intentions for this project
+
+Pull the context the synthesizer normally uses:
+
+```bash
+~/.claude/bin/gc-read.sh intentions-context
+```
+
+This returns the canonical project name, the last 14 days of daily summaries (with their IDs), and currently active intentions (with their IDs).
+
+Synthesize an updated intentions list, drawing on the summaries above + this session's work. Rules:
+- Keep 3-8 high-level project goals max (e.g. "Migrate to new DB schema", not "Fix typo in serializer.py")
+- Existing intentions: include their `id` and update `status` if needed (active → completed when work is clearly done; stalled when no recent activity)
+- New intentions: set `id` to null
+- Drop intentions that have been completed and rolled into a weekly rollup
+
+Write to `/tmp/gc-intentions-<project>-<session_id>.json`:
+
+```json
+{
+  "project": "<canonical project name from gc-read.sh output>",
+  "intentions": [
+    {"id": <existing-id or null>, "intention": "<text>", "status": "active|completed|stalled|abandoned"}
+  ],
+  "evidence_summary_ids": [<summary id 1>, <summary id 2>, ...]
+}
+```
+
+IMPORTANT: use these exact command forms to persist:
+
+```bash
+python3 -c "
+import json, sys, os; sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.path.expanduser('~/src/prompt-lab')))
+from store import get_store
+d = json.load(open('/tmp/gc-intentions-<project>-<session_id>.json'))
+s = get_store(); s.migrate()
+for item in d['intentions']:
+    s.upsert_intention(
+        id=item.get('id'),
+        project=d['project'],
+        intention=item['intention'],
+        evidence_summary_ids=d['evidence_summary_ids'],
+        status=item['status'],
+        model='claude-code',
+    )
+s.close()
+print(f\"Intentions updated for {d['project']} ({len(d['intentions'])} items)\")
+"
+```
+
+This replaces what the nightly synthesizer used to do for this project — saves an API call per /handoff. The synthesizer is now a safety net: it only runs intentions for projects with a daily summary today but no fresh intentions, which means the nightly batch shrinks dramatically when /handoff has been used.
+
 ## 4. Check for weekly rollup
 
 Check if any completed weeks for this project need a rollup:
