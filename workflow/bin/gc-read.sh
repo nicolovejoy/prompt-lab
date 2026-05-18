@@ -33,6 +33,33 @@ case "$CMD" in
     # top active intentions for current project (synthesized from prompt history)
     sqlite3 "$DB" "SELECT intention FROM intentions WHERE project='$PROJECT' AND status='active' ORDER BY last_seen DESC LIMIT 5;"
     ;;
+  unsummarized-context)
+    # Recent unsummarized days for current project, with raw data for inline /readup synthesis.
+    # Output: {"total": N, "days": [{date, prompts, commits, sessions}]}.
+    # If total == 0 or > 5: days is empty (caller skips; nightly handles bulk cases).
+    PROMPT_LAB_DIR="${PROMPT_LAB_DIR:-$HOME/src/prompt-lab}"
+    "$PROMPT_LAB_DIR/.venv/bin/python" -c "
+import json, sys
+sys.path.insert(0, '$PROMPT_LAB_DIR')
+from store import get_store
+s = get_store()
+pairs = [(p, d) for (p, d) in s.get_unsummarized_days() if p == '$PROJECT']
+total = len(pairs)
+if total == 0 or total > 5:
+    print(json.dumps({'total': total, 'days': []}))
+else:
+    out = []
+    for p, d in pairs:
+        data = s.get_day_data(p, d)
+        out.append({
+            'date': d,
+            'prompts': [x['prompt'][:500] for x in data.get('prompts', []) if x.get('prompt')][:50],
+            'commits': [f\"{c['hash'][:8]}: {c['message']}\" for c in data.get('commits', []) if c.get('message')],
+            'sessions': [s2.get('summary', '') for s2 in data.get('sessions', []) if s2.get('summary')],
+        })
+    print(json.dumps({'total': total, 'days': out}))
+"
+    ;;
   intentions-context)
     # context for /handoff's inline intentions step: last 14 days of summaries +
     # current active intentions for this project. Output: section headers + pipe rows.
@@ -51,7 +78,7 @@ case "$CMD" in
     sqlite3 -header "$DB" "SELECT ds.week_start, ds.days, ds.ids, ds.summaries, ds.prompts, ds.sessions, ds.commits FROM (SELECT date(date, 'weekday 1', '-7 days') as week_start, COUNT(*) as days, GROUP_CONCAT(id) as ids, GROUP_CONCAT(summary, ' | ') as summaries, SUM(prompt_count) as prompts, SUM(session_count) as sessions, SUM(commit_count) as commits FROM daily_summaries WHERE project='$PROJECT' AND date < date('now', 'weekday 1') GROUP BY week_start) ds LEFT JOIN weekly_rollups wr ON wr.project='$PROJECT' AND wr.week_start = ds.week_start WHERE wr.id IS NULL ORDER BY ds.week_start DESC;"
     ;;
   *)
-    echo "usage: gc-read.sh {project|current-session|last-summary|pulse-prompts|today-counts|weekly-rollup-check|intentions|intentions-context}" >&2
+    echo "usage: gc-read.sh {project|current-session|last-summary|pulse-prompts|today-counts|weekly-rollup-check|intentions|intentions-context|unsummarized-context}" >&2
     exit 2
     ;;
 esac
