@@ -49,7 +49,7 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 ### Auth and sharing
 - Consider contextual Ask/Reviews on project pages (inline, not nav bar)
 - Migrate to Google login (OAuth) and track logins per user; admin = just me
-- Verify selected-projects' consumer pattern (direct Turso vs `/api/public_history`) and execute the migration if needed. Plan + effort estimate (~1hr) captured in `docs/selected-projects-api-migration.md`; selected-projects isn't checked out under `~/src/`, so first step is confirming the consumer.
+- selected-projects → `/api/public_history` migration SHIPPED (this session): prompt-lab `73c7de9` added 7 historyKeys to PUBLIC_PROJECTS + 3 aggregate fields to API; selected-projects `c895eb6` switched `lib/history.ts` to a single fetch. Still TODO: (1) verify `pianohouseproject.org/projects/musicforge` Evolution section renders post-deploy, (2) delete `HISTORY_TURSO_DATABASE_URL` + `HISTORY_TURSO_AUTH_TOKEN` from selected-projects Vercel env (keep plain `TURSO_*`), (3) rotate prompt-lab Turso auth token and update `web/`'s env on Vercel. `docs/selected-projects-api-migration.md` is now historical.
 
 ### Dashboard polish
 - Review project detail layout on mobile (sidebar stacking)
