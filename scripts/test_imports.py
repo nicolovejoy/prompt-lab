@@ -148,7 +148,42 @@ def main() -> int:
         print(f"  FAIL {rel}")
         print(f"        {err}")
 
-    total_failures = len(syntax_failures) + len(module_failures) + len(file_failures)
+    # Phase 3: instantiate concrete stores — catches abstract-method drift
+    # (a method added to KnowledgeStore but not implemented on a subclass would
+    # import cleanly and only fail at instantiation, silently breaking /handoff).
+    instantiation_failures = []
+    try:
+        from store.sqlite_store import SqliteKnowledgeStore
+        SqliteKnowledgeStore()
+    except Exception as e:  # noqa: BLE001
+        instantiation_failures.append(("SqliteKnowledgeStore", f"{type(e).__name__}: {e}"))
+    try:
+        from store.turso_store import TursoKnowledgeStore
+        # Skip if env not configured — instantiation needs TURSO_DATABASE_URL.
+        import os
+        if os.environ.get("TURSO_DATABASE_URL") and os.environ.get("TURSO_AUTH_TOKEN"):
+            TursoKnowledgeStore()
+        else:
+            # Still catches abstract-method drift via class construction itself.
+            TursoKnowledgeStore.__abstractmethods__  # type: ignore[attr-defined]
+            if TursoKnowledgeStore.__abstractmethods__:
+                raise TypeError(
+                    "Can't instantiate abstract class TursoKnowledgeStore "
+                    f"without an implementation for abstract method "
+                    f"{next(iter(TursoKnowledgeStore.__abstractmethods__))!r}"
+                )
+    except Exception as e:  # noqa: BLE001
+        instantiation_failures.append(("TursoKnowledgeStore", f"{type(e).__name__}: {e}"))
+    print(f"Phase 3 — store instantiation: "
+          f"{2 - len(instantiation_failures)} pass, {len(instantiation_failures)} fail")
+    for name, err in instantiation_failures:
+        print(f"  FAIL {name}")
+        print(f"        {err}")
+
+    total_failures = (
+        len(syntax_failures) + len(module_failures)
+        + len(file_failures) + len(instantiation_failures)
+    )
     print()
     if total_failures == 0:
         print("All imports clean.")

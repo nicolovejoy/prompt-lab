@@ -6,6 +6,8 @@ allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(python3:*), Bash(pwd), Bash(~/
 
 Close out this session. Be concise.
 
+**If any Python step prints a Python traceback (e.g. `TypeError`, `ImportError`, `KeyError`), STOP. Surface the full traceback to the user before continuing to subsequent steps. The persistence python3 one-liners below silently fail to write rows on traceback — do not pretend success.**
+
 ## 0. Check for uncommitted changes
 
 ```bash
