@@ -151,10 +151,15 @@ def main() -> int:
     # Phase 3: instantiate concrete stores — catches abstract-method drift
     # (a method added to KnowledgeStore but not implemented on a subclass would
     # import cleanly and only fail at instantiation, silently breaking /handoff).
+    # Use a tempfile so the test runs in CI where ~/.claude/ doesn't exist.
+    import tempfile
     instantiation_failures = []
     try:
         from store.sqlite_store import SqliteKnowledgeStore
-        SqliteKnowledgeStore()
+        tmp_dir = Path(tempfile.mkdtemp(prefix="gc-test-"))
+        s = SqliteKnowledgeStore(tmp_dir / "test.db")
+        s.migrate()
+        s.close()
     except Exception as e:  # noqa: BLE001
         instantiation_failures.append(("SqliteKnowledgeStore", f"{type(e).__name__}: {e}"))
     try:
