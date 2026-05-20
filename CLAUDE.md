@@ -58,8 +58,7 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 ### Dashboard polish
 - Review project detail layout on mobile (sidebar stacking) — note: sidebar dropped 2026-05-19 in favor of single-column; mobile audit still useful.
 - Add ability to set/toggle project status (active/dormant) from detail page
-- **Cost detail page**: project page CostChart is a 30-day summary; user wants click-through to a per-day, per-model, per-token-type drill-down view. Endpoint already returns rich data — just needs a route + table component.
-- Project page UX cleanup (2026-05-19): collapsed text to teasers, dropped duplicate sidebar, capped timeline at 8 with Show More, added axes to CostChart, replaced "Site" link with hostname + self-link suppression. Next: figure out a coherent overall hierarchy — currently a header + heatmap + cost + timeline + intentions stack, no clear "above the fold" frame.
+- Project page UX cleanup (2026-05-19): collapsed text to teasers, dropped duplicate sidebar, capped timeline at 8 with Show More, added axes to CostChart, replaced "Site" link with hostname + self-link suppression. Cost drill-down (2026-05-20): `#/project/<name>/cost` opens a sortable detail table with filters; CostChart got a per-bar hover tooltip showing date + per-model breakdown. Next: figure out a coherent overall hierarchy — currently a header + heatmap + cost + timeline + intentions stack, no clear "above the fold" frame.
 
 ### Slash commands (current state, 2026-05-13)
 
