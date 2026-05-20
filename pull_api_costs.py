@@ -176,6 +176,9 @@ def _ws_id(value: str | None) -> str:
     return value if value else DEFAULT_WORKSPACE_SENTINEL
 
 
+_warned_unknown_models: set[str] = set()
+
+
 def _compute_usd(model: str, input_tokens: int, cached_input_tokens: int,
                  cache_creation_tokens: int, output_tokens: int) -> float:
     """Approximate USD from tokens × PRICING. PRICING is in cents per million.
@@ -193,6 +196,11 @@ def _compute_usd(model: str, input_tokens: int, cached_input_tokens: int,
                 pricing = p
                 break
     if not pricing:
+        if model not in _warned_unknown_models:
+            _warned_unknown_models.add(model)
+            print(f"  WARN: model {model!r} not in claude_api.PRICING and no "
+                  "prefix match; cost_computed_usd will be 0.0 for this model "
+                  "until PRICING is updated.", file=sys.stderr)
         return 0.0
     cents = (
         (input_tokens + cached_input_tokens + cache_creation_tokens) * pricing["input"]
@@ -246,15 +254,15 @@ def _parse_args(argv: list[str]) -> tuple[datetime | None, datetime, bool]:
 
 
 def _auto_window_start(store, end: datetime, fallback_days: int = 7) -> datetime:
-    """Compute the auto-window start = max(pulled_at) - 1h buffer, or
-    end - fallback_days when no rows exist yet."""
-    rows = store._conn.execute(  # type: ignore[attr-defined]
-        "SELECT MAX(pulled_at) AS last FROM api_usage"
-    ).fetchone() if hasattr(store, "_conn") else None
-    last = rows["last"] if rows and rows["last"] else None
+    """Compute the auto-window start = min(MAX(pulled_at) across the three
+    cost tables) - 1h buffer, or end - fallback_days when all tables are empty.
+
+    Taking the MIN-of-MAXes guards against a crashed pull that wrote one
+    table but not another — the next run re-fetches whichever lagged."""
+    last = store.get_last_cost_pull()
     if not last:
         return end - timedelta(days=fallback_days)
-    # SQLite stores pulled_at as 'YYYY-MM-DD HH:MM:SS' (UTC)
+    # SQLite/Turso store pulled_at as 'YYYY-MM-DD HH:MM:SS' (UTC, naive)
     try:
         last_dt = datetime.strptime(last, "%Y-%m-%d %H:%M:%S").replace(
             tzinfo=timezone.utc)
@@ -382,6 +390,9 @@ def main() -> None:
                 cost_reported_usd = (
                     float(amount_raw) / 100.0 if amount_raw is not None else 0.0)
             except (TypeError, ValueError):
+                print(f"  WARN: malformed amount {amount_raw!r} on {date} "
+                      f"ws={ws_id} desc={description!r}; stored as $0.00",
+                      file=sys.stderr)
                 cost_reported_usd = 0.0
             store.upsert_api_cost(
                 date=date, workspace_id=ws_id, project=project,

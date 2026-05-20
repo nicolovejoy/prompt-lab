@@ -775,6 +775,19 @@ class TursoKnowledgeStore(KnowledgeStore):
                f"ORDER BY date DESC, actor_id, model")
         return self._rows_to_dicts(self._execute(sql, args))
 
+    def get_last_cost_pull(self):
+        sql = """
+            SELECT MIN(last) AS last FROM (
+                SELECT MAX(pulled_at) AS last FROM api_usage
+                UNION ALL
+                SELECT MAX(pulled_at) AS last FROM api_costs
+                UNION ALL
+                SELECT MAX(pulled_at) AS last FROM claude_code_usage
+            )
+        """
+        rows = self._rows_to_dicts(self._execute(sql))
+        return rows[0].get("last") if rows and rows[0].get("last") else None
+
     # ---- Pipeline input (raw data) — not available in Turso ----
     # These methods access raw prompts/sessions which are NOT synced to Turso.
     # They raise NotImplementedError since the pipeline always runs locally.

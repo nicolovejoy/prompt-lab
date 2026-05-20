@@ -294,6 +294,14 @@ class KnowledgeStore(ABC):
                                until: str | None = None,
                                customer_type: str | None = None) -> list[dict]: ...
 
+    @abstractmethod
+    def get_last_cost_pull(self) -> str | None:
+        """Oldest of MAX(pulled_at) across api_usage, api_costs, and
+        claude_code_usage. The auto-window uses this so a crash that wrote
+        usage but not costs (or vice-versa) re-pulls the lagging table.
+        Returns 'YYYY-MM-DD HH:MM:SS' (UTC, naive) or None when all three
+        tables are empty."""
+
     # ---- Synthesis log ----
 
     @abstractmethod

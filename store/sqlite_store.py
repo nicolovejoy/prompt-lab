@@ -1105,6 +1105,22 @@ class SqliteKnowledgeStore(KnowledgeStore):
                f"ORDER BY date DESC, actor_id, model")
         return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
 
+    def get_last_cost_pull(self):
+        # MIN(MAX(pulled_at)) across the three cost tables. NULLs from empty
+        # tables are skipped by MIN. claude_code_usage is often empty (org-
+        # auth gate) so this almost always reduces to MIN(api_usage_max,
+        # api_costs_max).
+        row = self._conn.execute("""
+            SELECT MIN(last) AS last FROM (
+                SELECT MAX(pulled_at) AS last FROM api_usage
+                UNION ALL
+                SELECT MAX(pulled_at) AS last FROM api_costs
+                UNION ALL
+                SELECT MAX(pulled_at) AS last FROM claude_code_usage
+            )
+        """).fetchone()
+        return row["last"] if row and row["last"] else None
+
     # ---- Internal helpers ----
 
     def _get_project_statuses_map(self):

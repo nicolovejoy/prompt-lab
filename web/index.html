@@ -579,7 +579,7 @@
             <${ProjectGrid} overview=${overview} />
           `}
           ${overview && route.view === 'project' && html`
-            <${ProjectPage} name=${route.project} overview=${overview} />
+            <${ProjectPage} name=${route.project} overview=${overview} section=${route.section} />
           `}
           ${overview && route.view === 'reviews' && html`
             <${ReviewsPage} />
@@ -825,6 +825,7 @@
     function CostChart({ project }) {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
+      const [hovered, setHovered] = useState(null);  // bar index or null
 
       useEffect(() => {
         setLoading(true); setData(null);
@@ -841,12 +842,16 @@
       const costs = data.costs || [];
       if (!costs.length) return null;
 
-      // Aggregate per-date totals across models
+      // Aggregate per-date totals across models. byDateModel keeps the
+      // per-model split so the hover tooltip can show a breakdown.
       const byDate = {};
+      const byDateModel = {};
       for (const r of costs) {
         const v = Number(r.cost_usd) || 0;
         byDate[r.date] = (byDate[r.date] || 0) + v;
+        (byDateModel[r.date] ||= []).push({ model: r.model, cost: v });
       }
+      for (const d in byDateModel) byDateModel[d].sort((a, b) => b.cost - a.cost);
       const dates = Object.keys(byDate).sort();
       const total = dates.reduce((s, d) => s + byDate[d], 0);
       const peak = Math.max(...Object.values(byDate), 0.0001);
@@ -885,8 +890,15 @@
                         font-family: 'SF Mono', ui-monospace, monospace">
               API cost · last 30d
             </div>
-            <div style="font-size: 0.95rem; font-weight: 600">
-              $${total.toFixed(2)}
+            <div style="display: flex; align-items: baseline; gap: 12px">
+              <div style="font-size: 0.95rem; font-weight: 600">
+                $${total.toFixed(2)}
+              </div>
+              <a href="#/project/${encodeURIComponent(project)}/cost"
+                 style="font-size: 0.7rem; color: var(--accent); text-decoration: none;
+                        font-family: 'SF Mono', ui-monospace, monospace">
+                details →
+              </a>
             </div>
           </div>
           <div style="display: grid; grid-template-columns: 52px 1fr; gap: 8px">
@@ -902,18 +914,60 @@
             </div>
             <!-- Bars + X axis labels -->
             <div>
-              <div style="display: flex; gap: 2px; align-items: flex-end;
+              <div style="display: flex; gap: 2px; align-items: stretch;
                           height: ${CHART_H}px;
                           border-bottom: 1px solid var(--border)">
-                ${dates.map(d => {
+                ${dates.map((d, i) => {
                   const v = byDate[d];
                   const h = Math.max(1, Math.round((v / peak) * (CHART_H - 4)));
+                  const isHovered = hovered === i;
+                  // Anchor tooltip left/right when near the chart edges so it
+                  // doesn't get clipped. ~10% on each side feels right at 30 bars.
+                  const edge = n > 0 ? i / (n - 1) : 0.5;
+                  const tipAnchor = edge < 0.15 ? 'left'
+                                   : edge > 0.85 ? 'right'
+                                   : 'center';
                   return html`
-                    <div title="${d}: $${v.toFixed(4)}"
-                         style="flex: 1; min-width: 4px; height: ${h}px;
-                                background: var(--accent);
-                                opacity: ${v > 0 ? 0.85 : 0.15};
-                                border-radius: 2px 2px 0 0"></div>
+                    <div style="flex: 1; min-width: 4px; height: 100%;
+                                position: relative; cursor: default"
+                         onMouseEnter=${() => setHovered(i)}
+                         onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}>
+                      <div style="position: absolute; left: 0; right: 0; bottom: 0;
+                                  height: ${h}px;
+                                  background: var(--accent);
+                                  opacity: ${isHovered ? 1.0 : (v > 0 ? 0.85 : 0.15)};
+                                  border-radius: 2px 2px 0 0;
+                                  transition: opacity 0.1s"></div>
+                      ${isHovered && html`
+                        <div style="position: absolute; bottom: 100%;
+                                    ${tipAnchor === 'left' ? 'left: 0'
+                                      : tipAnchor === 'right' ? 'right: 0'
+                                      : 'left: 50%; transform: translateX(-50%)'};
+                                    margin-bottom: 6px;
+                                    background: var(--bg);
+                                    color: var(--text);
+                                    border: 1px solid var(--border);
+                                    border-radius: 4px;
+                                    padding: 6px 8px;
+                                    font-family: 'SF Mono', ui-monospace, monospace;
+                                    font-size: 0.7rem;
+                                    line-height: 1.4;
+                                    white-space: nowrap;
+                                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                                    pointer-events: none;
+                                    z-index: 10">
+                          <div style="font-weight: 600; margin-bottom: 2px">
+                            ${fmtShort(d)} · $${v.toFixed(4)}
+                          </div>
+                          ${(byDateModel[d] || []).length > 1
+                            && byDateModel[d].map(m => html`
+                              <div style="color: var(--text-secondary)">
+                                ${m.model}: $${m.cost.toFixed(4)}
+                              </div>
+                            `)}
+                        </div>
+                      `}
+                    </div>
                   `;
                 })}
               </div>
@@ -942,8 +996,139 @@
       `;
     }
 
+    // ---- Cost Detail Page (per-day, per-model, per-token-type drill-down) ----
+    function CostDetailPage({ project }) {
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [days, setDays] = useState(30);
+      const [sort, setSort] = useState({ col: 'date', dir: 'desc' });
+      const [modelFilter, setModelFilter] = useState('all');
+      const [tokenFilter, setTokenFilter] = useState('all');
+
+      useEffect(() => {
+        setLoading(true); setData(null);
+        const since = new Date(Date.now() - days * 86400_000)
+          .toISOString().slice(0, 10);
+        api('/api/cost_timeline?detail=1&project=' + encodeURIComponent(project)
+            + '&since=' + since)
+          .then(d => { setData(d); setLoading(false); })
+          .catch(e => { setData({ error: e.message }); setLoading(false); });
+      }, [project, days]);
+
+      if (loading) return html`<${SkeletonList} />`;
+      if (data?.error) return html`<div class="error">${data.error}</div>`;
+      const rows = (data?.detail || []).map(r => ({
+        ...r, cost_usd: Number(r.cost_usd) || 0,
+      }));
+
+      // Filter dropdown options
+      const models = ['all', ...new Set(rows.map(r => r.model))].sort();
+      const tokens = ['all', ...new Set(rows.map(r => r.token_type).filter(Boolean))].sort();
+
+      const filtered = rows.filter(r =>
+        (modelFilter === 'all' || r.model === modelFilter)
+        && (tokenFilter === 'all' || r.token_type === tokenFilter)
+      );
+      const sorted = [...filtered].sort((a, b) => {
+        const va = a[sort.col], vb = b[sort.col];
+        const cmp = (typeof va === 'number' && typeof vb === 'number')
+          ? va - vb
+          : String(va).localeCompare(String(vb));
+        return sort.dir === 'asc' ? cmp : -cmp;
+      });
+      const total = sorted.reduce((s, r) => s + r.cost_usd, 0);
+
+      const toggleSort = (col) => setSort(s =>
+        s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+                      : { col, dir: col === 'cost_usd' || col === 'date' ? 'desc' : 'asc' });
+      const arrow = (col) => sort.col === col ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : '';
+
+      return html`
+        <div>
+          <div style="display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px">
+            <a href="#/project/${encodeURIComponent(project)}"
+               style="color: var(--text-secondary); text-decoration: none; font-size: 0.85rem">
+              ← ${project}
+            </a>
+            <h2 style="margin: 0; font-size: 1.15rem">Cost detail</h2>
+            <div style="margin-left: auto; font-size: 0.95rem; font-weight: 600">
+              $${total.toFixed(2)} <span style="font-weight: 400; color: var(--text-secondary);
+                font-size: 0.75rem">(${sorted.length} rows)</span>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+                      font-size: 0.78rem; align-items: center">
+            <label>Window:
+              <select value=${days} onChange=${e => setDays(Number(e.target.value))}
+                      style="margin-left: 4px">
+                <option value=${7}>7 days</option>
+                <option value=${30}>30 days</option>
+                <option value=${90}>90 days</option>
+                <option value=${365}>1 year</option>
+              </select>
+            </label>
+            <label>Model:
+              <select value=${modelFilter} onChange=${e => setModelFilter(e.target.value)}
+                      style="margin-left: 4px">
+                ${models.map(m => html`<option value=${m}>${m}</option>`)}
+              </select>
+            </label>
+            <label>Token type:
+              <select value=${tokenFilter} onChange=${e => setTokenFilter(e.target.value)}
+                      style="margin-left: 4px">
+                ${tokens.map(t => html`<option value=${t}>${t || '(empty)'}</option>`)}
+              </select>
+            </label>
+          </div>
+
+          ${sorted.length === 0
+            ? html`<div class="empty">No cost rows in this window.</div>`
+            : html`
+              <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: 6px">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.78rem;
+                              font-family: 'SF Mono', ui-monospace, monospace">
+                  <thead>
+                    <tr style="background: var(--bg-elevated); text-align: left">
+                      ${[
+                        ['date', 'Date'],
+                        ['model', 'Model'],
+                        ['token_type', 'Token type'],
+                        ['service_tier', 'Tier'],
+                        ['context_window', 'Context'],
+                        ['cost_usd', 'Cost'],
+                      ].map(([col, label]) => html`
+                        <th style="padding: 6px 10px; cursor: pointer;
+                                   border-bottom: 1px solid var(--border);
+                                   text-align: ${col === 'cost_usd' ? 'right' : 'left'};
+                                   white-space: nowrap"
+                            onClick=${() => toggleSort(col)}>
+                          ${label}${arrow(col)}
+                        </th>
+                      `)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${sorted.map(r => html`
+                      <tr style="border-bottom: 1px solid var(--border)">
+                        <td style="padding: 5px 10px; white-space: nowrap">${r.date}</td>
+                        <td style="padding: 5px 10px">${r.model}</td>
+                        <td style="padding: 5px 10px; color: var(--text-secondary)">${r.token_type || '—'}</td>
+                        <td style="padding: 5px 10px; color: var(--text-secondary)">${r.service_tier || '—'}</td>
+                        <td style="padding: 5px 10px; color: var(--text-secondary)">${r.context_window || '—'}</td>
+                        <td style="padding: 5px 10px; text-align: right">$${r.cost_usd.toFixed(4)}</td>
+                      </tr>
+                    `)}
+                  </tbody>
+                </table>
+              </div>
+            `}
+        </div>
+      `;
+    }
+
     // ---- Project Page ----
-    function ProjectPage({ name, overview }) {
+    function ProjectPage({ name, overview, section }) {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [summaryOpen, setSummaryOpen] = useState(false);
@@ -954,6 +1139,8 @@
           .then(d => { setData(d); setLoading(false); })
           .catch(e => { setData({ error: e.message }); setLoading(false); });
       }, [name]);
+
+      if (section === 'cost') return html`<${CostDetailPage} project=${name} />`;
 
       if (loading) return html`<${SkeletonList} />`;
       if (data?.error) return html`<div class="error">${data.error}</div>`;

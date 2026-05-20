@@ -23,12 +23,20 @@ def load_env():
 HAIKU = "claude-haiku-4-5-20251001"
 SONNET = "claude-sonnet-4-6"
 OPUS = "claude-opus-4-6"
+OPUS_47 = "claude-opus-4-7"
 
-# Pricing per million tokens (cents)
+# Pricing per million tokens (cents). Multiply tokens × value / 1_000_000
+# to get cents, then divide by 100 for dollars (see pull_api_costs._compute_usd).
+# Refresh when Anthropic releases a new model family; pull_api_costs warns
+# once per process when an unknown model is encountered.
 PRICING = {
     HAIKU: {"input": 100, "output": 500},
     SONNET: {"input": 300, "output": 1500},
     OPUS: {"input": 1500, "output": 7500},
+    # Opus 4.7 (1M context). Pricing currently mirrors 4.6 — verify in
+    # Anthropic Console pricing page if a discrepancy shows up in the
+    # dashboard's computed-vs-reported delta.
+    OPUS_47: {"input": 1500, "output": 7500},
 }
 
 

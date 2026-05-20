@@ -40,10 +40,9 @@ Each project should have its own Anthropic workspace + API key, not a shared
 key. Reasons: independent cost visibility, independent revocation, and blast
 radius containment if a key leaks (see notemaxxing 2026-04 incident, ~$54).
 
-Current status:
-- [x] notemaxxing, prntd, musicforge — own workspaces
-- [ ] prompt-lab, ibuild4you — still on shared key
-
-When wiring a new project: keep the key in 1Password, load via `.env.tpl`
-pattern, never commit. See `prompt-lab/claude_api.py` for the env-loading
-convention.
+All five active projects (notemaxxing, prntd, musicforge, prompt-lab,
+ibuild4you) are on their own workspaces as of 2026-05-17. When wiring a new
+project: keep the key in 1Password, load via `.env.tpl` pattern, never
+commit. See `prompt-lab/claude_api.py` for the env-loading convention and
+`prompt-lab/docs/cost-tracking.md` for how the workspace ID flows into the
+Admin API cost pipeline.

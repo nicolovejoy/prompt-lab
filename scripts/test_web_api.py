@@ -404,6 +404,92 @@ def _():
         restore()
 
 
+# === cost_timeline.py ===
+
+@test("cost_timeline: 401 when not authenticated")
+def _():
+    mod = load_endpoint("web/api/cost_timeline.py", "endpoint_cost_unauth")
+    restore_q = patch_turso_query(mod, lambda *a, **kw: [])
+    restore_a = patch(mod, is_authenticated=lambda _: False)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/cost_timeline?project=prompt-lab")
+        assert h.status_code == 401, f"got {h.status_code}"
+    finally:
+        restore()
+
+
+@test("cost_timeline: default response has costs + usage, no detail")
+def _():
+    mod = load_endpoint("web/api/cost_timeline.py", "endpoint_cost_default")
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/cost_timeline?project=prompt-lab")
+        assert h.status_code == 200
+        body = h.body
+        assert "costs" in body and "usage" in body
+        assert "detail" not in body, "detail key should be absent without ?detail=1"
+        # Two SELECTs (costs + usage), no detail SELECT
+        select_sqls = [s for s, _ in captured
+                       if s.startswith("SELECT") and "FROM api_" in s]
+        assert len(select_sqls) == 2, f"expected 2 selects, got {len(select_sqls)}"
+    finally:
+        restore()
+
+
+@test("cost_timeline: ?detail=1 adds ungrouped detail rows")
+def _():
+    mod = load_endpoint("web/api/cost_timeline.py", "endpoint_cost_detail")
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        if "GROUP BY date, model, token_type" in sql:
+            return [{
+                "date": "2026-05-19", "model": "claude-sonnet-4-6",
+                "token_type": "output_tokens", "service_tier": "standard",
+                "context_window": "0-200k", "cost_type": "tokens",
+                "inference_geo": "us", "cost_usd": 1.23,
+            }]
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/cost_timeline?project=prompt-lab&detail=1")
+        assert h.status_code == 200
+        body = h.body
+        assert "detail" in body, "detail key missing"
+        assert len(body["detail"]) == 1, f"got {body['detail']}"
+        row = body["detail"][0]
+        assert row["model"] == "claude-sonnet-4-6"
+        assert row["token_type"] == "output_tokens"
+        # Detail SQL must group by all the dimensions, not just (date, model)
+        detail_sqls = [s for s, _ in captured
+                       if "GROUP BY date, model, token_type" in s]
+        assert detail_sqls, f"no detail SQL emitted, captured: {captured}"
+    finally:
+        restore()
+
+
 # === Main ===
 
 def main() -> int:

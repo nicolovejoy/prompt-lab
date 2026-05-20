@@ -2,13 +2,15 @@
 
 Returns one row per (date, model) summing `cost_reported_usd` from api_costs
 and token totals from api_usage. Optional `?include=claude_code` adds Claude
-Code activity metrics on the same daily grain.
+Code activity metrics on the same daily grain. Optional `?detail=1` adds
+ungrouped per-(date, model, token_type, …) rows for drill-down views.
 
 Query params:
   project=<name>     filter by project (alias-expanded). Default: all projects.
   since=<YYYY-MM-DD> inclusive lower bound on date.
   until=<YYYY-MM-DD> inclusive upper bound on date.
   include=claude_code  also return per-day Claude Code activity rows.
+  detail=1           also return ungrouped api_costs rows for drill-down.
 """
 
 import json
@@ -33,6 +35,7 @@ class handler(BaseHTTPRequestHandler):
         since = params.get("since", [None])[0]
         until = params.get("until", [None])[0]
         include = params.get("include", [""])[0]
+        detail = params.get("detail", ["0"])[0] in ("1", "true", "yes")
 
         cost_clauses, cost_args = ["1=1"], []
         usage_clauses, usage_args = ["1=1"], []
@@ -101,6 +104,28 @@ class handler(BaseHTTPRequestHandler):
                 f"ORDER BY date DESC, customer_type, model"
             )
             payload["claude_code"] = turso_query(cc_sql, cc_args)
+
+        if detail:
+            # Ungrouped api_costs rows — one per row in the underlying table.
+            # SUM still applied at (date, workspace_id, description, dimensions)
+            # so multiple workspaces collapsing into one project come through
+            # as a single row; if the dashboard ever wants per-workspace
+            # split it would need a separate endpoint.
+            detail_sql = (
+                f"SELECT date, "
+                f"       COALESCE(model, '_unknown_') AS model, "
+                f"       COALESCE(token_type, '') AS token_type, "
+                f"       COALESCE(service_tier, '') AS service_tier, "
+                f"       COALESCE(context_window, '') AS context_window, "
+                f"       COALESCE(cost_type, '') AS cost_type, "
+                f"       COALESCE(inference_geo, '') AS inference_geo, "
+                f"       SUM(cost_reported_usd) AS cost_usd "
+                f"FROM api_costs WHERE {' AND '.join(cost_clauses)} "
+                f"GROUP BY date, model, token_type, service_tier, "
+                f"         context_window, cost_type, inference_geo "
+                f"ORDER BY date DESC, cost_usd DESC"
+            )
+            payload["detail"] = turso_query(detail_sql, cost_args)
 
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
