@@ -210,6 +210,90 @@ class KnowledgeStore(ABC):
     def save_project_snapshot(self, *, project: str, date: str,
                                data: dict) -> None: ...
 
+    # ---- Workspace mapping (Anthropic workspace_id ↔ project) ----
+
+    @abstractmethod
+    def upsert_project_workspace(self, *, workspace_id: str,
+                                  workspace_name: str, project: str) -> None:
+        """Map an Anthropic workspace_id to a canonical project name.
+
+        workspace_id is either an Anthropic UUID or the sentinel '__default__'
+        for the org's default workspace. A project may own multiple workspaces;
+        the relation is many-to-one (workspace → project).
+        """
+
+    @abstractmethod
+    def get_project_workspaces(self) -> list[dict]:
+        """All workspace→project mappings. Rows have keys: workspace_id,
+        workspace_name, project."""
+
+    # ---- API usage (per-model tokens) and costs (per-workspace USD) ----
+
+    @abstractmethod
+    def upsert_api_usage(self, *, date: str, workspace_id: str, project: str,
+                         model: str, input_tokens: int,
+                         cached_input_tokens: int, cache_creation_tokens: int,
+                         output_tokens: int, cost_computed_usd: float) -> None:
+        """Insert/replace one row of per-model token usage from
+        /v1/organizations/usage_report/messages. Grain: (date, workspace_id,
+        model). project is denormalized; use '__unmapped__' when no workspace
+        mapping exists yet."""
+
+    @abstractmethod
+    def get_api_usage(self, *, project: str | None = None,
+                      since: str | None = None,
+                      until: str | None = None) -> list[dict]: ...
+
+    @abstractmethod
+    def upsert_api_cost(self, *, date: str, workspace_id: str, project: str,
+                        description: str, model: str | None,
+                        cost_type: str | None, token_type: str | None,
+                        service_tier: str | None, context_window: str | None,
+                        inference_geo: str | None,
+                        cost_reported_usd: float) -> None:
+        """Insert/replace one row from /v1/organizations/cost_report with
+        group_by[]=workspace_id,description. Grain: (date, workspace_id,
+        description). Includes parsed model, cost_type ('tokens',
+        'web_search', 'code_execution'), token_type, service_tier,
+        context_window, inference_geo. NOTE: amounts here include Claude
+        Code subscription tokens at list-price equivalents — see memory
+        [[project-admin-api-costs]] for the inflation gotcha."""
+
+    @abstractmethod
+    def get_api_costs(self, *, project: str | None = None,
+                      since: str | None = None,
+                      until: str | None = None) -> list[dict]: ...
+
+    # ---- Claude Code Analytics (per-user-per-day-per-model) ----
+
+    @abstractmethod
+    def upsert_claude_code_usage(self, *, date: str, actor_kind: str,
+                                  actor_id: str, customer_type: str | None,
+                                  terminal_type: str | None,
+                                  organization_id: str | None,
+                                  sessions: int, lines_added: int,
+                                  lines_removed: int, commits: int, prs: int,
+                                  edit_accepted: int, edit_rejected: int,
+                                  multi_edit_accepted: int,
+                                  multi_edit_rejected: int,
+                                  write_accepted: int, write_rejected: int,
+                                  notebook_edit_accepted: int,
+                                  notebook_edit_rejected: int,
+                                  model: str, input_tokens: int,
+                                  output_tokens: int, cache_read_tokens: int,
+                                  cache_creation_tokens: int,
+                                  estimated_cost_cents: float) -> None:
+        """Insert/replace one row from /v1/organizations/usage_report/claude_code.
+        Grain: (date, actor_kind, actor_id, model). Per-actor metrics
+        (sessions, lines_added, etc.) are repeated across model rows for
+        the same actor on the same day — duplication is intentional and
+        cheap for the single-developer case."""
+
+    @abstractmethod
+    def get_claude_code_usage(self, *, since: str | None = None,
+                               until: str | None = None,
+                               customer_type: str | None = None) -> list[dict]: ...
+
     # ---- Synthesis log ----
 
     @abstractmethod

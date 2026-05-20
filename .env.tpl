@@ -3,6 +3,8 @@
 
 # Required for nightly synthesis (synthesizer.py) and review emails (send-review.py)
 ANTHROPIC_API_KEY=op://dev-secrets/prompt-lab-key-1/credential
+ANTHROPIC_ADMIN_KEY=op://dev-secrets/admin-cost-tracking-2026-05/credential
+
 
 # Required for review emails only
 RESEND_API_KEY=op://dev-secrets/Resend/api-key

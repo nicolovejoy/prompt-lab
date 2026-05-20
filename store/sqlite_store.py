@@ -63,6 +63,15 @@ class SqliteKnowledgeStore(KnowledgeStore):
             )
 
     def migrate(self) -> None:
+        # One-time schema migration: api_costs got finer grain on 2026-05-19
+        # (added description, model, cost_type, etc. + UNIQUE includes
+        # description). The old table has no real data — drop it so the
+        # IF NOT EXISTS below picks up the new shape.
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(api_costs)")}
+        if cols and "description" not in cols:
+            self._conn.execute("DROP TABLE api_costs")
+            self._conn.commit()
+
         self._conn.executescript("""
             CREATE TABLE IF NOT EXISTS daily_summaries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -205,6 +214,86 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 notes       TEXT,
                 created_at  TEXT DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS project_workspaces (
+                workspace_id   TEXT PRIMARY KEY,
+                workspace_name TEXT NOT NULL,
+                project        TEXT NOT NULL,
+                created_at     TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_workspaces_project
+                ON project_workspaces(project);
+
+            CREATE TABLE IF NOT EXISTS api_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                workspace_id TEXT NOT NULL,
+                project TEXT NOT NULL,
+                model TEXT NOT NULL,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                cost_computed_usd REAL NOT NULL DEFAULT 0,
+                pulled_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(date, workspace_id, model)
+            );
+            CREATE INDEX IF NOT EXISTS idx_api_usage_project_date
+                ON api_usage(project, date);
+
+            CREATE TABLE IF NOT EXISTS api_costs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                workspace_id TEXT NOT NULL,
+                project TEXT NOT NULL,
+                description TEXT NOT NULL,
+                model TEXT,
+                cost_type TEXT,
+                token_type TEXT,
+                service_tier TEXT,
+                context_window TEXT,
+                inference_geo TEXT,
+                cost_reported_usd REAL NOT NULL DEFAULT 0,
+                pulled_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(date, workspace_id, description)
+            );
+            CREATE INDEX IF NOT EXISTS idx_api_costs_project_date
+                ON api_costs(project, date);
+
+            CREATE TABLE IF NOT EXISTS claude_code_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                actor_kind TEXT NOT NULL,
+                actor_id TEXT NOT NULL,
+                customer_type TEXT,
+                terminal_type TEXT,
+                organization_id TEXT,
+                sessions INTEGER NOT NULL DEFAULT 0,
+                lines_added INTEGER NOT NULL DEFAULT 0,
+                lines_removed INTEGER NOT NULL DEFAULT 0,
+                commits INTEGER NOT NULL DEFAULT 0,
+                prs INTEGER NOT NULL DEFAULT 0,
+                edit_accepted INTEGER NOT NULL DEFAULT 0,
+                edit_rejected INTEGER NOT NULL DEFAULT 0,
+                multi_edit_accepted INTEGER NOT NULL DEFAULT 0,
+                multi_edit_rejected INTEGER NOT NULL DEFAULT 0,
+                write_accepted INTEGER NOT NULL DEFAULT 0,
+                write_rejected INTEGER NOT NULL DEFAULT 0,
+                notebook_edit_accepted INTEGER NOT NULL DEFAULT 0,
+                notebook_edit_rejected INTEGER NOT NULL DEFAULT 0,
+                model TEXT NOT NULL,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                estimated_cost_cents REAL NOT NULL DEFAULT 0,
+                pulled_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(date, actor_kind, actor_id, model)
+            );
+            CREATE INDEX IF NOT EXISTS idx_claude_code_usage_date
+                ON claude_code_usage(date);
+            CREATE INDEX IF NOT EXISTS idx_claude_code_usage_customer_type
+                ON claude_code_usage(customer_type, date);
         """)
         self._dedupe_intentions()
         self._conn.execute(
@@ -884,6 +973,137 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 f"UPDATE sessions SET {', '.join(updates)} WHERE id = ?", params
             )
             self._conn.commit()
+
+    # ---- Workspace mapping ----
+
+    def upsert_project_workspace(self, *, workspace_id, workspace_name, project):
+        self._conn.execute("""
+            INSERT INTO project_workspaces (workspace_id, workspace_name, project)
+            VALUES (?, ?, ?)
+            ON CONFLICT(workspace_id) DO UPDATE SET
+                workspace_name = excluded.workspace_name,
+                project = excluded.project
+        """, (workspace_id, workspace_name, project))
+        self._conn.commit()
+
+    def get_project_workspaces(self):
+        return [dict(r) for r in self._conn.execute(
+            "SELECT workspace_id, workspace_name, project FROM project_workspaces"
+        ).fetchall()]
+
+    # ---- API usage / costs ----
+
+    def upsert_api_usage(self, *, date, workspace_id, project, model,
+                         input_tokens, cached_input_tokens,
+                         cache_creation_tokens, output_tokens,
+                         cost_computed_usd):
+        self._conn.execute("""
+            INSERT OR REPLACE INTO api_usage
+                (date, workspace_id, project, model, input_tokens,
+                 cached_input_tokens, cache_creation_tokens, output_tokens,
+                 cost_computed_usd)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (date, workspace_id, project, model, input_tokens,
+              cached_input_tokens, cache_creation_tokens, output_tokens,
+              cost_computed_usd))
+        self._conn.commit()
+
+    def get_api_usage(self, *, project=None, since=None, until=None):
+        clauses, params = ["1=1"], []
+        if project:
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            params.extend(pa)
+        if since:
+            clauses.append("date >= ?")
+            params.append(since)
+        if until:
+            clauses.append("date <= ?")
+            params.append(until)
+        sql = (f"SELECT * FROM api_usage WHERE {' AND '.join(clauses)} "
+               f"ORDER BY date DESC, workspace_id, model")
+        return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
+
+    def upsert_api_cost(self, *, date, workspace_id, project, description,
+                        model, cost_type, token_type, service_tier,
+                        context_window, inference_geo, cost_reported_usd):
+        self._conn.execute("""
+            INSERT OR REPLACE INTO api_costs
+                (date, workspace_id, project, description, model, cost_type,
+                 token_type, service_tier, context_window, inference_geo,
+                 cost_reported_usd)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (date, workspace_id, project, description, model, cost_type,
+              token_type, service_tier, context_window, inference_geo,
+              cost_reported_usd))
+        self._conn.commit()
+
+    def get_api_costs(self, *, project=None, since=None, until=None):
+        clauses, params = ["1=1"], []
+        if project:
+            pc, pa = self._project_clause(project)
+            clauses.append(pc)
+            params.extend(pa)
+        if since:
+            clauses.append("date >= ?")
+            params.append(since)
+        if until:
+            clauses.append("date <= ?")
+            params.append(until)
+        sql = (f"SELECT * FROM api_costs WHERE {' AND '.join(clauses)} "
+               f"ORDER BY date DESC, workspace_id, description")
+        return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
+
+    # ---- Claude Code Analytics ----
+
+    def upsert_claude_code_usage(self, *, date, actor_kind, actor_id,
+                                  customer_type, terminal_type, organization_id,
+                                  sessions, lines_added, lines_removed, commits, prs,
+                                  edit_accepted, edit_rejected,
+                                  multi_edit_accepted, multi_edit_rejected,
+                                  write_accepted, write_rejected,
+                                  notebook_edit_accepted, notebook_edit_rejected,
+                                  model, input_tokens, output_tokens,
+                                  cache_read_tokens, cache_creation_tokens,
+                                  estimated_cost_cents):
+        self._conn.execute("""
+            INSERT OR REPLACE INTO claude_code_usage
+                (date, actor_kind, actor_id, customer_type, terminal_type,
+                 organization_id, sessions, lines_added, lines_removed,
+                 commits, prs, edit_accepted, edit_rejected,
+                 multi_edit_accepted, multi_edit_rejected,
+                 write_accepted, write_rejected,
+                 notebook_edit_accepted, notebook_edit_rejected,
+                 model, input_tokens, output_tokens,
+                 cache_read_tokens, cache_creation_tokens,
+                 estimated_cost_cents)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?)
+        """, (date, actor_kind, actor_id, customer_type, terminal_type,
+              organization_id, sessions, lines_added, lines_removed,
+              commits, prs, edit_accepted, edit_rejected,
+              multi_edit_accepted, multi_edit_rejected,
+              write_accepted, write_rejected,
+              notebook_edit_accepted, notebook_edit_rejected,
+              model, input_tokens, output_tokens,
+              cache_read_tokens, cache_creation_tokens,
+              estimated_cost_cents))
+        self._conn.commit()
+
+    def get_claude_code_usage(self, *, since=None, until=None, customer_type=None):
+        clauses, params = ["1=1"], []
+        if since:
+            clauses.append("date >= ?")
+            params.append(since)
+        if until:
+            clauses.append("date <= ?")
+            params.append(until)
+        if customer_type:
+            clauses.append("customer_type = ?")
+            params.append(customer_type)
+        sql = (f"SELECT * FROM claude_code_usage WHERE {' AND '.join(clauses)} "
+               f"ORDER BY date DESC, actor_id, model")
+        return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
 
     # ---- Internal helpers ----
 

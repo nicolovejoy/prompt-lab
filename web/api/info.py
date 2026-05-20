@@ -8,8 +8,9 @@ from http.server import BaseHTTPRequestHandler
 from auth_helper import is_authenticated
 from turso_helper import turso_query
 
-# Evaluated at import time (cold start ≈ deploy time)
-_BUILD_TIME = datetime.now(timezone.utc).strftime("%b %-d %H:%M UTC")
+# Evaluated at import time (cold start ≈ deploy time). Sent as ISO 8601;
+# the client formats in the user's preferred timezone (currently Pacific).
+_BUILD_TIME = datetime.now(timezone.utc).isoformat()
 
 
 class handler(BaseHTTPRequestHandler):

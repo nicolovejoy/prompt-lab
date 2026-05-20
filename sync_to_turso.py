@@ -206,6 +206,85 @@ def main():
         dry_run,
     )
 
+    # Project workspaces (small metadata; sync all)
+    total += sync_table(
+        local, remote, "project_workspaces",
+        lambda s: s.get_project_workspaces(),
+        lambda r, row: r.upsert_project_workspace(
+            workspace_id=row["workspace_id"],
+            workspace_name=row["workspace_name"],
+            project=row["project"],
+        ),
+        dry_run,
+    )
+
+    # API usage (per-model tokens)
+    total += sync_table(
+        local, remote, "api_usage",
+        lambda s: s.get_api_usage(since=since),
+        lambda r, row: r.upsert_api_usage(
+            date=row["date"], workspace_id=row["workspace_id"],
+            project=row["project"], model=row["model"],
+            input_tokens=row.get("input_tokens", 0) or 0,
+            cached_input_tokens=row.get("cached_input_tokens", 0) or 0,
+            cache_creation_tokens=row.get("cache_creation_tokens", 0) or 0,
+            output_tokens=row.get("output_tokens", 0) or 0,
+            cost_computed_usd=row.get("cost_computed_usd", 0.0) or 0.0,
+        ),
+        dry_run,
+    )
+
+    # API costs (per-workspace×description USD; grain matches Admin API
+    # response when grouped by description)
+    total += sync_table(
+        local, remote, "api_costs",
+        lambda s: s.get_api_costs(since=since),
+        lambda r, row: r.upsert_api_cost(
+            date=row["date"], workspace_id=row["workspace_id"],
+            project=row["project"], description=row["description"],
+            model=row.get("model"), cost_type=row.get("cost_type"),
+            token_type=row.get("token_type"),
+            service_tier=row.get("service_tier"),
+            context_window=row.get("context_window"),
+            inference_geo=row.get("inference_geo"),
+            cost_reported_usd=row.get("cost_reported_usd", 0.0) or 0.0,
+        ),
+        dry_run,
+    )
+
+    # Claude Code Analytics (per-user-per-day-per-model)
+    total += sync_table(
+        local, remote, "claude_code_usage",
+        lambda s: s.get_claude_code_usage(since=since),
+        lambda r, row: r.upsert_claude_code_usage(
+            date=row["date"], actor_kind=row["actor_kind"],
+            actor_id=row["actor_id"],
+            customer_type=row.get("customer_type"),
+            terminal_type=row.get("terminal_type"),
+            organization_id=row.get("organization_id"),
+            sessions=row.get("sessions", 0) or 0,
+            lines_added=row.get("lines_added", 0) or 0,
+            lines_removed=row.get("lines_removed", 0) or 0,
+            commits=row.get("commits", 0) or 0,
+            prs=row.get("prs", 0) or 0,
+            edit_accepted=row.get("edit_accepted", 0) or 0,
+            edit_rejected=row.get("edit_rejected", 0) or 0,
+            multi_edit_accepted=row.get("multi_edit_accepted", 0) or 0,
+            multi_edit_rejected=row.get("multi_edit_rejected", 0) or 0,
+            write_accepted=row.get("write_accepted", 0) or 0,
+            write_rejected=row.get("write_rejected", 0) or 0,
+            notebook_edit_accepted=row.get("notebook_edit_accepted", 0) or 0,
+            notebook_edit_rejected=row.get("notebook_edit_rejected", 0) or 0,
+            model=row["model"],
+            input_tokens=row.get("input_tokens", 0) or 0,
+            output_tokens=row.get("output_tokens", 0) or 0,
+            cache_read_tokens=row.get("cache_read_tokens", 0) or 0,
+            cache_creation_tokens=row.get("cache_creation_tokens", 0) or 0,
+            estimated_cost_cents=row.get("estimated_cost_cents", 0.0) or 0.0,
+        ),
+        dry_run,
+    )
+
     # Project aliases
     try:
         alias_rows = [

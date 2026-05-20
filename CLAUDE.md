@@ -56,8 +56,10 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 - Open: grow the `/tenets` list past tenet #1; consider applying the same convention to the anomatom.com cloud dashboard (state summaries, weekly rollup text).
 
 ### Dashboard polish
-- Review project detail layout on mobile (sidebar stacking)
+- Review project detail layout on mobile (sidebar stacking) — note: sidebar dropped 2026-05-19 in favor of single-column; mobile audit still useful.
 - Add ability to set/toggle project status (active/dormant) from detail page
+- **Cost detail page**: project page CostChart is a 30-day summary; user wants click-through to a per-day, per-model, per-token-type drill-down view. Endpoint already returns rich data — just needs a route + table component.
+- Project page UX cleanup (2026-05-19): collapsed text to teasers, dropped duplicate sidebar, capped timeline at 8 with Show More, added axes to CostChart, replaced "Site" link with hostname + self-link suppression. Next: figure out a coherent overall hierarchy — currently a header + heatmap + cost + timeline + intentions stack, no clear "above the fold" frame.
 
 ### Slash commands (current state, 2026-05-13)
 
@@ -111,7 +113,22 @@ Open: validate tomorrow's `synthesizer.log` and `review.log` Run Summary lines s
 - Playwright MCP installed at user scope (`claude mcp add playwright -s user`). Available after next Claude restart. Scope convention is in `BULLETIN.md` — production read-only, localhost + preview URLs full access.
 
 ### Cost tracking (issue #2)
-- Filed `nicolovejoy/prompt-lab#2`: auto cost tracking across projects after a ~$50 exploited-API-key incident on notemaxxing. MVP would be a nightly pull from Anthropic Admin API (`/v1/organizations/usage_report`) into a new `api_costs` table, rendered on project detail + overview. Blocked on the remaining workspace migrations (prompt-lab, ibuild4you) and a new `ANTHROPIC_ADMIN_KEY` in 1Password.
+
+End-to-end shipped 2026-05-19. `pull_api_costs.py` hits three Admin API endpoints and writes three tables:
+
+- `/v1/organizations/usage_report/messages` (tokens, grouped by `workspace_id,model`, daily, 31-day cap per request) → `api_usage` (per-model tokens + `cost_computed_usd` from PRICING).
+- `/v1/organizations/cost_report` (USD, grouped by `workspace_id,description`, daily) → `api_costs` (per-description USD with parsed `model`, `cost_type`, `token_type`, `service_tier`, `context_window`, `inference_geo` columns).
+- `/v1/organizations/usage_report/claude_code` (per-user-per-day Claude Code activity, one date per request) → `claude_code_usage` (full per-actor + per-model metrics including `customer_type`, sessions, lines of code, tool acceptance rates, `estimated_cost_cents`).
+
+LaunchAgent `com.promptlab.api-costs` runs daily at 02:30 with no args → auto-window (since last `MAX(pulled_at)` − 1h, fallback 7 days when empty). `project_workspaces` table maps `workspace_id → project` many-to-one; unmapped data lands under `__unmapped__`. All three tables sync to Turso via `sync_to_turso.py`. Cloud dashboard endpoint `GET /api/cost_timeline?project=<name>&since=<date>&until=<date>` returns daily-grouped `costs`, `usage` (and optional `claude_code` via `?include=claude_code`); rendered via `CostChart` component on each ProjectPage (30-day bar chart + per-model breakdown).
+
+**Important gotcha**: Admin API `amount` fields are in **cents** ("lowest units"), not dollars. The pull script divides by 100 at parse time so `cost_reported_usd` is genuinely USD. See memory [[project-admin-api-costs]] for the time I got this wrong (briefly thought ibuild4you was at $940/day list-price inflated — it was $9.40 reality).
+
+**Still gated on**:
+1. `ANTHROPIC_ADMIN_KEY` minted and in 1Password (done 2026-05-19; key is at `op://dev-secrets/admin-cost-tracking-2026-05/credential`).
+2. Seed `project_workspaces` with the known workspace IDs (3 active: `wrkspc_01KXeZDUFDNaEFR3hCe7Qe3q` = prompt-lab, `wrkspc_01VXCsaREpeooov3UNR3EMYK` = ibuild4you, plus `__default__` for legacy traffic — open question how to attribute the default workspace).
+3. First production sync (`python sync_to_turso.py`) after seeding — destructive schema migration drops empty Turso `api_costs` (old grain) and recreates with the new shape.
+4. Claude Code Analytics endpoint currently returns 0 actors for "Cooking with Nico" org — Claude Code subscription auth may still be tied to the user's individual account. If/when that flows through the org, `claude_code_usage` populates automatically.
 
 ### Per-project Anthropic API keys
 Separate keys for usage/cost visibility and independent revocation. Verify with `grep -r claude-sonnet-4-20250514 ~/src/` (model migration complete as of 2026-04-14, only SDK internals remain).

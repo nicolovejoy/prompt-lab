@@ -450,7 +450,21 @@
     // ---- Header ----
     function Header({ route, info, role, onLogout, onAsk }) {
       const freshness = info?.data_freshness ? timeAgo(info.data_freshness) : null;
-      const buildTime = info?.build_time || '';
+      // build_time arrives as ISO 8601 UTC; show it in Pacific time
+      // (PDT/PST handled automatically by the Intl API).
+      let buildTime = '';
+      if (info?.build_time) {
+        try {
+          const d = new Date(info.build_time);
+          buildTime = new Intl.DateTimeFormat('en-US', {
+            month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+            hour12: false,
+            timeZone: 'America/Los_Angeles',
+            timeZoneName: 'short',
+          }).format(d);
+        } catch { buildTime = info.build_time; }
+      }
 
       return html`
         <header>
@@ -807,13 +821,135 @@
       `;
     }
 
-    // ---- Project Page ----
-    function ProjectPage({ name, overview }) {
+    // ---- Cost Chart (daily API spend per project) ----
+    function CostChart({ project }) {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
 
       useEffect(() => {
         setLoading(true); setData(null);
+        // 30-day window. Backend grouping returns one row per (date, model).
+        const since = new Date(Date.now() - 30 * 86400_000)
+          .toISOString().slice(0, 10);
+        api('/api/cost_timeline?project=' + encodeURIComponent(project)
+            + '&since=' + since)
+          .then(d => { setData(d); setLoading(false); })
+          .catch(e => { setData({ error: e.message }); setLoading(false); });
+      }, [project]);
+
+      if (loading || !data || data.error) return null;
+      const costs = data.costs || [];
+      if (!costs.length) return null;
+
+      // Aggregate per-date totals across models
+      const byDate = {};
+      for (const r of costs) {
+        const v = Number(r.cost_usd) || 0;
+        byDate[r.date] = (byDate[r.date] || 0) + v;
+      }
+      const dates = Object.keys(byDate).sort();
+      const total = dates.reduce((s, d) => s + byDate[d], 0);
+      const peak = Math.max(...Object.values(byDate), 0.0001);
+
+      // Per-model totals for legend
+      const byModel = {};
+      for (const r of costs) {
+        byModel[r.model] = (byModel[r.model] || 0) + (Number(r.cost_usd) || 0);
+      }
+      const models = Object.entries(byModel).sort((a, b) => b[1] - a[1]);
+
+      const CHART_H = 100;
+      // Pick ~5 sparse X-tick indices so labels don't overlap on 30 bars.
+      const tickIdxs = new Set();
+      const n = dates.length;
+      if (n > 0) {
+        const k = Math.min(5, n);
+        for (let i = 0; i < k; i++) {
+          tickIdxs.add(Math.round((i * (n - 1)) / (k - 1)));
+        }
+      }
+      const fmtShort = (iso) => {
+        const [, m, d] = iso.split('-');
+        const months = ['Jan','Feb','Mar','Apr','May','Jun',
+                        'Jul','Aug','Sep','Oct','Nov','Dec'];
+        return months[parseInt(m, 10) - 1] + ' ' + parseInt(d, 10);
+      };
+
+      return html`
+        <div style="margin-top: 16px; padding: 12px; background: var(--bg-elevated);
+                    border: 1px solid var(--border); border-radius: 6px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline;
+                      margin-bottom: 12px">
+            <div style="font-size: 0.68rem; font-weight: 600;
+                        color: var(--text-secondary);
+                        font-family: 'SF Mono', ui-monospace, monospace">
+              API cost · last 30d
+            </div>
+            <div style="font-size: 0.95rem; font-weight: 600">
+              $${total.toFixed(2)}
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 52px 1fr; gap: 8px">
+            <!-- Y axis labels -->
+            <div style="display: flex; flex-direction: column;
+                        justify-content: space-between; align-items: flex-end;
+                        height: ${CHART_H}px; font-size: 0.62rem;
+                        color: var(--text-secondary);
+                        font-family: 'SF Mono', ui-monospace, monospace">
+              <span>$${peak.toFixed(2)}</span>
+              <span>$${(peak / 2).toFixed(2)}</span>
+              <span>$0</span>
+            </div>
+            <!-- Bars + X axis labels -->
+            <div>
+              <div style="display: flex; gap: 2px; align-items: flex-end;
+                          height: ${CHART_H}px;
+                          border-bottom: 1px solid var(--border)">
+                ${dates.map(d => {
+                  const v = byDate[d];
+                  const h = Math.max(1, Math.round((v / peak) * (CHART_H - 4)));
+                  return html`
+                    <div title="${d}: $${v.toFixed(4)}"
+                         style="flex: 1; min-width: 4px; height: ${h}px;
+                                background: var(--accent);
+                                opacity: ${v > 0 ? 0.85 : 0.15};
+                                border-radius: 2px 2px 0 0"></div>
+                  `;
+                })}
+              </div>
+              <div style="display: flex; gap: 2px; margin-top: 4px;
+                          font-size: 0.6rem; color: var(--text-secondary);
+                          font-family: 'SF Mono', ui-monospace, monospace">
+                ${dates.map((d, i) => html`
+                  <div style="flex: 1; min-width: 4px; text-align: center;
+                              white-space: nowrap; overflow: visible">
+                    ${tickIdxs.has(i) ? fmtShort(d) : ''}
+                  </div>
+                `)}
+              </div>
+            </div>
+          </div>
+          ${models.length > 0 && html`
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
+                        font-size: 0.65rem; color: var(--text-secondary);
+                        font-family: 'SF Mono', ui-monospace, monospace">
+              ${models.map(([m, v]) => html`
+                <span>${m}: $${v.toFixed(2)}</span>
+              `)}
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    // ---- Project Page ----
+    function ProjectPage({ name, overview }) {
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [summaryOpen, setSummaryOpen] = useState(false);
+
+      useEffect(() => {
+        setLoading(true); setData(null); setSummaryOpen(false);
         api('/api/project?name=' + encodeURIComponent(name))
           .then(d => { setData(d); setLoading(false); })
           .catch(e => { setData({ error: e.message }); setLoading(false); });
@@ -828,19 +964,33 @@
       const siteUrl = snapshot.site_url;
       const inception = data.inception;
 
-      // Use project state summary if available, fall back to latest daily summary
-      const stateSummary = snapshot.state_summary || null;
-      const latestSummary = stateSummary || data.summaries?.[0]?.summary || null;
+      // Hide site link if it points to the page we're currently on (self-link
+      // for the cloud dashboard itself). For other projects, show the URL's
+      // host as the link label instead of the generic "Site".
+      let siteLabel = null;
+      if (siteUrl) {
+        try {
+          const u = new URL(siteUrl);
+          if (u.host !== window.location.host) {
+            siteLabel = u.host.replace(/^www\./, '');
+          }
+        } catch { /* malformed URL — skip */ }
+      }
+
+      const stateSummary = snapshot.state_summary || data.summaries?.[0]?.summary || null;
+      const teaser = stateSummary
+        ? stateSummary.split(/(?<=[.!?])\s+/)[0]
+        : null;
+      const hasMore = stateSummary && teaser && stateSummary.length > teaser.length;
 
       return html`
         <div>
-          <!-- Header -->
           <div class="project-header">
             <div class="project-title-row">
               <span class="project-name">${name}</span>
               <div class="project-links">
                 ${githubUrl && html`<a class="project-link" href=${githubUrl} target="_blank" rel="noopener">GitHub</a>`}
-                ${siteUrl && html`<a class="project-link" href=${siteUrl} target="_blank" rel="noopener">Site</a>`}
+                ${siteLabel && html`<a class="project-link" href=${siteUrl} target="_blank" rel="noopener">${siteLabel}</a>`}
               </div>
             </div>
             <div class="project-meta">
@@ -849,22 +999,31 @@
               ${snapshot.session_count_7d ? html`<span>${snapshot.session_count_7d} sessions</span>` : null}
               ${snapshot.commit_count_7d ? html`<span> · ${snapshot.commit_count_7d} commits (7d)</span>` : null}
             </div>
-            ${latestSummary && html`<div class="project-summary">${latestSummary}</div>`}
+            ${stateSummary && html`
+              <div class="project-summary" style="cursor: ${hasMore ? 'pointer' : 'default'}"
+                   onClick=${() => hasMore && setSummaryOpen(v => !v)}>
+                ${summaryOpen ? stateSummary : teaser}
+                ${hasMore && html`<span style="color: var(--text-secondary); margin-left: 6px">
+                  ${summaryOpen ? '⌃' : '⌄'}</span>`}
+              </div>
+            `}
             <${ActivityHeatmap} activity=${data.activity} />
+            <${CostChart} project=${name} />
           </div>
 
-          <!-- Two-column layout: timeline left, rollups + intentions right -->
-          <div class="project-layout">
-            <div class="project-main">
-              <div class="sidebar-label">Timeline</div>
-              <${TimelineView} data=${data} />
-            </div>
+          <div class="sidebar-label" style="margin-top: 24px">Timeline</div>
+          <${TimelineView} data=${data} />
 
-            <div class="project-sidebar">
-              <${SidebarRollups} rollups=${data.rollups} />
-              <${SidebarIntentions} intentions=${data.intentions} />
+          ${data.intentions?.length > 0 && html`
+            <div class="sidebar-label" style="margin-top: 24px">Intentions</div>
+            <div>
+              ${data.intentions.slice(0, 8).map(i => html`
+                <div style="font-size: 0.85rem; color: var(--text); line-height: 1.55; padding: 3px 0">
+                  · ${i.intention}
+                </div>
+              `)}
             </div>
-          </div>
+          `}
         </div>
       `;
     }
@@ -873,24 +1032,29 @@
     function TimelineView({ data }) {
       const { summaries, rollups } = data;
       const [expanded, setExpanded] = useState({});
+      const [showAll, setShowAll] = useState(false);
 
       const toggle = (id) => setExpanded(p => ({ ...p, [id]: !p[id] }));
 
       // Build timeline items sorted by date desc
-      const items = [];
+      const allItems = [];
       for (const s of summaries) {
         const decisions = tryParseJson(s.key_decisions);
         const phrase = decisions.length > 0
           ? decisions[0]
           : (s.summary || '').split(' ').slice(0, 10).join(' ') + ((s.summary || '').split(' ').length > 10 ? '...' : '');
-        items.push({ type: 'summary', id: 's-' + s.date, date: s.date, phrase, decisions, data: s });
+        allItems.push({ type: 'summary', id: 's-' + s.date, date: s.date, phrase, decisions, data: s });
       }
       for (const r of rollups) {
-        items.push({ type: 'rollup', id: 'r-' + r.week_start, date: r.week_start, data: r });
+        allItems.push({ type: 'rollup', id: 'r-' + r.week_start, date: r.week_start, data: r });
       }
-      items.sort((a, b) => b.date.localeCompare(a.date));
+      allItems.sort((a, b) => b.date.localeCompare(a.date));
 
-      if (items.length === 0) return html`<div class="empty">No activity recorded yet.</div>`;
+      if (allItems.length === 0) return html`<div class="empty">No activity recorded yet.</div>`;
+
+      const TIMELINE_CAP = 8;
+      const items = showAll ? allItems : allItems.slice(0, TIMELINE_CAP);
+      const hiddenCount = allItems.length - items.length;
 
       // Group by date
       const groups = [];
@@ -933,14 +1097,18 @@
                 `;
               }
               if (item.type === 'rollup') {
+                const isOpen = expanded[item.id];
                 const r = item.data;
                 const highlights = tryParseJson(r.highlights);
+                const teaser = (r.narrative || '').split(/(?<=[.!?])\s+/)[0];
                 return html`
-                  <div class="timeline-entry rollup">
-                    <span class="timeline-rollup-label">Weekly rollup</span>
-                    <div class="timeline-rollup-text">${r.narrative}</div>
-                    ${highlights.length > 0 && html`
-                      <div class="card-tags" style="margin-top: 4px">
+                  <div class="timeline-entry rollup" onClick=${() => toggle(item.id)}>
+                    <span class="timeline-rollup-label">Week of ${r.week_start}</span>
+                    <span class="timeline-phrase" style="margin-left: 6px">
+                      ${isOpen ? r.narrative : teaser}
+                    </span>
+                    ${isOpen && highlights.length > 0 && html`
+                      <div class="card-tags" style="margin-top: 6px">
                         ${highlights.map(h => html`<span class="tag">${h}</span>`)}
                       </div>
                     `}
@@ -949,6 +1117,30 @@
               }
             })}
           `)}
+          ${hiddenCount > 0 && html`
+            <button onClick=${() => setShowAll(true)}
+                    style="margin-top: 12px; padding: 6px 12px;
+                           background: transparent;
+                           border: 1px solid var(--border);
+                           color: var(--text-secondary);
+                           border-radius: 4px; cursor: pointer;
+                           font-size: 0.75rem;
+                           font-family: 'SF Mono', ui-monospace, monospace">
+              Show ${hiddenCount} more
+            </button>
+          `}
+          ${showAll && allItems.length > TIMELINE_CAP && html`
+            <button onClick=${() => setShowAll(false)}
+                    style="margin-top: 12px; padding: 6px 12px;
+                           background: transparent;
+                           border: 1px solid var(--border);
+                           color: var(--text-secondary);
+                           border-radius: 4px; cursor: pointer;
+                           font-size: 0.75rem;
+                           font-family: 'SF Mono', ui-monospace, monospace">
+              Show less
+            </button>
+          `}
         </div>
       `;
     }

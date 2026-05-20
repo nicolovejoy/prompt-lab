@@ -86,4 +86,8 @@ def _type(value):
 def _value(value):
     if value is None:
         return None
+    # Turso expects float values as raw JSON numbers (f64), not strings.
+    # Integers stay strings to preserve 64-bit precision per their docs.
+    if isinstance(value, float):
+        return value
     return str(value)
