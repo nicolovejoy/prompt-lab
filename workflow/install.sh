@@ -66,6 +66,7 @@ done
 # --- bin scripts (gc-read, gc-write, _update_session_summary, turso-sync-maybe) ---
 mkdir -p "$BIN_DIR"
 for src in "$REPO_DIR/workflow/bin/"*; do
+    [ -d "$src" ] && continue
     name=$(basename "$src")
     dest="$BIN_DIR/$name"
     install_file "$src" "$dest" "bin $name"

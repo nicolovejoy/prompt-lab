@@ -1,7 +1,7 @@
 ---
 name: readup
 description: Start a session — register a session row, sync to remote, read project context
-allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Read, Write, Edit, Glob
+allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(stat:*), Bash(date:*), Bash(basename:*), Bash(mkdir:*), Bash(touch:*), Bash(gh issue list:*), Bash(gh pr list:*), Read, Write, Edit, Glob, Agent
 ---
 
 Start a session. Be concise.
@@ -55,6 +55,24 @@ print('Daily summary saved for', d['project'], d['date'])
 ```
 
 This saves the nightly synthesizer from running for these days (~$0.02-0.04 each at Sonnet rates). The nightly remains as safety net for projects you don't open via /readup.
+
+## 5. Auto-resync if drift likely
+
+Check the resync marker for this project:
+
+```bash
+marker=~/.claude/state/resync-$(basename "$PWD").touch
+if [ -f "$marker" ]; then
+    age_h=$(( ($(date +%s) - $(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker")) / 3600 ))
+    commits_since=$(git log --oneline --since="@$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker")" | wc -l | tr -d ' ')
+else
+    age_h=9999
+    commits_since=9999
+fi
+echo "resync_age_h=$age_h commits_since=$commits_since"
+```
+
+If `age_h >= 48` AND `commits_since > 3`, invoke `/resync --light` inline. Fold its findings into the session summary below (don't print a separate wall of text). If either condition is false, skip silently.
 
 ## Then
 
