@@ -60,11 +60,13 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 - Add ability to set/toggle project status (active/dormant) from detail page
 - Project page UX cleanup (2026-05-19): collapsed text to teasers, dropped duplicate sidebar, capped timeline at 8 with Show More, added axes to CostChart, replaced "Site" link with hostname + self-link suppression. Cost drill-down (2026-05-20): `#/project/<name>/cost` opens a sortable detail table with filters; CostChart got a per-bar hover tooltip showing date + per-model breakdown. Next: figure out a coherent overall hierarchy — currently a header + heatmap + cost + timeline + intentions stack, no clear "above the fold" frame.
 
-### Slash commands (current state, 2026-05-13)
+### Slash commands (current state, 2026-05-24)
 
-Now installed: `/pulse` (session status), `/roadmap` (project digest), `/bulletin` (cross-project conventions). All read through `~/.claude/bin/gc-read.sh` wrappers so they bypass the simple_expansion permission gate. `/pulse` is a 5-line digest tied to the current open session; `/roadmap` flattens CLAUDE.md Next Steps + open GH issues + active intentions; `/bulletin` reads `BULLETIN.md` at the repo root.
+Now installed: `/pulse` (session status), `/roadmap` (project digest), `/bulletin` (cross-project conventions), `/resync` (verify CLAUDE.md + open issues against actual code via parallel Explore agents, two modes: deep + `--light`). All read through `~/.claude/bin/gc-read.sh` wrappers so they bypass the simple_expansion permission gate.
 
-The SessionStart hook (`workflow/hooks/session-start.sh`) auto-injects date + last-session summary + recent commits + bulletin headlines on every Claude launch under `~/src/*`. /readup now only does the things the hook deliberately skips: register session row, `git fetch --quiet && git status -sb` (no auto-pull), full CLAUDE.md read.
+The SessionStart hook (`workflow/hooks/session-start.sh`) auto-injects date + last-session summary + recent commits + bulletin headlines on every Claude launch under `~/src/*`. As of 2026-05-24 it also emits a **weekly nudge** listing custom commands not invoked in 30+ days (rate-limited via `~/.claude/state/commands-nudge.touch`). /readup now only does the things the hook deliberately skips: register session row, `git fetch --quiet && git status -sb`, full CLAUDE.md read, lazy unsummarized-day backfill, and auto-`/resync --light` when the per-project marker is >48h old AND >3 commits have landed.
+
+Known nuance: prompt-history's slash-command counts under-report bare invocations because `log-prompt.sh` skips prompts starting with `<command-`. Rows that DO match (e.g., `/handoff` in "commit, push, /handoff") are conversational references, not invocations. Doesn't affect the nudge (which uses whitelist + 30-day cutoff) but limits any "trending command" analysis.
 
 **Still to do:**
 - Track session duration (ended_at − started_at) and surface in /review.
@@ -111,8 +113,12 @@ Open: validate tomorrow's `synthesizer.log` and `review.log` Run Summary lines s
 ### Browser automation
 - Playwright MCP installed at user scope (`claude mcp add playwright -s user`). Available after next Claude restart. Scope convention is in `BULLETIN.md` — production read-only, localhost + preview URLs full access.
 
-### Cost tracking (issue #2)
+### Cost tracking (issue #2 — CLOSED 2026-05-24)
 
-End-to-end live since 2026-05-19; hardened + drill-down added 2026-05-20. Three Admin API endpoints → three tables → Turso → `CostChart` + `CostDetailPage` on each project detail page. LaunchAgent `com.promptlab.api-costs` runs daily at 02:30 with the auto-window. All 5 active project workspaces (notemaxxing, prntd, musicforge, prompt-lab, ibuild4you) seeded in `scripts/seed_project_workspaces.py` as of 2026-05-24, so cost data attributes correctly per project.
+End-to-end live since 2026-05-19; hardened + drill-down 2026-05-20; all 5 workspace mappings seeded 2026-05-24. Architecture, operational checklist, and gotchas in `docs/cost-tracking.md`.
 
-See `docs/cost-tracking.md` for architecture, operational checklist, gotchas (cents-vs-dollars, Turso float encoding), and open items (Claude Code Analytics 0-actor gate; manual PRICING refresh cadence).
+Open follow-ups:
+- **Watch ibuild4you spend** — ~$9-10/day for the last week (2026-05-14 to 2026-05-23, ~$113 total). Verify it's intentional usage on `#/project/ibuild4you/cost`; at this pace it'd be ~$300/mo.
+- Claude Code Analytics returns 0 actors for the org (external — waiting on Anthropic to flow subscription auth through to org level; no code change needed)
+- Manual PRICING refresh cadence in `claude_api.py` (no automation yet)
+- Anomaly detection (originally a follow-up in #2) — not implemented. Open a new issue if/when needed.
