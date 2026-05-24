@@ -124,11 +124,13 @@ All active projects now have their own Anthropic workspace + API key, mostly
 so each project's cost shows up under its own `workspace_id` in the Admin API
 output. Shared keys collapse traffic into `__default__` and lose attribution.
 
-- [x] notemaxxing
-- [x] prntd (workspace created; key still needs wiring)
-- [x] musicforge (workspace created; no SDK in code)
-- [x] prompt-lab (2026-05-17)
-- [x] ibuild4you (2026-05-17)
+- [x] notemaxxing — workspace + key live, seeded 2026-05-24
+- [x] prntd — workspace created, seeded 2026-05-24 (key wiring TBD)
+- [x] musicforge — workspace created, seeded 2026-05-24 (no SDK in code yet)
+- [x] prompt-lab — seeded 2026-05-17
+- [x] ibuild4you — seeded 2026-05-17
+
+All workspace → project mappings live in `scripts/seed_project_workspaces.py`. Re-run after adding a new mapping; idempotent.
 
 ## Open
 

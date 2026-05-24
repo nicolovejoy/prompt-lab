@@ -113,6 +113,6 @@ Open: validate tomorrow's `synthesizer.log` and `review.log` Run Summary lines s
 
 ### Cost tracking (issue #2)
 
-End-to-end live since 2026-05-19; hardened + drill-down added 2026-05-20. Three Admin API endpoints → three tables → Turso → `CostChart` + `CostDetailPage` on each project detail page. LaunchAgent `com.promptlab.api-costs` runs daily at 02:30 with the auto-window. Per-project Anthropic workspaces are provisioned for all active projects (notemaxxing, prntd, musicforge, prompt-lab, ibuild4you).
+End-to-end live since 2026-05-19; hardened + drill-down added 2026-05-20. Three Admin API endpoints → three tables → Turso → `CostChart` + `CostDetailPage` on each project detail page. LaunchAgent `com.promptlab.api-costs` runs daily at 02:30 with the auto-window. All 5 active project workspaces (notemaxxing, prntd, musicforge, prompt-lab, ibuild4you) seeded in `scripts/seed_project_workspaces.py` as of 2026-05-24, so cost data attributes correctly per project.
 
 See `docs/cost-tracking.md` for architecture, operational checklist, gotchas (cents-vs-dollars, Turso float encoding), and open items (Claude Code Analytics 0-actor gate; manual PRICING refresh cadence).

@@ -17,6 +17,9 @@ from store import get_store
 MAPPINGS = [
     ("wrkspc_01KXeZDUFDNaEFR3hCe7Qe3q", "prompt-lab", "prompt-lab"),
     ("wrkspc_01VXCsaREpeooov3UNR3EMYK", "ibuild4you", "ibuild4you"),
+    ("wrkspc_01SqVqpmijYCi5CixCFwUfej", "notemaxxing", "notemaxxing"),
+    ("wrkspc_01YLFBLWB27KcaNTgmetB6SD", "musicForge", "musicforge"),
+    ("wrkspc_017NDm4zWZQz8fZGf2sUCswn", "prntd", "prntd"),
     # Legacy traffic from before workspace-scoped keys existed; almost all of
     # it was prompt-lab itself, so we roll it into the prompt-lab bucket.
     ("__default__", "Default", "prompt-lab"),
