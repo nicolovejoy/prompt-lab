@@ -94,6 +94,40 @@ if [ -f "$TURSO_STAMP" ] && [ -z "$(find "$TURSO_STAMP" -mmin -1440 2>/dev/null)
 "
 fi
 
+# Neglected custom commands nudge — at most once per 7 days, only if any
+# user-installed slash command has gone unused for 30+ days.
+NUDGE_STAMP="$HOME/.claude/state/commands-nudge.touch"
+NUDGE_FRESH="$(find "$NUDGE_STAMP" -mmin -10080 2>/dev/null)"
+if [ -z "$NUDGE_FRESH" ] && [ -d "$HOME/.claude/commands" ]; then
+  CUTOFF="$(date -v-30d '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -d '30 days ago' '+%Y-%m-%d %H:%M:%S')"
+  NEGLECTED=""
+  for cmd_file in "$HOME/.claude/commands/"*.md; do
+    [ -f "$cmd_file" ] || continue
+    cmd="$(basename "$cmd_file" .md)"
+    case "$cmd" in *.bak.*) continue ;; esac
+    last="$(sqlite3 "$HOME/.claude/prompt-history.db" \
+      "SELECT MAX(timestamp) FROM prompts WHERE prompt = '/$cmd' OR prompt LIKE '/$cmd %' OR prompt LIKE '/$cmd' || x'0a' || '%';" 2>/dev/null)"
+    if [ -z "$last" ] || [ "$last" \< "$CUTOFF" ]; then
+      desc="$(awk -F': *' '/^description:/{sub(/^[ \t]+/, "", $2); print $2; exit}' "$cmd_file")"
+      [ -z "$desc" ] && desc="(no description)"
+      if [ -z "$last" ]; then
+        NEGLECTED+="   /$cmd — $desc (never used)
+"
+      else
+        NEGLECTED+="   /$cmd — $desc (last used $last)
+"
+      fi
+    fi
+  done
+  if [ -n "$NEGLECTED" ]; then
+    CTX+="
+Custom commands you haven't used in 30+ days (weekly reminder):
+$NEGLECTED"
+    mkdir -p "$(dirname "$NUDGE_STAMP")"
+    touch "$NUDGE_STAMP"
+  fi
+fi
+
 CTX+="
 The user has NOT run /readup yet — they may or may not. Do not preemptively summarize. Use this context to answer their first message in an informed way."
 
