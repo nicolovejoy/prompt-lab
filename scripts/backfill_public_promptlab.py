@@ -2,7 +2,7 @@
 
 Summaries authored by the running Claude Code session (Opus 4.7) based on
 private session.summary text. Empty sessions (12, 14, 15, 40) skipped.
-Internal-only domain (anomatom.com) generalized to "the cloud dashboard".
+Internal-only domain generalized to "the cloud dashboard".
 """
 
 import sys
