@@ -5,9 +5,10 @@
 ## Run
 
 ```bash
-./dashboard.sh        # local dashboard → localhost:5111
 .venv/bin/python mobile/serve.py  # local mobile PWA → localhost:8080
 ```
+
+The Flask local dashboard (`dashboard/`) was retired 2026-05-28 — it had gone ~3 months stale and none of the cost-tracking work landed there. The cloud dashboard (`web/`) is the single canonical UI. `todos.py` is kept as the shared scanner but is currently unwired (its only consumer was the local dashboard); rewire it into `web/` when todos return to the UI.
 
 ## Deploy (cloud dashboard)
 
@@ -28,7 +29,6 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 - `generate-report.py` — bi-monthly markdown report, saves to review_snapshots
 - `sync_to_turso.py` — pushes processed tables to Turso (no raw prompts)
 - `web/` — cloud dashboard (Preact+HTM + Vercel Python serverless), auth-protected, reads from Turso
-- `dashboard/` — local dashboard (Flask), reads from SQLite (raw prompts, sessions, todos)
 - `mobile/` — legacy local mobile PWA, reads from Turso directly
 - `/handoff` generates daily summaries + weekly rollups inline (no API call)
 - `/ask` queries the knowledge store with natural language

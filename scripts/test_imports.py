@@ -68,7 +68,6 @@ FILE_IMPORT_TARGETS = [
     "generate-report.py",
     "backfill_project_urls.py",
     "todos.py",
-    "dashboard/server.py",
     "mobile/serve.py",
     "web/api/intentions.py",
     "web/api/rollups.py",
