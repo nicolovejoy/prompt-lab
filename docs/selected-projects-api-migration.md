@@ -47,7 +47,7 @@ If it turns out selected-projects doesn't talk to Turso (or already uses the API
 2. Replace with a server-side fetch:
    ```ts
    const res = await fetch(
-     "https://anomatom.com/api/public_history?project=selected-projects",
+     "https://prompt-labs.org/api/public_history?project=selected-projects",
      { next: { revalidate: 3600 } } // if Next.js
    );
    const { sessions, rollups } = await res.json();

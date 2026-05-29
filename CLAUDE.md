@@ -46,13 +46,8 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 
 ## Next Steps
 
-### Domain migration → prompt-labs.org (started 2026-05-28)
-Registered prompt-labs.org at Cloudflare (replacing anomatom.com, which Nico dislikes). Cloud app is portable — no hardcoded domain in `web/` runtime, host-relative cookies. Code refs updated (`backfill_project_urls.py`, CLAUDE.md). **Manual steps still owed (Nico):**
-1. Cloudflare: confirm DNS / point at Vercel (add the CNAME/A records Vercel shows when you attach the domain).
-2. Vercel: add `prompt-labs.org` to the `ground-control` project, set as primary domain.
-3. Update DB `projects.site_url` for prompt-lab: currently `https://anomatom.com` → `https://prompt-labs.org` (then `python sync_to_turso.py`).
-4. Consider renaming the Vercel project `ground-control` → `prompt-lab` for consistency (cosmetic; updates dashboard URLs + `VERCEL_PROJECT_ID` in GitHub Actions secrets if the ID changes).
-5. Decide whether to keep anomatom.com as a redirect or drop it.
+### Domain migration → prompt-labs.org (SHIPPED 2026-05-29)
+Cloud dashboard now lives at **https://prompt-labs.org** (Cloudflare registrar, Vercel-hosted). Replaced anomatom.com, which was dropped from the project (404, no redirect). Vercel project renamed `ground-control` → `prompt-lab` (project ID unchanged: `prj_g6Bd1VG93LUDdKwg5V4d1EaoE4FV`, so GitHub Actions secret needed no change). DB `projects.site_url` updated + synced to Turso. Verified live: 200 + auth-gated API (401). The app is domain-portable (no hardcoded domain in `web/` runtime, host-relative cookies), so any future move is a Vercel-dashboard task, not a code change. Note: prompt-labs**.com** is a $2k squatter — not ours; we own the **.org**.
 
 ### Status toggle (scoped 2026-05-28, not started)
 Local dashboard (retired) had a working status `<select>`; the live cloud detail page (`web/index.html` ProjectPage) has none. To build it on cloud: (1) new auth-gated write endpoint in the read-only serverless API, (2) move status ownership to Turso so `sync_to_turso.py` stops clobbering a cloud-set value. Backend `update_project()` already accepts `status`. Not pure-frontend work.
