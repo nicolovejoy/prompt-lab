@@ -53,7 +53,7 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 
 ### Responsible AI use paradigm (started 2026-05-17)
 - "Machine voice" visual convention shipped on PianoHouseProject.org (`73cea5b` + `7475d88`): italic + muted + `↳ from claude` mono uppercase marker for any AI-authored text, including the Evolution rollups on each project page and a `<MachineNote>` MDX component for one-off blocks. First `/tenets` page in the nav documents the principle.
-- Open: grow the `/tenets` list past tenet #1; consider applying the same convention to the anomatom.com cloud dashboard (state summaries, weekly rollup text).
+- Open: grow the `/tenets` list past tenet #1; consider applying the same convention to the cloud dashboard (prompt-labs.org) state summaries / weekly rollup text.
 
 ### Dashboard polish
 - Review project detail layout on mobile (sidebar stacking) — note: sidebar dropped 2026-05-19 in favor of single-column; mobile audit still useful.

@@ -21,7 +21,7 @@ SRC_DIR = Path.home() / "src"
 
 # Known site URLs (manual mapping)
 KNOWN_SITES = {
-    "prompt-lab": "https://anomatom.com",
+    "prompt-lab": "https://prompt-labs.org",
     "freevite": "https://freevite.app",
 }
 

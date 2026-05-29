@@ -2,15 +2,14 @@
 
 Workflow tools and dashboards for tracking Claude Code sessions across projects.
 
-Every session is logged, summarized, and surfaced in local and cloud dashboards. Slash commands handle session start/end and review. Nightly synthesis generates daily summaries, weekly rollups, intentions, and project snapshots. Optional email reviews and bi-monthly reports via the Anthropic API and Resend.
+Every session is logged, summarized, and surfaced in a cloud dashboard. Slash commands handle session start/end and review. Nightly synthesis generates daily summaries, weekly rollups, intentions, and project snapshots. Optional email reviews and bi-monthly reports via the Anthropic API and Resend.
 
 ## What it does
 
 - **Auto-logs prompts** via a Claude Code hook on every submission
 - **Tracks sessions** with summaries, commit links, and token usage
 - **Synthesizes patterns** nightly — daily summaries, weekly rollups, active intentions, project snapshots
-- **Local dashboard** at localhost:5111 — project cards, session history, todos, intentions
-- **Cloud dashboard** on Vercel — auth-protected, reads from Turso, includes Ask (NLP Q&A)
+- **Cloud dashboard** on Vercel — auth-protected, reads from Turso; project cards, session history, cost tracking, intentions, and Ask (NLP Q&A)
 - **Email reviews** (optional) — daily + weekly session digests via Resend
 - **Bi-monthly reports** (optional) — longer-form markdown reports saved locally
 
@@ -99,25 +98,15 @@ These files contain your personal configuration and are **never committed** (git
 
 Everything else in the repo is shared infrastructure with no personal details.
 
-## Dashboards
+## Dashboard
 
-### Local dashboard
-
-```bash
-./dashboard.sh
-```
-
-Opens at http://localhost:5111
-
-Project cards show: last session summary, todo count, active intentions, peak context usage. Click a card for the detail view — edit session summaries inline, manage status.
-
-### Cloud dashboard
+The dashboard is the Vercel app in `web/` (Preact + HTM frontend, Python serverless API, reads from Turso).
 
 ```bash
 cd web && vercel --prod
 ```
 
-Auth-protected (cookie-based, single password). Features: overview stats, project detail, weekly rollups, intentions, review snapshots, and Ask (NLP Q&A powered by Claude).
+Auth-protected (cookie-based, single password). Features: overview stats, project detail, cost tracking, weekly rollups, intentions, review snapshots, and Ask (NLP Q&A powered by Claude). Push local SQLite data up with `python sync_to_turso.py`.
 
 ## Slash commands
 
@@ -156,10 +145,6 @@ prompt-lab/
 │   ├── base.py            # KnowledgeStore ABC (backend-agnostic)
 │   ├── sqlite_store.py    # SQLite backend (local, default)
 │   └── turso_store.py     # Turso HTTP backend (cloud)
-├── dashboard/
-│   ├── server.py          # Flask API (port 5111)
-│   ├── index.html         # Frontend (Preact + HTM, no build step)
-│   └── requirements.txt
 ├── web/
 │   ├── index.html         # Cloud frontend (Preact + HTM)
 │   ├── auth_helper.py     # Cookie-based auth
@@ -188,8 +173,7 @@ prompt-lab/
 ├── send-review.py         # Daily review email (optional)
 ├── generate-report.py     # Bi-monthly report generator (optional)
 ├── sync_to_turso.py       # Push processed tables to Turso (no raw prompts)
-├── todos.py               # Shared todo scanner
-├── dashboard.sh           # Start local dashboard
+├── todos.py               # Shared todo scanner (currently unwired)
 ├── .env.example           # Configuration template
 └── README.md
 ```

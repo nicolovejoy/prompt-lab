@@ -24,7 +24,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install ruff
           pip install -r web/requirements.txt
-          pip install -r dashboard/requirements.txt
 
       - name: Ruff (lint)
         run: ruff check . --exclude .venv
