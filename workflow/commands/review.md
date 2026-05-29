@@ -25,8 +25,10 @@ Examples:
 IMPORTANT: Use these exact command forms. Do NOT use shell variables — the command must start with `sqlite3` to match the allowlist:
 
 ```bash
-sqlite3 ~/.claude/prompt-history.db "SELECT project, date(started_at) as date, summary FROM sessions WHERE summary IS NOT NULL AND started_at >= datetime('now', printf('-%d days', <N>)) ORDER BY started_at DESC;"
+sqlite3 ~/.claude/prompt-history.db "SELECT project, date(started_at) as date, CASE WHEN ended_at IS NOT NULL AND julianday(ended_at) > julianday(started_at) THEN CAST(round((julianday(ended_at) - julianday(started_at)) * 1440) AS INT) || ' min' ELSE '—' END as duration, summary FROM sessions WHERE summary IS NOT NULL AND started_at >= datetime('now', printf('-%d days', <N>)) ORDER BY started_at DESC;"
 ```
+
+The `duration` column is `ended_at − started_at` in minutes; `—` means the session was never closed cleanly (no /handoff or Stop hook). Don't treat `—` as zero — exclude it from any average.
 
 Also query daily summaries for the same window:
 
@@ -50,6 +52,8 @@ This is a developer orientation — help me quickly get back up to speed.
    - Open threads/next steps
 
 3. **Patterns** (optional): Any observations about workflow, recurring themes, or insights
+
+4. **Cadence** (one line): session count for the window + typical session length from the `duration` column (ignore `—` rows). E.g. "6 sessions, mostly 30–90 min."
 
 Keep it concise - this is a quick orientation, not a detailed report.
 

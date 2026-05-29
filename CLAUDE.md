@@ -75,7 +75,7 @@ Known nuance: prompt-history's slash-command counts under-report bare invocation
 
 Discussed five potential cuts. Decisions so far:
 - **Point 1 — SHIPPED** (commit `342ceae`): dropped Turso sync from /handoff; moved to async SessionStart hook at `~/.claude/bin/turso-sync-maybe.sh` (per-machine, max once per 8h, was 24h). Synchronous hook warns when stale >24h (3 missed cycles). Cuts ~10s + a failure mode from every /handoff.
-- **Point 2 — UNBLOCKED on laptop, pending one verified nightly run**: synthesizer was crashing on schema drift. Laptop ran today (2026-05-13 02:25) before the `242d343` fix shipped at 13:14, so those crashes are stale. Schema is verified healthy on laptop now (`migrate()` + `get_day_data()` both succeed). Watch the 2026-05-14 02:00 laptop run; if clean, drop weekly rollup from /handoff. **Mini verification still TBD** — check its synthesizer.log + run the same `migrate()/get_day_data()` smoke test after pulling tomorrow.
+- **Point 2 — RESOLVED**: synthesizer schema-drift crash fixed in `242d343` (2026-05-13); schema verified healthy on both machines. The original idea — drop weekly rollup from /handoff once the nightly is proven stable — is now an optional cleanup, not a blocker.
 - **Point 3 — SHIPPED** (this session): /handoff no longer upserts the GitHub URL. Moved to one-time `scripts/backfill_project_urls.py`; already populated all 15 projects under ~/src.
 - **Point 4 — pending discussion**: batch the ~5 remaining `python3 -c "..."` invocations in /handoff into a single helper script. Worth doing only AFTER Point 2 lands.
 - **Point 5 — pending discussion**: a Stop hook that captures commits + sets `ended_at` on session rows even when /handoff is skipped. Worth it only if you actually have many abandoned sessions.
@@ -88,8 +88,6 @@ Status by machine:
 - **Laptop**: 8h Turso sync cadence; `~/.claude/settings.json` has gc-write/gc-read allows + SessionStart hooks. Operating from the new state.
 - **Mini**: synced 2026-05-15 — pulled, install.sh ran, settings.json patched with allows + SessionStart hooks. Restart needed before hooks take effect.
 
-Open: verify mini nightly synthesizer (`migrate()` + `get_day_data()` smoke test) — the Point 2 prereq.
-
 ### Synthesizer cost reduction (shipped 2026-05-17)
 
 Three-phase migration shipped this session in response to ~$100/2-week Opus spend on the nightly LaunchAgent:
@@ -98,8 +96,6 @@ Three-phase migration shipped this session in response to ~$100/2-week Opus spen
 - **Phase 2** (`8bea382`): `/handoff` step §3.5 refreshes intentions inline (`model='claude-code'`, free under subscription). Nightly `synthesize_intentions` now uses `get_projects_needing_intentions_refresh(today)` as a safety net (active project + no intention touched yesterday/today).
 - **Phase 3** (`9ab9c25`): `/readup` step §4 backfills up to 5 recent unsummarized days inline. If >5 stale, skips with a note and lets the nightly catch them.
 - **Bug-prevention** (`48802e6`): `scripts/test_imports.py` Phase 3 instantiates concrete stores so abstract-method drift breaks the test instead of silently breaking `/handoff`; `handoff.md` got a top-of-file guard telling Claude to stop on Python tracebacks.
-
-Open: validate tomorrow's `synthesizer.log` and `review.log` Run Summary lines show the expected drop. Also: anomatom.com project detail page activity heatmap looked empty in one spot-check — could just be the async Turso sync hadn't pushed today's local rows yet (max once per 8h), worth a re-check after the next sync window.
 
 ### Backfill and maintenance
 - Verify nightly synthesizer actually runs on both machines (pre-req for point 2 of /handoff trimming). On the laptop in particular — LaunchAgents pause when the lid is closed.
