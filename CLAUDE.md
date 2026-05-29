@@ -46,6 +46,20 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 
 ## Next Steps
 
+### Domain migration → prompt-labs.org (started 2026-05-28)
+Registered prompt-labs.org at Cloudflare (replacing anomatom.com, which Nico dislikes). Cloud app is portable — no hardcoded domain in `web/` runtime, host-relative cookies. Code refs updated (`backfill_project_urls.py`, CLAUDE.md). **Manual steps still owed (Nico):**
+1. Cloudflare: confirm DNS / point at Vercel (add the CNAME/A records Vercel shows when you attach the domain).
+2. Vercel: add `prompt-labs.org` to the `ground-control` project, set as primary domain.
+3. Update DB `projects.site_url` for prompt-lab: currently `https://anomatom.com` → `https://prompt-labs.org` (then `python sync_to_turso.py`).
+4. Consider renaming the Vercel project `ground-control` → `prompt-lab` for consistency (cosmetic; updates dashboard URLs + `VERCEL_PROJECT_ID` in GitHub Actions secrets if the ID changes).
+5. Decide whether to keep anomatom.com as a redirect or drop it.
+
+### Status toggle (scoped 2026-05-28, not started)
+Local dashboard (retired) had a working status `<select>`; the live cloud detail page (`web/index.html` ProjectPage) has none. To build it on cloud: (1) new auth-gated write endpoint in the read-only serverless API, (2) move status ownership to Turso so `sync_to_turso.py` stops clobbering a cloud-set value. Backend `update_project()` already accepts `status`. Not pure-frontend work.
+
+### Todos rewire (opened 2026-05-28)
+`todos.py` scanner is now unwired — its only consumer was the retired local dashboard, and `web/` has no todo handling. Rewire into the cloud app when todos return to the UI.
+
 ### Auth and sharing
 - Consider contextual Ask/Reviews on project pages (inline, not nav bar)
 - Migrate to Google login (OAuth) and track logins per user; admin = just me
