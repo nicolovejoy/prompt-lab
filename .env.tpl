@@ -8,7 +8,7 @@ ANTHROPIC_ADMIN_KEY=op://dev-secrets/admin-cost-tracking-2026-05/credential
 
 # Required for review emails only
 RESEND_API_KEY=op://dev-secrets/Resend/api-key
-REVIEW_FROM_EMAIL=reviews@send.anomatom.com
+REVIEW_FROM_EMAIL=reviews@send.prompt-labs.org
 REVIEW_TO_EMAIL=nlovejoy@me.com
 
 # Turso remote sync (cloud dashboard and mobile access)
