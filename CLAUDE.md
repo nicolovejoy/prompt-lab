@@ -103,6 +103,8 @@ Status by machine:
 - **Laptop**: 8h Turso sync cadence; `~/.claude/settings.json` has gc-write/gc-read allows + SessionStart hooks. Operating from the new state.
 - **Mini**: synced 2026-05-15 — pulled, install.sh ran, settings.json patched with allows + SessionStart hooks. Restart needed before hooks take effect.
 
+**Synced shell config (2026-05-31):** `workflow/shell/gc-shell.zsh` holds machine-agnostic zsh bits (currently an iTerm2 precmd hook that puts the cwd in the tab/window title, updating on every `cd`). `install.sh` copies it to `~/.claude/shell/` and idempotently appends a `source` line to `~/.zshrc` — chosen over syncing the whole `.zshrc` so machine-specific config (nvm, paths) isn't clobbered. **Mini follow-up:** `git pull` + run `install.sh` to pick it up (the mini already has a near-identical inline precmd; the sourced one will override it harmlessly).
+
 ### Synthesizer cost reduction (shipped 2026-05-17)
 
 Three-phase migration shipped this session in response to ~$100/2-week Opus spend on the nightly LaunchAgent:
