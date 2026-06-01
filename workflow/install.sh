@@ -76,6 +76,23 @@ for src in "$REPO_DIR/workflow/bin/"*; do
     echo "Copied bin: $name → $BIN_DIR/"
 done
 
+# --- shared shell config ---
+# Copies gc-shell.zsh into ~/.claude/shell/ and ensures ~/.zshrc sources it.
+# Keeps machine-agnostic shell bits in sync without clobbering each machine's
+# own ~/.zshrc.
+SHELL_DIR="$HOME/.claude/shell"
+mkdir -p "$SHELL_DIR"
+install_file "$REPO_DIR/workflow/shell/gc-shell.zsh" "$SHELL_DIR/gc-shell.zsh" "shell gc-shell.zsh"
+echo "Copied shell config: gc-shell.zsh → $SHELL_DIR/"
+SOURCE_LINE='[ -f ~/.claude/shell/gc-shell.zsh ] && source ~/.claude/shell/gc-shell.zsh'
+if ! grep -qF "$SOURCE_LINE" "$HOME/.zshrc" 2>/dev/null; then
+    printf '\n# Load shared shell config managed by prompt-lab\n%s\n' "$SOURCE_LINE" >> "$HOME/.zshrc"
+    echo "Added source line to ~/.zshrc"
+else
+    echo "~/.zshrc already sources gc-shell.zsh"
+fi
+echo ""
+
 # --- launchd plists (macOS only) ---
 if [[ "$OSTYPE" == darwin* ]] && command -v launchctl &>/dev/null; then
     mkdir -p "$LAUNCH_AGENTS"
