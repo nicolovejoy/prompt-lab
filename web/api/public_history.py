@@ -1,11 +1,15 @@
 """GET /api/public_history — unauthenticated portfolio-safe history by project.
 
-Serves rows from public_session_summaries + public_weekly_rollups for
-allowlisted projects only. Consumed by other projects' About pages
-(first consumer: offer-builder).
+Serves rows from public_session_summaries + public_weekly_rollups for ANY
+project. These two tables are safe-by-construction: they are written ONLY by
+the hand-authored scripts/backfill_public_*.py with scrubbed, de-identified
+text — never by the synthesizer or the raw-data sync. There is deliberately no
+read-time allowlist; curation of which projects appear publicly lives in the
+consumer (the selected-projects MDX manifest), which is the single source of
+truth for the public site.
 
-Adding a project to PUBLIC_PROJECTS is the moment its data becomes public —
-do that deliberately, after reviewing the rows in SQLite.
+Invariant to preserve: never write un-scrubbed text into the public_* tables.
+An unknown project (or one with no rows) simply returns empty arrays.
 """
 
 import json
@@ -13,21 +17,6 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from turso_helper import resolve_project_names, turso_query
-
-# Canonical project names whose data may be served publicly. After a rename,
-# update this set to the new canonical name; requests using the old alias
-# still work because we resolve to canonical before this check.
-PUBLIC_PROJECTS = {
-    "byside",
-    # selected-projects (pianohouseproject.org) consumes these via /projects/[slug]
-    "selected-projects",
-    "musicforge",
-    "prntd",
-    "showcase",
-    "ibuild4you",
-    "prompt-lab",
-    "am-i-an-ai",
-}
 
 DEFAULT_SESSION_LIMIT = 20
 MAX_SESSION_LIMIT = 100
@@ -48,10 +37,10 @@ class handler(BaseHTTPRequestHandler):
         if not project:
             return self._send(400, {"error": "project required"})
 
+        # No allowlist: the public_* tables are scrubbed-by-construction, so we
+        # serve whatever exists. Alias resolution still merges renamed projects;
+        # an unknown project just yields empty result sets below.
         names = resolve_project_names(project)
-        canonical = names[0]
-        if canonical not in PUBLIC_PROJECTS:
-            return self._send(404, {"error": "not found"})
 
         limit = _int_or(params.get("limit", [None])[0], DEFAULT_SESSION_LIMIT)
         limit = max(1, min(limit, MAX_SESSION_LIMIT))
