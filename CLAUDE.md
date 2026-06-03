@@ -46,6 +46,12 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 
 ## Next Steps
 
+### Public-data surface simplified (SHIPPED 2026-06-03)
+Removed the `PUBLIC_PROJECTS` read-time allowlist from `web/api/public_history.py` (PR #4, deployed). It was a third, drifting copy of "what's public" alongside the public_* table rows and the consumer's manifest. New model: the endpoint serves whatever exists in `public_session_summaries` / `public_weekly_rollups`, which are **safe-by-construction** (written only by `scripts/backfill_public_*.py` with scrubbed text). The single source of truth for *which* projects are public is now the **selected-projects MDX manifest** (`content/projects/*.mdx`). Added `scripts/unpublish_public.py <project> [--apply]` — alias-aware, dry-run-by-default tool that deletes a project's public rows from **both** local SQLite and Turso (sync only upserts, so deletes must hit Turso directly; byside had 4 local but 17 Turso rows). Unpublished byside end-to-end. Also fixed selected-projects' dead `anomatom.com` → `prompt-labs.org` API fallback in `lib/history.ts` (merged to its main). Consequence: every project with scrubbed rows is now URL-reachable (incl. client projects — all verified de-identified); use `unpublish_public.py` to pull any one. Note: `docs/selected-projects-api-migration.md` now describes the allowlist as the intended single gate — superseded/stale.
+
+### Vibe-coding lessons doc (SHIPPED 2026-06-03)
+`docs/vibe-coding-lessons.md` — a 14-lesson field guide on working with Claude, extracted from real `key_decisions`/prompt history, for sharing with the user's brother (used as an ibuild4you session prompt). Public GitHub links only on actually-public repos. Issue #3 tracks a future public-page version on prompt-labs.org (low priority).
+
 ### Domain migration → prompt-labs.org (SHIPPED 2026-05-29)
 Cloud dashboard now lives at **https://prompt-labs.org** (Cloudflare registrar, Vercel-hosted). Replaced anomatom.com, which was dropped from the project (404, no redirect). Vercel project renamed `ground-control` → `prompt-lab` (project ID unchanged: `prj_g6Bd1VG93LUDdKwg5V4d1EaoE4FV`, so GitHub Actions secret needed no change). DB `projects.site_url` updated + synced to Turso. Verified live: 200 + auth-gated API (401). The app is domain-portable (no hardcoded domain in `web/` runtime, host-relative cookies), so any future move is a Vercel-dashboard task, not a code change. Note: prompt-labs**.com** is a $2k squatter — not ours; we own the **.org**.
 
