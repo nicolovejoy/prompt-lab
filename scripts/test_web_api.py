@@ -7,7 +7,7 @@ Loads each endpoint module fresh, monkey-patches `turso_query` and
 `do_GET`, and asserts the captured SQL + response.
 
 Tests focus on: alias expansion in the WHERE clause, auth gating,
-allowlist enforcement for public_history.
+and the no-allowlist scrubbed-data contract for public_history.
 """
 
 from __future__ import annotations
@@ -285,27 +285,28 @@ def _():
         restore()
 
 
-@test("public_history: 404 when canonical not in allowlist")
+@test("public_history: 200 empty when project has no public rows")
 def _():
-    mod = load_endpoint("web/api/public_history.py", "endpoint_publichist_404")
-    mod.PUBLIC_PROJECTS = {"byside"}
+    mod = load_endpoint("web/api/public_history.py", "endpoint_publichist_empty")
 
     def fake_turso(sql, args=None):
-        # No alias rows for 'random-project' → it remains canonical.
+        # No alias rows, no data rows → unknown project yields empty arrays.
         return []
 
     restore = patch_turso_query(mod, fake_turso)
     try:
         h = invoke(mod, "/api/public_history?project=random-project")
-        assert h.status_code == 404, f"got {h.status_code}"
+        assert h.status_code == 200, f"got {h.status_code}"
+        assert h.body.get("sessions") == []
+        assert h.body.get("rollups") == []
+        assert h.body.get("total_sessions") == 0
     finally:
         restore()
 
 
-@test("public_history: 200 when canonical itself is in allowlist")
+@test("public_history: 200 when project has public rows")
 def _():
     mod = load_endpoint("web/api/public_history.py", "endpoint_publichist_200_canon")
-    mod.PUBLIC_PROJECTS = {"byside"}
 
     def fake_turso(sql, args=None):
         if "canonical FROM project_aliases" in sql and "alias = ?" in sql:
@@ -328,10 +329,9 @@ def _():
         restore()
 
 
-@test("public_history: 200 when alias resolves to canonical-in-allowlist")
+@test("public_history: 200 + alias merge when alias resolves to canonical")
 def _():
     mod = load_endpoint("web/api/public_history.py", "endpoint_publichist_200_alias")
-    mod.PUBLIC_PROJECTS = {"byside"}
     captured = []
 
     def fake_turso(sql, args=None):
@@ -363,20 +363,27 @@ def _():
         restore()
 
 
-@test("public_history: 404 when alias resolves to non-allowlist canonical")
+@test("public_history: no allowlist gate — any resolved canonical returns 200")
 def _():
-    mod = load_endpoint("web/api/public_history.py", "endpoint_publichist_404_alias")
-    mod.PUBLIC_PROJECTS = {"byside"}
+    mod = load_endpoint("web/api/public_history.py", "endpoint_publichist_noallow")
+    captured = []
 
     def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
         if "canonical FROM project_aliases" in sql and "alias = ?" in sql:
-            return [{"canonical": "musicforge"}]  # frontend → musicforge (not public)
-        return []
+            return [{"canonical": "musicforge"}]  # frontend → musicforge
+        if "alias FROM project_aliases" in sql:
+            return [{"alias": "frontend"}]
+        return []  # no data rows; still a 200 with empty arrays
 
     restore = patch_turso_query(mod, fake_turso)
     try:
         h = invoke(mod, "/api/public_history?project=frontend")
-        assert h.status_code == 404, f"got {h.status_code}: {h.body}"
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        data_calls = [c for c in captured if "public_session_summaries" in c[0]]
+        assert data_calls, "data query should run even with no allowlist"
+        _, args = data_calls[0]
+        assert set(args[:-1]) == {"musicforge", "frontend"}, f"names: {args[:-1]}"
     finally:
         restore()
 
@@ -384,7 +391,6 @@ def _():
 @test("public_history: limit clamped to MAX_SESSION_LIMIT")
 def _():
     mod = load_endpoint("web/api/public_history.py", "endpoint_publichist_clamp")
-    mod.PUBLIC_PROJECTS = {"byside"}
     captured = []
 
     def fake_turso(sql, args=None):
