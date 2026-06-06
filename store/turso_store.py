@@ -6,9 +6,9 @@ Requires TURSO_DATABASE_URL and TURSO_AUTH_TOKEN environment variables.
 Setup:
   1. Install Turso CLI: curl -sSfL https://get.tur.so/install.sh | bash
   2. turso auth login
-  3. turso db create ground-control
-  4. turso db show ground-control --url   → TURSO_DATABASE_URL
-  5. turso db tokens create ground-control → TURSO_AUTH_TOKEN
+  3. turso db create promptlab
+  4. turso db show promptlab --url   → TURSO_DATABASE_URL
+  5. turso db tokens create promptlab → TURSO_AUTH_TOKEN
 """
 
 from __future__ import annotations
