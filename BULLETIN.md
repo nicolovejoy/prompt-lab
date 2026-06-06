@@ -10,6 +10,30 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-06-06 — Cloud (remote) agent sessions
+
+Scope: all projects
+
+Claude Code on the web runs in an ephemeral container, not your laptop/mini.
+Consequences:
+
+- **Branch namespace.** Cloud agents work on `cloud/<feature>` branches off
+  `main` and open a PR. Local sessions must NOT commit to a `cloud/*` branch
+  while its agent is active — that's how histories diverge and pushes collide.
+  `/readup`'s `git fetch` + `git status -sb` surfaces any divergence at the
+  next local session start.
+- **No local telemetry.** Cloud sessions have no `~/.claude/prompt-history.db`,
+  no installed slash commands, no venv, no Turso creds. So `/readup` and
+  `/handoff` don't run there, and cloud work is currently INVISIBLE to
+  prompt-lab's dashboard. Known gap — accepted for now; revisit if cloud
+  usage grows enough to matter.
+- **Handoff recipe.** To dispatch work: push the plan + any done tasks to a
+  `cloud/<feature>` branch, then tell the cloud agent to execute it
+  autonomously, commit per task, and open a PR when lint+test+build are green.
+  Visual smoke stays with you on the Vercel preview.
+
+---
+
 ## 2026-05-13 — Browser automation scope (Playwright MCP)
 
 Scope: all projects
