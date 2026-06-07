@@ -10,13 +10,16 @@ REPO_DIR = Path(__file__).resolve().parent
 
 
 def load_env():
-    """Load environment variables: .env, .env.local, ~/.claude/synthesizer.env.
+    """Load environment variables: .env then .env.local (gitignored, holds secrets).
 
-    .env has defaults, .env.local has secrets (gitignored), synthesizer.env
-    is the legacy location. Later files don't override earlier ones.
+    .env has non-secret defaults; .env.local has secrets. Later files don't
+    override earlier ones. Both are absolute paths under REPO_DIR, so they load
+    correctly even when invoked from launchd with a different working dir.
+
+    (The old ~/.claude/synthesizer.env fallback was retired 2026-06-06 — it was
+    a strict subset of .env.local, which always wins by loading first.)
     """
-    for env_file in [REPO_DIR / ".env", REPO_DIR / ".env.local",
-                     Path.home() / ".claude" / "synthesizer.env"]:
+    for env_file in [REPO_DIR / ".env", REPO_DIR / ".env.local"]:
         if env_file.exists():
             load_dotenv(env_file, override=False)
 

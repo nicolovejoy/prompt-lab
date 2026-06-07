@@ -46,8 +46,7 @@ incremental pulls.
 
 1. **Mint an admin key.** Console → Settings → Admin Keys; format `sk-ant-admin-…`.
    Store in 1Password at `op://dev-secrets/admin-cost-tracking-2026-05/credential`
-   and surface it as `ANTHROPIC_ADMIN_KEY` in the local env (`.env.local` or
-   `~/.claude/synthesizer.env`).
+   and surface it as `ANTHROPIC_ADMIN_KEY` in the local env (`.env.local`).
 
 2. **Seed `project_workspaces`.** Edit the mappings in
    `scripts/seed_project_workspaces.py` and run it. The table maps each

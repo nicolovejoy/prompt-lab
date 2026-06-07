@@ -55,7 +55,7 @@ All configuration lives in `.env` (gitignored — never committed). See `.env.ex
 
 ### Required
 
-- `ANTHROPIC_API_KEY` — needed for the synthesizer (nightly summaries) and review emails. Get one at [console.anthropic.com](https://console.anthropic.com). Can also be placed in `~/.claude/synthesizer.env`.
+- `ANTHROPIC_API_KEY` — needed for the synthesizer (nightly summaries) and review emails. Get one at [console.anthropic.com](https://console.anthropic.com). Place it in `.env.local`.
 
 ### Optional (email reviews)
 
@@ -91,8 +91,7 @@ To self-host: fork the repo, create a Turso database, set the env vars above in 
 
 These files contain your personal configuration and are **never committed** (gitignored):
 
-- `.env` — API keys and email addresses
-- `~/.claude/synthesizer.env` — alternative location for `ANTHROPIC_API_KEY`
+- `.env` / `.env.local` — API keys and email addresses
 - `~/.claude/prompt-history.db` — your session data
 - `reports/` — generated reports (personal project details)
 

@@ -482,7 +482,7 @@ def main():
     needs_api = args.all or args.daily or args.weekly or args.intentions or args.states
     load_env()
     if needs_api and not os.environ.get("ANTHROPIC_API_KEY"):
-        print("Error: ANTHROPIC_API_KEY not found. Set in .env.local or ~/.claude/synthesizer.env")
+        print("Error: ANTHROPIC_API_KEY not found. Set it in .env.local")
         sys.exit(1)
 
     client = Anthropic() if needs_api else None

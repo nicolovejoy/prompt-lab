@@ -117,7 +117,7 @@ def main():
     # Load environment
     load_env()
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("Error: ANTHROPIC_API_KEY not found. Set in .env.local or ~/.claude/synthesizer.env", file=sys.stderr)
+        print("Error: ANTHROPIC_API_KEY not found. Set it in .env.local", file=sys.stderr)
         sys.exit(1)
 
     store = get_store()
