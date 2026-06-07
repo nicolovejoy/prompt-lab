@@ -93,6 +93,19 @@ else
 fi
 echo ""
 
+# --- global security hook ---
+# block-secrets.sh is a GLOBAL PreToolUse hook (applies to every project, not
+# just this repo). Installed by COPY to ~/.claude/hooks/ rather than run in-place
+# so it stays independent of this repo's location — moving or deleting the repo
+# must never silently disable secret blocking. settings.json references the
+# installed path (see manual step below).
+HOOKS_DIR="$HOME/.claude/hooks"
+mkdir -p "$HOOKS_DIR"
+install_file "$REPO_DIR/workflow/hooks/block-secrets.sh" "$HOOKS_DIR/block-secrets.sh" "hook block-secrets.sh"
+chmod +x "$HOOKS_DIR/block-secrets.sh"
+echo "Copied hook: block-secrets.sh → $HOOKS_DIR/"
+echo ""
+
 # --- launchd plists (macOS only) ---
 if [[ "$OSTYPE" == darwin* ]] && command -v launchctl &>/dev/null; then
     mkdir -p "$LAUNCH_AGENTS"
@@ -139,6 +152,9 @@ cat <<EOF
     ]
   },
   "hooks": {
+    "PreToolUse": [{
+      "hooks": [{"type": "command", "command": "$HOME/.claude/hooks/block-secrets.sh", "timeout": 5000}]
+    }],
     "UserPromptSubmit": [{
       "hooks": [{"type": "command", "command": "$REPO_DIR/workflow/hooks/log-prompt.sh", "timeout": 5000}]
     }],
