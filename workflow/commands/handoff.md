@@ -37,32 +37,6 @@ If there are uncommitted changes, list the changed files and ask the user whethe
   SUMMARY
   ```
 
-- **Write public session summary** (1-2 sentences): a portfolio-safe rewrite of the session, suitable for a public project page. Describe what was built, shipped, or decided in plain language.
-
-  OMIT: names of people, internal file paths, frustrations, abandoned approaches, security/auth implementation details, anything client-confidential, internal bug refs, ticket numbers, swearing.
-
-  KEEP: shipped features, public-facing decisions, capabilities added, problems solved (in plain terms).
-
-  If nothing publishable happened (e.g. session was pure exploration that didn't land anywhere, or content is sensitive), write an empty string and the row will be skipped.
-
-  IMPORTANT: use these exact command forms to persist:
-  ```bash
-  python3 -c "
-  import sys, os; sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.path.expanduser('~/src/prompt-lab')))
-  from store import get_store
-  summary = '''<your public summary, or empty string to skip>'''
-  if summary.strip():
-      s = get_store(); s.migrate()
-      s.upsert_public_session_summary(
-          project='<project>', session_id=<session_id>,
-          started_at='<started_at>', public_summary=summary.strip())
-      s.close()
-      print('Public session summary saved')
-  else:
-      print('Public session summary skipped (nothing publishable)')
-  "
-  ```
-
 - **Update CLAUDE.md** Next Steps: remove done items, add new ones (3-5 max)
 
 - **Update MEMORY.md** if anything changed worth remembering
@@ -192,29 +166,9 @@ print('Weekly rollup saved for', d['project'], d['week_start'])
 "
 ```
 
-After persisting each weekly rollup, also write a **public weekly rollup** — a portfolio-safe 2-3 sentence synthesis of the week's public-rewritten session summaries. Same omit/keep rules as the per-session public summary. Use the rollup's `session_count` and `commit_count` from the json above.
-
-IMPORTANT: use these exact command forms to persist:
-
-```bash
-python3 -c "
-import sys, os; sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.path.expanduser('~/src/prompt-lab')))
-from store import get_store
-public = '''<your public weekly rollup, or empty string to skip>'''
-if public.strip():
-    s = get_store(); s.migrate()
-    s.upsert_public_weekly_rollup(
-        project='<project>', week_of='<week_start YYYY-MM-DD monday>',
-        public_summary=public.strip(),
-        session_count=<session_count>, commit_count=<commit_count>)
-    s.close()
-    print('Public weekly rollup saved')
-else:
-    print('Public weekly rollup skipped (nothing publishable)')
-"
-```
-
 If no weeks need rollups, skip silently.
+
+> **Note:** `/handoff` deliberately does NOT write the public `public_session_summaries` / `public_weekly_rollups` tables. Those are written ONLY by the hand-reviewed, git-committed `scripts/backfill_public_*.py` one-shots (see CLAUDE.md `web/api/public_history.py` invariant). Public portfolio data is a deliberate, per-project publish action — never an automatic per-session write.
 
 ## 5. Commit doc changes if any
 
