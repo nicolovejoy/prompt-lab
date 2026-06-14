@@ -1,0 +1,23 @@
+# Public-data allowlist — prompt-lab mirror of the selected-projects manifest.
+#
+# These are the historyKeys (the `project` column value in public_session_summaries
+# / public_weekly_rollups) that the consumer's MDX manifest authorizes to appear on
+# the public portfolio. scripts/check_public_allowlist.py flags any public row whose
+# project (after alias resolution) is NOT on this list.
+#
+# IMPORTANT: these are historyKeys, NOT display slugs (showcase renders as
+# "rocksculpture", am-i-an-ai as "lojong"). This is an audit mirror only — the true
+# source of truth is the selected-projects manifest (content/projects/*.mdx). When
+# that manifest changes, update this file deliberately and note the date below.
+#
+# Blank lines and #-comments are ignored. One historyKey per line.
+#
+# Last synced from manifest: 2026-06-13 (confirmed by the selected-projects agent)
+
+am-i-an-ai
+ibuild4you
+musicforge
+prntd
+prompt-lab
+selected-projects
+showcase

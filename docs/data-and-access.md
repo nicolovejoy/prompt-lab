@@ -27,6 +27,8 @@ The public endpoint has **no read-time allowlist** — it serves whatever rows e
 
 **Join-key gotcha:** the `project` column in the public tables is the consumer's **historyKey**, NOT the display slug. `showcase` renders as "rocksculpture", `am-i-an-ai` as "lojong". A slug-based purge would delete the wrong rows — always reconcile against historyKeys. Use `scripts/unpublish_public.py <project> [--apply]` (alias-aware, dry-run by default, deletes from both local + Turso) to pull a project.
 
+**Drift guard:** `scripts/check_public_allowlist.py` is the backstop. It compares the distinct projects in BOTH stores (local + Turso — they diverge, since sync only upserts) against `docs/public-allowlist.txt` (the prompt-lab mirror of the manifest historyKeys), resolves aliases, and reports any public row outside the allowlist. Report-only — never deletes; `--fix` prints (does not run) the `unpublish_public.py` commands. Exit 0 clean / 1 drift / 2 allowlist missing. When the manifest changes, update `docs/public-allowlist.txt` and note the date. (It immediately caught 4 Turso-only strays the manual local-based purge missed — `audio-journal`, `bakerylouise_v1`, `invitekit`, `recountly` — pending purge.)
+
 ## Who accesses each store, and how
 
 1. **You, locally** — full read of the SQLite DB on mini/laptop (`sqlite3` is allow-listed in `~/.claude/settings.json`). The pipeline scripts (synthesizer, sync, review email) run on mini via launchd.
