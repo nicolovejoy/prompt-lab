@@ -1,7 +1,7 @@
 ---
 name: readup
 description: Start a session — register a session row, sync to remote, read project context
-allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(stat:*), Bash(date:*), Bash(basename:*), Bash(mkdir:*), Bash(touch:*), Bash(gh issue list:*), Bash(gh pr list:*), Read, Write, Edit, Glob, Agent
+allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(~/.claude/bin/sync-claude-md.sh:*), Bash(stat:*), Bash(date:*), Bash(basename:*), Bash(mkdir:*), Bash(touch:*), Bash(gh issue list:*), Bash(gh pr list:*), Read, Write, Edit, Glob, Agent
 ---
 
 Start a session. Be concise.
@@ -73,6 +73,20 @@ echo "resync_age_h=$age_h commits_since=$commits_since"
 ```
 
 If `age_h >= 48` AND `commits_since > 3`, invoke `/resync --light` inline. Fold its findings into the session summary below (don't print a separate wall of text). If either condition is false, skip silently.
+
+## 6. Check shared-conventions drift (check only — never auto-write)
+
+Verify this repo's CLAUDE.md carries the current shared-conventions block:
+
+```bash
+~/.claude/bin/sync-claude-md.sh --check ./CLAUDE.md
+```
+
+- `in sync` → say nothing.
+- `missing` / `drift` → flag one line in the summary and offer the exact fix: `~/.claude/bin/sync-claude-md.sh --apply ./CLAUDE.md` (review the `git diff`, then commit). Never apply automatically — materializing into a checked-in file is the user's call.
+- `absent` (no CLAUDE.md) → skip silently; not every repo warrants one.
+
+The block is auto-managed between `SHARED-CONVENTIONS` markers; the source of truth is `prompt-lab/workflow/claude-md-shared.md`.
 
 ## Then
 

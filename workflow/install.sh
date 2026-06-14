@@ -76,6 +76,15 @@ for src in "$REPO_DIR/workflow/bin/"*; do
     echo "Copied bin: $name → $BIN_DIR/"
 done
 
+# --- shared CLAUDE.md conventions source ---
+# claude-md-shared.md is the single source of truth for Nico's cross-repo output
+# rules. Installed to ~/.claude/ so sync-claude-md.sh (a bin script, installed above)
+# can find it from any repo. Edit the in-repo copy, re-run install.sh, then
+# `sync-claude-md.sh --apply` in each repo to materialize the block into its CLAUDE.md.
+install_file "$REPO_DIR/workflow/claude-md-shared.md" "$HOME/.claude/claude-md-shared.md" "claude-md-shared.md"
+echo "Copied conventions source: claude-md-shared.md → $HOME/.claude/"
+echo ""
+
 # --- shared shell config ---
 # Copies gc-shell.zsh into ~/.claude/shell/ and ensures ~/.zshrc sources it.
 # Keeps machine-agnostic shell bits in sync without clobbering each machine's
