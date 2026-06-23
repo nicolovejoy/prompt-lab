@@ -493,7 +493,10 @@ def main():
         print("\n=== Daily Summaries ===")
         synthesize_daily_summaries(store, client, args.date)
 
-    if args.all or args.intentions:
+    # Intentions deprecated 2026-06-23 (low-value read surfaces, data bloated
+    # past the 3-8/project target). No longer part of --all; the schema +
+    # explicit --intentions flag remain for reversibility.
+    if args.intentions:
         print("\n=== Intentions ===")
         synthesize_intentions(store, client)
 
