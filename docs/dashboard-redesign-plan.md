@@ -54,12 +54,14 @@ Signals worth surfacing that aren't in the data model yet:
 
 Don't bring back a nightly LLM job. If a narrative digest is wanted, make it **on-demand** (admin button, like Ask) that synthesizes the current week from summaries at click time — pay per use, not per night. Default: the Phase-1 stream replaces it entirely with zero LLM cost.
 
-## Open questions (decide before Phase 2)
+## Decisions (resolved 2026-06-24)
 
-1. Home priority — confirm triage-band-thin / stream-primary (vs. a bigger triage dashboard, vs. keeping the project grid as an alternate view)?
-2. Cross-project synthesis — none (stream only), or an on-demand "synthesize this week" button?
-3. Reader tier (`AUTH_READ_SECRET`) — does the triage band show to readers, or admin-only?
-4. Scope of first PR — Phase 1 only (safe reorg + machine-voice), then evaluate before Phase 2?
+1. **Home priority — triage-band-thin / stream-primary.** Confirmed. Not a bigger triage dashboard; the stream is the page, the band sits thin on top.
+2. **Cross-project synthesis — dropped entirely.** No nightly, no on-demand button. The Phase-1 stream replaces it at zero LLM cost.
+3. **Triage band — admin-only** (gated like Ask). Read-tier viewers see the stream + project pages, not the band. Revisitable.
+4. **First PR — Phase 1 only** (reorg + machine-voice + delete 4 dead endpoints), then reassess before Phase 2.
+
+Deferred: start next session (not 2026-06-24).
 
 ## Sequencing
 
