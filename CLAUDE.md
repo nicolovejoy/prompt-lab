@@ -47,6 +47,12 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 
 ## Next Steps
 
+### Intentions deprecated (SHIPPED 2026-06-23)
+Froze intention *generation* — they fed only minor read surfaces (dashboard sidebar, `/roadmap`, `/ask` context; not the email/report) and the data had bloated far past its 3-8/project target (musicforge 180 "active", ibuild4you 97), so the displayed slice was arbitrary noise. Dropped `/handoff` §3.5 and removed intentions from the nightly synthesizer `--all` path (`synthesizer.py`). **Kept reversible:** the `intentions` table, store methods, `web/api/intentions.py` read endpoint, and the explicit `synthesizer.py --intentions` flag all remain — existing rows just age out; the sidebar/`/roadmap` go quiet. Announced in `BULLETIN.md` for other agents. If goal-tracking returns, the real fix is the completion/abandon logic (it never fired), not more writes.
+
+### prompt-labs.org de-indexed from search (SHIPPED 2026-06-22)
+Policy A (DE-INDEX) for the auth-gated dashboard: added `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet` on `/(.*)` in `web/vercel.json` + `<meta name="robots">` in `web/index.html`; `robots.txt` already `Disallow: /`. Verified live (header + robots.txt + served meta). Not Next.js so no `app/robots.ts` layer. Doesn't touch `/api/public_history` (server-to-server, not browsed).
+
 ### Public-data drift guard (SHIPPED standalone 2026-06-13; wiring + purge pending)
 `scripts/check_public_allowlist.py` audits both stores' public_* tables against `docs/public-allowlist.txt` (mirror of the consumer's 7-key historyKey manifest), alias-aware, report-only (`--fix` prints unpublish commands, never runs them). Built after this session reconciled the public tables to the manifest (removed `/handoff` writes, purged byside + 12 strays — see RESOLVED note below). **Open follow-ups:** (1) **wire it in** (deferred to next session, per Nico): non-fatal post-sync check in `sync_to_turso.py` (drift is introduced at sync time) + a `/readup` surface (prompt-lab only) so a hit is actually seen — standalone alone relies on remembering, which already failed once. (2) **Purge 4 Turso-only strays the guard caught** that the local-based purge missed: `audio-journal`, `bakerylouise_v1` (underscore variant), `invitekit`, `recountly` — run `scripts/unpublish_public.py <p> --apply` for each (not yet authorized). When the manifest changes, update `docs/public-allowlist.txt` + its date.
 
