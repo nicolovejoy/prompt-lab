@@ -360,7 +360,6 @@
       if (parts[0] === 'project' && parts[1]) {
         return { view: 'project', project: decodeURIComponent(parts[1]), section: parts[2] || 'timeline' };
       }
-      if (parts[0] === 'reviews') return { view: 'reviews' };
       return { view: 'home' };
     }
 
@@ -475,18 +474,11 @@
               <span class="header-sep">/</span>
               <span class="breadcrumb">${route.project}</span>
             `}
-            ${route.view === 'reviews' && html`
-              <span class="header-sep">/</span>
-              <span class="breadcrumb"><a onClick=${() => navigate('#/')}>Projects</a></span>
-              <span class="header-sep">/</span>
-              <span class="breadcrumb">Reviews</span>
-            `}
           </div>
           <div class="header-right">
             ${buildTime && html`<span class="header-meta">built ${buildTime}</span>`}
             ${freshness && html`<span class="header-meta">synced ${freshness}</span>`}
             ${onAsk && html`<button class="header-btn" onClick=${onAsk} title="Ask (/)">Ask</button>`}
-            <button class="header-btn" onClick=${() => navigate('#/reviews')}>Reviews</button>
             <button class="header-btn" onClick=${onLogout}>Log out</button>
           </div>
         </header>
@@ -581,9 +573,6 @@
           `}
           ${overview && route.view === 'project' && html`
             <${ProjectPage} name=${route.project} overview=${overview} section=${route.section} />
-          `}
-          ${overview && route.view === 'reviews' && html`
-            <${ReviewsPage} />
           `}
 
           ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
@@ -766,58 +755,6 @@
               </div>
             `)}
           </div>
-        </div>
-      `;
-    }
-
-    // ---- Sidebar: All Rollups ----
-    function SidebarRollups({ rollups }) {
-      if (!rollups?.length) return null;
-      return html`
-        <div class="sidebar-section" style="max-height: 60vh; overflow-y: auto">
-          <div class="sidebar-label">Weekly rollups</div>
-          ${rollups.map((r, i) => {
-            const highlights = tryParseJson(r.highlights);
-            return html`
-              <div style="padding-bottom: ${i < rollups.length - 1 ? '12px' : '0'};
-                margin-bottom: ${i < rollups.length - 1 ? '12px' : '0'};
-                border-bottom: ${i < rollups.length - 1 ? '1px solid var(--border)' : 'none'}">
-                <div style="font-size: 0.68rem; font-weight: 600; color: var(--text-secondary);
-                  font-family: 'SF Mono', ui-monospace, monospace; margin-bottom: 6px">
-                  Week of ${r.week_start}
-                  <span style="float: right; font-weight: 400">
-                    ${r.prompt_count || 0}p · ${r.session_count || 0}s · ${r.commit_count || 0}c
-                  </span>
-                </div>
-                <div style="font-size: 0.8rem; color: var(--text); line-height: 1.55; margin-bottom: 6px">
-                  ${r.narrative}
-                </div>
-                ${highlights.length > 0 && html`
-                  <div style="display: flex; gap: 4px; flex-wrap: wrap">
-                    ${highlights.map(h => html`
-                      <span style="font-size: 0.65rem; padding: 2px 6px; background: var(--accent-dim);
-                        color: var(--accent-light); border-radius: 3px">${h}</span>
-                    `)}
-                  </div>
-                `}
-              </div>
-            `;
-          })}
-        </div>
-      `;
-    }
-
-    // ---- Sidebar: Active Intentions ----
-    function SidebarIntentions({ intentions }) {
-      if (!intentions?.length) return null;
-      return html`
-        <div class="sidebar-section">
-          <div class="sidebar-label">Active intentions</div>
-          ${intentions.slice(0, 3).map(i => html`
-            <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; padding: 3px 0">
-              ${i.intention}
-            </div>
-          `)}
         </div>
       `;
     }
@@ -1201,17 +1138,6 @@
 
           <div class="sidebar-label" style="margin-top: 24px">Timeline</div>
           <${TimelineView} data=${data} />
-
-          ${data.intentions?.length > 0 && html`
-            <div class="sidebar-label" style="margin-top: 24px">Intentions</div>
-            <div>
-              ${data.intentions.slice(0, 8).map(i => html`
-                <div style="font-size: 0.85rem; color: var(--text); line-height: 1.55; padding: 3px 0">
-                  · ${i.intention}
-                </div>
-              `)}
-            </div>
-          `}
         </div>
       `;
     }
@@ -1330,47 +1256,6 @@
             </button>
           `}
         </div>
-      `;
-    }
-
-    // (Intentions view removed — now shown in project sidebar)
-
-    // ---- Rollups View ----
-    // (RollupsView removed — now in sidebar via SidebarRollups)
-
-    // ---- Reviews Page ----
-    function ReviewsPage() {
-      const [reviews, setReviews] = useState(null);
-      const [loading, setLoading] = useState(true);
-      const [expanded, setExpanded] = useState({});
-
-      useEffect(() => {
-        api('/api/reviews').then(d => { setReviews(d.reviews); setLoading(false); });
-      }, []);
-
-      if (loading) return html`<${SkeletonList} />`;
-      if (!reviews?.length) return html`<div class="empty">No reviews yet.</div>`;
-
-      const toggle = (id) => setExpanded(p => ({ ...p, [id]: !p[id] }));
-
-      return html`
-        <div class="page-title">Reviews</div>
-        ${reviews.map(r => html`
-          <div class="card review-card">
-            <div class="card-header">
-              <span class="card-title">${r.subject || r.review_type}</span>
-              <span class="card-date">${r.date}</span>
-            </div>
-            <div class="review-content ${expanded[r.id] ? 'expanded' : ''}">
-              <div class="card-body" style="white-space: pre-wrap">
-                ${r.content_text || r.content_markdown || '(no content)'}
-              </div>
-            </div>
-            <button class="review-expand" onClick=${() => toggle(r.id)}>
-              ${expanded[r.id] ? 'Show less' : 'Show more'}
-            </button>
-          </div>
-        `)}
       `;
     }
 
