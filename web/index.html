@@ -392,6 +392,7 @@
         return { view: 'project', project: decodeURIComponent(parts[1]), section: parts[2] || 'timeline' };
       }
       if (parts[0] === 'costs') return { view: 'costs' };
+      if (parts[0] === 'todos') return { view: 'todos' };
       return { view: 'home' };
     }
 
@@ -555,6 +556,7 @@
             ${refreshing && html`<span class="header-meta refreshing" title="Refreshing…">↻</span>`}
             ${buildTime && html`<span class="header-meta">built ${buildTime}</span>`}
             ${freshness && html`<span class="header-meta">synced ${freshness}</span>`}
+            <button class="header-btn ${route.view === 'todos' ? 'active' : ''}" onClick=${() => navigate('#/todos')}>Todos</button>
             <button class="header-btn ${route.view === 'costs' ? 'active' : ''}" onClick=${() => navigate('#/costs')}>Costs</button>
             ${onAsk && html`<button class="header-btn" onClick=${onAsk} title="Ask (/)">Ask</button>`}
             <button class="header-btn" onClick=${onLogout}>Log out</button>
@@ -675,6 +677,7 @@
             <${ProjectPage} name=${route.project} overview=${overview} section=${route.section} />
           `}
           ${route.view === 'costs' && html`<${CostsOverview} />`}
+          ${route.view === 'todos' && html`<${TodosView} />`}
 
           ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
         </div>
@@ -837,6 +840,80 @@
           </div>
         </div>
       `;
+    }
+
+    // ---- Todos (open GitHub issues across all your repos) ----
+    let todosMemo = null;  // last payload, for instant revisit
+
+    function TodosView() {
+      const [data, setData] = useState(todosMemo);
+      const [loading, setLoading] = useState(!todosMemo);
+
+      useEffect(() => {
+        if (todosMemo) { setData(todosMemo); setLoading(false); }
+        let alive = true;
+        api('/api/todos')
+          .then(d => { todosMemo = d; if (alive) { setData(d); setLoading(false); } })
+          .catch(e => { if (alive && !todosMemo) { setData({ error: e.message }); setLoading(false); } });
+        return () => { alive = false; };
+      }, []);
+
+      const header = html`
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px">
+          <h1 style="margin: 0; font-size: 1.4rem">Todos</h1>
+          ${data && data.total > 0 && html`
+            <span style="font-size: 0.8rem; color: var(--text-secondary)">${data.total} open</span>`}
+        </div>
+        <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 20px">
+          Open GitHub issues across all your repos, grouped by project.
+        </div>`;
+
+      if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading todos…</div></div>`;
+      if (!data || data.error) return html`<div>${header}<div class="cost-placeholder">Couldn't load todos.${data?.error ? ' (' + data.error + ')' : ''}</div></div>`;
+      if (data.configured === false) return html`<div>${header}
+        <div class="cost-placeholder">
+          GitHub isn't connected. Set a <code>GITHUB_TOKEN</code> (read access to issues)
+          in the Vercel project env and redeploy.
+        </div></div>`;
+
+      const projects = data.projects || {};
+      const names = Object.keys(projects).sort((a, b) =>
+        projects[b].length - projects[a].length || a.localeCompare(b));
+      if (!names.length) return html`<div>${header}
+        <div class="empty">No open issues. 🎉</div></div>`;
+
+      const labelColor = (name) => {
+        // Stable hue per label name so the same label reads consistently.
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+        return `hsl(${Math.abs(hash) % 360}, 45%, 45%)`;
+      };
+
+      return html`
+        <div>
+          ${header}
+          ${names.map(p => html`
+            <div style="margin-bottom: 22px">
+              <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px">
+                <a onClick=${() => navigate('#/project/' + encodeURIComponent(p))}
+                   style="font-size: 0.95rem; font-weight: 600; color: var(--text); cursor: pointer; text-decoration: none">
+                  ${p}
+                </a>
+                <span style="font-size: 0.7rem; color: var(--text-secondary)">${projects[p].length}</span>
+              </div>
+              ${projects[p].map(iss => html`
+                <a href=${iss.url} target="_blank" rel="noopener"
+                   style="display: flex; align-items: baseline; gap: 8px; padding: 6px 0;
+                          text-decoration: none; color: var(--text); border-bottom: 1px solid var(--border)">
+                  <span style="font-size: 0.7rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none">#${iss.number}</span>
+                  <span style="font-size: 0.85rem; flex: 1; min-width: 0">${iss.title}</span>
+                  ${iss.labels.map(lb => html`
+                    <span style="font-size: 0.6rem; padding: 1px 6px; border-radius: 8px; flex: none;
+                                 background: ${labelColor(lb)}; color: #fff; white-space: nowrap">${lb}</span>`)}
+                  <span style="font-size: 0.65rem; color: var(--text-secondary); flex: none">${timeAgo(iss.updated_at)}</span>
+                </a>`)}
+            </div>`)}
+        </div>`;
     }
 
     // ---- Costs Overview (all projects, over time) ----

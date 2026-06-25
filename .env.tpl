@@ -17,3 +17,7 @@ TURSO_AUTH_TOKEN=op://dev-secrets/Turso/token
 
 # Cloud dashboard auth
 AUTH_SECRET=op://dev-secrets/Prompt Lab Auth/secret
+
+# Cross-project Todos page: read-only PAT for open-issue search (web/api/todos.py).
+# Also set this in the Vercel project env. GITHUB_USER defaults to nicolovejoy.
+GITHUB_TOKEN=op://dev-secrets/prompt-lab-github-pat/credential

@@ -16,7 +16,7 @@ The Flask local dashboard (`dashboard/`) was retired 2026-05-28 — it had gone 
 cd web && vercel --prod
 ```
 
-Env vars needed in Vercel: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `AUTH_SECRET`, `ANTHROPIC_API_KEY`
+Env vars needed in Vercel: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `AUTH_SECRET`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN` (read-only PAT for the Todos page; optional `GITHUB_USER`, defaults to `nicolovejoy`)
 
 To self-host: fork the repo, create a Turso database, set the env vars above, deploy `web/` to Vercel.
 

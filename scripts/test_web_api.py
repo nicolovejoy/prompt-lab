@@ -429,6 +429,75 @@ def _():
         restore()
 
 
+# === todos.py ===
+
+@test("todos: 401 when not authenticated")
+def _():
+    mod = load_endpoint("web/api/todos.py", "endpoint_todos_unauth")
+    restore_a = patch(mod, is_authenticated=lambda _: False)
+    try:
+        h = invoke(mod, "/api/todos")
+        assert h.status_code == 401, f"got {h.status_code}"
+    finally:
+        restore_a()
+
+
+@test("todos: configured=false when GITHUB_TOKEN unset")
+def _():
+    import os
+    mod = load_endpoint("web/api/todos.py", "endpoint_todos_unconfigured")
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+    saved = os.environ.pop("GITHUB_TOKEN", None)
+    try:
+        h = invoke(mod, "/api/todos")
+        assert h.status_code == 200, f"got {h.status_code}"
+        assert h.body.get("configured") is False
+        assert h.body.get("total") == 0
+    finally:
+        if saved is not None:
+            os.environ["GITHUB_TOKEN"] = saved
+        restore_a()
+
+
+@test("todos: groups issues by repo, folds aliases, excludes PRs")
+def _():
+    import os
+    mod = load_endpoint("web/api/todos.py", "endpoint_todos_group")
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_q = patch_turso_query(
+        mod, lambda *a, **kw: [{"alias": "offer-builder", "canonical": "byside"}])
+
+    fake_items = [
+        {"title": "Fix A", "number": 1, "html_url": "u1", "labels": [{"name": "bug"}],
+         "repository_url": "https://api.github.com/repos/nicolovejoy/offer-builder",
+         "comments": 0, "updated_at": "2026-06-20T00:00:00Z"},
+        {"title": "Fix B", "number": 2, "html_url": "u2", "labels": [],
+         "repository_url": "https://api.github.com/repos/nicolovejoy/prntd",
+         "comments": 1, "updated_at": "2026-06-21T00:00:00Z"},
+        {"title": "A PR", "number": 3, "html_url": "u3", "labels": [],
+         "repository_url": "https://api.github.com/repos/nicolovejoy/prntd",
+         "pull_request": {"url": "x"}, "updated_at": "2026-06-22T00:00:00Z"},
+    ]
+    restore_fetch = patch(mod, _fetch_open_issues=lambda token, user: fake_items)
+    saved = os.environ.get("GITHUB_TOKEN")
+    os.environ["GITHUB_TOKEN"] = "ghp_test"
+    try:
+        h = invoke(mod, "/api/todos")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        projs = h.body["projects"]
+        assert "byside" in projs, f"alias not folded: {list(projs)}"
+        assert "offer-builder" not in projs
+        assert h.body["total"] == 2, f"PR not excluded? total={h.body['total']}"
+    finally:
+        if saved is None:
+            os.environ.pop("GITHUB_TOKEN", None)
+        else:
+            os.environ["GITHUB_TOKEN"] = saved
+        restore_fetch()
+        restore_q()
+        restore_a()
+
+
 # === Main ===
 
 def main() -> int:
