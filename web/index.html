@@ -848,6 +848,7 @@
     function TodosView() {
       const [data, setData] = useState(todosMemo);
       const [loading, setLoading] = useState(!todosMemo);
+      const [expanded, setExpanded] = useState({});  // project -> bool (collapsed by default)
 
       useEffect(() => {
         if (todosMemo) { setData(todosMemo); setLoading(false); }
@@ -859,12 +860,8 @@
       }, []);
 
       const header = html`
-        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px">
-          <h1 style="margin: 0; font-size: 1.4rem">Todos</h1>
-          ${data && data.total > 0 && html`
-            <span style="font-size: 0.8rem; color: var(--text-secondary)">${data.total} open</span>`}
-        </div>
-        <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 20px">
+        <h1 style="margin: 0 0 4px; font-size: 1.4rem">Todos</h1>
+        <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 16px">
           Open GitHub issues across all your repos, grouped by project.
         </div>`;
 
@@ -889,30 +886,58 @@
         return `hsl(${Math.abs(hash) % 360}, 45%, 45%)`;
       };
 
+      const allOpen = names.every(p => expanded[p]);
+      const toggleAll = () => {
+        const next = {};
+        if (!allOpen) names.forEach(p => { next[p] = true; });
+        setExpanded(next);
+      };
+      const toggle = (p) => setExpanded(e => ({ ...e, [p]: !e[p] }));
+
       return html`
         <div>
           ${header}
-          ${names.map(p => html`
-            <div style="margin-bottom: 22px">
-              <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px">
-                <a onClick=${() => navigate('#/project/' + encodeURIComponent(p))}
-                   style="font-size: 0.95rem; font-weight: 600; color: var(--text); cursor: pointer; text-decoration: none">
-                  ${p}
-                </a>
+          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px">
+            <div style="font-size: 1.6rem; font-weight: 700">${data.total}</div>
+            <div style="font-size: 0.78rem; color: var(--text-secondary)">
+              open across ${names.length} project${names.length === 1 ? '' : 's'}
+            </div>
+            <button onClick=${toggleAll}
+              style="margin-left: auto; font-size: 0.7rem; color: var(--accent); background: none;
+                     border: none; cursor: pointer; font-family: inherit">
+              ${allOpen ? 'Collapse all' : 'Expand all'}
+            </button>
+          </div>
+          ${names.map(p => {
+            const isOpen = !!expanded[p];
+            return html`
+            <div style="border-bottom: 1px solid var(--border)">
+              <div style="display: flex; align-items: center; gap: 8px; padding: 10px 0; cursor: pointer"
+                   onClick=${() => toggle(p)}>
+                <span style="font-size: 0.7rem; color: var(--text-secondary); width: 10px; flex: none">${isOpen ? '▾' : '▸'}</span>
+                <span style="font-size: 0.95rem; font-weight: 600">${p}</span>
                 <span style="font-size: 0.7rem; color: var(--text-secondary)">${projects[p].length}</span>
+                <a onClick=${(e) => { e.stopPropagation(); navigate('#/project/' + encodeURIComponent(p)); }}
+                   style="margin-left: auto; font-size: 0.66rem; color: var(--accent); cursor: pointer; text-decoration: none">
+                  project →
+                </a>
               </div>
-              ${projects[p].map(iss => html`
-                <a href=${iss.url} target="_blank" rel="noopener"
-                   style="display: flex; align-items: baseline; gap: 8px; padding: 6px 0;
-                          text-decoration: none; color: var(--text); border-bottom: 1px solid var(--border)">
-                  <span style="font-size: 0.7rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none">#${iss.number}</span>
-                  <span style="font-size: 0.85rem; flex: 1; min-width: 0">${iss.title}</span>
-                  ${iss.labels.map(lb => html`
-                    <span style="font-size: 0.6rem; padding: 1px 6px; border-radius: 8px; flex: none;
-                                 background: ${labelColor(lb)}; color: #fff; white-space: nowrap">${lb}</span>`)}
-                  <span style="font-size: 0.65rem; color: var(--text-secondary); flex: none">${timeAgo(iss.updated_at)}</span>
-                </a>`)}
-            </div>`)}
+              ${isOpen && html`
+                <div style="padding: 0 0 10px 18px">
+                  ${projects[p].map(iss => html`
+                    <a href=${iss.url} target="_blank" rel="noopener"
+                       style="display: flex; align-items: baseline; gap: 8px; padding: 6px 0;
+                              text-decoration: none; color: var(--text); border-top: 1px solid var(--border)">
+                      <span style="font-size: 0.7rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none">#${iss.number}</span>
+                      <span style="font-size: 0.85rem; flex: 1; min-width: 0">${iss.title}</span>
+                      ${iss.labels.map(lb => html`
+                        <span style="font-size: 0.6rem; padding: 1px 6px; border-radius: 8px; flex: none;
+                                     background: ${labelColor(lb)}; color: #fff; white-space: nowrap">${lb}</span>`)}
+                      <span style="font-size: 0.65rem; color: var(--text-secondary); flex: none">${timeAgo(iss.updated_at)}</span>
+                    </a>`)}
+                </div>`}
+            </div>`;
+          })}
         </div>`;
     }
 
