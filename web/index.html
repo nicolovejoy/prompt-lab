@@ -677,7 +677,7 @@
             <${ProjectPage} name=${route.project} overview=${overview} section=${route.section} />
           `}
           ${route.view === 'costs' && html`<${CostsOverview} />`}
-          ${route.view === 'todos' && html`<${TodosView} />`}
+          ${route.view === 'todos' && html`<${TodosView} overview=${overview} />`}
 
           ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
         </div>
@@ -845,10 +845,12 @@
     // ---- Todos (open GitHub issues across all your repos) ----
     let todosMemo = null;  // last payload, for instant revisit
 
-    function TodosView() {
+    function TodosView({ overview }) {
       const [data, setData] = useState(todosMemo);
       const [loading, setLoading] = useState(!todosMemo);
       const [expanded, setExpanded] = useState({});  // project -> bool (collapsed by default)
+      const [showAll, setShowAll] = useState(false);  // tracked projects only vs every owned repo
+      const [query, setQuery] = useState('');
 
       useEffect(() => {
         if (todosMemo) { setData(todosMemo); setLoading(false); }
@@ -862,7 +864,7 @@
       const header = html`
         <h1 style="margin: 0 0 4px; font-size: 1.4rem">Todos</h1>
         <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 16px">
-          Open GitHub issues across all your repos, grouped by project.
+          Open GitHub issues across your repos, grouped by project.
         </div>`;
 
       if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading todos…</div></div>`;
@@ -874,22 +876,48 @@
         </div></div>`;
 
       const projects = data.projects || {};
-      const names = Object.keys(projects).sort((a, b) =>
+      const allNames = Object.keys(projects).sort((a, b) =>
         projects[b].length - projects[a].length || a.localeCompare(b));
-      if (!names.length) return html`<div>${header}
+      if (!allNames.length) return html`<div>${header}
         <div class="empty">No open issues. 🎉</div></div>`;
 
+      // Tracked = projects the dashboard knows about (canonical names). The
+      // endpoint already folds repo→canonical, so these match. Null until the
+      // overview loads, in which case nothing is hidden.
+      const tracked = overview
+        ? new Set([...(overview.all_projects || []), ...Object.keys(overview.by_project || {})])
+        : null;
+      const isTracked = (p) => !tracked || tracked.has(p);
+      const hiddenNames = allNames.filter(p => !isTracked(p));
+      const hiddenRepos = hiddenNames.length;
+      const scoped = showAll ? allNames : allNames.filter(isTracked);
+
+      // Search filters issues within the scoped repos by title / label /
+      // #number / repo name.
+      const q = query.trim().toLowerCase();
+      const matches = (iss, p) => !q
+        || (iss.title || '').toLowerCase().includes(q)
+        || ('#' + iss.number).includes(q)
+        || p.toLowerCase().includes(q)
+        || (iss.labels || []).some(lb => lb.toLowerCase().includes(q));
+      const filtered = scoped
+        .map(p => ({ p, issues: projects[p].filter(iss => matches(iss, p)) }))
+        .filter(x => x.issues.length > 0);
+
+      const shownTotal = filtered.reduce((s, x) => s + x.issues.length, 0);
+
       const labelColor = (name) => {
-        // Stable hue per label name so the same label reads consistently.
         let hash = 0;
         for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
         return `hsl(${Math.abs(hash) % 360}, 45%, 45%)`;
       };
 
-      const allOpen = names.every(p => expanded[p]);
+      // While searching, force every matching repo open so hits are visible.
+      const isOpenFor = (p) => q ? true : !!expanded[p];
+      const allOpen = filtered.every(x => isOpenFor(x.p));
       const toggleAll = () => {
         const next = {};
-        if (!allOpen) names.forEach(p => { next[p] = true; });
+        if (!allOpen) filtered.forEach(x => { next[x.p] = true; });
         setExpanded(next);
       };
       const toggle = (p) => setExpanded(e => ({ ...e, [p]: !e[p] }));
@@ -897,26 +925,45 @@
       return html`
         <div>
           ${header}
-          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px">
-            <div style="font-size: 1.6rem; font-weight: 700">${data.total}</div>
+
+          <input type="text" placeholder="Search issues — title, label, #number, repo"
+            value=${query} onInput=${e => setQuery(e.target.value)}
+            style="width: 100%; box-sizing: border-box; margin-bottom: 14px; padding: 8px 12px;
+                   font-size: 0.85rem; font-family: inherit; color: var(--text);
+                   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius)" />
+
+          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; flex-wrap: wrap">
+            <div style="font-size: 1.6rem; font-weight: 700">${shownTotal}</div>
             <div style="font-size: 0.78rem; color: var(--text-secondary)">
-              open across ${names.length} project${names.length === 1 ? '' : 's'}
+              ${q ? 'matching' : 'open'} across ${filtered.length} project${filtered.length === 1 ? '' : 's'}${showAll ? '' : ' (tracked)'}
             </div>
-            <button onClick=${toggleAll}
-              style="margin-left: auto; font-size: 0.7rem; color: var(--accent); background: none;
-                     border: none; cursor: pointer; font-family: inherit">
-              ${allOpen ? 'Collapse all' : 'Expand all'}
-            </button>
+            <div style="margin-left: auto; display: flex; gap: 12px; align-items: baseline">
+              ${(showAll || hiddenRepos > 0) && html`
+                <button onClick=${() => setShowAll(s => !s)}
+                  style="font-size: 0.7rem; color: var(--accent); background: none; border: none;
+                         cursor: pointer; font-family: inherit">
+                  ${showAll ? 'Tracked only' : `Show all repos (+${hiddenRepos})`}
+                </button>`}
+              <button onClick=${toggleAll}
+                style="font-size: 0.7rem; color: var(--accent); background: none; border: none;
+                       cursor: pointer; font-family: inherit">
+                ${allOpen ? 'Collapse all' : 'Expand all'}
+              </button>
+            </div>
           </div>
-          ${names.map(p => {
-            const isOpen = !!expanded[p];
+
+          ${filtered.length === 0
+            ? html`<div class="empty">No issues match “${query}”.</div>`
+            : filtered.map(({ p, issues }) => {
+            const isOpen = isOpenFor(p);
             return html`
             <div style="border-bottom: 1px solid var(--border)">
               <div style="display: flex; align-items: center; gap: 8px; padding: 10px 0; cursor: pointer"
                    onClick=${() => toggle(p)}>
                 <span style="font-size: 0.7rem; color: var(--text-secondary); width: 10px; flex: none">${isOpen ? '▾' : '▸'}</span>
                 <span style="font-size: 0.95rem; font-weight: 600">${p}</span>
-                <span style="font-size: 0.7rem; color: var(--text-secondary)">${projects[p].length}</span>
+                <span style="font-size: 0.7rem; color: var(--text-secondary)">${issues.length}${q && issues.length !== projects[p].length ? '/' + projects[p].length : ''}</span>
+                ${!isTracked(p) && html`<span style="font-size: 0.58rem; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 0 5px">untracked</span>`}
                 <a onClick=${(e) => { e.stopPropagation(); navigate('#/project/' + encodeURIComponent(p)); }}
                    style="margin-left: auto; font-size: 0.66rem; color: var(--accent); cursor: pointer; text-decoration: none">
                   project →
@@ -924,7 +971,7 @@
               </div>
               ${isOpen && html`
                 <div style="padding: 0 0 10px 18px">
-                  ${projects[p].map(iss => html`
+                  ${issues.map(iss => html`
                     <a href=${iss.url} target="_blank" rel="noopener"
                        style="display: flex; align-items: baseline; gap: 8px; padding: 6px 0;
                               text-decoration: none; color: var(--text); border-top: 1px solid var(--border)">
