@@ -1,4 +1,4 @@
-"""GET /api/overview — week stats, project cards, intentions."""
+"""GET /api/overview — week stats, project cards, activity."""
 
 import json
 from datetime import datetime, timedelta
@@ -57,10 +57,6 @@ class handler(BaseHTTPRequestHandler):
             activity_by_project.setdefault(p, []).append(
                 {"date": row["date"], "prompts": int(row.get("prompt_count") or 0)}
             )
-        intentions = turso_query(
-            "SELECT * FROM intentions WHERE status = ? ORDER BY last_seen DESC",
-            ["active"],
-        )
         snapshots = turso_query(
             "SELECT * FROM project_snapshots ORDER BY snapshot_date DESC"
         )
@@ -78,31 +74,19 @@ class handler(BaseHTTPRequestHandler):
             by_project[p]["summaries"].append(s)
             by_project[p]["days"] += 1
 
-        intentions_by_project = {}
-        for i in intentions:
-            p = _resolve(i["project"], alias_to_canonical)
-            intentions_by_project.setdefault(p, []).append(i)
-
         latest_snapshots = {}
         for s in snapshots:
             p = _resolve(s["project"], alias_to_canonical)
             if p not in latest_snapshots:
                 latest_snapshots[p] = s
 
-        # All known projects (excluding aliases)
-        all_projects = sorted(
-            set(by_project) | set(intentions_by_project)
-        )
+        # All known projects (excluding aliases) — week-active plus any project
+        # that has ever been snapshotted, so the dormant toggle still populates.
+        all_projects = sorted(set(by_project) | set(latest_snapshots))
 
         self._json({
             "week": week,
             "by_project": by_project,
-            "intentions_by_project": {
-                p: [{"intention": i["intention"], "status": i["status"],
-                     "first_seen": i["first_seen"], "last_seen": i["last_seen"]}
-                    for i in items]
-                for p, items in intentions_by_project.items()
-            },
             "latest_snapshots": {
                 p: s.get("data") for p, s in latest_snapshots.items()
             },

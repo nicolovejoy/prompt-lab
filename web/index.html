@@ -99,45 +99,44 @@
       .header-meta { display: none; }
     }
 
-    /* Project grid */
-    .page-title {
-      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 14px;
+    /* Project picker (top-nav) */
+    .picker { position: relative; display: inline-flex; }
+    .picker-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: none; border: none; font-family: inherit; font-size: 1rem;
+      font-weight: 500; color: var(--text-secondary); cursor: pointer; padding: 0;
     }
+    .picker-btn:hover { color: var(--accent-light); }
+    .picker-caret { font-size: 0.65rem; opacity: 0.7; }
+    .picker-menu {
+      position: absolute; top: 100%; left: 0; margin-top: 8px;
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      min-width: 200px; max-height: 60vh; overflow-y: auto; padding: 4px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index: 50;
+    }
+    .picker-section {
+      font-size: 0.6rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--text-secondary); padding: 8px 10px 3px;
+    }
+    .picker-item {
+      display: block; width: 100%; text-align: left; padding: 7px 10px;
+      font-size: 0.85rem; color: var(--text); background: none; border: none;
+      cursor: pointer; border-radius: 5px; font-family: inherit;
+    }
+    .picker-item:hover { background: var(--card-hover); }
+    .picker-item.active { color: var(--accent-light); font-weight: 600; }
+
+    /* Cost placeholder (loading / no-spend states) */
+    .cost-placeholder {
+      margin-top: 16px; padding: 16px; background: var(--card);
+      border: 1px solid var(--border); border-radius: 6px;
+      font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;
+    }
+
     .overview-stats {
       font-size: 1rem; color: var(--text-secondary); margin-bottom: 24px;
     }
     .overview-stats strong { color: var(--text); }
-    .project-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
-    @media (max-width: 700px) { .project-grid { grid-template-columns: 1fr; } }
-    .project-card {
-      background: var(--card); padding: 20px 22px; border: 1px solid var(--border);
-      border-radius: var(--radius); cursor: pointer; transition: border-color 0.15s;
-    }
-    .project-card:hover { border-color: var(--text-secondary); }
-    .project-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-    .health-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .health-green { background: var(--green); }
-    .health-yellow { background: var(--yellow); }
-    .health-gray { background: var(--text-secondary); opacity: 0.4; }
-    .project-card-name { font-weight: 600; font-size: 1.1rem; flex: 1; letter-spacing: -0.3px; }
-    .activity-dots { display: flex; gap: 2px; align-items: center; }
-    .activity-dot { width: 6px; height: 14px; border-radius: 2px; }
-    .activity-dot-0 { background: var(--border); }
-    .activity-dot-1 { background: var(--accent); opacity: 0.3; }
-    .activity-dot-2 { background: var(--accent); opacity: 0.6; }
-    .activity-dot-3 { background: var(--accent); opacity: 1; }
-    .project-card-bullets {
-      list-style: none; padding: 0; margin: 0;
-    }
-    .project-card-bullets li {
-      font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6;
-      padding-left: 12px; position: relative;
-    }
-    .project-card-bullets li::before {
-      content: '·'; position: absolute; left: 0; color: var(--text-secondary);
-      font-weight: 700;
-    }
 
     /* Project page */
     .project-header { margin-bottom: 24px; }
@@ -325,6 +324,35 @@
     }
     .ask-example:hover { color: var(--text); }
 
+    /* Machine-voice marker (AI-authored text — tenet #1) */
+    .machine { font-style: italic; color: var(--text-secondary); }
+    .machine-mark {
+      display: inline-block; margin-left: 8px;
+      font-style: normal; font-size: 0.6rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6;
+      font-family: "SF Mono", ui-monospace, monospace; white-space: nowrap;
+    }
+
+    /* Section labels (project page Now/Trajectory/Cost/History) */
+    .section-label {
+      font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--text-secondary);
+      margin: 28px 0 12px;
+    }
+    .section-label:first-child { margin-top: 0; }
+
+    /* Stream (home cross-project feed) */
+    .stream-project {
+      font-weight: 600; color: var(--text); cursor: pointer; text-decoration: none;
+    }
+    .stream-project:hover { color: var(--accent-light); }
+    .dormant-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .dormant-chip {
+      font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;
+      padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+    }
+    .dormant-chip:hover { border-color: var(--text-secondary); color: var(--text); }
+
     /* Misc */
     .loading { text-align: center; padding: 40px; color: var(--text-secondary); font-size: 0.85rem; }
     .error { color: var(--red); text-align: center; padding: 20px; font-size: 0.85rem; }
@@ -340,8 +368,6 @@
       50% { opacity: 0.3; }
     }
     .skeleton-card { height: 80px; margin-bottom: 10px; }
-    .skeleton-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    @media (max-width: 600px) { .skeleton-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -410,6 +436,11 @@
       try { return JSON.parse(str || '[]'); } catch { return fallback; }
     }
 
+    // ---- Machine-voice marker (wraps AI-authored text — tenet #1) ----
+    function MachineText({ children, mark = true }) {
+      return html`<span class="machine">${children}${mark && html`<span class="machine-mark">↳ from claude</span>`}</span>`;
+    }
+
     // ---- Login ----
     function Login({ onLogin }) {
       const [password, setPassword] = useState('');
@@ -447,8 +478,37 @@
       `;
     }
 
+    // ---- Project Picker (top-nav, Vercel-style) ----
+    function ProjectPicker({ current, active, dormant }) {
+      const [open, setOpen] = useState(false);
+      const ref = useRef(null);
+      useEffect(() => {
+        const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+        document.addEventListener('click', onDoc);
+        return () => document.removeEventListener('click', onDoc);
+      }, []);
+      const go = (p) => { setOpen(false); navigate('#/project/' + encodeURIComponent(p)); };
+      const item = (p) => html`
+        <button class="picker-item ${p === current ? 'active' : ''}" onClick=${() => go(p)}>${p}</button>`;
+      return html`
+        <span class="picker" ref=${ref}>
+          <button class="picker-btn" onClick=${() => setOpen(o => !o)}>
+            ${current}<span class="picker-caret">▾</span>
+          </button>
+          ${open && html`
+            <div class="picker-menu">
+              ${active.length > 0 && html`<div class="picker-section">Active</div>`}
+              ${active.map(item)}
+              ${dormant.length > 0 && html`<div class="picker-section">Dormant</div>`}
+              ${dormant.map(item)}
+            </div>
+          `}
+        </span>
+      `;
+    }
+
     // ---- Header ----
-    function Header({ route, info, role, onLogout, onAsk }) {
+    function Header({ route, info, role, onLogout, onAsk, active, dormant }) {
       const freshness = info?.data_freshness ? timeAgo(info.data_freshness) : null;
       // build_time arrives as ISO 8601 UTC; show it in Pacific time
       // (PDT/PST handled automatically by the Intl API).
@@ -472,7 +532,7 @@
             <a class="header-logo" onClick=${() => navigate('#/')}>Prompt Lab</a>
             ${route.view === 'project' && html`
               <span class="header-sep">/</span>
-              <span class="breadcrumb">${route.project}</span>
+              <${ProjectPicker} current=${route.project} active=${active} dormant=${dormant} />
             `}
           </div>
           <div class="header-right">
@@ -486,12 +546,6 @@
     }
 
     // ---- Skeleton Loaders ----
-    function SkeletonGrid() {
-      return html`<div class="skeleton-grid">
-        ${[1,2,3,4].map(() => html`<div class="skeleton skeleton-card"></div>`)}
-      </div>`;
-    }
-
     function SkeletonList() {
       return html`<div>
         ${[1,2,3].map(() => html`<div class="skeleton skeleton-card"></div>`)}
@@ -553,12 +607,19 @@
       if (authed === null) return html`<div class="loading">Loading...</div>`;
       if (!authed) return html`<${Login} onLogin=${(r) => { setAuthed(true); setRole(r || 'admin'); }} />`;
 
+      // Project lists for the top-nav picker: active (recency-sorted) then dormant.
+      const bp = overview?.by_project || {};
+      const active = Object.keys(bp).sort((a, b) =>
+        (bp[b]?.summaries?.[0]?.date || '').localeCompare(bp[a]?.summaries?.[0]?.date || ''));
+      const dormant = (overview?.all_projects || []).filter(p => !active.includes(p)).sort();
+
       return html`
         <div class="container">
           <${Header} route=${route} info=${info} role=${role} onLogout=${logout}
+            active=${active} dormant=${dormant}
             onAsk=${role === 'admin' ? () => setAskOpen(true) : null} />
 
-          ${loading && !overview && html`<${SkeletonGrid} />`}
+          ${loading && !overview && html`<${SkeletonList} />`}
           ${error && html`
             <div class="error">
               <p>${error}</p>
@@ -569,7 +630,7 @@
           `}
 
           ${overview && route.view === 'home' && html`
-            <${ProjectGrid} overview=${overview} />
+            <${HomeView} overview=${overview} />
           `}
           ${overview && route.view === 'project' && html`
             <${ProjectPage} name=${route.project} overview=${overview} section=${route.section} />
@@ -580,123 +641,102 @@
       `;
     }
 
-    // ---- Activity Dots (GitHub-style heat colors) ----
-    function ActivityDots({ activity }) {
-      // activity = [{date, prompts}, ...] from last 30 days
-      const byDate = {};
-      for (const a of activity) byDate[a.date] = a.prompts;
-
-      const today = new Date();
-      const dots = [];
-      for (let i = 13; i >= 0; i--) {
-        const d = new Date(today);
-        d.setDate(d.getDate() - i);
-        const ds = d.toISOString().slice(0, 10);
-        const count = byDate[ds] || 0;
-        // 4 levels: 0=none, 1=light(1-5), 2=medium(6-15), 3=dark(16+)
-        const level = count === 0 ? 0 : count <= 5 ? 1 : count <= 15 ? 2 : 3;
-        dots.push(level);
-      }
-      return html`
-        <div class="activity-dots" title="Last 14 days">
-          ${dots.map(lv => html`<div class="activity-dot activity-dot-${lv}"></div>`)}
-        </div>
-      `;
+    // ---- Distill a summary row into a short phrase ----
+    function distillPhrase(s) {
+      const decisions = tryParseJson(s.key_decisions);
+      if (decisions.length > 0) return decisions[0];
+      const words = (s.summary || '').split(' ');
+      return words.slice(0, 12).join(' ') + (words.length > 12 ? '...' : '');
     }
 
-    // ---- Distill key decisions into short bullets ----
-    function distillBullets(summaries, max = 3) {
-      const bullets = [];
-      for (const s of summaries) {
-        const decisions = tryParseJson(s.key_decisions);
-        for (const d of decisions) {
-          // Truncate each to ~6 words
-          const words = d.split(' ');
-          const short = words.slice(0, 6).join(' ') + (words.length > 6 ? '...' : '');
-          if (!bullets.includes(short) && bullets.length < max) bullets.push(short);
-        }
-        if (bullets.length >= max) break;
-      }
-      // Fallback: if no key decisions, use first words of summary
-      if (bullets.length === 0 && summaries.length > 0 && summaries[0].summary) {
-        const words = summaries[0].summary.split(' ');
-        bullets.push(words.slice(0, 6).join(' ') + (words.length > 6 ? '...' : ''));
-      }
-      return bullets;
-    }
-
-    // ---- Project Grid (Home) ----
-    function ProjectGrid({ overview }) {
-      const { week, by_project, activity_by_project } = overview;
+    // ---- Home: cross-project activity stream ----
+    function HomeView({ overview }) {
+      const { week, by_project } = overview;
+      const [expanded, setExpanded] = useState({});
       const [showDormant, setShowDormant] = useState(false);
+      const toggle = (id) => setExpanded(p => ({ ...p, [id]: !p[id] }));
 
-      const activeProjects = Object.keys(by_project)
-        .filter(p => by_project[p]?.summaries?.length > 0)
-        .sort((a, b) => {
-          const da = by_project[a]?.summaries?.[0]?.date || '';
-          const db = by_project[b]?.summaries?.[0]?.date || '';
-          return db.localeCompare(da);
-        });
+      // Flatten every project's daily summaries into one reverse-chron feed.
+      const items = [];
+      for (const p of Object.keys(by_project)) {
+        for (const s of (by_project[p]?.summaries || [])) {
+          items.push({ id: p + '-' + s.date, project: p, date: s.date, data: s,
+                       phrase: distillPhrase(s), decisions: tryParseJson(s.key_decisions) });
+        }
+      }
+      items.sort((a, b) => b.date.localeCompare(a.date) || a.project.localeCompare(b.project));
 
+      const activeProjects = new Set(items.map(i => i.project));
       const dormantProjects = (overview.all_projects || [])
-        .filter(p => !activeProjects.includes(p))
-        .sort();
+        .filter(p => !activeProjects.has(p)).sort();
 
-      const renderCard = (p, dormant) => {
-        const data = by_project[p] || { summaries: [], days: 0 };
-        const latest = data.summaries?.[0];
-        const activity = activity_by_project?.[p] || [];
-        const lastDate = latest?.date;
-        const daysAgo = lastDate
-          ? Math.floor((new Date() - new Date(lastDate + 'T00:00:00')) / 86400000)
-          : 999;
-        const healthClass = dormant ? 'health-gray' : daysAgo <= 1 ? 'health-green' : daysAgo <= 7 ? 'health-yellow' : 'health-gray';
-        const bullets = dormant ? [] : distillBullets(data.summaries);
+      // Group by date for the timeline rail.
+      const groups = [];
+      let cur = null;
+      for (const item of items) {
+        if (item.date !== cur) { cur = item.date; groups.push({ date: cur, items: [] }); }
+        groups[groups.length - 1].items.push(item);
+      }
 
-        return html`
-          <div class="project-card" style="${dormant ? 'opacity: 0.5' : ''}"
-            onClick=${() => navigate('#/project/' + encodeURIComponent(p))}>
-            <div class="project-card-top">
-              <div class="health-dot ${healthClass}"></div>
-              <span class="project-card-name">${p}</span>
-              <${ActivityDots} activity=${activity} />
-            </div>
-            ${bullets.length > 0 && html`
-              <ul class="project-card-bullets">
-                ${bullets.map(b => html`<li>${b}</li>`)}
-              </ul>
-            `}
-          </div>
-        `;
-      };
+      const open = (p) => navigate('#/project/' + encodeURIComponent(p));
 
       return html`
         <div class="overview-stats">
           <strong>${week.sessions}</strong> sessions · <strong>${week.prompts}</strong> prompts · <strong>${week.commits}</strong> commits this week
         </div>
 
-        ${activeProjects.length === 0 && html`
-          <div class="empty">No project activity in the last 7 days.</div>
-        `}
-
-        <div class="project-grid">
-          ${activeProjects.map(p => renderCard(p, false))}
-        </div>
+        ${items.length === 0
+          ? html`<div class="empty">No project activity in the last 7 days.</div>`
+          : html`
+            <div class="timeline">
+              ${groups.map(g => html`
+                <div class="timeline-date">${g.date}</div>
+                ${g.items.map(item => {
+                  const isOpen = expanded[item.id];
+                  const s = item.data;
+                  return html`
+                    <div class="timeline-entry" onClick=${() => toggle(item.id)}>
+                      <a class="stream-project" onClick=${(e) => { e.stopPropagation(); open(item.project); }}>${item.project}</a>
+                      <span class="timeline-phrase" style="margin-left: 6px">${item.phrase}</span>
+                      ${isOpen && html`
+                        <div class="timeline-expand">
+                          <div class="timeline-expand-summary">
+                            <${MachineText}>${s.summary}<//>
+                          </div>
+                          ${item.decisions.length > 0 && html`
+                            <ul class="timeline-expand-decisions">
+                              ${item.decisions.map(d => html`<li>${d}</li>`)}
+                            </ul>
+                          `}
+                          <div class="timeline-expand-counts">
+                            <span><strong>${s.prompt_count || 0}</strong> prompts</span>
+                            <span><strong>${s.session_count || 0}</strong> sessions</span>
+                            <span><strong>${s.commit_count || 0}</strong> commits</span>
+                          </div>
+                        </div>
+                      `}
+                    </div>
+                  `;
+                })}
+              `)}
+            </div>
+          `}
 
         ${dormantProjects.length > 0 && html`
-          <div style="text-align: center; margin-bottom: 20px">
+          <div style="margin-top: 24px">
             <button style="font-size: 0.85rem; color: var(--text-secondary); background: none;
-              border: none; cursor: pointer; font-family: inherit; padding: 6px 12px"
+              border: none; cursor: pointer; font-family: inherit; padding: 6px 0"
               onClick=${() => setShowDormant(!showDormant)}>
               ${showDormant ? 'Hide' : 'Show'} ${dormantProjects.length} dormant project${dormantProjects.length > 1 ? 's' : ''}
             </button>
+            ${showDormant && html`
+              <div class="dormant-list">
+                ${dormantProjects.map(p => html`
+                  <span class="dormant-chip" onClick=${() => open(p)}>${p}</span>
+                `)}
+              </div>
+            `}
           </div>
-
-          ${showDormant && html`
-            <div class="project-grid">
-              ${dormantProjects.map(p => renderCard(p, true))}
-            </div>
-          `}
         `}
       `;
     }
@@ -776,9 +816,14 @@
           .catch(e => { setData({ error: e.message }); setLoading(false); });
       }, [project]);
 
-      if (loading || !data || data.error) return null;
+      if (loading) return html`<div class="cost-placeholder">Loading cost…</div>`;
+      if (!data || data.error) return null;
       const costs = data.costs || [];
-      if (!costs.length) return null;
+      if (!costs.length) return html`
+        <div class="cost-placeholder">
+          No API spend in the last 30 days.
+          <span style="opacity: 0.7">Claude Code (subscription) work isn't attributed per project.</span>
+        </div>`;
 
       // Aggregate per-date totals across models. byDateModel keeps the
       // per-model split so the hover tooltip can show a breakdown.
@@ -1118,25 +1163,34 @@
                 ${siteLabel && html`<a class="project-link" href=${siteUrl} target="_blank" rel="noopener">${siteLabel}</a>`}
               </div>
             </div>
-            <div class="project-meta">
-              ${inception && html`<span>Since ${inception}</span>`}
-              ${inception && (snapshot.session_count_7d || snapshot.commit_count_7d) && html`<span> · </span>`}
-              ${snapshot.session_count_7d ? html`<span>${snapshot.session_count_7d} sessions</span>` : null}
-              ${snapshot.commit_count_7d ? html`<span> · ${snapshot.commit_count_7d} commits (7d)</span>` : null}
-            </div>
-            ${stateSummary && html`
-              <div class="project-summary" style="cursor: ${hasMore ? 'pointer' : 'default'}"
-                   onClick=${() => hasMore && setSummaryOpen(v => !v)}>
-                ${summaryOpen ? stateSummary : teaser}
-                ${hasMore && html`<span style="color: var(--text-secondary); margin-left: 6px">
-                  ${summaryOpen ? '⌃' : '⌄'}</span>`}
-              </div>
-            `}
-            <${ActivityHeatmap} activity=${data.activity} />
-            <${CostChart} project=${name} />
           </div>
 
-          <div class="sidebar-label" style="margin-top: 24px">Timeline</div>
+          <div class="section-label">Now</div>
+          <div class="project-meta">
+            ${inception && html`<span>Since ${inception}</span>`}
+            ${inception && (snapshot.session_count_7d || snapshot.commit_count_7d) && html`<span> · </span>`}
+            ${snapshot.session_count_7d ? html`<span>${snapshot.session_count_7d} sessions</span>` : null}
+            ${snapshot.commit_count_7d ? html`<span> · ${snapshot.commit_count_7d} commits (7d)</span>` : null}
+          </div>
+          ${stateSummary
+            ? html`
+              <div class="project-summary" style="cursor: ${hasMore ? 'pointer' : 'default'}"
+                   onClick=${() => hasMore && setSummaryOpen(v => !v)}>
+                <${MachineText}>
+                  ${summaryOpen ? stateSummary : teaser}
+                  ${hasMore && html`<span style="margin-left: 6px">${summaryOpen ? '⌃' : '⌄'}</span>`}
+                <//>
+              </div>
+            `
+            : html`<div class="project-summary">No state summary yet.</div>`}
+
+          <div class="section-label">Trajectory</div>
+          <${ActivityHeatmap} activity=${data.activity} />
+
+          <div class="section-label">Cost</div>
+          <${CostChart} project=${name} />
+
+          <div class="section-label">History</div>
           <${TimelineView} data=${data} />
         </div>
       `;
@@ -1194,7 +1248,7 @@
                     <span class="timeline-phrase">${item.phrase}</span>
                     ${isOpen && html`
                       <div class="timeline-expand">
-                        <div class="timeline-expand-summary">${s.summary}</div>
+                        <div class="timeline-expand-summary"><${MachineText}>${s.summary}<//></div>
                         ${item.decisions.length > 0 && html`
                           <ul class="timeline-expand-decisions">
                             ${item.decisions.map(d => html`<li>${d}</li>`)}
@@ -1219,7 +1273,7 @@
                   <div class="timeline-entry rollup" onClick=${() => toggle(item.id)}>
                     <span class="timeline-rollup-label">Week of ${r.week_start}</span>
                     <span class="timeline-phrase" style="margin-left: 6px">
-                      ${isOpen ? r.narrative : teaser}
+                      ${isOpen ? html`<${MachineText}>${r.narrative}<//>` : teaser}
                     </span>
                     ${isOpen && highlights.length > 0 && html`
                       <div class="card-tags" style="margin-top: 6px">
@@ -1295,9 +1349,7 @@
         setAsking(true); setError(null); setAnswer(null);
 
         const bp = overview.by_project || {};
-        const ip = overview.intentions_by_project || {};
         const allSummaries = [];
-        const allIntentions = [];
 
         // Scope to project if specified
         const projects = project ? [project] : Object.keys(bp);
@@ -1305,17 +1357,10 @@
           for (const s of (bp[p]?.summaries || []))
             allSummaries.push('[' + s.date + '] ' + p + ': ' + s.summary);
         }
-        const intentionProjects = project ? [project] : Object.keys(ip);
-        for (const p of intentionProjects) {
-          for (const i of (ip[p] || []))
-            allIntentions.push('[' + p + '] ' + i.intention + ' (' + i.status + ', since ' + i.first_seen + ')');
-        }
 
         const ctx = [
           project ? '== ' + project + ' summaries (last 7 days) ==' : '== Daily summaries (last 7 days) ==',
-          ...allSummaries.slice(0, 30), '',
-          '== Active intentions ==',
-          ...allIntentions,
+          ...allSummaries.slice(0, 30),
         ].join('\n');
 
         try {
@@ -1336,7 +1381,7 @@
       ] : [
         'What did I work on this week?',
         'Which project needs attention?',
-        'Summarize my active intentions',
+        'Summarize this week across projects',
       ];
 
       return html`
