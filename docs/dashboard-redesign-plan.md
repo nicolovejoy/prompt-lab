@@ -1,6 +1,6 @@
 # Dashboard redesign plan — hybrid "triage-over-stream"
 
-Status: proposed (2026-06-24). No code yet. Supersedes the ad-hoc "header + heatmap + cost + timeline + intentions stack" that CLAUDE.md flags as having "no clear above-the-fold frame."
+Status: **Phase 1 shipped 2026-06-24** (home stream, Now/Trajectory/Cost/History project pages, machine-voice markers, project picker, cost states, 4 dead endpoints deleted; plus a follow-on perf commit — SWR/memo/prefetch). Phase 2 (triage band, admin-only) and Phase 3 (ops/health signals) still pending. Superseded the ad-hoc "header + heatmap + cost + timeline + intentions stack."
 
 ## Problem
 
