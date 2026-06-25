@@ -7,8 +7,10 @@
 
     <key>ProgramArguments</key>
     <array>
+        <string>/bin/sh</string>
+        <string>__REPO_DIR__/workflow/run-cost-pull.sh</string>
         <string>__PYTHON3__</string>
-        <string>__REPO_DIR__/pull_api_costs.py</string>
+        <string>__REPO_DIR__</string>
     </array>
 
     <key>StartCalendarInterval</key>

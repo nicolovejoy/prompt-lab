@@ -346,6 +346,89 @@ def _():
         restore()
 
 
+# === cost_overview.py ===
+
+@test("cost_overview: 401 when not authenticated")
+def _():
+    mod = load_endpoint("web/api/cost_overview.py", "endpoint_costov_unauth")
+    restore_q = patch_turso_query(mod, lambda *a, **kw: [])
+    restore_a = patch(mod, is_authenticated=lambda _: False)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/cost_overview")
+        assert h.status_code == 401, f"got {h.status_code}"
+    finally:
+        restore()
+
+
+@test("cost_overview: folds raw project names into canonical and re-sums")
+def _():
+    mod = load_endpoint("web/api/cost_overview.py", "endpoint_costov_fold")
+
+    def fake_turso(sql, args=None):
+        if "FROM project_aliases" in sql:
+            return [{"alias": "offer-builder", "canonical": "byside"}]
+        if "FROM api_costs" in sql:
+            # Same date+model under canonical + alias → should collapse to one row.
+            return [
+                {"date": "2026-06-01", "project": "byside",
+                 "model": "claude-sonnet-4-6", "cost_usd": 1.0},
+                {"date": "2026-06-01", "project": "offer-builder",
+                 "model": "claude-sonnet-4-6", "cost_usd": 0.5},
+                {"date": "2026-06-01", "project": "prompt-lab",
+                 "model": "claude-opus-4-8", "cost_usd": 2.0},
+            ]
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/cost_overview?since=2026-05-01")
+        assert h.status_code == 200, f"got {h.status_code}"
+        rows = h.body["rows"]
+        byside = [r for r in rows if r["project"] == "byside"]
+        assert len(byside) == 1, f"expected aliases folded into one byside row, got {byside}"
+        assert abs(byside[0]["cost_usd"] - 1.5) < 1e-9, f"got {byside[0]}"
+        assert not any(r["project"] == "offer-builder" for r in rows), "alias name leaked"
+        assert any(r["project"] == "prompt-lab" for r in rows)
+    finally:
+        restore()
+
+
+@test("cost_overview: passes since/until as date bounds")
+def _():
+    mod = load_endpoint("web/api/cost_overview.py", "endpoint_costov_bounds")
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/cost_overview?since=2026-05-01&until=2026-06-01")
+        assert h.status_code == 200
+        cost_calls = [(s, a) for s, a in captured if "FROM api_costs" in s]
+        assert cost_calls, "no api_costs query emitted"
+        sql, args = cost_calls[0]
+        assert "date >= ?" in sql and "date <= ?" in sql, f"sql: {sql}"
+        assert "2026-05-01" in args and "2026-06-01" in args, f"args: {args}"
+    finally:
+        restore()
+
+
 # === Main ===
 
 def main() -> int:

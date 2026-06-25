@@ -44,6 +44,15 @@ A fresh install or new machine needs all four steps. Once seeded, the
 LaunchAgent (`workflow/com.promptlab.api-costs.plist`, daily at 02:30) handles
 incremental pulls.
 
+**The nightly job pulls AND syncs** (`workflow/run-cost-pull.sh`: `pull_api_costs.py`
+then `sync_to_turso.py --days 7`). This coupling is load-bearing: the pull writes
+only to local SQLite, but the cloud dashboard reads Turso. Before 2026-06-25 the
+agent ran the pull alone, so local ran ~a month ahead of Turso and the dashboard
+showed a stale, partially-`__unmapped__` snapshot while local was correct. If the
+dashboard ever looks stale again, suspect the sync half: check `pull_api_costs.log`
+for the "Syncing last 7 days" block, and compare local vs Turso
+`SELECT MAX(date) FROM api_costs`.
+
 1. **Mint an admin key.** Console → Settings → Admin Keys; format `sk-ant-admin-…`.
    Store in 1Password at `op://dev-secrets/admin-cost-tracking-2026-05/credential`
    and surface it as `ANTHROPIC_ADMIN_KEY` in the local env (`.env.local`).

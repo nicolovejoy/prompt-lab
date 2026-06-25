@@ -95,6 +95,7 @@
       border-radius: 4px;
     }
     .header-btn:hover { color: var(--text); background: var(--card); }
+    .header-btn.active { color: var(--text); background: var(--card); }
     @media (max-width: 600px) {
       .header-meta { display: none; }
     }
@@ -390,6 +391,7 @@
       if (parts[0] === 'project' && parts[1]) {
         return { view: 'project', project: decodeURIComponent(parts[1]), section: parts[2] || 'timeline' };
       }
+      if (parts[0] === 'costs') return { view: 'costs' };
       return { view: 'home' };
     }
 
@@ -553,6 +555,7 @@
             ${refreshing && html`<span class="header-meta refreshing" title="Refreshing…">↻</span>`}
             ${buildTime && html`<span class="header-meta">built ${buildTime}</span>`}
             ${freshness && html`<span class="header-meta">synced ${freshness}</span>`}
+            <button class="header-btn ${route.view === 'costs' ? 'active' : ''}" onClick=${() => navigate('#/costs')}>Costs</button>
             ${onAsk && html`<button class="header-btn" onClick=${onAsk} title="Ask (/)">Ask</button>`}
             <button class="header-btn" onClick=${onLogout}>Log out</button>
           </div>
@@ -671,6 +674,7 @@
           ${overview && route.view === 'project' && html`
             <${ProjectPage} name=${route.project} overview=${overview} section=${route.section} />
           `}
+          ${route.view === 'costs' && html`<${CostsOverview} />`}
 
           ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
         </div>
@@ -833,6 +837,236 @@
           </div>
         </div>
       `;
+    }
+
+    // ---- Costs Overview (all projects, over time) ----
+    const COST_PALETTE = ['#6366f1','#22c55e','#eab308','#ef4444','#06b6d4',
+                          '#ec4899','#f97316','#a855f7'];
+    const COST_OTHER = '#555';
+    const costOverviewMemo = new Map();  // window(days) -> payload
+
+    function fmtUsd(n) {
+      return '$' + (Number(n) || 0).toLocaleString('en-US',
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function fmtShortDate(iso) {
+      const [, m, d] = iso.split('-');
+      const months = ['Jan','Feb','Mar','Apr','May','Jun',
+                      'Jul','Aug','Sep','Oct','Nov','Dec'];
+      return months[parseInt(m, 10) - 1] + ' ' + parseInt(d, 10);
+    }
+
+    function CostsOverview() {
+      const [days, setDays] = useState(30);
+      const [data, setData] = useState(() => costOverviewMemo.get(30) || null);
+      const [loading, setLoading] = useState(!costOverviewMemo.has(30));
+      const [sortBy, setSortBy] = useState('cost');  // 'cost' | 'name'
+      const [hovered, setHovered] = useState(null);   // date index
+
+      useEffect(() => {
+        const cached = costOverviewMemo.get(days);
+        if (cached) { setData(cached); setLoading(false); }
+        else { setData(null); setLoading(true); }
+        const since = new Date(Date.now() - days * 86400_000)
+          .toISOString().slice(0, 10);
+        let alive = true;
+        api('/api/cost_overview?since=' + since)
+          .then(d => { costOverviewMemo.set(days, d); if (alive) { setData(d); setLoading(false); } })
+          .catch(e => { if (alive && !cached) { setData({ error: e.message }); setLoading(false); } });
+        return () => { alive = false; };
+      }, [days]);
+
+      const windowPicker = html`
+        <div style="display: flex; gap: 4px">
+          ${[30, 90, 365].map(d => html`
+            <button onClick=${() => setDays(d)}
+              style="font-size: 0.72rem; padding: 4px 10px; border-radius: 4px;
+                     cursor: pointer; font-family: inherit;
+                     border: 1px solid var(--border);
+                     background: ${days === d ? 'var(--accent)' : 'transparent'};
+                     color: ${days === d ? '#fff' : 'var(--text-secondary)'}">
+              ${d === 365 ? '1y' : d + 'd'}
+            </button>`)}
+        </div>`;
+
+      const header = html`
+        <div style="display: flex; justify-content: space-between; align-items: baseline;
+                    flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
+          <h1 style="margin: 0; font-size: 1.4rem">Costs</h1>
+          ${windowPicker}
+        </div>
+        <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 20px">
+          API spend across all projects. Claude Code (subscription) usage isn't
+          attributable per project, so subscription-only projects read $0 here —
+          these totals are API spend, not all spend.
+        </div>`;
+
+      if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading costs…</div></div>`;
+      if (!data || data.error) return html`<div>${header}<div class="cost-placeholder">Couldn't load costs.</div></div>`;
+
+      const rows = data.rows || [];
+      if (!rows.length) return html`<div>${header}
+        <div class="cost-placeholder">No API spend in this window.</div></div>`;
+
+      // Aggregate.
+      const byProject = {}, byModel = {}, byDate = {}, byDateProject = {};
+      for (const r of rows) {
+        const v = Number(r.cost_usd) || 0;
+        byProject[r.project] = (byProject[r.project] || 0) + v;
+        byModel[r.model] = (byModel[r.model] || 0) + v;
+        byDate[r.date] = (byDate[r.date] || 0) + v;
+        (byDateProject[r.date] ||= {})[r.project] =
+          (byDateProject[r.date]?.[r.project] || 0) + v;
+      }
+      const total = Object.values(byProject).reduce((s, v) => s + v, 0);
+
+      // Rank projects by spend; top 8 get colors, the rest fold into "other".
+      const ranked = Object.entries(byProject).sort((a, b) => b[1] - a[1]);
+      const colorOf = {};
+      ranked.forEach(([p], i) => { colorOf[p] = i < COST_PALETTE.length ? COST_PALETTE[i] : COST_OTHER; });
+      const namedProjects = ranked.slice(0, COST_PALETTE.length).map(e => e[0]);
+      const namedSet = new Set(namedProjects);
+      const hasOther = ranked.length > COST_PALETTE.length;
+      const segColor = (p) => namedSet.has(p) ? colorOf[p] : COST_OTHER;
+
+      // Continuous calendar axis: one bar per day in the window (zero-filled),
+      // so a window with only a few spend-days still renders thin, evenly-spaced
+      // bars instead of two giant ones.
+      const dates = [];
+      for (let i = days - 1; i >= 0; i--) {
+        dates.push(new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10));
+      }
+      const peak = Math.max(...Object.values(byDate), 0.0001);
+      const CHART_H = 140;
+      const n = dates.length;
+      const tickIdxs = new Set();
+      if (n > 0) { const k = Math.min(6, n); for (let i = 0; i < k; i++) tickIdxs.add(Math.round((i * (n - 1)) / (k - 1))); }
+
+      // Legend rows (sortable).
+      const legend = [...ranked];
+      if (sortBy === 'name') legend.sort((a, b) => a[0].localeCompare(b[0]));
+
+      const models = Object.entries(byModel).sort((a, b) => b[1] - a[1]);
+
+      const panel = (children) => html`
+        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated, var(--card));
+                    border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
+
+      return html`
+        <div>
+          ${header}
+
+          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px">
+            <div style="font-size: 1.6rem; font-weight: 700">${fmtUsd(total)}</div>
+            <div style="font-size: 0.78rem; color: var(--text-secondary)">
+              total · last ${days === 365 ? 'year' : days + ' days'}
+            </div>
+          </div>
+
+          ${panel(html`
+            <div style="display: grid; grid-template-columns: 56px 1fr; gap: 8px">
+              <div style="display: flex; flex-direction: column; justify-content: space-between;
+                          align-items: flex-end; height: ${CHART_H}px; font-size: 0.62rem;
+                          color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace">
+                <span>${fmtUsd(peak)}</span>
+                <span>${fmtUsd(peak / 2)}</span>
+                <span>$0</span>
+              </div>
+              <div>
+                <div style="display: flex; gap: 2px; align-items: stretch; height: ${CHART_H}px;
+                            border-bottom: 1px solid var(--border)">
+                  ${dates.map((d, i) => {
+                    const dayTotal = byDate[d] || 0;
+                    const barH = dayTotal > 0 ? Math.max(1, Math.round((dayTotal / peak) * (CHART_H - 4))) : 0;
+                    const isHovered = hovered === i;
+                    const edge = n > 1 ? i / (n - 1) : 0.5;
+                    const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
+                    // Stack segments within the bar, biggest project at the bottom.
+                    const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
+                    return html`
+                      <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: default"
+                           onMouseEnter=${() => setHovered(i)}
+                           onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}>
+                        <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
+                                    display: flex; flex-direction: column-reverse;
+                                    border-radius: 2px 2px 0 0; overflow: hidden;
+                                    opacity: ${isHovered ? 1 : 0.85}; transition: opacity 0.1s">
+                          ${segs.map(([p, v]) => html`
+                            <div style="height: ${(v / dayTotal) * 100}%; background: ${segColor(p)}"></div>`)}
+                        </div>
+                        ${isHovered && dayTotal > 0 && html`
+                          <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
+                                      ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
+                                      background: var(--bg); border: 1px solid var(--border);
+                                      border-radius: 6px; padding: 8px 10px; white-space: nowrap;
+                                      box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.7rem">
+                            <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${fmtUsd(dayTotal)}</div>
+                            ${segs.slice(0, 6).map(([p, v]) => html`
+                              <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
+                                <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(p)}; display: inline-block"></span>
+                                <span style="color: var(--text)">${p}</span>
+                                <span style="margin-left: auto">${fmtUsd(v)}</span>
+                              </div>`)}
+                            ${segs.length > 6 && html`<div style="color: var(--text-secondary)">+${segs.length - 6} more</div>`}
+                          </div>`}
+                      </div>`;
+                  })}
+                </div>
+                <div style="display: flex; gap: 2px; margin-top: 4px">
+                  ${dates.map((d, i) => html`
+                    <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.55rem;
+                                color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
+                                overflow: visible; white-space: nowrap">
+                      ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
+                    </div>`)}
+                </div>
+              </div>
+            </div>
+          `)}
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px">
+                <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary);
+                            font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase">
+                  By project
+                </div>
+                <button onClick=${() => setSortBy(s => s === 'cost' ? 'name' : 'cost')}
+                  style="font-size: 0.66rem; color: var(--accent); background: none; border: none;
+                         cursor: pointer; font-family: inherit">
+                  sort: ${sortBy} ↕
+                </button>
+              </div>
+              ${legend.map(([p, v]) => html`
+                <a href="#/project/${encodeURIComponent(p)}/cost"
+                   style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
+                          text-decoration: none; color: var(--text); border-bottom: 1px solid var(--border)">
+                  <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(p)}; flex: none"></span>
+                  <span style="font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${p}</span>
+                  <span style="margin-left: auto; font-size: 0.62rem; color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
+                  <span style="font-size: 0.82rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${fmtUsd(v)}</span>
+                </a>`)}
+              ${hasOther && html`
+                <div style="font-size: 0.62rem; color: var(--text-secondary); padding-top: 6px">
+                  ${ranked.length - COST_PALETTE.length} smaller projects share the “other” color.
+                </div>`}
+            </div>
+
+            <div>
+              <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary);
+                          font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
+                By model
+              </div>
+              ${models.map(([m, v]) => html`
+                <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
+                            border-bottom: 1px solid var(--border)">
+                  <span style="font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${m}</span>
+                  <span style="margin-left: auto; font-size: 0.62rem; color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
+                  <span style="font-size: 0.82rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${fmtUsd(v)}</span>
+                </div>`)}
+            </div>
+          </div>
+        </div>`;
     }
 
     // ---- Cost Chart (daily API spend per project) ----
