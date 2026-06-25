@@ -7,7 +7,7 @@ How project data is stored, how public and private data are separated, and who c
 Everything lives in `~/.claude/prompt-history.db` — local SQLite, one copy per machine (mini + laptop) — accessed through the `store/` abstraction (`KnowledgeStore` ABC; SQLite backend by default, Turso HTTP backend for the cloud; `get_store()` selects via the `GROUND_CONTROL_STORE` env var). Tables fall into three tiers by how far they travel:
 
 1. **Raw / private — never leaves your machines.** `prompts`, `sessions`, `commits`. `sync_to_turso.py` deliberately does NOT push raw prompts or sessions. Actual prompt text exists only on mini/laptop.
-2. **Processed / private — synced to Turso, auth-gated.** `daily_summaries`, `weekly_rollups`, `intentions`, `project_snapshots`, `review_snapshots`, `project_workspaces`, `api_usage`, `api_costs`, `claude_code_usage`, `project_aliases`. Claude-generated summaries that may contain project detail; visible on the cloud dashboard only after login.
+2. **Processed / private — synced to Turso, auth-gated.** `daily_summaries`, `weekly_rollups`, `project_snapshots`, `review_snapshots`, `project_workspaces`, `api_usage`, `api_costs`, `claude_code_usage`, `project_aliases`. Claude-generated summaries that may contain project detail; visible on the cloud dashboard only after login.
 3. **Public — synced to Turso, served with no auth.** `public_session_summaries`, `public_weekly_rollups`. Scrubbed, de-identified text only.
 
 The Turso cloud DB is isolated in its own `promptlab` group (own signing key), so its token can't be derived from any other Turso group.
@@ -46,7 +46,7 @@ The public endpoint has **no read-time allowlist** — it serves whatever rows e
 ```
 Claude Code hooks ─→ local SQLite (raw: prompts/sessions/commits)
                          │
-   synthesizer / handoff ─→ processed tables (summaries, intentions, costs)
+   synthesizer / handoff ─→ processed tables (summaries, rollups, costs)
                          │
         sync_to_turso.py ─→ Turso  (processed + public; NEVER raw prompts/sessions)
                          │                    │

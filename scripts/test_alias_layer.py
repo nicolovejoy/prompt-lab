@@ -121,49 +121,6 @@ def _():
     assert s.canonical_projects(["old", "other", "new"]) == ["new", "other"]
 
 
-# === _dedupe_intentions ===
-
-@test("_dedupe_intentions: keeps row with max(last_seen); lowers first_seen to min across group")
-def _():
-    s = make_store()
-    # Drop the unique index so we can plant duplicate rows.
-    s._conn.execute("DROP INDEX idx_intentions_project_intention")
-    s._conn.executescript("""
-        INSERT INTO intentions (project, intention, first_seen, last_seen, status)
-            VALUES ('p','i','2026-01-01','2026-01-10','active');
-        INSERT INTO intentions (project, intention, first_seen, last_seen, status)
-            VALUES ('p','i','2025-12-01','2026-01-15','stalled');
-        INSERT INTO intentions (project, intention, first_seen, last_seen, status)
-            VALUES ('p','i','2026-01-05','2026-01-12','active');
-    """)
-    s._dedupe_intentions()
-    s._conn.commit()
-    rows = list(s._conn.execute(
-        "SELECT first_seen, last_seen, status FROM intentions "
-        "WHERE project='p' AND intention='i'"
-    ).fetchall())
-    assert len(rows) == 1, f"expected 1 row, got {len(rows)}"
-    r = rows[0]
-    assert r["first_seen"] == "2025-12-01", f"first_seen={r['first_seen']!r}"
-    assert r["last_seen"] == "2026-01-15", f"last_seen={r['last_seen']!r}"
-    # status comes from the row with max last_seen (the keeper)
-    assert r["status"] == "stalled", f"status={r['status']!r}"
-
-
-@test("_dedupe_intentions: no-op when no duplicates exist")
-def _():
-    s = make_store()
-    s._conn.execute(
-        "INSERT INTO intentions (project, intention, first_seen, last_seen) "
-        "VALUES ('p','i','2026-01-01','2026-01-10')"
-    )
-    s._conn.commit()
-    s._dedupe_intentions()
-    s._conn.commit()
-    count = s._conn.execute("SELECT COUNT(*) FROM intentions").fetchone()[0]
-    assert count == 1
-
-
 # === get_unsummarized_days ===
 
 @test("get_unsummarized_days: no aliases, prompts but no summary → returned")

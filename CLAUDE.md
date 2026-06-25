@@ -1,6 +1,6 @@
 # prompt-lab
 
-**Prompt Lab** — overview dashboard for tracking agent sessions, todos, intentions, and themes across projects. Data from `~/.claude/prompt-history.db`.
+**Prompt Lab** — overview dashboard for tracking agent sessions, todos, and themes across projects. Data from `~/.claude/prompt-history.db`.
 
 ## Run
 
@@ -24,7 +24,7 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 
 - `store/` — backend-agnostic KnowledgeStore ABC + SQLite (default) and Turso implementations
 - `claude_api.py` — shared Claude API utilities, centralized env loading (.env, .env.local)
-- `synthesizer.py` — nightly: daily summaries, weekly rollups, intentions, project snapshots
+- `synthesizer.py` — nightly: daily summaries, weekly rollups, project snapshots
 - `send-review.py` — nightly email via Resend, saves to review_snapshots
 - `generate-report.py` — bi-monthly markdown report, saves to review_snapshots
 - `sync_to_turso.py` — pushes processed tables to Turso (no raw prompts)
@@ -47,8 +47,8 @@ This repo coordinates with selected-projects (the consumer of `public_session_su
 
 ## Next Steps
 
-### Intentions deprecated (SHIPPED 2026-06-23)
-Froze intention *generation* — they fed only minor read surfaces (dashboard sidebar, `/roadmap`, `/ask` context; not the email/report) and the data had bloated far past its 3-8/project target (musicforge 180 "active", ibuild4you 97), so the displayed slice was arbitrary noise. Dropped `/handoff` §3.5 and removed intentions from the nightly synthesizer `--all` path (`synthesizer.py`). **Kept reversible:** the `intentions` table, store methods, `web/api/intentions.py` read endpoint, and the explicit `synthesizer.py --intentions` flag all remain — existing rows just age out; the sidebar/`/roadmap` go quiet. Announced in `BULLETIN.md` for other agents. If goal-tracking returns, the real fix is the completion/abandon logic (it never fired), not more writes.
+### Intentions fully removed (REMOVED 2026-06-24; deprecated 2026-06-23)
+First froze *generation* (2026-06-23); then removed the feature entirely (2026-06-24) after Nico manually purged the rows — the data was noise (bloated past its 3-8/project target: musicforge 180 "active", ibuild4you 97) and nothing rendered it after the dashboard redesign. **Gone now, not reversible:** the `intentions` table (dropped local; **Turso copy still needs a manual `turso db shell promptlab "DROP TABLE IF EXISTS intentions;"`** — blocked from automation, harmless meanwhile since nothing reads it), all store methods (`get_intentions`/`upsert_intention`/`get_projects_needing_intentions_refresh` + the `_dedupe_intentions` helper), `web/api/intentions.py`, the `synthesizer.py --intentions` flag + `synthesize_intentions()`, the intentions sync in `sync_to_turso.py`, the `/roadmap` + `gc-read.sh` intentions subcommands, the mobile PWA's IntentionsTab, and the orphaned `themes.intention_ids` column. Tests updated (test_web_api dropped the intentions/rollups/summaries endpoint sections; test_alias_layer dropped the `_dedupe_intentions` tests); all green. If goal-tracking ever returns, build it fresh — the old completion/abandon logic never fired.
 
 ### prompt-labs.org de-indexed from search (SHIPPED 2026-06-22)
 Policy A (DE-INDEX) for the auth-gated dashboard: added `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet` on `/(.*)` in `web/vercel.json` + `<meta name="robots">` in `web/index.html`; `robots.txt` already `Disallow: /`. Verified live (header + robots.txt + served meta). Not Next.js so no `app/robots.ts` layer. Doesn't touch `/api/public_history` (server-to-server, not browsed).

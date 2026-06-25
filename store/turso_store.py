@@ -142,19 +142,6 @@ class TursoKnowledgeStore(KnowledgeStore):
                 )
             """},
             {"sql": """
-                CREATE TABLE IF NOT EXISTS intentions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    project TEXT NOT NULL,
-                    intention TEXT NOT NULL,
-                    evidence TEXT,
-                    status TEXT DEFAULT 'active',
-                    first_seen TEXT NOT NULL,
-                    last_seen TEXT NOT NULL,
-                    model TEXT,
-                    created_at TEXT DEFAULT (datetime('now'))
-                )
-            """},
-            {"sql": """
                 CREATE TABLE IF NOT EXISTS review_snapshots (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     review_type TEXT NOT NULL,
@@ -323,41 +310,6 @@ class TursoKnowledgeStore(KnowledgeStore):
                     ON claude_code_usage(customer_type, date)
             """},
         ])
-        self._dedupe_intentions()
-        self._execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_intentions_project_intention "
-            "ON intentions(project, intention)"
-        )
-
-    def _dedupe_intentions(self) -> None:
-        """Collapse duplicate (project, intention) rows before the unique index is created.
-
-        Keeps the row with MAX(last_seen); promotes first_seen to MIN across the group.
-        Idempotent: a no-op when no duplicates exist.
-        """
-        result = self._execute("""
-            SELECT project, intention,
-                   MIN(first_seen) AS min_first_seen,
-                   MAX(last_seen)  AS max_last_seen
-            FROM intentions
-            GROUP BY project, intention
-            HAVING COUNT(*) > 1
-        """)
-        for g in self._rows_to_dicts(result):
-            keeper = self._row_to_dict(self._execute(
-                "SELECT id FROM intentions "
-                "WHERE project = ? AND intention = ? AND last_seen = ? "
-                "ORDER BY id LIMIT 1",
-                [g["project"], g["intention"], g["max_last_seen"]],
-            ))
-            if not keeper:
-                continue
-            self._execute_many([
-                ("UPDATE intentions SET first_seen = ? WHERE id = ?",
-                 [g["min_first_seen"], keeper["id"]]),
-                ("DELETE FROM intentions WHERE project = ? AND intention = ? AND id != ?",
-                 [g["project"], g["intention"], keeper["id"]]),
-            ])
 
     # ---- Daily summaries ----
 
@@ -470,68 +422,12 @@ class TursoKnowledgeStore(KnowledgeStore):
             args.append(limit)
         return self._rows_to_dicts(self._execute(sql, args))
 
-    # ---- Intentions ----
-
-    def get_intentions(self, *, project=None, status="active"):
-        clauses, args = ["1=1"], []
-        if project:
-            pc, pa = self._project_clause(project)
-            clauses.append(pc)
-            args.extend(pa)
-        if status and status != "all":
-            clauses.append("status = ?")
-            args.append(status)
-        sql = f"SELECT * FROM intentions WHERE {' AND '.join(clauses)} ORDER BY last_seen DESC"
-        return self._rows_to_dicts(self._execute(sql, args))
-
-    def upsert_intention(self, *, id, project, intention,
-                         evidence_summary_ids, status, model):
-        today = datetime.now().strftime("%Y-%m-%d")
-        self._execute("""
-            INSERT INTO intentions
-                (project, intention, evidence, status, first_seen, last_seen, model)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(project, intention) DO UPDATE SET
-                status = excluded.status,
-                last_seen = excluded.last_seen,
-                model = excluded.model,
-                evidence = (
-                    SELECT json_group_array(value) FROM (
-                        SELECT DISTINCT value FROM (
-                            SELECT value FROM json_each(intentions.evidence)
-                            UNION ALL
-                            SELECT value FROM json_each(excluded.evidence)
-                        )
-                    )
-                )
-        """, [project, intention, json.dumps(evidence_summary_ids),
-              status, today, today, model])
-
     def get_projects_with_recent_summaries(self, n_days=14):
         cutoff = (datetime.now() - timedelta(days=n_days)).strftime("%Y-%m-%d")
         result = self._execute(
             "SELECT DISTINCT project FROM daily_summaries WHERE date >= ?",
             [cutoff]
         )
-        return [r["project"] for r in self._rows_to_dicts(result)]
-
-    def get_projects_needing_intentions_refresh(self, today):
-        today_dt = datetime.strptime(today, "%Y-%m-%d")
-        active_since = (today_dt - timedelta(days=14)).strftime("%Y-%m-%d")
-        fresh_since = (today_dt - timedelta(days=1)).strftime("%Y-%m-%d")
-        result = self._execute("""
-            SELECT DISTINCT ds.project
-            FROM daily_summaries ds
-            WHERE ds.date >= ?
-              AND NOT EXISTS (
-                SELECT 1 FROM intentions i
-                WHERE i.project = COALESCE(
-                    (SELECT canonical FROM project_aliases WHERE alias = ds.project),
-                    ds.project
-                )
-                AND i.last_seen >= ?
-              )
-        """, [active_since, fresh_since])
         return [r["project"] for r in self._rows_to_dicts(result)]
 
     def get_project_aliases(self):
@@ -813,7 +709,6 @@ class TursoKnowledgeStore(KnowledgeStore):
         result = self._execute("""
             SELECT DISTINCT project FROM (
                 SELECT DISTINCT project FROM daily_summaries
-                UNION SELECT DISTINCT project FROM intentions
                 UNION SELECT DISTINCT project FROM weekly_rollups
             ) ORDER BY project
         """)
@@ -826,7 +721,6 @@ class TursoKnowledgeStore(KnowledgeStore):
 
     def get_project_detail(self, name):
         summaries = self.get_daily_summaries(project=name, limit=7)
-        intentions = self.get_intentions(project=name, status="active")
         snapshot = self.get_project_snapshot(name)
 
         return {
@@ -837,7 +731,6 @@ class TursoKnowledgeStore(KnowledgeStore):
             "created_at": None,
             "session_count": snapshot["data"].get("session_count_7d", 0) if snapshot else 0,
             "last_session": None,
-            "intentions": [i["intention"] for i in intentions[:3]],
             "daily_summaries": summaries,
         }
 
@@ -845,7 +738,6 @@ class TursoKnowledgeStore(KnowledgeStore):
         summaries_7d = self.get_daily_summaries(
             since=(datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
         )
-        intentions = self.get_intentions(status="active")
         aliases = self.get_project_aliases()
 
         # Aggregate from summaries, folding aliases into canonicals
@@ -859,11 +751,6 @@ class TursoKnowledgeStore(KnowledgeStore):
             projects_data[p]["commits"] += s.get("commit_count", 0) or 0
             projects_data[p]["days"] += 1
 
-        intentions_by_project = {}
-        for i in intentions:
-            p = aliases.get(i["project"], i["project"])
-            intentions_by_project.setdefault(p, []).append(i["intention"])
-
         total_prompts = sum(d["prompts"] for d in projects_data.values())
         total_sessions = sum(d["sessions"] for d in projects_data.values())
         total_commits = sum(d["commits"] for d in projects_data.values())
@@ -874,8 +761,6 @@ class TursoKnowledgeStore(KnowledgeStore):
                                   "avg_tokens": None, "peak_tokens": None}
                              for p, d in projects_data.items()},
             "last_sessions": {},
-            "intentions_by_project": intentions_by_project,
-            "intention_last_seen": {},
             "project_statuses": {},
         }
 

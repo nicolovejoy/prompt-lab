@@ -50,7 +50,7 @@ class KnowledgeStore(ABC):
     """Backend-agnostic interface for storing and retrieving processed knowledge.
 
     Implementations provide storage for daily summaries, weekly rollups,
-    intentions, review snapshots, and project snapshots — plus access to
+    review snapshots, and project snapshots — plus access to
     raw session/prompt data for pipeline input.
     """
 
@@ -118,36 +118,8 @@ class KnowledgeStore(ABC):
                                     since: str | None = None,
                                     limit: int | None = None) -> list[dict]: ...
 
-    # ---- Intentions ----
-
-    @abstractmethod
-    def get_intentions(self, *, project: str | None = None,
-                       status: str | None = "active") -> list[dict]: ...
-
-    @abstractmethod
-    def upsert_intention(self, *, id: int | None, project: str, intention: str,
-                         evidence_summary_ids: list[int], status: str,
-                         model: str) -> None:
-        """Create or update an intention.
-
-        If id is None, creates a new intention with first_seen=today.
-        If id is provided, updates status, last_seen, and appends evidence.
-        """
-
     @abstractmethod
     def get_projects_with_recent_summaries(self, n_days: int = 14) -> list[str]: ...
-
-    @abstractmethod
-    def get_projects_needing_intentions_refresh(self, today: str) -> list[str]:
-        """Active projects whose intentions weren't refreshed yesterday or today.
-
-        Active = has a daily summary within the last 14 days from `today`.
-        Fresh = at least one intention with `last_seen` ≥ yesterday.
-
-        Used by the nightly synthesizer as a safety net for projects that
-        skipped /handoff. Alias-aware: `daily_summaries.project` (raw) is
-        mapped to `intentions.project` (canonical) via project_aliases.
-        """
 
     @abstractmethod
     def get_project_aliases(self) -> dict[str, str]:

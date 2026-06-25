@@ -296,10 +296,9 @@
           const weekAgo = new Date(now - 7 * 86400000).toISOString().slice(0, 10);
           const monthAgo = new Date(now - 30 * 86400000).toISOString().slice(0, 10);
 
-          const [summaries, rollups, intentions, reviews, snapshots] = await Promise.all([
+          const [summaries, rollups, reviews, snapshots] = await Promise.all([
             tursoQuery('SELECT * FROM daily_summaries WHERE date >= ? ORDER BY date DESC', [weekAgo]),
             tursoQuery('SELECT * FROM weekly_rollups ORDER BY week_start DESC LIMIT 20'),
-            tursoQuery('SELECT * FROM intentions WHERE status = ? ORDER BY last_seen DESC', ['active']),
             tursoQuery('SELECT id, review_type, date, subject, content_text, content_markdown, model FROM review_snapshots ORDER BY created_at DESC LIMIT 10'),
             tursoQuery('SELECT * FROM project_snapshots ORDER BY snapshot_date DESC'),
           ]);
@@ -319,13 +318,6 @@
             byProject[s.project].push(s);
           }
 
-          // Group intentions by project
-          const intentionsByProject = {};
-          for (const i of intentions) {
-            if (!intentionsByProject[i.project]) intentionsByProject[i.project] = [];
-            intentionsByProject[i.project].push(i);
-          }
-
           // Latest snapshot per project
           const latestSnapshots = {};
           for (const s of snapshots) {
@@ -336,11 +328,10 @@
           const allProjects = new Set();
           summaries.forEach(s => allProjects.add(s.project));
           rollups.forEach(r => allProjects.add(r.project));
-          intentions.forEach(i => allProjects.add(i.project));
 
           setData({
-            weekStats, summaries, rollups, intentions, reviews,
-            byProject, intentionsByProject, latestSnapshots,
+            weekStats, summaries, rollups, reviews,
+            byProject, latestSnapshots,
             projects: Object.keys(byProject).sort(),
             allProjects: [...allProjects].sort(),
           });
@@ -370,7 +361,7 @@
           <button onClick=${disconnect} style="margin-top: 12px; margin-left: 8px; padding: 8px 16px; background: var(--card); color: var(--text); border: 1px solid var(--border);">Disconnect</button>
         </div>`;
 
-      const tabs = ['overview', 'rollups', 'intentions', ...(askEnabled ? ['ask'] : []), 'reviews'];
+      const tabs = ['overview', 'rollups', ...(askEnabled ? ['ask'] : []), 'reviews'];
 
       // Filter data by selected project
       const fp = selectedProject;
@@ -378,7 +369,6 @@
         ...data,
         projects: fp ? data.projects.filter(p => p === fp) : data.projects,
         byProject: fp ? { [fp]: data.byProject[fp] || [] } : data.byProject,
-        intentionsByProject: fp ? { [fp]: data.intentionsByProject[fp] || [] } : data.intentionsByProject,
         weekStats: fp ? (() => {
           const s = (data.byProject[fp] || []);
           return { prompts: s.reduce((a, x) => a + parseInt(x.prompt_count || 0), 0),
@@ -387,7 +377,6 @@
         })() : data.weekStats,
       };
       const filteredRollups = fp ? data.rollups.filter(r => r.project === fp) : data.rollups;
-      const filteredIntentions = fp ? data.intentions.filter(i => i.project === fp) : data.intentions;
 
       return html`
         <header>
@@ -414,7 +403,6 @@
 
         ${tab === 'overview' && html`<${OverviewTab} data=${filtered} />`}
         ${tab === 'rollups' && html`<${RollupsTab} rollups=${filteredRollups} />`}
-        ${tab === 'intentions' && html`<${IntentionsTab} intentions=${filteredIntentions} />`}
         ${tab === 'ask' && html`<${AskTab} data=${data} project=${fp} />`}
         ${tab === 'reviews' && html`<${ReviewsTab} reviews=${data.reviews} />`}
       `;
@@ -422,7 +410,7 @@
 
     // ---- Tabs ----
     function OverviewTab({ data }) {
-      const { weekStats, projects, byProject, intentionsByProject } = data;
+      const { weekStats, projects, byProject } = data;
 
       return html`
         <div class="stats">
@@ -451,13 +439,6 @@
             <div class="card-body">
               ${byProject[p][0]?.summary || ''}
             </div>
-            ${intentionsByProject[p]?.length > 0 && html`
-              <div class="card-tags">
-                ${intentionsByProject[p].slice(0, 3).map(i => html`
-                  <span class="tag active">${i.intention.length > 40 ? i.intention.slice(0, 40) + '...' : i.intention}</span>
-                `)}
-              </div>
-            `}
           </div>
         `)}
       `;
@@ -486,34 +467,6 @@
             </div>
           `;
         })}
-      `;
-    }
-
-    function IntentionsTab({ intentions }) {
-      if (!intentions.length) return html`<div class="empty">No active intentions</div>`;
-
-      // Group by project
-      const byProject = {};
-      for (const i of intentions) {
-        if (!byProject[i.project]) byProject[i.project] = [];
-        byProject[i.project].push(i);
-      }
-
-      return html`
-        ${Object.entries(byProject).map(([project, items]) => html`
-          <div class="section-title">${project}</div>
-          ${items.map(i => html`
-            <div class="card">
-              <div class="card-header">
-                <span class="card-body">${i.intention}</span>
-                <span class="tag ${i.status}">${i.status}</span>
-              </div>
-              <div class="card-date" style="margin-top: 4px">
-                since ${i.first_seen}${i.last_seen !== i.first_seen ? ` · last seen ${i.last_seen}` : ''}
-              </div>
-            </div>
-          `)}
-        `)}
       `;
     }
 
@@ -563,9 +516,6 @@
         const rollups = project
           ? data.rollups.filter(r => r.project === project)
           : data.rollups;
-        const intentions = project
-          ? data.intentions.filter(i => i.project === project)
-          : data.intentions;
 
         const ctx = [
           '== Daily summaries (last 7 days) ==',
@@ -573,9 +523,6 @@
           '',
           '== Weekly rollups ==',
           ...rollups.slice(0, 12).map(r => `[${r.project} / week of ${r.week_start}] ${r.narrative}`),
-          '',
-          '== Active intentions ==',
-          ...intentions.map(i => `[${i.project}] ${i.intention} (${i.status}, since ${i.first_seen})`),
         ].join('\n');
 
         try {

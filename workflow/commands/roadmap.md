@@ -1,6 +1,6 @@
 ---
 name: roadmap
-description: Read-only digest of this project's roadmap — Next Steps from CLAUDE.md + open GitHub issues + active intentions
+description: Read-only digest of this project's roadmap — Next Steps from CLAUDE.md + open GitHub issues
 allowed-tools: Bash(~/.claude/bin/gc-read.sh:*), Bash(gh:*), Bash(sed:*), Read
 ---
 
@@ -10,7 +10,6 @@ Show a terse roadmap for the current project. Read-only — never edits CLAUDE.m
 
 1. CLAUDE.md Next Steps section: `sed -n '/^## Next Steps/,$p' CLAUDE.md` (skip silently if no such section exists)
 2. Open GitHub issues: `gh issue list --state open --limit 10 --json number,title,labels` (may prompt for permission; skip silently if `gh` is unavailable or not a GitHub repo)
-3. Active intentions (synthesized from prompt history): `~/.claude/bin/gc-read.sh intentions`
 
 ## Then
 
@@ -25,14 +24,10 @@ Next steps (from CLAUDE.md):
 Open issues:
 - #<num> <title>
 - (or: "none" if empty)
-
-Active intentions (synthesized):
-- <top 3, prefer items that match Next Steps themes>
 ```
 
 Rules:
 - Do not invent items not in the sources
-- If an intention duplicates a Next Step or issue, omit it
 - Prefer items mentioning concrete files/features over vague ones
 - No prose intro, no recap, no "Suggest" line (that's /pulse's job)
-- If all three sources are empty, say "No roadmap data" and stop
+- If both sources are empty, say "No roadmap data" and stop

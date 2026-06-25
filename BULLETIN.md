@@ -10,24 +10,23 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
-## 2026-06-23 — Intentions deprecated (prompt-lab)
+## 2026-06-24 — Intentions fully removed (prompt-lab)
 
 Scope: prompt-lab (informational for all)
 
-"Intentions" (the synthesized per-project goal list) are no longer generated.
-They fed only minor read surfaces (dashboard sidebar, `/roadmap`, `/ask`
-context) and the data had bloated far past its 3-8/project target (one project
-hit 180 "active"), so the displayed slice was arbitrary noise.
+"Intentions" (the synthesized per-project goal list) are **gone**, not just
+frozen. Deprecated 2026-06-23 (generation off), then removed entirely on
+2026-06-24 after the rows were purged — the data was noise (one project hit
+180 "active") and nothing rendered it after the dashboard redesign.
 
-- `/handoff` no longer refreshes them (the old §3.5 step is gone — handoff is
-  shorter and has one fewer traceback surface).
-- The nightly synthesizer's `--all` run no longer includes them.
-- The `intentions` table, store methods, read endpoints, and the explicit
-  `synthesizer.py --intentions` flag all remain — this is a generation freeze,
-  not a rip-out, fully reversible. Existing rows just age out.
+Removed: the `intentions` table (dropped local; Turso copy pending a manual
+`turso db shell promptlab "DROP TABLE IF EXISTS intentions;"`), all store
+methods, `web/api/intentions.py`, the `synthesizer.py --intentions` flag +
+`synthesize_intentions()`, the sync, the `/roadmap` + `gc-read.sh` intentions
+subcommands, and the mobile PWA's IntentionsTab.
 
-Don't add new intention-generation calls. If the goal-tracking idea returns,
-the real fix is the completion/abandon logic (it never fired), not more writes.
+This is a rip-out, not reversible. If goal-tracking ever returns, build it
+fresh — the old completion/abandon logic never fired.
 
 ## 2026-06-06 — Cloud (remote) agent sessions
 

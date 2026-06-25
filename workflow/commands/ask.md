@@ -16,12 +16,6 @@ Recent daily summaries:
 sqlite3 -header ~/.claude/prompt-history.db "SELECT date, project, summary, key_decisions FROM daily_summaries ORDER BY date DESC LIMIT 30;"
 ```
 
-Active intentions:
-
-```bash
-sqlite3 -header ~/.claude/prompt-history.db "SELECT project, intention, status, first_seen, last_seen FROM intentions WHERE status = 'active' ORDER BY last_seen DESC;"
-```
-
 Weekly rollups:
 
 ```bash

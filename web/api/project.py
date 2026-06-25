@@ -34,10 +34,6 @@ class handler(BaseHTTPRequestHandler):
             f"SELECT * FROM daily_summaries WHERE project IN ({placeholders}) ORDER BY date DESC LIMIT 30",
             names,
         )
-        intentions = turso_query(
-            f"SELECT * FROM intentions WHERE project IN ({placeholders}) AND status = ? ORDER BY last_seen DESC",
-            names + ["active"],
-        )
         snapshot = turso_query(
             f"SELECT * FROM project_snapshots WHERE project IN ({placeholders}) ORDER BY snapshot_date DESC LIMIT 1",
             names,
@@ -72,7 +68,6 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps({
             "name": name,
             "summaries": summaries,
-            "intentions": intentions,
             "rollups": rollups,
             "snapshot": snapshot_data,
             "activity": activity,

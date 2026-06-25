@@ -32,7 +32,6 @@ PROJECT_TABLES = [
     "sessions",
     "daily_summaries",
     "weekly_rollups",
-    "intentions",
     "project_snapshots",
     "public_session_summaries",
     "public_weekly_rollups",

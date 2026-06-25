@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthesizer — generates daily summaries, weekly rollups, intentions, and project snapshots."""
+"""Synthesizer — generates daily summaries, weekly rollups, and project snapshots."""
 
 import argparse
 import json
@@ -33,31 +33,6 @@ SUMMARY_TOOL = {
         "required": ["summary", "key_decisions"],
     },
 }
-
-INTENTIONS_TOOL = {
-    "name": "generate_intentions",
-    "description": "Analyze recent work and return project intentions.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "intentions": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "intention": {"type": "string"},
-                        "status": {"type": "string", "enum": ["active", "completed", "stalled", "abandoned"]},
-                        "id": {"type": ["integer", "null"]},
-                    },
-                    "required": ["intention", "status", "id"],
-                },
-                "description": "List of project intentions",
-            },
-        },
-        "required": ["intentions"],
-    },
-}
-
 
 # ---------------------------------------------------------------------------
 # Synthesis functions
@@ -124,97 +99,6 @@ Focus on WHAT was done and WHY, not low-level details. Be concise."""
         except Exception as e:
             store.log_synthesis(
                 run_type="daily", target_date=date, project=project,
-                model=SONNET, input_tokens=0, output_tokens=0,
-                cost_cents=0, duration_ms=0, status="error",
-                error_message=str(e),
-            )
-            print(f"ERROR: {e}")
-
-
-def synthesize_intentions(store, client):
-    """Refresh intentions for projects whose /handoff hasn't already done so today.
-
-    Safety net for the inline /handoff intentions step: catches projects with a
-    daily summary today but no intention updated today.
-    """
-    today = datetime.now().strftime("%Y-%m-%d")
-    projects = store.get_projects_needing_intentions_refresh(today)
-    if not projects:
-        print("No projects need intentions refresh (all caught up by /handoff).")
-        return
-
-    aliases = store.get_project_aliases()
-
-    def canonical(name):
-        return aliases.get(name, name)
-
-    print(f"Updating intentions for {len(projects)} project(s).")
-
-    for project in projects:
-        canon = canonical(project)
-        print(f"  Intentions for {canon}...", end=" ", flush=True)
-
-        summaries = store.get_daily_summaries(project=project, limit=14)
-        summary_texts = []
-        summary_ids = []
-        for s in summaries:
-            summary_texts.append(f"[{s['date']}] {s['summary']}")
-            summary_ids.append(s["id"])
-
-        current_intentions = store.get_intentions(project=canon, status="active")
-
-        current_text = ""
-        if current_intentions:
-            current_text = "\n\nCurrent active intentions:\n" + "\n".join(
-                f"- [ID {i['id']}] {i['intention']} (since {i['first_seen']})"
-                for i in current_intentions
-            )
-
-        user_msg = f"""Project: {project}
-
-Recent daily summaries (last 14 days):
-{chr(10).join(summary_texts)}
-{current_text}"""
-
-        system = """You analyze a developer's recent work to identify project intentions (goals/directions).
-- For existing intentions: include their ID and update status if needed
-- For new intentions: set id to null
-- An intention is a high-level goal like "Add user authentication" or "Migrate to new DB schema"
-- Mark intentions completed if the summaries show the work is done
-- Mark stalled if no recent activity on that goal
-- Keep the list focused: 3-8 intentions per project max"""
-
-        try:
-            result = call_claude(client, model=SONNET, system=system,
-                                 user_msg=user_msg, tool=INTENTIONS_TOOL)
-            parsed = result["parsed"]
-            cost = estimate_cost_cents(result["model"], result["input_tokens"],
-                                       result["output_tokens"])
-
-            for item in parsed.get("intentions", []):
-                store.upsert_intention(
-                    id=item.get("id"),
-                    project=canon,
-                    intention=item.get("intention", ""),
-                    evidence_summary_ids=summary_ids,
-                    status=item.get("status", "active"),
-                    model=result["model"],
-                )
-
-            today = datetime.now().strftime("%Y-%m-%d")
-            store.log_synthesis(
-                run_type="intentions", target_date=today, project=project,
-                model=result["model"], input_tokens=result["input_tokens"],
-                output_tokens=result["output_tokens"], cost_cents=cost,
-                duration_ms=result["duration_ms"], status="success",
-            )
-
-            n_intentions = len(parsed.get("intentions", []))
-            print(f"OK ({n_intentions} intentions, ${cost/100:.4f})")
-
-        except Exception as e:
-            store.log_synthesis(
-                run_type="intentions", target_date=None, project=project,
                 model=SONNET, input_tokens=0, output_tokens=0,
                 cost_cents=0, duration_ms=0, status="error",
                 error_message=str(e),
@@ -340,11 +224,9 @@ def synthesize_project_states(store, client):
         print(f"  State for {project}...", end=" ", flush=True)
 
         rollups = store.get_weekly_rollups(project=project, limit=3)
-        intentions = store.get_intentions(project=project, status="active")
         summaries = store.get_daily_summaries(project=project, limit=7)
 
         rollup_texts = [f"[Week of {r['week_start']}] {r['narrative']}" for r in rollups]
-        intention_texts = [f"- {i['intention']}" for i in intentions]
         decision_texts = []
         for s in summaries:
             kd = s.get("key_decisions", "[]")
@@ -360,9 +242,6 @@ def synthesize_project_states(store, client):
 
 Recent weekly rollups:
 {chr(10).join(rollup_texts) or '(none)'}
-
-Active intentions:
-{chr(10).join(intention_texts) or '(none)'}
 
 Recent key decisions:
 {chr(10).join(decision_texts[:10]) or '(none)'}"""
@@ -433,7 +312,6 @@ def generate_project_snapshots(store):
         pass  # Turso or missing columns — skip gracefully
 
     for project in projects:
-        intentions = store.get_intentions(project=project, status="active")
         summaries_7d = store.get_daily_summaries(project=project, limit=7)
 
         total_prompts = sum(s.get("prompt_count", 0) for s in summaries_7d)
@@ -441,7 +319,6 @@ def generate_project_snapshots(store):
         total_commits = sum(s.get("commit_count", 0) for s in summaries_7d)
 
         data = {
-            "active_intentions": [i["intention"] for i in intentions],
             "session_count_7d": total_sessions,
             "prompt_count_7d": total_prompts,
             "commit_count_7d": total_commits,
@@ -456,7 +333,7 @@ def generate_project_snapshots(store):
             data["site_url"] = meta["site_url"]
 
         store.save_project_snapshot(project=project, date=today, data=data)
-        print(f"  {project}: {len(summaries_7d)} days, {len(intentions)} intentions")
+        print(f"  {project}: {len(summaries_7d)} days")
 
 
 # ---------------------------------------------------------------------------
@@ -464,22 +341,21 @@ def generate_project_snapshots(store):
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Synthesize daily summaries, weekly rollups, and intentions.")
+    parser = argparse.ArgumentParser(description="Synthesize daily summaries, weekly rollups, and project snapshots.")
     parser.add_argument("--daily", action="store_true", help="Generate missing daily summaries")
     parser.add_argument("--weekly", action="store_true", help="Generate missing weekly rollups")
-    parser.add_argument("--intentions", action="store_true", help="Update project intentions")
     parser.add_argument("--snapshots", action="store_true", help="Generate project snapshots")
     parser.add_argument("--states", action="store_true", help="Generate project state summaries (weekly)")
     parser.add_argument("--all", action="store_true", help="Run all synthesis steps")
     parser.add_argument("--date", type=str, help="Target date (YYYY-MM-DD) for --daily")
     args = parser.parse_args()
 
-    if not any([args.daily, args.weekly, args.intentions, args.snapshots, args.states, args.all]):
+    if not any([args.daily, args.weekly, args.snapshots, args.states, args.all]):
         parser.print_help()
         sys.exit(1)
 
     # Load environment
-    needs_api = args.all or args.daily or args.weekly or args.intentions or args.states
+    needs_api = args.all or args.daily or args.weekly or args.states
     load_env()
     if needs_api and not os.environ.get("ANTHROPIC_API_KEY"):
         print("Error: ANTHROPIC_API_KEY not found. Set it in .env.local")
@@ -492,13 +368,6 @@ def main():
     if args.all or args.daily:
         print("\n=== Daily Summaries ===")
         synthesize_daily_summaries(store, client, args.date)
-
-    # Intentions deprecated 2026-06-23 (low-value read surfaces, data bloated
-    # past the 3-8/project target). No longer part of --all; the schema +
-    # explicit --intentions flag remain for reversibility.
-    if args.intentions:
-        print("\n=== Intentions ===")
-        synthesize_intentions(store, client)
 
     if args.all or args.weekly:
         print("\n=== Weekly Rollups ===")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sync processed knowledge from local SQLite to Turso.
 
-Pushes daily_summaries, weekly_rollups, intentions, review_snapshots,
+Pushes daily_summaries, weekly_rollups, review_snapshots,
 project_snapshots, and the public_* tables consumed by external sites
 (e.g. pianohouseproject.org). Does NOT sync raw prompts or sessions
 (privacy).
@@ -132,21 +132,6 @@ def main():
             prompt_count=row.get("prompt_count", 0) or 0,
             session_count=row.get("session_count", 0) or 0,
             commit_count=row.get("commit_count", 0) or 0,
-            model=row.get("model", "unknown"),
-        ),
-        dry_run,
-    )
-
-    # Intentions (sync all active, regardless of date)
-    total += sync_table(
-        local, remote, "intentions",
-        lambda s: s.get_intentions(status="all"),
-        lambda r, row: r.upsert_intention(
-            id=None,  # Always insert as new in remote
-            project=row["project"],
-            intention=row["intention"],
-            evidence_summary_ids=json.loads(row["evidence"]) if isinstance(row["evidence"], str) else (row["evidence"] or []),
-            status=row["status"],
             model=row.get("model", "unknown"),
         ),
         dry_run,

@@ -31,37 +31,6 @@ class SqliteKnowledgeStore(KnowledgeStore):
     def close(self) -> None:
         self._conn.close()
 
-    def _dedupe_intentions(self) -> None:
-        """Collapse duplicate (project, intention) rows before the unique index is created.
-
-        Keeps the row with MAX(last_seen); promotes first_seen to MIN across the group.
-        Idempotent: a no-op when no duplicates exist.
-        """
-        dup_groups = self._conn.execute("""
-            SELECT project, intention, COUNT(*) AS n,
-                   MIN(first_seen) AS min_first_seen,
-                   MAX(last_seen)  AS max_last_seen
-            FROM intentions
-            GROUP BY project, intention
-            HAVING COUNT(*) > 1
-        """).fetchall()
-        for g in dup_groups:
-            keeper = self._conn.execute(
-                "SELECT id FROM intentions "
-                "WHERE project = ? AND intention = ? AND last_seen = ? "
-                "ORDER BY id LIMIT 1",
-                (g["project"], g["intention"], g["max_last_seen"]),
-            ).fetchone()
-            self._conn.execute(
-                "UPDATE intentions SET first_seen = ? WHERE id = ?",
-                (g["min_first_seen"], keeper["id"]),
-            )
-            self._conn.execute(
-                "DELETE FROM intentions "
-                "WHERE project = ? AND intention = ? AND id != ?",
-                (g["project"], g["intention"], keeper["id"]),
-            )
-
     def migrate(self) -> None:
         # One-time schema migration: api_costs got finer grain on 2026-05-19
         # (added description, model, cost_type, etc. + UNIQUE includes
@@ -87,24 +56,10 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 UNIQUE(project, date)
             );
 
-            CREATE TABLE IF NOT EXISTS intentions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project TEXT NOT NULL,
-                intention TEXT NOT NULL,
-                evidence TEXT,
-                status TEXT DEFAULT 'active'
-                    CHECK(status IN ('active','completed','stalled','abandoned')),
-                first_seen TEXT NOT NULL,
-                last_seen TEXT NOT NULL,
-                model TEXT,
-                created_at TEXT DEFAULT (datetime('now'))
-            );
-
             CREATE TABLE IF NOT EXISTS themes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 theme TEXT NOT NULL,
                 projects TEXT,
-                intention_ids TEXT,
                 status TEXT DEFAULT 'active'
                     CHECK(status IN ('active','completed','stalled','abandoned')),
                 first_seen TEXT NOT NULL,
@@ -168,10 +123,6 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
             CREATE INDEX IF NOT EXISTS idx_daily_summaries_project_date
                 ON daily_summaries(project, date);
-            CREATE INDEX IF NOT EXISTS idx_intentions_project
-                ON intentions(project);
-            CREATE INDEX IF NOT EXISTS idx_intentions_status
-                ON intentions(status);
             CREATE INDEX IF NOT EXISTS idx_themes_status
                 ON themes(status);
             CREATE INDEX IF NOT EXISTS idx_weekly_rollups_project_week
@@ -295,11 +246,6 @@ class SqliteKnowledgeStore(KnowledgeStore):
             CREATE INDEX IF NOT EXISTS idx_claude_code_usage_customer_type
                 ON claude_code_usage(customer_type, date);
         """)
-        self._dedupe_intentions()
-        self._conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_intentions_project_intention "
-            "ON intentions(project, intention)"
-        )
 
         # Backfill columns added by dashboard migrations 004-006 so store-only
         # consumers (synthesizer, sync_to_turso, slash commands) don't blow up
@@ -436,69 +382,12 @@ class SqliteKnowledgeStore(KnowledgeStore):
             params.append(limit)
         return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
 
-    # ---- Intentions ----
-
-    def get_intentions(self, *, project=None, status="active"):
-        clauses, params = ["1=1"], []
-        if project:
-            pc, pa = self._project_clause(project)
-            clauses.append(pc)
-            params.extend(pa)
-        if status and status != "all":
-            clauses.append("status = ?")
-            params.append(status)
-        sql = f"SELECT * FROM intentions WHERE {' AND '.join(clauses)} ORDER BY last_seen DESC"
-        return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
-
-    def upsert_intention(self, *, id, project, intention,
-                         evidence_summary_ids, status, model):
-        today = datetime.now().strftime("%Y-%m-%d")
-        self._conn.execute("""
-            INSERT INTO intentions
-                (project, intention, evidence, status, first_seen, last_seen, model)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(project, intention) DO UPDATE SET
-                status = excluded.status,
-                last_seen = excluded.last_seen,
-                model = excluded.model,
-                evidence = (
-                    SELECT json_group_array(value) FROM (
-                        SELECT DISTINCT value FROM (
-                            SELECT value FROM json_each(intentions.evidence)
-                            UNION ALL
-                            SELECT value FROM json_each(excluded.evidence)
-                        )
-                    )
-                )
-        """, (project, intention, json.dumps(evidence_summary_ids),
-              status, today, today, model))
-        self._conn.commit()
-
     def get_projects_with_recent_summaries(self, n_days=14):
         cutoff = (datetime.now() - timedelta(days=n_days)).strftime("%Y-%m-%d")
         rows = self._conn.execute(
             "SELECT DISTINCT project FROM daily_summaries WHERE date >= ?",
             (cutoff,)
         ).fetchall()
-        return [r["project"] for r in rows]
-
-    def get_projects_needing_intentions_refresh(self, today):
-        today_dt = datetime.strptime(today, "%Y-%m-%d")
-        active_since = (today_dt - timedelta(days=14)).strftime("%Y-%m-%d")
-        fresh_since = (today_dt - timedelta(days=1)).strftime("%Y-%m-%d")
-        rows = self._conn.execute("""
-            SELECT DISTINCT ds.project
-            FROM daily_summaries ds
-            WHERE ds.date >= ?
-              AND NOT EXISTS (
-                SELECT 1 FROM intentions i
-                WHERE i.project = COALESCE(
-                    (SELECT canonical FROM project_aliases WHERE alias = ds.project),
-                    ds.project
-                )
-                AND i.last_seen >= ?
-              )
-        """, (active_since, fresh_since)).fetchall()
         return [r["project"] for r in rows]
 
     def get_project_aliases(self):
@@ -787,7 +676,6 @@ class SqliteKnowledgeStore(KnowledgeStore):
             SELECT DISTINCT project FROM (
                 SELECT DISTINCT project FROM prompts
                 UNION SELECT DISTINCT project FROM sessions WHERE project IS NOT NULL
-                UNION SELECT DISTINCT project FROM intentions WHERE project IS NOT NULL
             ) ORDER BY project
         """).fetchall()
         return set(self.canonical_projects([r["project"] for r in rows]))
@@ -821,12 +709,6 @@ class SqliteKnowledgeStore(KnowledgeStore):
             ORDER BY started_at DESC LIMIT 1
         """, names).fetchone()
 
-        intention_rows = self._conn.execute(f"""
-            SELECT intention FROM intentions
-            WHERE project IN ({ph}) AND status = 'active'
-            ORDER BY last_seen DESC LIMIT 3
-        """, names).fetchall()
-
         return {
             "name": name,
             "status": project_row["status"] if project_row else "active",
@@ -835,7 +717,6 @@ class SqliteKnowledgeStore(KnowledgeStore):
             "created_at": project_row["created_at"] if project_row else None,
             "session_count": session_count,
             "last_session": dict(last_session_row) if last_session_row else None,
-            "intentions": [r["intention"] for r in intention_rows],
         }
 
     def get_overview(self):
@@ -883,34 +764,16 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 "started_at": row["started_at"],
             }
 
-        intentions_by_project = {}
-        for row in self._conn.execute(
-            "SELECT project, intention FROM intentions WHERE status = 'active' ORDER BY last_seen DESC"
-        ).fetchall():
-            intentions_by_project.setdefault(row["project"], []).append(row["intention"])
-
-        intention_last_seen = {}
-        for row in self._conn.execute(
-            "SELECT project, MAX(last_seen) as last_seen FROM intentions WHERE status = 'active' GROUP BY project"
-        ).fetchall():
-            intention_last_seen[row["project"]] = row["last_seen"]
-
         project_statuses = self._get_project_statuses_map()
 
         aliases = self.get_project_aliases()
         session_data = fold_by_canonical(session_data, aliases, merge_session_data)
         last_sessions = fold_by_canonical(last_sessions, aliases, keep_latest_session)
-        intentions_by_project = fold_by_canonical(
-            intentions_by_project, aliases, lambda a, b: a + b)
-        intention_last_seen = fold_by_canonical(
-            intention_last_seen, aliases, max)
 
         return {
             "week": {"sessions": week_sessions, "prompts": week_prompts, "commits": week_commits},
             "session_data": session_data,
             "last_sessions": last_sessions,
-            "intentions_by_project": intentions_by_project,
-            "intention_last_seen": intention_last_seen,
             "project_statuses": project_statuses,
         }
 

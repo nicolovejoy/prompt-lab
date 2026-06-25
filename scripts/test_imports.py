@@ -69,17 +69,13 @@ FILE_IMPORT_TARGETS = [
     "backfill_project_urls.py",
     "todos.py",
     "mobile/serve.py",
-    "web/api/intentions.py",
-    "web/api/rollups.py",
-    "web/api/summaries.py",
     "web/api/public_history.py",
     "web/api/overview.py",
     "web/api/project.py",
-    "web/api/projects.py",
     "web/api/info.py",
     "web/api/login.py",
     "web/api/ask.py",
-    "web/api/reviews.py",
+    "web/api/cost_timeline.py",
 ]
 
 

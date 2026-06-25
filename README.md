@@ -2,14 +2,14 @@
 
 Workflow tools and dashboards for tracking Claude Code sessions across projects.
 
-Every session is logged, summarized, and surfaced in a cloud dashboard. Slash commands handle session start/end and review. Nightly synthesis generates daily summaries, weekly rollups, intentions, and project snapshots. Optional email reviews and bi-monthly reports via the Anthropic API and Resend.
+Every session is logged, summarized, and surfaced in a cloud dashboard. Slash commands handle session start/end and review. Nightly synthesis generates daily summaries, weekly rollups, and project snapshots. Optional email reviews and bi-monthly reports via the Anthropic API and Resend.
 
 ## What it does
 
 - **Auto-logs prompts** via a Claude Code hook on every submission
 - **Tracks sessions** with summaries, commit links, and token usage
-- **Synthesizes patterns** nightly — daily summaries, weekly rollups, active intentions, project snapshots
-- **Cloud dashboard** on Vercel — auth-protected, reads from Turso; project cards, session history, cost tracking, intentions, and Ask (NLP Q&A)
+- **Synthesizes patterns** nightly — daily summaries, weekly rollups, project snapshots
+- **Cloud dashboard** on Vercel — auth-protected, reads from Turso; project cards, session history, cost tracking, and Ask (NLP Q&A)
 - **Email reviews** (optional) — daily + weekly session digests via Resend
 - **Bi-monthly reports** (optional) — longer-form markdown reports saved locally
 
@@ -105,7 +105,7 @@ The dashboard is the Vercel app in `web/` (Preact + HTM frontend, Python serverl
 cd web && vercel --prod
 ```
 
-Auth-protected (cookie-based, single password). Features: overview stats, project detail, cost tracking, weekly rollups, intentions, review snapshots, and Ask (NLP Q&A powered by Claude). Push local SQLite data up with `python sync_to_turso.py`.
+Auth-protected (cookie-based, single password). Features: overview stats, project detail, cost tracking, weekly rollups, review snapshots, and Ask (NLP Q&A powered by Claude). Push local SQLite data up with `python sync_to_turso.py`.
 
 ## Slash commands
 
@@ -168,7 +168,7 @@ prompt-lab/
 │   ├── CLAUDE.md.template
 │   └── install.sh
 ├── claude_api.py          # Shared Claude API utilities + env loading
-├── synthesizer.py         # Nightly synthesis (summaries, rollups, intentions, snapshots)
+├── synthesizer.py         # Nightly synthesis (summaries, rollups, snapshots)
 ├── send-review.py         # Daily review email (optional)
 ├── generate-report.py     # Bi-monthly report generator (optional)
 ├── sync_to_turso.py       # Push processed tables to Turso (no raw prompts)
@@ -181,7 +181,7 @@ prompt-lab/
 
 SQLite at `~/.claude/prompt-history.db` — created automatically on first prompt.
 
-Key tables: `prompts`, `sessions` (with `token_count`), `commits`, `daily_summaries`, `weekly_rollups`, `intentions`, `projects`, `project_snapshots`, `review_snapshots`, `synthesis_log`.
+Key tables: `prompts`, `sessions` (with `token_count`), `commits`, `daily_summaries`, `weekly_rollups`, `projects`, `project_snapshots`, `review_snapshots`, `synthesis_log`.
 
 Not included in this repo (`.gitignore`). Back up or sync separately.
 
