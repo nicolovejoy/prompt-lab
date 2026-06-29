@@ -24,6 +24,7 @@
       --yellow: #eab308;
       --yellow-dim: rgba(234, 179, 8, 0.15);
       --red: #ef4444;
+      --red-dim: rgba(239, 68, 68, 0.15);
       --safe-top: env(safe-area-inset-top, 0px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
       --radius: 8px;
@@ -44,6 +45,7 @@
         --yellow: #ca8a04;
         --yellow-dim: rgba(202, 138, 4, 0.1);
         --red: #dc2626;
+        --red-dim: rgba(220, 38, 38, 0.1);
       }
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -409,11 +411,21 @@
     }
 
     // ---- API helpers ----
-    async function api(path) {
-      const resp = await fetch(path);
-      if (resp.status === 401) throw new Error('unauthorized');
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      return resp.json();
+    // Retry once on a transient failure (network blip or 5xx cold-start from
+    // the serverless/Turso layer) so an occasional load error self-heals
+    // instead of forcing the user to reload. 401 never retries.
+    async function api(path, retries = 1) {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const resp = await fetch(path);
+          if (resp.status === 401) throw new Error('unauthorized');
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          return await resp.json();
+        } catch (e) {
+          if (e.message === 'unauthorized' || attempt >= retries) throw e;
+          await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+        }
+      }
     }
 
     async function apiPost(path, body) {
@@ -671,7 +683,7 @@
           `}
 
           ${overview && route.view === 'home' && html`
-            <${HomeView} overview=${overview} />
+            <${HomeView} overview=${overview} role=${role} />
           `}
           ${overview && route.view === 'project' && html`
             <${ProjectPage} name=${route.project} overview=${overview} section=${route.section} />
@@ -692,8 +704,95 @@
       return words.slice(0, 12).join(' ') + (words.length > 12 ? '...' : '');
     }
 
+    // ---- Triage band (admin-only) ----
+    // Thin attention band over the stream. Two cheap signals, computed
+    // client-side from data we already have — no new backend:
+    //   • Went quiet — recently active (≤14d) but idle ≥4d (from activity_by_project).
+    //   • Cost spike — a recent day well above the project's trailing baseline
+    //     (from /api/cost_overview, the same 30d window the Costs page memoizes).
+    // Renders nothing when nothing needs attention; the stream is the whole page.
+    function daysAgo(dateStr) {
+      const then = new Date((dateStr || '').slice(0, 10) + 'T00:00:00').getTime();
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      return Math.floor((today.getTime() - then) / 86400000);
+    }
+
+    function TriageBand({ overview }) {
+      const [costRows, setCostRows] = useState(() => costOverviewMemo.get(30)?.rows || null);
+      useEffect(() => {
+        const since = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+        api('/api/cost_overview?since=' + since)
+          .then(d => { costOverviewMemo.set(30, d); setCostRows(d.rows || []); })
+          .catch(() => {});
+      }, []);
+
+      // Went quiet: ≥2 active days in the 30d window, last active 4–14 days ago.
+      const quiet = [];
+      const act = overview.activity_by_project || {};
+      for (const p of Object.keys(act)) {
+        const dates = (act[p] || []).filter(d => (d.prompts || 0) > 0).map(d => d.date).sort();
+        if (dates.length < 2) continue;
+        const ago = daysAgo(dates[dates.length - 1]);
+        if (ago >= 4 && ago <= 14) quiet.push({ project: p, ago });
+      }
+      quiet.sort((a, b) => a.ago - b.ago);
+
+      // Cost spike: latest-3-day max ≥ 3× the trailing daily baseline and ≥ $3.
+      const spikes = [];
+      if (costRows) {
+        const byProj = {};
+        for (const r of costRows) {
+          (byProj[r.project] || (byProj[r.project] = {}));
+          byProj[r.project][r.date] = (byProj[r.project][r.date] || 0) + (r.cost_usd || 0);
+        }
+        for (const p of Object.keys(byProj)) {
+          const entries = Object.entries(byProj[p])
+            .map(([date, cost]) => ({ date, cost }))
+            .sort((a, b) => a.date.localeCompare(b.date));
+          if (entries.length < 4) continue;
+          const latestAgo = daysAgo(entries[entries.length - 1].date);
+          const recent = entries.filter(e => daysAgo(e.date) <= latestAgo + 2);
+          const older = entries.filter(e => daysAgo(e.date) > latestAgo + 2);
+          if (older.length < 2) continue;
+          const baseline = older.reduce((s, e) => s + e.cost, 0) / older.length;
+          const peak = recent.reduce((m, e) => e.cost > m.cost ? e : m, recent[0]);
+          if (baseline > 0 && peak.cost >= 3 * baseline && peak.cost >= 3) {
+            spikes.push({ project: p, cost: peak.cost, baseline, date: peak.date });
+          }
+        }
+        spikes.sort((a, b) => b.cost - a.cost);
+      }
+
+      if (quiet.length === 0 && spikes.length === 0) return null;
+      const open = (p, section) =>
+        navigate('#/project/' + encodeURIComponent(p) + (section ? '/' + section : ''));
+      const chip = (border, dim, color) => `display:inline-flex; gap:6px; align-items:center;
+        font-family:inherit; cursor:pointer; font-size:0.78rem; padding:3px 10px;
+        border-radius:999px; border:1px solid ${border}; background:${dim}; color:${color}`;
+
+      return html`
+        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+             padding:10px 12px; margin-bottom:16px; border:1px solid var(--border);
+             border-radius:var(--radius); background:var(--card)">
+          <span style="font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em;
+               color:var(--text-secondary)">Needs attention</span>
+          ${spikes.map(s => html`
+            <button onClick=${() => open(s.project, 'cost')}
+              title=${'≈' + fmtUsd(s.cost) + ' on ' + s.date + ' vs ' + fmtUsd(s.baseline) + '/day baseline'}
+              style=${chip('var(--red)', 'var(--red-dim)', 'var(--red)')}>
+              <strong>${s.project}</strong> cost spike ${fmtUsd(s.cost)}
+            </button>`)}
+          ${quiet.map(q => html`
+            <button onClick=${() => open(q.project)}
+              title=${'No activity for ' + q.ago + ' days'}
+              style=${chip('var(--yellow)', 'var(--yellow-dim)', 'var(--yellow)')}>
+              <strong>${q.project}</strong> went quiet · ${q.ago}d
+            </button>`)}
+        </div>`;
+    }
+
     // ---- Home: cross-project activity stream ----
-    function HomeView({ overview }) {
+    function HomeView({ overview, role }) {
       const { week, by_project } = overview;
       const [expanded, setExpanded] = useState({});
       const [showDormant, setShowDormant] = useState(false);
@@ -724,6 +823,7 @@
       const open = (p) => navigate('#/project/' + encodeURIComponent(p));
 
       return html`
+        ${role === 'admin' && html`<${TriageBand} overview=${overview} />`}
         <div class="overview-stats">
           <strong>${week.sessions}</strong> sessions · <strong>${week.prompts}</strong> prompts · <strong>${week.commits}</strong> commits this week
         </div>

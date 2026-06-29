@@ -35,6 +35,18 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
             return
 
+        try:
+            self._handle()
+        except Exception as e:
+            # A transient Turso/cold-start hiccup shouldn't surface as an
+            # opaque 500 stack trace. Return a clean 503 so the client retries.
+            self.send_response(503)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "temporarily unavailable", "detail": str(e)}).encode())
+
+    def _handle(self):
         week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
         month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 
