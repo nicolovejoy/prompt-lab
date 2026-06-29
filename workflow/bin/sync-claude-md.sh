@@ -96,6 +96,27 @@ case "$MODE" in
                 skip { next }
                 { print }
             ' "$TARGET" > "$TARGET.tmp"
+
+            # Safety rail: --apply may ONLY change the marker region. Everything
+            # OUTSIDE the block must be byte-identical before and after; if not,
+            # the splice has eaten bespoke content (the 2026-06-29 clobber) —
+            # abort and write nothing. Strip the block from both and compare.
+            strip_block() {
+                awk -v b="<!-- $BEGIN_TOKEN" -v e="<!-- $END_TOKEN" '
+                    index($0, b) == 1 { skip=1; next }
+                    index($0, e) == 1 { skip=0; next }
+                    skip { next }
+                    { print }
+                ' "$1"
+            }
+            if ! diff <(strip_block "$TARGET") <(strip_block "$TARGET.tmp") >/dev/null 2>&1; then
+                echo "ABORT: --apply would alter content OUTSIDE the shared-conventions markers in $TARGET." >&2
+                echo "       Nothing written. Out-of-band changes (- existing / + would-be):" >&2
+                diff <(strip_block "$TARGET") <(strip_block "$TARGET.tmp") >&2 || true
+                rm -f "$TARGET.tmp"
+                exit 5
+            fi
+
             mv "$TARGET.tmp" "$TARGET"
             echo "updated: shared-conventions block in $TARGET (v=$HASH)"
         else
