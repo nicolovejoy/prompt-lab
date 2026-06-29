@@ -3,8 +3,10 @@
 # Each scenario maps to a correctness invariant from the plan.
 set -u
 
+# Tests the SHIPPED wrapper (workflow/bin/handoff.sh), not the throwaway proto.
+# handoff-proto.sh is kept alongside as the historical design artifact.
 HERE="$(cd "$(dirname "$0")" && pwd)"
-PROTO="$HERE/handoff-proto.sh"
+PROTO="$HERE/../bin/handoff.sh"
 ROOT="$HERE/work"
 PASS=0; FAIL=0
 
@@ -23,8 +25,9 @@ run_timeout() {
   kill -TERM "$w" 2>/dev/null; wait "$w" 2>/dev/null
   return $rc
 }
-# Prototype of the session-start hook pull: time-boxed, autostash, ALWAYS graceful.
-hook_pull() { run_timeout 3 git -C "$1" pull --rebase --autostash --quiet 2>/dev/null; return 0; }
+# Session-start hook pull is now the shipped wrapper's `pull` subcommand:
+# time-boxed, autostash, ALWAYS graceful (exits 0).
+hook_pull() { HANDOFF_REPO="$1" bash "$PROTO" pull; return 0; }
 
 setup() {
   rm -rf "$ROOT"; mkdir -p "$ROOT"

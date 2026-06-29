@@ -83,6 +83,36 @@ $BULLETIN
 "
 fi
 
+# --- Cross-repo handoff channel (issue #7) ------------------------------------
+# If this project participates in a handoff channel (its name is in a file's
+# `repos:` manifest), do a time-boxed best-effort pull then inject that file's
+# ## Active section so the agent sees pending cross-repo notes immediately.
+HANDOFF_DIR="$HOME/src/.handoff"
+HANDOFF_BIN="$HOME/.claude/bin/handoff.sh"
+if [ -d "$HANDOFF_DIR/.git" ]; then
+  MATCHED=""
+  for f in "$HANDOFF_DIR"/*-*.md; do
+    [ -e "$f" ] || continue
+    if head -5 "$f" | grep '^repos:' | grep -qw "$PROJECT"; then
+      MATCHED="$MATCHED $f"
+    fi
+  done
+  if [ -n "$MATCHED" ]; then
+    # Best-effort, time-boxed pull (handoff.sh pull always exits 0; never blocks).
+    [ -x "$HANDOFF_BIN" ] && "$HANDOFF_BIN" pull >/dev/null 2>&1
+    for f in $MATCHED; do
+      # ## Active section = lines between '## Active' and the next '## ' header.
+      ACTIVE="$(awk '/^## Active/{a=1;next} /^## /{a=0} a' "$f")"
+      if printf '%s' "$ACTIVE" | grep -q '[^[:space:]]'; then
+        CTX+="
+Cross-repo handoff — $(basename "$f") (## Active; reply via 'handoff.sh append'):
+$ACTIVE
+"
+      fi
+    done
+  fi
+fi
+
 # Turso staleness check: warn if last sync >24h ago (or missing despite this
 # being a project session — meaning we've never synced from this machine).
 # Sync cadence is 8h, so 24h = 3 missed cycles.

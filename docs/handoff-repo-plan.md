@@ -1,6 +1,13 @@
 # Cross-repo handoff → standalone synced git repo
 
-Status: **planned + pressure-tested 2026-06-29; not yet built.** Tracking issue: see GitHub.
+Status: **SHIPPED 2026-06-29** (issue #7). Repo `nicolovejoy/handoff` created + baseline
+imported; wrapper `workflow/bin/handoff.sh` (append/sync/pull) installed to
+`~/.claude/bin/`; SessionStart hook injects the matching file's `## Active` section
+after a time-boxed pull; CLAUDE.md pointer stanzas added to prompt-lab + selected-projects
++ prntd; harness re-pointed at the shipped wrapper (26/26). **Remaining on this machine:**
+add the `Bash(~/.claude/bin/handoff.sh *)` allow rule to `~/.claude/settings.json` (the
+auto-classifier blocked the automated edit — apply by hand). **Remaining on laptop:** the
+reconcile in step 8 + `install.sh`. Planned + pressure-tested 2026-06-29.
 
 ## Problem
 

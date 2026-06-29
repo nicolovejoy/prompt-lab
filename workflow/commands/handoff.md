@@ -123,3 +123,15 @@ If no weeks need rollups, skip silently.
 Note: Turso sync used to run here. It now runs automatically via the async SessionStart hook (`~/.claude/bin/turso-sync-maybe.sh`) at most once per 8h on each machine. If you need to force a sync right now: `~/src/prompt-lab/.venv/bin/python ~/src/prompt-lab/sync_to_turso.py --days 1`.
 
 GitHub URL upsert used to live here too — moved to a one-time script at `scripts/backfill_project_urls.py`. Re-run it if you add a new project or rename a remote.
+
+## 6. Cross-repo handoff channel
+
+If this session produced anything a peer repo (selected-projects, prntd) needs to know — a question, a change to a shared contract, a follow-up — post it to the handoff log instead of letting it evaporate:
+
+```
+~/.claude/bin/handoff.sh append <file> "### YYYY-MM-DD prompt-lab → <peer>: <subject>
+
+<body>"
+```
+
+Files: `selected-projects-prompt-lab.md`, `prntd-prompt-lab.md` (in `~/src/.handoff`). The wrapper inserts at the top of `## Active` and pushes atomically. If you instead hand-edited a handoff file (e.g. moved an acted-on entry to `## Archived`), flush it with `~/.claude/bin/handoff.sh sync`. Non-zero exit means the note was kept locally but not pushed (3 = conflict, resolve in `~/src/.handoff`; 4 = offline, re-run `sync` later) — surface it, don't ignore it. Nothing to coordinate → skip silently.

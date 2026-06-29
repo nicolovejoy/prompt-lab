@@ -157,7 +157,8 @@ cat <<EOF
     "allow": [
       "Bash(sqlite3 ~/.claude/prompt-history.db *)",
       "Bash(~/.claude/bin/gc-read.sh *)",
-      "Bash(~/.claude/bin/gc-write.sh *)"
+      "Bash(~/.claude/bin/gc-write.sh *)",
+      "Bash(~/.claude/bin/handoff.sh *)"
     ]
   },
   "hooks": {
