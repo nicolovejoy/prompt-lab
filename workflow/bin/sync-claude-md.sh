@@ -43,8 +43,11 @@ HASH="$(shasum -a 256 "$CANONICAL" | awk '{print $1}' | cut -c1-12)"
 
 recorded_hash() {
     [ -f "$TARGET" ] || return 0
+    # Anchor to a real marker: a line that STARTS with the comment opener. Prose
+    # that merely mentions the token mid-line (e.g. this repo's CLAUDE.md, which
+    # documents the marker syntax) must not be mistaken for the marker itself.
     # `|| true`: grep returning non-zero on no-match must not trip set -e/pipefail.
-    { grep -m1 "$BEGIN_TOKEN" "$TARGET" 2>/dev/null || true; } | sed -n 's/.*v=\([a-f0-9]*\).*/\1/p'
+    { grep -m1 "^<!-- $BEGIN_TOKEN" "$TARGET" 2>/dev/null || true; } | sed -n 's/.*v=\([a-f0-9]*\).*/\1/p'
 }
 
 case "$MODE" in
@@ -82,12 +85,14 @@ case "$MODE" in
             exit 0
         fi
 
-        if grep -q "$BEGIN_TOKEN" "$TARGET"; then
+        if grep -q "^<!-- $BEGIN_TOKEN" "$TARGET"; then
             # Replace existing region in place. On BEGIN, emit the new block then skip
             # old lines through END; everything else passes through untouched.
-            awk -v blockfile="$block" -v b="$BEGIN_TOKEN" -v e="$END_TOKEN" '
-                $0 ~ b { while ((getline l < blockfile) > 0) print l; skip=1; next }
-                $0 ~ e { skip=0; next }
+            # `index(...)==1` anchors to real markers (line starts with the comment
+            # opener), so prose that mentions the token mid-line is left untouched.
+            awk -v blockfile="$block" -v b="<!-- $BEGIN_TOKEN" -v e="<!-- $END_TOKEN" '
+                index($0, b) == 1 { while ((getline l < blockfile) > 0) print l; skip=1; next }
+                index($0, e) == 1 { skip=0; next }
                 skip { next }
                 { print }
             ' "$TARGET" > "$TARGET.tmp"
