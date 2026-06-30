@@ -147,6 +147,21 @@ eq "$r2" "0" "H: second no-op sync ok"
 empties=$(cd "$ROOT/mini"; git log --oneline | grep -c "handoff: sync")
 eq "$empties" "0" "H: no empty sync commits created"
 
+echo "=== Scenario I: MULTI-LINE append → entry written under ## Active, pushed ==="
+setup
+ML="$(printf '### 2026-06-29 prompt-lab → prntd: subject line\n\nBody paragraph with a blank line above it.\nSecond body line.')"
+HANDOFF_REPO="$ROOT/mini" bash "$PROTO" append prntd-prompt-lab.md "$ML" >/dev/null 2>&1; rcI=$?
+eq "$rcI" "0" "I: multi-line append succeeded (no awk newline failure)"
+has "$ROOT/mini/prntd-prompt-lab.md" "### 2026-06-29 prompt-lab → prntd: subject line" "I: header line written"
+has "$ROOT/mini/prntd-prompt-lab.md" "Second body line." "I: last body line written"
+# Entry must land in the Active section (between '## Active' and '## Archived'),
+# not at EOF after Archived.
+active_block="$(awk '/^## Active/{a=1;next} /^## /{a=0} a' "$ROOT/mini/prntd-prompt-lab.md")"
+if printf '%s' "$active_block" | grep -qF "Second body line."; then ok "I: entry is inside ## Active"; else no "I: entry not in ## Active section"; fi
+if ls "$ROOT/mini"/*.handoff.tmp.* >/dev/null 2>&1; then no "I: stray tmp file left behind"; else ok "I: no stray tmp file"; fi
+( cd "$ROOT/seed"; git pull -q 2>/dev/null )
+has "$ROOT/seed/prntd-prompt-lab.md" "Second body line." "I: multi-line entry reached remote"
+
 echo ""
 echo "================  RESULTS: $PASS passed, $FAIL failed  ================"
 rm -rf "$ROOT"

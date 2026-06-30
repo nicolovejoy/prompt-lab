@@ -54,15 +54,15 @@ run_timeout() {
 
 # --- Insert text as a new entry at the TOP of the ## Active section. -----------
 #     Honors the files' newest-first convention; falls back to EOF if no such
-#     header exists. awk is BSD-safe (no GNU-only constructs).
+#     header exists. Uses a head/tail split (NOT awk -v) so multi-line entries
+#     work — BSD awk rejects embedded newlines in a -v variable.
 insert_after_active() {
-  local file="$1" text="$2" tmp
+  local file="$1" text="$2" tmp line
   tmp="$file.handoff.tmp.$$"
-  if grep -q '^## Active' "$file" 2>/dev/null; then
-    awk -v t="$text" '
-      { print }
-      !done && /^## Active/ { print ""; print t; done=1 }
-    ' "$file" > "$tmp" && mv "$tmp" "$file"
+  line="$(grep -n '^## Active' "$file" 2>/dev/null | head -1 | cut -d: -f1)"
+  if [ -n "$line" ]; then
+    { head -n "$line" "$file"; printf '\n%s\n' "$text"; tail -n +"$((line + 1))" "$file"; } > "$tmp" \
+      && mv "$tmp" "$file" || { rm -f "$tmp"; return 1; }
   else
     printf '\n%s\n' "$text" >> "$file"
   fi
@@ -103,9 +103,11 @@ case "$cmd" in
     [ -f "$REPO/$file" ] || { echo "handoff: no such file: $file" >&2; exit 64; }
     acquire_lock || { echo "LOCK-TIMEOUT: another handoff write is in progress." >&2; exit 5; }
     trap release_lock EXIT
-    insert_after_active "$REPO/$file" "$text"
+    insert_after_active "$REPO/$file" "$text" || { echo "handoff: failed to write entry into $file" >&2; exit 1; }
     git_h add "$file"
-    git_h commit -m "handoff: append to $file" --quiet
+    if ! git_h commit -m "handoff: append to $file" --quiet; then
+      echo "handoff: nothing committed for $file (entry not written?)" >&2; exit 1
+    fi
     sync_push; exit $?
     ;;
   sync)
