@@ -1,7 +1,7 @@
 ---
 name: readup
 description: Start a session — register a session row, sync to remote, read project context
-allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(~/.claude/bin/sync-claude-md.sh:*), Bash(stat:*), Bash(date:*), Bash(basename:*), Bash(mkdir:*), Bash(touch:*), Bash(gh issue list:*), Bash(gh pr list:*), Read, Write, Edit, Glob, Agent
+allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(~/.claude/bin/sync-claude-md.sh:*), Bash(~/.claude/bin/handoff.sh:*), Bash(stat:*), Bash(date:*), Bash(basename:*), Bash(mkdir:*), Bash(touch:*), Bash(gh issue list:*), Bash(gh pr list:*), Read, Write, Edit, Glob, Agent
 ---
 
 Start a session. Be concise.
@@ -87,6 +87,17 @@ Verify this repo's CLAUDE.md carries the current shared-conventions block:
 - `absent` (no CLAUDE.md) → skip silently; not every repo warrants one.
 
 The block is auto-managed between `SHARED-CONVENTIONS` markers; the source of truth is `prompt-lab/workflow/claude-md-shared.md`.
+
+## 7. Flush the cross-repo handoff channel
+
+The SessionStart hook only *pulls* the handoff repo (read-only). If a prior session appended an entry while offline, or hit a push conflict, that commit is still sitting unpushed in `~/src/.handoff`. Flush it best-effort:
+
+```bash
+[ -d ~/src/.handoff/.git ] && ~/.claude/bin/handoff.sh sync
+```
+
+- exit 0 → say nothing (nothing pending, or pushed cleanly).
+- exit 3 (conflict) / 4 (offline) → flag one line so it's not silently lost; the entry stays safe locally. Skip entirely if `~/src/.handoff` isn't present.
 
 ## Then
 
