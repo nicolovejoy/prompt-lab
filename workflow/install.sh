@@ -100,6 +100,16 @@ if ! grep -qF "$SOURCE_LINE" "$HOME/.zshrc" 2>/dev/null; then
 else
     echo "~/.zshrc already sources gc-shell.zsh"
 fi
+
+install_file "$REPO_DIR/workflow/shell/work.zsh" "$SHELL_DIR/work.zsh" "shell work.zsh"
+echo "Copied shell config: work.zsh → $SHELL_DIR/"
+WORK_SOURCE_LINE='[ -f ~/.claude/shell/work.zsh ] && source ~/.claude/shell/work.zsh'
+if ! grep -qF "$WORK_SOURCE_LINE" "$HOME/.zshrc" 2>/dev/null; then
+    printf '\n# Load work launcher managed by prompt-lab\n%s\n' "$WORK_SOURCE_LINE" >> "$HOME/.zshrc"
+    echo "Added work.zsh source line to ~/.zshrc"
+else
+    echo "~/.zshrc already sources work.zsh"
+fi
 echo ""
 
 # --- global security hook ---
