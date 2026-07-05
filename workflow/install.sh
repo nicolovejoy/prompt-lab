@@ -63,7 +63,7 @@ for cmd in "$REPO_DIR/workflow/commands/"*.md; do
     echo "Copied command: $name → $COMMANDS_DIR/"
 done
 
-# --- bin scripts (gc-read, gc-write, _update_session_summary, turso-sync-maybe) ---
+# --- bin scripts (everything in workflow/bin/) ---
 mkdir -p "$BIN_DIR"
 for src in "$REPO_DIR/workflow/bin/"*; do
     [ -d "$src" ] && continue
@@ -184,7 +184,8 @@ cat <<EOF
     "SessionStart": [{
       "hooks": [
         {"type": "command", "command": "$REPO_DIR/workflow/hooks/session-start.sh", "timeout": 5000},
-        {"type": "command", "command": "$HOME/.claude/bin/turso-sync-maybe.sh", "async": true, "timeout": 60}
+        {"type": "command", "command": "$HOME/.claude/bin/turso-sync-maybe.sh", "async": true, "timeout": 60},
+        {"type": "command", "command": "$HOME/.claude/bin/reap-playwright.sh", "async": true, "timeout": 10}
       ]
     }]
   }

@@ -10,6 +10,24 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-07-05 — Playwright browser hygiene (stray "Chrome for Testing" instances)
+
+Scope: all projects
+
+Playwright browsers were accumulating as orphans on Nico's machines (issue
+prompt-lab#8, diagnosed in a musicforge session). Two rules for Claude:
+
+- **Call `browser_close` when you're done** with `mcp__playwright__*` work.
+  Each session that touches those tools gets its own browser; leaving it open
+  is the main source of strays.
+- **Don't SIGKILL `playwright test`** (double Ctrl+C, hard kills). Let runs
+  exit or time out gracefully — killed runners orphan their headless browsers.
+
+Safety net: `reap-playwright.sh` (synced via prompt-lab's install.sh) runs as
+an async global SessionStart hook and kills any `ms-playwright` process whose
+parent is launchd (PPID 1) — i.e. genuine orphans only. Do NOT "clean up" with
+a bare `pkill -f ms-playwright`: that kills live sessions' browsers too.
+
 ## 2026-06-24 — Intentions fully removed (prompt-lab)
 
 Scope: prompt-lab (informational for all)
