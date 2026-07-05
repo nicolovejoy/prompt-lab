@@ -7,6 +7,7 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/robots.txt", "destination": "/robots.txt" },
+    { "source": "/beacon.js", "destination": "/beacon.js" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
@@ -14,6 +15,12 @@
       "source": "/api/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/beacon.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }
       ]
     },
     {

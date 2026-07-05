@@ -12,6 +12,8 @@ Everything lives in `~/.claude/prompt-history.db` — local SQLite, one copy per
 
 The Turso cloud DB is isolated in its own `promptlab` group (own signing key), so its token can't be derived from any other Turso group.
 
+**Exception to the flow — `page_views` (issue #9, visitor tracking).** This processed/private table is the one thing written **cloud-direct**: the public `POST /api/beacon` collector inserts straight into Turso, with no local-SQLite copy and no `sync_to_turso.py` leg (deliberately — the cost pipeline's pull/sync split drifted for a month; this path structurally can't). Rows are anonymous by construction: no cookies, raw IP never stored, `visitor_hash` = truncated `sha256(AUTH_SECRET | UTC-date | ip | UA)` that rotates daily. The write endpoint is public but hardened (site derived from the `Origin` header, never client-supplied; bot UAs + localhost origins dropped; 2 KB body cap; opaque 204 on every outcome). Reads go through the auth-gated `GET /api/visitor_overview` (`#/visitors` page). It never touches the `public_*` tables.
+
 ## Public vs private: what makes "public" safe
 
 Three layers, all holding as of 2026-06-13:

@@ -8,6 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#111">
   <title>Prompt Lab</title>
+  <script defer src="/beacon.js"></script>
   <style>
     :root {
       --bg: #111;
@@ -394,6 +395,7 @@
         return { view: 'project', project: decodeURIComponent(parts[1]), section: parts[2] || 'timeline' };
       }
       if (parts[0] === 'costs') return { view: 'costs' };
+      if (parts[0] === 'visitors') return { view: 'visitors' };
       if (parts[0] === 'todos') return { view: 'todos' };
       return { view: 'home' };
     }
@@ -570,6 +572,7 @@
             ${freshness && html`<span class="header-meta">synced ${freshness}</span>`}
             <button class="header-btn ${route.view === 'todos' ? 'active' : ''}" onClick=${() => navigate('#/todos')}>Todos</button>
             <button class="header-btn ${route.view === 'costs' ? 'active' : ''}" onClick=${() => navigate('#/costs')}>Costs</button>
+            <button class="header-btn ${route.view === 'visitors' ? 'active' : ''}" onClick=${() => navigate('#/visitors')}>Visitors</button>
             ${onAsk && html`<button class="header-btn" onClick=${onAsk} title="Ask (/)">Ask</button>`}
             <button class="header-btn" onClick=${onLogout}>Log out</button>
           </div>
@@ -689,6 +692,7 @@
             <${ProjectPage} name=${route.project} overview=${overview} section=${route.section} />
           `}
           ${route.view === 'costs' && html`<${CostsOverview} />`}
+          ${route.view === 'visitors' && html`<${VisitorsOverview} />`}
           ${route.view === 'todos' && html`<${TodosView} overview=${overview} />`}
 
           ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
@@ -1313,6 +1317,212 @@
                   <span style="margin-left: auto; font-size: 0.62rem; color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
                   <span style="font-size: 0.82rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${fmtUsd(v)}</span>
                 </div>`)}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ---- Visitors Overview (all sites, page views over time) ----
+    const visitorOverviewMemo = new Map();  // window(days) -> payload
+
+    function VisitorsOverview() {
+      const [days, setDays] = useState(30);
+      const [data, setData] = useState(() => visitorOverviewMemo.get(30) || null);
+      const [loading, setLoading] = useState(!visitorOverviewMemo.has(30));
+      const [hovered, setHovered] = useState(null);
+
+      useEffect(() => {
+        const cached = visitorOverviewMemo.get(days);
+        if (cached) { setData(cached); setLoading(false); }
+        else { setData(null); setLoading(true); }
+        const since = new Date(Date.now() - days * 86400_000)
+          .toISOString().slice(0, 10);
+        let alive = true;
+        api('/api/visitor_overview?since=' + since)
+          .then(d => { visitorOverviewMemo.set(days, d); if (alive) { setData(d); setLoading(false); } })
+          .catch(e => { if (alive && !cached) { setData({ error: e.message }); setLoading(false); } });
+        return () => { alive = false; };
+      }, [days]);
+
+      const windowPicker = html`
+        <div style="display: flex; gap: 4px">
+          ${[30, 90, 365].map(d => html`
+            <button onClick=${() => setDays(d)}
+              style="font-size: 0.72rem; padding: 4px 10px; border-radius: 4px;
+                     cursor: pointer; font-family: inherit;
+                     border: 1px solid var(--border);
+                     background: ${days === d ? 'var(--accent)' : 'transparent'};
+                     color: ${days === d ? '#fff' : 'var(--text-secondary)'}">
+              ${d === 365 ? '1y' : d + 'd'}
+            </button>`)}
+        </div>`;
+
+      const header = html`
+        <div style="display: flex; justify-content: space-between; align-items: baseline;
+                    flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
+          <h1 style="margin: 0; font-size: 1.4rem">Visitors</h1>
+          ${windowPicker}
+        </div>
+        <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 20px">
+          Anonymous page views from the first-party beacon — cookie-less, IPs
+          never stored, visitor hashes rotate daily (so uniques are per-day by
+          design). Only instrumented sites appear here.
+        </div>`;
+
+      if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading visitors…</div></div>`;
+      if (!data || data.error) return html`<div>${header}<div class="cost-placeholder">Couldn't load visitors.</div></div>`;
+
+      const daily = data.daily || [];
+      if (!daily.length) return html`<div>${header}
+        <div class="cost-placeholder">No page views in this window yet — only
+        instrumented sites report. Roll out beacon.js to more sites to see them here.</div></div>`;
+
+      const bySite = {}, byDate = {}, byDateSite = {};
+      let totalViews = 0;
+      for (const r of daily) {
+        const v = Number(r.views) || 0;
+        totalViews += v;
+        bySite[r.site] = (bySite[r.site] || 0) + v;
+        byDate[r.date] = (byDate[r.date] || 0) + v;
+        (byDateSite[r.date] ||= {})[r.site] = ((byDateSite[r.date]?.[r.site]) || 0) + v;
+      }
+
+      const ranked = Object.entries(bySite).sort((a, b) => b[1] - a[1]);
+      const colorOf = {};
+      ranked.forEach(([s], i) => { colorOf[s] = i < COST_PALETTE.length ? COST_PALETTE[i] : COST_OTHER; });
+      const segColor = (s) => colorOf[s] || COST_OTHER;
+
+      const dates = [];
+      for (let i = days - 1; i >= 0; i--) {
+        dates.push(new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10));
+      }
+      const peak = Math.max(...Object.values(byDate), 1);
+      const CHART_H = 140;
+      const n = dates.length;
+      const tickIdxs = new Set();
+      if (n > 0) { const k = Math.min(6, n); for (let i = 0; i < k; i++) tickIdxs.add(Math.round((i * (n - 1)) / (k - 1))); }
+
+      const paths = (data.paths || []).slice(0, 15);
+      const referrers = (data.referrers || []).slice(0, 10);
+      const countries = (data.countries || []).slice(0, 10);
+
+      const panel = (children) => html`
+        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated, var(--card));
+                    border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
+      const sectionTitle = (t) => html`
+        <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary);
+                    font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
+          ${t}
+        </div>`;
+      const listRow = (label, sub, v) => html`
+        <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
+                    border-bottom: 1px solid var(--border)">
+          <span style="font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${label}</span>
+          ${sub && html`<span style="font-size: 0.62rem; color: var(--text-secondary); overflow: hidden;
+                                     text-overflow: ellipsis; white-space: nowrap">${sub}</span>`}
+          <span style="margin-left: auto; font-size: 0.82rem; font-variant-numeric: tabular-nums">${v.toLocaleString()}</span>
+        </div>`;
+
+      return html`
+        <div>
+          ${header}
+
+          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px">
+            <div style="font-size: 1.6rem; font-weight: 700">${totalViews.toLocaleString()}</div>
+            <div style="font-size: 0.78rem; color: var(--text-secondary)">
+              page views · ${ranked.length} site${ranked.length === 1 ? '' : 's'} ·
+              last ${days === 365 ? 'year' : days + ' days'}
+            </div>
+          </div>
+
+          ${panel(html`
+            <div style="display: grid; grid-template-columns: 56px 1fr; gap: 8px">
+              <div style="display: flex; flex-direction: column; justify-content: space-between;
+                          align-items: flex-end; height: ${CHART_H}px; font-size: 0.62rem;
+                          color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace">
+                <span>${peak.toLocaleString()}</span>
+                <span>${Math.round(peak / 2).toLocaleString()}</span>
+                <span>0</span>
+              </div>
+              <div>
+                <div style="display: flex; gap: 2px; align-items: stretch; height: ${CHART_H}px;
+                            border-bottom: 1px solid var(--border)">
+                  ${dates.map((d, i) => {
+                    const dayTotal = byDate[d] || 0;
+                    const barH = dayTotal > 0 ? Math.max(1, Math.round((dayTotal / peak) * (CHART_H - 4))) : 0;
+                    const isHovered = hovered === i;
+                    const edge = n > 1 ? i / (n - 1) : 0.5;
+                    const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
+                    const segs = Object.entries(byDateSite[d] || {}).sort((a, b) => b[1] - a[1]);
+                    return html`
+                      <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: default"
+                           onMouseEnter=${() => setHovered(i)}
+                           onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}>
+                        <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
+                                    display: flex; flex-direction: column-reverse;
+                                    border-radius: 2px 2px 0 0; overflow: hidden;
+                                    opacity: ${isHovered ? 1 : 0.85}; transition: opacity 0.1s">
+                          ${segs.map(([s, v]) => html`
+                            <div style="height: ${(v / dayTotal) * 100}%; background: ${segColor(s)}"></div>`)}
+                        </div>
+                        ${isHovered && dayTotal > 0 && html`
+                          <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
+                                      ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
+                                      background: var(--bg); border: 1px solid var(--border);
+                                      border-radius: 6px; padding: 8px 10px; white-space: nowrap;
+                                      box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.7rem">
+                            <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${dayTotal.toLocaleString()} views</div>
+                            ${segs.slice(0, 6).map(([s, v]) => html`
+                              <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
+                                <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(s)}; display: inline-block"></span>
+                                <span style="color: var(--text)">${s}</span>
+                                <span style="margin-left: auto">${v.toLocaleString()}</span>
+                              </div>`)}
+                            ${segs.length > 6 && html`<div style="color: var(--text-secondary)">+${segs.length - 6} more</div>`}
+                          </div>`}
+                      </div>`;
+                  })}
+                </div>
+                <div style="display: flex; gap: 2px; margin-top: 4px">
+                  ${dates.map((d, i) => html`
+                    <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.55rem;
+                                color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
+                                overflow: visible; white-space: nowrap">
+                      ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
+                    </div>`)}
+                </div>
+              </div>
+            </div>
+          `)}
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px">
+            <div>
+              ${sectionTitle('By site')}
+              ${ranked.map(([s, v]) => html`
+                <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
+                            border-bottom: 1px solid var(--border)">
+                  <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(s)}; flex: none"></span>
+                  <span style="font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${s}</span>
+                  <span style="margin-left: auto; font-size: 0.62rem; color: var(--text-secondary)">${(v / totalViews * 100).toFixed(0)}%</span>
+                  <span style="font-size: 0.82rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${v.toLocaleString()}</span>
+                </div>`)}
+            </div>
+            <div>
+              ${sectionTitle('Top pages')}
+              ${paths.map(r => listRow(r.path, r.site, r.views))}
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px">
+            <div>
+              ${sectionTitle('Referrers')}
+              ${referrers.length ? referrers.map(r => listRow(r.referrer, r.site, r.views))
+                : html`<div style="font-size: 0.78rem; color: var(--text-secondary)">None yet.</div>`}
+            </div>
+            <div>
+              ${sectionTitle('Countries')}
+              ${countries.length ? countries.map(r => listRow(r.country, null, r.views))
+                : html`<div style="font-size: 0.78rem; color: var(--text-secondary)">None yet.</div>`}
             </div>
           </div>
         </div>`;

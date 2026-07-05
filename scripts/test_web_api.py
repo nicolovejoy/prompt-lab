@@ -498,6 +498,210 @@ def _():
         restore_a()
 
 
+# === beacon.py ===
+
+def invoke_post(endpoint_module, headers: dict, body: bytes) -> Captured:
+    """Like invoke(), but for do_POST with a stubbed request body."""
+    import io
+    cls = endpoint_module.handler
+    inst = cls.__new__(cls)
+    inst.path = "/api/beacon"
+    inst.headers = {**headers, "content-length": str(len(body))}
+    inst.rfile = io.BytesIO(body)
+
+    captured = Captured()
+
+    class _Writer:
+        def write(self, data: bytes):
+            captured._body += data
+
+    inst.send_response = lambda code: setattr(captured, "status_code", code)
+    inst.send_header = lambda k, v: captured.response_headers.append((k, v))
+    inst.end_headers = lambda: None
+    inst.wfile = _Writer()
+
+    cls.do_POST(inst)
+    return captured
+
+
+GOOD_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+           "AppleWebKit/537.36 Chrome/126.0 Safari/537.36")
+GOOD_HEADERS = {
+    "user-agent": GOOD_UA,
+    "origin": "https://www.ibuild4you.com",
+    "x-forwarded-for": "203.0.113.9, 10.0.0.1",
+    "x-vercel-ip-country": "US",
+}
+
+
+@test("beacon: valid pageview builds a clean row")
+def _():
+    import os
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_ok")
+    os.environ.setdefault("AUTH_SECRET", "test-secret")
+    body = json.dumps({"path": "/pricing?token=secret#frag",
+                       "ref": "https://www.google.com/search?q=x"}).encode()
+    row = mod.parse_event(GOOD_HEADERS, body)
+    assert row, "valid hit was dropped"
+    assert row["site"] == "ibuild4you.com", f"www not stripped: {row['site']}"
+    assert row["path"] == "/pricing", f"query/frag not stripped: {row['path']}"
+    assert row["referrer"] == "google.com", f"referrer not host-only: {row['referrer']}"
+    assert row["country"] == "US"
+    assert row["device"] == "desktop"
+    assert row["event"] == "pageview"
+    assert len(row["visitor_hash"]) == 16
+    assert "203.0.113.9" not in json.dumps(row), "raw IP leaked into row"
+
+
+@test("beacon: self-referral stored as null referrer")
+def _():
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_selfref")
+    body = json.dumps({"path": "/a", "ref": "https://ibuild4you.com/b"}).encode()
+    row = mod.parse_event(GOOD_HEADERS, body)
+    assert row and row["referrer"] is None, f"got {row}"
+
+
+@test("beacon: drops bot user-agents and missing UA")
+def _():
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_bots")
+    body = json.dumps({"path": "/"}).encode()
+    for ua in ["Googlebot/2.1", "python-requests/2.31", "curl/8.4",
+               "HeadlessChrome/126", ""]:
+        h = {**GOOD_HEADERS, "user-agent": ua}
+        assert mod.parse_event(h, body) is None, f"UA not dropped: {ua!r}"
+
+
+@test("beacon: drops missing, localhost, and malformed origins")
+def _():
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_origins")
+    body = json.dumps({"path": "/"}).encode()
+    for origin in ["", "http://localhost:3000", "http://127.0.0.1:8080",
+                   "https://dev.local", "not a url"]:
+        h = {**GOOD_HEADERS, "origin": origin}
+        h.pop("referer", None)
+        assert mod.parse_event(h, body) is None, f"origin not dropped: {origin!r}"
+
+
+@test("beacon: drops unknown event types and bad payloads")
+def _():
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_events")
+    bad = [json.dumps({"path": "/", "event": "login"}).encode(),  # not allowed yet
+           json.dumps({"path": "no-slash"}).encode(),
+           json.dumps(["not", "a", "dict"]).encode(),
+           b"not json at all"]
+    for body in bad:
+        assert mod.parse_event(GOOD_HEADERS, body) is None, f"not dropped: {body!r}"
+
+
+@test("beacon: visitor hash varies by IP, never exposes it")
+def _():
+    import os
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_hash")
+    os.environ.setdefault("AUTH_SECRET", "test-secret")
+    a = mod._visitor_hash("203.0.113.9", GOOD_UA)
+    b = mod._visitor_hash("203.0.113.10", GOOD_UA)
+    a2 = mod._visitor_hash("203.0.113.9", GOOD_UA)
+    assert a != b, "different IPs should hash differently"
+    assert a == a2, "same-day same-input hash should be stable"
+    assert "203" not in a
+
+
+@test("beacon: do_POST inserts row and returns 204; turso failure still 204")
+def _():
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_post")
+    captured_sql = []
+
+    def fake_turso(sql, args=None):
+        captured_sql.append((sql, args))
+        return []
+
+    restore = patch_turso_query(mod, fake_turso)
+    body = json.dumps({"path": "/x"}).encode()
+    try:
+        h = invoke_post(mod, GOOD_HEADERS, body)
+        assert h.status_code == 204, f"got {h.status_code}"
+        inserts = [c for c in captured_sql if "INSERT INTO page_views" in c[0]]
+        assert len(inserts) == 1, f"expected 1 insert, got {captured_sql}"
+        assert len(inserts[0][1]) == 8
+
+        def boom(sql, args=None):
+            raise RuntimeError("turso down")
+        patch_turso_query(mod, boom)
+        h2 = invoke_post(mod, GOOD_HEADERS, body)
+        assert h2.status_code == 204, f"error leaked: {h2.status_code}"
+    finally:
+        restore()
+
+
+@test("beacon: dropped hit inserts nothing but still 204")
+def _():
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_post_drop")
+    captured_sql = []
+
+    def fake_turso(sql, args=None):
+        captured_sql.append(sql)
+        return []
+
+    restore = patch_turso_query(mod, fake_turso)
+    try:
+        h = invoke_post(mod, {**GOOD_HEADERS, "user-agent": "Googlebot"},
+                        json.dumps({"path": "/"}).encode())
+        assert h.status_code == 204
+        assert not captured_sql, f"bot hit reached the DB: {captured_sql}"
+    finally:
+        restore()
+
+
+# === visitor_overview.py ===
+
+@test("visitor_overview: 401 when not authenticated")
+def _():
+    mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_unauth")
+    restore_q = patch_turso_query(mod, lambda *a, **kw: [])
+    restore_a = patch(mod, is_authenticated=lambda _: False)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/visitor_overview")
+        assert h.status_code == 401, f"got {h.status_code}"
+    finally:
+        restore()
+
+
+@test("visitor_overview: 200 shape, since bound, int coercion")
+def _():
+    mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_shape")
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        if "GROUP BY date, site" in sql:
+            return [{"date": "2026-07-01", "site": "prntd.org",
+                     "views": "12", "uniques": "3"}]
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/visitor_overview?since=2026-06-05")
+        assert h.status_code == 200, f"got {h.status_code}"
+        body = h.body
+        for key in ("daily", "paths", "referrers", "countries"):
+            assert key in body, f"missing {key}"
+        assert body["daily"][0]["views"] == 12, f"views not int: {body['daily']}"
+        assert body["daily"][0]["uniques"] == 3
+        assert all("2026-06-05" in a for _, a in captured), "since bound missing"
+        assert all("pageview" in s for s, _ in captured), "event filter missing"
+    finally:
+        restore()
+
+
 # === Main ===
 
 def main() -> int:
