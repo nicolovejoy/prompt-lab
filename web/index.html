@@ -1087,14 +1087,31 @@
     }
 
     // ---- Todos (open GitHub issues across all your repos) ----
-    let todosMemo = null;  // last payload, for instant revisit
+    let todosMemo = null;     // by-repo payload
+    let todosCatMemo = null;  // categorized payload (by-type)
+
+    // Type-of-work buckets — must mirror web/classify_helper.py's taxonomy.
+    const CAT_ORDER = ['bug','feature','infra','ux','content','research','other','uncategorized'];
+    const CAT_META = {
+      bug:          { label: 'Bugs',            color: '#ef4444' },
+      feature:      { label: 'Features',        color: '#6366f1' },
+      infra:        { label: 'Infra & tooling', color: '#06b6d4' },
+      ux:           { label: 'UX & polish',     color: '#ec4899' },
+      content:      { label: 'Content & docs',  color: '#eab308' },
+      research:     { label: 'Research',        color: '#a855f7' },
+      other:        { label: 'Other',           color: '#777' },
+      uncategorized:{ label: 'Uncategorized',   color: '#555' },
+    };
 
     function TodosView({ overview }) {
       const [data, setData] = useState(todosMemo);
       const [loading, setLoading] = useState(!todosMemo);
-      const [expanded, setExpanded] = useState({});  // project -> bool (collapsed by default)
+      const [expanded, setExpanded] = useState({});  // project|cat -> bool
       const [showAll, setShowAll] = useState(false);  // tracked projects only vs every owned repo
       const [query, setQuery] = useState('');
+      const [groupBy, setGroupBy] = useState('repo');  // 'repo' | 'type'
+      const [catData, setCatData] = useState(todosCatMemo);
+      const [catLoading, setCatLoading] = useState(false);
 
       useEffect(() => {
         if (todosMemo) { setData(todosMemo); setLoading(false); }
@@ -1104,6 +1121,30 @@
           .catch(e => { if (alive && !todosMemo) { setData({ error: e.message }); setLoading(false); } });
         return () => { alive = false; };
       }, []);
+
+      // Lazily fetch the categorized payload the first time "by type" is shown.
+      // If the server classified some but stragglers remain (pending>0), poll
+      // again to classify the next capped batch until the backlog drains.
+      useEffect(() => {
+        if (groupBy !== 'type' || catData) return;
+        let alive = true;
+        setCatLoading(true);
+        const load = () => api('/api/todos?categorize=1').then(d => {
+          todosCatMemo = d;
+          if (!alive) return;
+          setCatData(d); setCatLoading(false);
+          if (d.pending > 0 && d.classified_now > 0) setTimeout(load, 600);
+        }).catch(() => { if (alive) setCatLoading(false); });
+        load();
+        return () => { alive = false; };
+      }, [groupBy]);
+
+      const reclassify = () => {
+        setCatLoading(true);
+        api('/api/todos?categorize=1&recategorize=1')
+          .then(d => { todosCatMemo = d; setCatData(d); setCatLoading(false); })
+          .catch(() => setCatLoading(false));
+      };
 
       const header = html`
         <h1 style="margin: 0 0 4px; font-size: 1.4rem">Todos</h1>
@@ -1166,15 +1207,111 @@
       };
       const toggle = (p) => setExpanded(e => ({ ...e, [p]: !e[p] }));
 
+      // ---- by-type grouping (from the categorized payload) ----
+      const catProjects = (catData && catData.projects) || {};
+      const flatCat = [];
+      for (const p of Object.keys(catProjects)) {
+        if (!showAll && !isTracked(p)) continue;
+        for (const iss of catProjects[p]) if (matches(iss, p)) flatCat.push({ iss, p });
+      }
+      const byCat = {};
+      for (const x of flatCat) (byCat[x.iss.category || 'uncategorized'] ||= []).push(x);
+      const catList = CAT_ORDER.filter(c => (byCat[c] || []).length).map(c => ({ c, items: byCat[c] }));
+      const catTotal = flatCat.length;
+      const isCatOpen = (c) => q ? true : (expanded['cat:' + c] ?? true);  // default open
+      const catToggle = (c) => setExpanded(e => ({ ...e, ['cat:' + c]: !(e['cat:' + c] ?? true) }));
+
+      const grouper = html`
+        <div style="display: flex; gap: 4px; margin-bottom: 12px">
+          ${[['repo', 'by project'], ['type', 'by type']].map(([g, lbl]) => html`
+            <button onClick=${() => setGroupBy(g)}
+              style="font-size: 0.72rem; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+                     font-family: inherit; border: 1px solid var(--border);
+                     background: ${groupBy === g ? 'var(--accent)' : 'transparent'};
+                     color: ${groupBy === g ? '#fff' : 'var(--text-secondary)'}">${lbl}</button>`)}
+        </div>`;
+
+      const searchBox = html`
+        <input type="text" placeholder="Search issues — title, label, #number, repo"
+          value=${query} onInput=${e => setQuery(e.target.value)}
+          style="width: 100%; box-sizing: border-box; margin-bottom: 14px; padding: 8px 12px;
+                 font-size: 0.85rem; font-family: inherit; color: var(--text);
+                 background: var(--card); border: 1px solid var(--border); border-radius: var(--radius)" />`;
+
+      // ---- by type ----
+      if (groupBy === 'type') {
+        return html`
+          <div>
+            ${header}
+            ${grouper}
+            ${searchBox}
+            ${catLoading && !catData
+              ? html`<div class="cost-placeholder">Classifying issues by type…</div>`
+              : html`
+                <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; flex-wrap: wrap">
+                  <div style="font-size: 1.6rem; font-weight: 700">${catTotal}</div>
+                  <div style="font-size: 0.78rem; color: var(--text-secondary)">
+                    ${q ? 'matching' : 'open'} across ${catList.length} categor${catList.length === 1 ? 'y' : 'ies'}${showAll ? '' : ' (tracked)'}
+                  </div>
+                  <div style="margin-left: auto; display: flex; gap: 12px; align-items: baseline">
+                    ${(showAll || hiddenRepos > 0) && html`
+                      <button onClick=${() => setShowAll(s => !s)}
+                        style="font-size: 0.7rem; color: var(--accent); background: none; border: none;
+                               cursor: pointer; font-family: inherit">
+                        ${showAll ? 'Tracked only' : `Show all repos (+${hiddenRepos})`}
+                      </button>`}
+                    <button onClick=${reclassify}
+                      style="font-size: 0.7rem; color: var(--text-secondary); background: none; border: none;
+                             cursor: pointer; font-family: inherit" title="Re-run the LLM classification for every issue">
+                      ↻ reclassify
+                    </button>
+                  </div>
+                </div>
+
+                ${catData && catData.categorized === undefined && html`
+                  <div style="font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 12px">
+                    Showing cached categories. Sign in as admin to classify new issues.
+                  </div>`}
+
+                ${catList.length === 0
+                  ? html`<div class="empty">No issues${q ? ' match “' + query + '”' : ''}.</div>`
+                  : catList.map(({ c, items }) => {
+                    const meta = CAT_META[c] || CAT_META.uncategorized;
+                    const open = isCatOpen(c);
+                    return html`
+                      <div style="border-bottom: 1px solid var(--border)">
+                        <div style="display: flex; align-items: center; gap: 8px; padding: 10px 0; cursor: pointer"
+                             onClick=${() => catToggle(c)}>
+                          <span style="font-size: 0.7rem; color: var(--text-secondary); width: 10px; flex: none">${open ? '▾' : '▸'}</span>
+                          <span style="width: 9px; height: 9px; border-radius: 2px; background: ${meta.color}; flex: none"></span>
+                          <span style="font-size: 0.95rem; font-weight: 600">${meta.label}</span>
+                          <span style="font-size: 0.7rem; color: var(--text-secondary)">${items.length}</span>
+                        </div>
+                        ${open && html`
+                          <div style="padding: 0 0 10px 18px">
+                            ${items.map(({ iss, p }) => html`
+                              <a href=${iss.url} target="_blank" rel="noopener"
+                                 style="display: flex; align-items: baseline; gap: 8px; padding: 6px 0;
+                                        text-decoration: none; color: var(--text); border-top: 1px solid var(--border)">
+                                <span style="font-size: 0.66rem; color: var(--accent-light); flex: none; min-width: 96px;
+                                             overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${p}</span>
+                                <span style="font-size: 0.7rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none">#${iss.number}</span>
+                                <span style="font-size: 0.85rem; flex: 1; min-width: 0">${iss.title}</span>
+                                <span style="font-size: 0.65rem; color: var(--text-secondary); flex: none">${timeAgo(iss.updated_at)}</span>
+                              </a>`)}
+                          </div>`}
+                      </div>`;
+                  })}
+              `}
+          </div>`;
+      }
+
+      // ---- by project (default) ----
       return html`
         <div>
           ${header}
-
-          <input type="text" placeholder="Search issues — title, label, #number, repo"
-            value=${query} onInput=${e => setQuery(e.target.value)}
-            style="width: 100%; box-sizing: border-box; margin-bottom: 14px; padding: 8px 12px;
-                   font-size: 0.85rem; font-family: inherit; color: var(--text);
-                   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius)" />
+          ${grouper}
+          ${searchBox}
 
           <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; flex-wrap: wrap">
             <div style="font-size: 1.6rem; font-weight: 700">${shownTotal}</div>

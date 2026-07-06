@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/**/*.py": {
-      "includeFiles": "{auth_helper.py,turso_helper.py}"
+      "includeFiles": "{auth_helper.py,turso_helper.py,classify_helper.py}"
     }
   },
   "rewrites": [

@@ -498,6 +498,103 @@ def _():
         restore_a()
 
 
+# === todos.py categorize (by-type) ===
+
+_CAT_ITEMS = [
+    {"title": "Fix crash", "number": 1, "html_url": "u1", "labels": [{"name": "bug"}],
+     "repository_url": "https://api.github.com/repos/nicolovejoy/musicforge",
+     "updated_at": "2026-07-01T00:00:00Z"},
+    {"title": "Add export", "number": 2, "html_url": "u2", "labels": [],
+     "repository_url": "https://api.github.com/repos/nicolovejoy/prntd",
+     "updated_at": "2026-07-02T00:00:00Z"},
+]
+
+
+@test("todos categorize: reader gets cached categories, no classify")
+def _():
+    import os
+    mod = load_endpoint("web/api/todos.py", "endpoint_todos_cat_reader")
+    restore_auth = patch(mod, is_authenticated=lambda _: True,
+                         get_role=lambda _: "reader")
+    inserts = []
+
+    def fake_turso(sql, args=None):
+        if "FROM project_aliases" in sql:
+            return []
+        if "SELECT repo, number, title, category FROM issue_categories" in sql:
+            # musicforge#1 cached; prntd#2 absent
+            return [{"repo": "musicforge", "number": 1,
+                     "title": "Fix crash", "category": "bug"}]
+        if "INSERT INTO issue_categories" in sql:
+            inserts.append(args)
+            return []
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_fetch = patch(mod, _fetch_open_issues=lambda t, u: _CAT_ITEMS)
+    saved = os.environ.get("GITHUB_TOKEN")
+    os.environ["GITHUB_TOKEN"] = "ghp_test"
+    try:
+        h = invoke(mod, "/api/todos?categorize=1")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        b = h.body
+        assert b.get("categorized") is True
+        assert b["classified_now"] == 0, "reader must not classify"
+        assert not inserts, "reader must not write cache"
+        mf = b["projects"]["musicforge"][0]
+        pr = b["projects"]["prntd"][0]
+        assert mf["category"] == "bug", f"cache miss: {mf}"
+        assert pr["category"] == "uncategorized", f"uncached should be uncategorized: {pr}"
+        assert b["pending"] == 1
+    finally:
+        if saved is None: os.environ.pop("GITHUB_TOKEN", None)
+        else: os.environ["GITHUB_TOKEN"] = saved
+        restore_fetch(); restore_q(); restore_auth()
+
+
+@test("todos categorize: admin classifies uncached via classify_batch")
+def _():
+    import os
+    mod = load_endpoint("web/api/todos.py", "endpoint_todos_cat_admin")
+    restore_auth = patch(mod, is_authenticated=lambda _: True,
+                         get_role=lambda _: "admin")
+    inserts = []
+
+    def fake_turso(sql, args=None):
+        if "FROM project_aliases" in sql:
+            return []
+        if "SELECT repo, number, title, category FROM issue_categories" in sql:
+            return [{"repo": "musicforge", "number": 1,
+                     "title": "Fix crash", "category": "bug"}]
+        if "INSERT INTO issue_categories" in sql:
+            inserts.append(args)
+            return []
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_fetch = patch(mod, _fetch_open_issues=lambda t, u: _CAT_ITEMS)
+    restore_cls = patch(mod, classify_batch=lambda issues: {"prntd#2": "feature"})
+    saved = os.environ.get("GITHUB_TOKEN")
+    saved_key = os.environ.get("ANTHROPIC_API_KEY")
+    os.environ["GITHUB_TOKEN"] = "ghp_test"
+    os.environ["ANTHROPIC_API_KEY"] = "sk-test"
+    try:
+        h = invoke(mod, "/api/todos?categorize=1")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        b = h.body
+        assert b["classified_now"] == 1, f"admin should classify the 1 uncached: {b}"
+        assert b["pending"] == 0
+        pr = b["projects"]["prntd"][0]
+        assert pr["category"] == "feature", f"not classified: {pr}"
+        assert inserts and inserts[0][0] == "prntd" and inserts[0][3] == "feature", f"cache not written: {inserts}"
+    finally:
+        if saved is None: os.environ.pop("GITHUB_TOKEN", None)
+        else: os.environ["GITHUB_TOKEN"] = saved
+        if saved_key is None: os.environ.pop("ANTHROPIC_API_KEY", None)
+        else: os.environ["ANTHROPIC_API_KEY"] = saved_key
+        restore_cls(); restore_fetch(); restore_q(); restore_auth()
+
+
 # === beacon.py ===
 
 def invoke_post(endpoint_module, headers: dict, body: bytes) -> Captured:
