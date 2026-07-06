@@ -708,11 +708,236 @@
       return words.slice(0, 12).join(' ') + (words.length > 12 ? '...' : '');
     }
 
+    // ---- Home: Pulse (metrics-first) over the activity stream ----
+
+    // Inline SVG sparkline from a value series. Returns null-safe markup.
+    function Spark({ values, color, w = 96, h = 28 }) {
+      if (!values || values.length < 2) return null;
+      const max = Math.max(...values, 1);
+      const n = values.length;
+      const pts = values.map((v, i) =>
+        `${(i / (n - 1)) * w},${h - (v / max) * (h - 3) - 1}`);
+      const last = pts[pts.length - 1].split(',');
+      return html`
+        <svg width=${w} height=${h} viewBox=${`0 0 ${w} ${h}`} preserveAspectRatio="none"
+             style="display:block; overflow:visible">
+          <polyline points=${`0,${h} ${pts.join(' ')} ${w},${h}`}
+            fill=${color} opacity="0.1" stroke="none" />
+          <polyline points=${pts.join(' ')} fill="none" stroke=${color}
+            stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" />
+          <circle cx=${last[0]} cy=${last[1]} r="2" fill=${color} />
+        </svg>`;
+    }
+
+    // Sum activity_by_project into one {date -> prompts} series over a date span.
+    function dailySeries(activityByProject, days) {
+      const byDate = {};
+      for (const p of Object.keys(activityByProject || {})) {
+        for (const d of activityByProject[p] || []) {
+          byDate[d.date] = (byDate[d.date] || 0) + (d.prompts || 0);
+        }
+      }
+      const out = [];
+      for (let i = days - 1; i >= 0; i--) {
+        const ds = new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10);
+        out.push({ date: ds, n: byDate[ds] || 0 });
+      }
+      return out;
+    }
+
+    // KPI tile row. Numbers we already have (week totals, active count) render
+    // instantly; spend + views fill in when their endpoints resolve.
+    function PulseTiles({ overview, cost30, views30 }) {
+      const week = overview.week || {};
+      const activeCount = Object.keys(overview.by_project || {}).length;
+      const dormantCount = (overview.all_projects || [])
+        .filter(p => !(overview.by_project || {})[p]).length;
+
+      const promptSeries = dailySeries(overview.activity_by_project, 30).map(d => d.n);
+
+      const spend30 = (cost30 || []).reduce((s, r) => s + (Number(r.cost_usd) || 0), 0);
+      const spendByDate = {};
+      for (const r of (cost30 || [])) spendByDate[r.date] = (spendByDate[r.date] || 0) + (Number(r.cost_usd) || 0);
+      const spendSeries = [];
+      for (let i = 29; i >= 0; i--) {
+        const ds = new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10);
+        spendSeries.push(spendByDate[ds] || 0);
+      }
+
+      const views30sum = (views30 || []).reduce((s, r) => s + (Number(r.views) || 0), 0);
+      const viewsByDate = {};
+      for (const r of (views30 || [])) viewsByDate[r.date] = (viewsByDate[r.date] || 0) + (Number(r.views) || 0);
+      const viewsSeries = [];
+      for (let i = 29; i >= 0; i--) {
+        const ds = new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10);
+        viewsSeries.push(viewsByDate[ds] || 0);
+      }
+
+      const tiles = [
+        { label: 'active projects', value: activeCount, sub: dormantCount + ' dormant', to: null },
+        { label: 'sessions · 7d', value: (week.sessions || 0).toLocaleString(), to: null },
+        { label: 'prompts · 7d', value: (week.prompts || 0).toLocaleString(),
+          series: promptSeries, color: 'var(--accent-light)', to: null },
+        { label: 'commits · 7d', value: (week.commits || 0).toLocaleString(), to: null },
+        { label: 'api spend · 30d', value: cost30 == null ? '…' : fmtUsd(spend30),
+          series: cost30 == null ? null : spendSeries, color: 'var(--green)', to: '#/costs' },
+        { label: 'page views · 30d',
+          value: views30 == null ? '…' : (views30sum ? views30sum.toLocaleString() : 'new'),
+          series: views30 == null ? null : viewsSeries, color: '#06b6d4', to: '#/visitors' },
+      ];
+
+      return html`
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+                    gap:12px; margin-bottom:22px">
+          ${tiles.map(t => {
+            const inner = html`
+              <div style="display:flex; flex-direction:column; gap:6px; height:100%">
+                <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.62rem;
+                            letter-spacing:0.08em; text-transform:uppercase; color:var(--text-secondary)">
+                  ${t.label}
+                </div>
+                <div style="font-size:1.7rem; font-weight:650; letter-spacing:-0.02em;
+                            font-variant-numeric:tabular-nums; line-height:1">${t.value}</div>
+                <div style="flex:1"></div>
+                ${t.series
+                  ? html`<${Spark} values=${t.series} color=${t.color} />`
+                  : t.sub
+                    ? html`<div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.62rem;
+                                       color:var(--text-secondary)">${t.sub}</div>`
+                    : html`<div style="height:28px"></div>`}
+              </div>`;
+            const style = `background:var(--card); border:1px solid var(--border);
+                           border-radius:var(--radius); padding:14px 15px; min-height:104px;
+                           text-decoration:none; color:var(--text); display:block;
+                           transition:border-color 0.15s, background 0.15s;
+                           ${t.to ? 'cursor:pointer' : ''}`;
+            return t.to
+              ? html`<a href=${t.to} style=${style}
+                       onMouseEnter=${e => e.currentTarget.style.borderColor = '#3a3a3a'}
+                       onMouseLeave=${e => e.currentTarget.style.borderColor = 'var(--border)'}>${inner}</a>`
+              : html`<div style=${style}>${inner}</div>`;
+          })}
+        </div>`;
+    }
+
+    // Cross-project 30-day activity — one stacked bar per day, colored by project.
+    function CrossProjectActivity({ overview }) {
+      const [hovered, setHovered] = useState(null);
+      const act = overview.activity_by_project || {};
+
+      // Rank projects by total prompts; top 8 get colors, rest fold into "other".
+      const totals = {};
+      for (const p of Object.keys(act))
+        totals[p] = (act[p] || []).reduce((s, d) => s + (d.prompts || 0), 0);
+      const ranked = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+      if (!ranked.length || ranked[0][1] === 0) return null;
+      const colorOf = {};
+      ranked.forEach(([p], i) => { colorOf[p] = i < COST_PALETTE.length ? COST_PALETTE[i] : COST_OTHER; });
+      const namedSet = new Set(ranked.slice(0, COST_PALETTE.length).map(e => e[0]));
+      const segColor = p => namedSet.has(p) ? colorOf[p] : COST_OTHER;
+
+      // Per-day, per-project prompt counts + day totals.
+      const byDateProject = {};
+      for (const p of Object.keys(act))
+        for (const d of act[p] || [])
+          (byDateProject[d.date] ||= {})[p] = (byDateProject[d.date]?.[p] || 0) + (d.prompts || 0);
+
+      const dates = [];
+      for (let i = 29; i >= 0; i--)
+        dates.push(new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10));
+      const dayTotal = d => Object.values(byDateProject[d] || {}).reduce((s, v) => s + v, 0);
+      const peak = Math.max(...dates.map(dayTotal), 1);
+      const CHART_H = 120, n = dates.length;
+      const tickIdxs = new Set();
+      const k = Math.min(6, n);
+      for (let i = 0; i < k; i++) tickIdxs.add(Math.round((i * (n - 1)) / (k - 1)));
+
+      return html`
+        <div style="margin-bottom:26px; padding:16px; background:var(--card);
+                    border:1px solid var(--border); border-radius:var(--radius)">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px">
+            <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.68rem;
+                        letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary)">
+              Activity · last 30 days
+            </div>
+            <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.62rem; color:var(--text-secondary)">
+              prompts per day, stacked by project
+            </div>
+          </div>
+          <div style="display:flex; gap:2px; align-items:stretch; height:${CHART_H}px;
+                      border-bottom:1px solid var(--border)">
+            ${dates.map((d, i) => {
+              const total = dayTotal(d);
+              const barH = total > 0 ? Math.max(1, Math.round((total / peak) * (CHART_H - 4))) : 0;
+              const isH = hovered === i;
+              const edge = n > 1 ? i / (n - 1) : 0.5;
+              const anchor = edge < 0.15 ? 'left:0' : edge > 0.85 ? 'right:0' : 'left:50%; transform:translateX(-50%)';
+              const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
+              return html`
+                <div style="flex:1; min-width:3px; height:100%; position:relative; cursor:default"
+                     onMouseEnter=${() => setHovered(i)}
+                     onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}>
+                  <div style="position:absolute; left:0; right:0; bottom:0; height:${barH}px;
+                              display:flex; flex-direction:column-reverse; border-radius:2px 2px 0 0;
+                              overflow:hidden; opacity:${isH ? 1 : 0.85}; transition:opacity 0.1s">
+                    ${segs.map(([p, v]) => html`
+                      <div style="height:${(v / total) * 100}%; background:${segColor(p)}"></div>`)}
+                  </div>
+                  ${isH && total > 0 && html`
+                    <div style="position:absolute; bottom:100%; z-index:5; margin-bottom:4px; ${anchor};
+                                background:var(--bg); border:1px solid var(--border); border-radius:6px;
+                                padding:8px 10px; white-space:nowrap; box-shadow:0 4px 16px rgba(0,0,0,0.4);
+                                font-size:0.7rem">
+                      <div style="font-weight:600; margin-bottom:4px">${fmtShortDate(d)} · ${total} prompts</div>
+                      ${segs.slice(0, 6).map(([p, v]) => html`
+                        <div style="display:flex; align-items:center; gap:6px; color:var(--text-secondary)">
+                          <span style="width:8px; height:8px; border-radius:2px; background:${segColor(p)}; display:inline-block"></span>
+                          <span style="color:var(--text)">${p}</span>
+                          <span style="margin-left:auto">${v}</span>
+                        </div>`)}
+                      ${segs.length > 6 && html`<div style="color:var(--text-secondary)">+${segs.length - 6} more</div>`}
+                    </div>`}
+                </div>`;
+            })}
+          </div>
+          <div style="display:flex; gap:2px; margin-top:4px; margin-bottom:12px">
+            ${dates.map((d, i) => html`
+              <div style="flex:1; min-width:3px; text-align:center; font-size:0.55rem;
+                          color:var(--text-secondary); font-family:'SF Mono',ui-monospace,monospace;
+                          white-space:nowrap">${tickIdxs.has(i) ? fmtShortDate(d) : ''}</div>`)}
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:10px 16px">
+            ${ranked.slice(0, COST_PALETTE.length).map(([p]) => html`
+              <a href=${'#/project/' + encodeURIComponent(p)}
+                 style="display:inline-flex; align-items:center; gap:6px; text-decoration:none;
+                        color:var(--text-secondary); font-size:0.72rem">
+                <span style="width:8px; height:8px; border-radius:2px; background:${segColor(p)}"></span>${p}
+              </a>`)}
+            ${ranked.length > COST_PALETTE.length && html`
+              <span style="display:inline-flex; align-items:center; gap:6px; font-size:0.72rem; color:var(--text-secondary)">
+                <span style="width:8px; height:8px; border-radius:2px; background:${COST_OTHER}"></span>+${ranked.length - COST_PALETTE.length} more
+              </span>`}
+          </div>
+        </div>`;
+    }
+
     // ---- Home: cross-project activity stream ----
     function HomeView({ overview }) {
       const { week, by_project } = overview;
       const [expanded, setExpanded] = useState({});
       const [showDormant, setShowDormant] = useState(false);
+      const [cost30, setCost30] = useState(() => costOverviewMemo.get(30)?.rows || null);
+      const [views30, setViews30] = useState(() => visitorOverviewMemo.get(30)?.daily || null);
+
+      useEffect(() => {
+        const since = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+        api('/api/cost_overview?since=' + since)
+          .then(d => { costOverviewMemo.set(30, d); setCost30(d.rows || []); })
+          .catch(() => setCost30([]));
+        api('/api/visitor_overview?since=' + since)
+          .then(d => { visitorOverviewMemo.set(30, d); setViews30(d.daily || []); })
+          .catch(() => setViews30([]));
+      }, []);
       const toggle = (id) => setExpanded(p => ({ ...p, [id]: !p[id] }));
 
       // Flatten every project's daily summaries into one reverse-chron feed.
@@ -740,9 +965,12 @@
       const open = (p) => navigate('#/project/' + encodeURIComponent(p));
 
       return html`
-        <div class="overview-stats">
-          <strong>${week.sessions}</strong> sessions · <strong>${week.prompts}</strong> prompts · <strong>${week.commits}</strong> commits this week
-        </div>
+        <${PulseTiles} overview=${overview} cost30=${cost30} views30=${views30} />
+        <${CrossProjectActivity} overview=${overview} />
+
+        <div class="sec-label" style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.68rem;
+             letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary);
+             margin:0 0 12px">Recent activity</div>
 
         ${items.length === 0
           ? html`<div class="empty">No project activity in the last 7 days.</div>`
