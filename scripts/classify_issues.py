@@ -54,7 +54,7 @@ def fetch_issues():
             "repo": r["repository"]["name"],
             "number": r["number"],
             "title": r["title"],
-            "labels": [l["name"] for l in r.get("labels", [])],
+            "labels": [label["name"] for label in r.get("labels", [])],
         })
     return issues
 

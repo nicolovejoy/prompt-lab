@@ -547,9 +547,13 @@ def _():
         assert pr["category"] == "uncategorized", f"uncached should be uncategorized: {pr}"
         assert b["pending"] == 1
     finally:
-        if saved is None: os.environ.pop("GITHUB_TOKEN", None)
-        else: os.environ["GITHUB_TOKEN"] = saved
-        restore_fetch(); restore_q(); restore_auth()
+        if saved is None:
+            os.environ.pop("GITHUB_TOKEN", None)
+        else:
+            os.environ["GITHUB_TOKEN"] = saved
+        restore_fetch()
+        restore_q()
+        restore_auth()
 
 
 @test("todos categorize: admin classifies uncached via classify_batch")
@@ -588,11 +592,18 @@ def _():
         assert pr["category"] == "feature", f"not classified: {pr}"
         assert inserts and inserts[0][0] == "prntd" and inserts[0][3] == "feature", f"cache not written: {inserts}"
     finally:
-        if saved is None: os.environ.pop("GITHUB_TOKEN", None)
-        else: os.environ["GITHUB_TOKEN"] = saved
-        if saved_key is None: os.environ.pop("ANTHROPIC_API_KEY", None)
-        else: os.environ["ANTHROPIC_API_KEY"] = saved_key
-        restore_cls(); restore_fetch(); restore_q(); restore_auth()
+        if saved is None:
+            os.environ.pop("GITHUB_TOKEN", None)
+        else:
+            os.environ["GITHUB_TOKEN"] = saved
+        if saved_key is None:
+            os.environ.pop("ANTHROPIC_API_KEY", None)
+        else:
+            os.environ["ANTHROPIC_API_KEY"] = saved_key
+        restore_cls()
+        restore_fetch()
+        restore_q()
+        restore_auth()
 
 
 # === beacon.py ===
