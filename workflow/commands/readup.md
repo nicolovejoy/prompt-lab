@@ -1,7 +1,7 @@
 ---
 name: readup
 description: Start a session — register a session row, sync to remote, read project context
-allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(~/.claude/bin/sync-claude-md.sh:*), Bash(~/.claude/bin/handoff.sh:*), Bash(stat:*), Bash(date:*), Bash(basename:*), Bash(mkdir:*), Bash(touch:*), Bash(gh issue list:*), Bash(gh pr list:*), Read, Write, Edit, Glob, Agent
+allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(~/.claude/bin/sync-claude-md.sh:*), Bash(~/.claude/bin/handoff.sh:*), Bash(stat:*), Bash(date:*), Bash(basename:*), Bash(mkdir:*), Bash(touch:*), Bash(gh issue list:*), Bash(gh pr list:*), Bash(gh run list:*), Bash(gh run view:*), Read, Write, Edit, Glob, Agent
 ---
 
 Start a session. Be concise.
@@ -99,10 +99,35 @@ The SessionStart hook only *pulls* the handoff repo (read-only). If a prior sess
 - exit 0 → say nothing (nothing pending, or pushed cleanly).
 - exit 3 (conflict) / 4 (offline) → flag one line so it's not silently lost; the entry stays safe locally. Skip entirely if `~/src/.handoff` isn't present.
 
+## 8. Check CI health (most recent builds)
+
+Silent CI breakage is easy to miss for days — e.g. a lint error blocked `test` (and everything downstream, including `deploy`) on every push to `main` for 3 days before anyone noticed. Check the most recent runs, not just "does a workflow exist":
+
+```bash
+default_branch="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')"
+default_branch="${default_branch:-main}"
+gh run list --branch "$default_branch" --limit 5 --json status,conclusion,name,displayTitle,createdAt,headSha,url 2>/dev/null || echo '[]'
+```
+
+If the current branch isn't `$default_branch`, also check it (a PR/feature branch can have its own failing CI independent of main):
+
+```bash
+current_branch="$(git branch --show-current)"
+[ "$current_branch" != "$default_branch" ] && gh run list --branch "$current_branch" --limit 3 --json status,conclusion,name,displayTitle,createdAt,url 2>/dev/null
+```
+
+Behavior:
+
+- `gh` missing, not authenticated, no workflows configured, or the API call errors → skip silently. Not every repo runs CI, and this must never block session start.
+- Latest run per branch has `conclusion: "success"`, or `status` is still `in_progress`/`queued` → say nothing.
+- Latest run's `conclusion` is `failure` / `cancelled` / `timed_out` → **this is CI actively broken.** Don't bury it in the wall of text — surface it as its own ⚠️ line in the summary below, naming the workflow, the branch, and roughly how long it's been red (walk the returned `createdAt`/`conclusion` pairs back to the last `success` to bound it, e.g. "red since <date>, N consecutive failures"). If the workflow YAML defines a `deploy` (or other) job with `needs: test` or similar, call that out too — a red `test` run silently starves it, and a starved job never shows as "failed," just perpetually skipped, so it's easy to miss unless named explicitly. Don't auto-fix; offer to pull the failing step's log (`gh run view <run-id> --log-failed`) and investigate if the user wants to chase it now.
+
 ## Then
 
 Summarize in a few lines: where the project stands (from CLAUDE.md), what's next, and whether the working tree needs attention (uncommitted changes, behind/ahead of remote). Open with the Machine label from the SessionStart-hook context (e.g. "On mini.") so cross-machine context is immediate.
 
 If any branch (current or otherwise) is behind origin, end with a short ⚠️ block listing each behind branch and the suggested `git pull --rebase` / `git checkout` command. If there are remote-only branches that look like in-progress work from another machine, mention them too.
+
+If step 8 found broken CI, lead the summary with that ⚠️ block — a red build is more urgent than a stale branch or a drifted CLAUDE.md.
 
 If the user passed arguments with this command, address those — don't suggest a separate task.
