@@ -10,6 +10,26 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-07-08 — Measurement minimalism (analytics/telemetry policy)
+
+Scope: all projects
+
+**Add a metric only when you have a question it answers, at the coarsest
+granularity that answers it** — never because collection is easy. Full
+rationale: `prompt-lab/docs/measurement-policy.md`. The short version:
+
+- The beacon stays anonymous by construction (no cookies, no stable IDs,
+  daily-rotating visitor hash). Anything that can follow a person across days
+  crosses the GDPR/ePrivacy consent line and buys a banner + compliance story
+  on every site at once. Don't.
+- Several sites have single-digit users Nico knows by name (by-side.net ≈ one
+  attorney under an NDA) — fine-grained "anonymous" analytics deanonymize at
+  that N. Session paths / time-on-page there = surveilling a specific person.
+- Rich signal belongs on authenticated server-side surfaces with a specific
+  purpose (ibuild4you `api_usage` is the model), not in client-side tracking.
+- New beacon events: one named event at a time, each with an issue stating the
+  question it answers (e.g. `login`, prompt-lab#10).
+
 ## 2026-07-05 — Playwright browser hygiene (stray "Chrome for Testing" instances)
 
 Scope: all projects
