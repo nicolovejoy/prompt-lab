@@ -57,6 +57,9 @@ It inserts the entry at the **top** of `## Active`. When an entry is acted on, m
 
 ## Next Steps
 
+### CI break-glass: `/readup` now checks CI health (SHIPPED 2026-07-09)
+Traced from a CDCI ask: the `tests` workflow (`.github/workflows/test.yml`) had been red on `main` for 3 days (since `5f5f531`, the Todos by-type feature) — 12 ruff lint errors (`E741` ambiguous var in `scripts/classify_issues.py`, `E701`/`E702` one-line if/else/semicolon statements in `scripts/test_web_api.py`) failed the `test` job, which cascaded into skipping every downstream test step **and** the `deploy` job (which `needs: test`) on every push. No prod deploys went out for 3 days and nothing surfaced it — `deploy` shows as *skipped*, not *failed*, so it reads as normal in a quick glance at Actions. Fixed the 12 lint errors (renamed the ambiguous var, split the one-liners). **Root-cause fix:** `/readup` (`workflow/commands/readup.md` step 8) now checks `gh run list` for the default branch (and current branch if different) on every session start — silent if green/no-CI, otherwise surfaces a ⚠️ leading the summary naming the workflow, how long it's been red, and whether a dependent job (like `deploy`) is being silently starved as a result. Never blocks session start (skips silently on any `gh` error). Not yet applied to the SessionStart hook (that would make it automatic/unconditional rather than a `/readup`-time check) — could move it there later if `/readup` alone doesn't catch breakage fast enough in practice.
+
 ### Cross-site visitor visibility — core SHIPPED, fan-out ON HOLD (issue #9, 2026-07-05)
 Traced a 2026-06-14 ibuild4you ask ("visibility to who uses this app and all my cloudflare hosted domains") that never got filed — filed as **#9** public-site traffic + **#10** auth-gated tool usage (tied to the OAuth-migration item below).
 
