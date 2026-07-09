@@ -60,17 +60,17 @@
 
     /* Login */
     .login { max-width: 320px; margin: 120px auto; text-align: center; }
-    .login h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; letter-spacing: -0.3px; }
-    .login p { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 24px; }
+    .login h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: 4px; letter-spacing: -0.3px; }
+    .login p { color: var(--text-secondary); font-size: 1.16rem; margin-bottom: 24px; }
     .login input {
       width: 100%; padding: 10px 14px; margin-bottom: 10px;
       background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-      color: var(--text); font-size: 0.9rem; font-family: inherit; text-align: center;
+      color: var(--text); font-size: 1.23rem; font-family: inherit; text-align: center;
     }
     .login input:focus { outline: none; border-color: var(--accent); }
     .login button {
       width: 100%; padding: 10px; background: var(--accent); color: white;
-      border: none; border-radius: var(--radius); font-size: 0.9rem; font-weight: 600; cursor: pointer;
+      border: none; border-radius: var(--radius); font-size: 1.23rem; font-weight: 600; cursor: pointer;
     }
     .login button:disabled { opacity: 0.4; }
 
@@ -82,19 +82,19 @@
     }
     .header-left { display: flex; align-items: center; gap: 6px; }
     .header-logo {
-      font-size: 1.05rem; font-weight: 700; letter-spacing: -0.3px;
+      font-size: 1.43rem; font-weight: 700; letter-spacing: -0.3px;
       cursor: pointer; color: var(--text); text-decoration: none;
     }
-    .header-sep { color: var(--text-secondary); font-size: 1rem; }
-    .breadcrumb { font-size: 1rem; color: var(--text-secondary); font-weight: 500; }
+    .header-sep { color: var(--text-secondary); font-size: 1.36rem; }
+    .breadcrumb { font-size: 1.36rem; color: var(--text-secondary); font-weight: 500; }
     .breadcrumb a { color: var(--text-secondary); text-decoration: none; cursor: pointer; }
     .breadcrumb a:hover { color: var(--accent-light); }
     .header-right { display: flex; align-items: center; gap: 14px; }
     .header-meta {
-      font-size: 0.75rem; color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace;
+      font-size: 1.02rem; color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace;
     }
     .header-btn {
-      font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;
+      font-size: 1.09rem; color: var(--text-secondary); cursor: pointer;
       background: none; border: none; font-family: inherit; padding: 4px 10px;
       border-radius: 4px;
     }
@@ -112,11 +112,11 @@
     .picker { position: relative; display: inline-flex; }
     .picker-btn {
       display: inline-flex; align-items: center; gap: 5px;
-      background: none; border: none; font-family: inherit; font-size: 1rem;
+      background: none; border: none; font-family: inherit; font-size: 1.36rem;
       font-weight: 500; color: var(--text-secondary); cursor: pointer; padding: 0;
     }
     .picker-btn:hover { color: var(--accent-light); }
-    .picker-caret { font-size: 0.65rem; opacity: 0.7; }
+    .picker-caret { font-size: 0.89rem; opacity: 0.7; }
     .picker-menu {
       position: absolute; top: 100%; left: 0; margin-top: 8px;
       background: var(--card); border: 1px solid var(--border); border-radius: 8px;
@@ -124,12 +124,12 @@
       box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index: 50;
     }
     .picker-section {
-      font-size: 0.6rem; font-weight: 600; text-transform: uppercase;
+      font-size: 0.82rem; font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.5px; color: var(--text-secondary); padding: 8px 10px 3px;
     }
     .picker-item {
       display: block; width: 100%; text-align: left; padding: 7px 10px;
-      font-size: 0.85rem; color: var(--text); background: none; border: none;
+      font-size: 1.16rem; color: var(--text); background: none; border: none;
       cursor: pointer; border-radius: 5px; font-family: inherit;
     }
     .picker-item:hover { background: var(--card-hover); }
@@ -139,30 +139,30 @@
     .cost-placeholder {
       margin-top: 16px; padding: 16px; background: var(--card);
       border: 1px solid var(--border); border-radius: 6px;
-      font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;
+      font-size: 1.09rem; color: var(--text-secondary); line-height: 1.5;
     }
 
     .overview-stats {
-      font-size: 1rem; color: var(--text-secondary); margin-bottom: 24px;
+      font-size: 1.36rem; color: var(--text-secondary); margin-bottom: 24px;
     }
     .overview-stats strong { color: var(--text); }
 
     /* Project page */
     .project-header { margin-bottom: 24px; }
     .project-title-row { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
-    .project-name { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.3px; }
+    .project-name { font-size: 1.91rem; font-weight: 600; letter-spacing: -0.3px; }
     .project-links { display: flex; gap: 8px; align-items: center; }
     .project-link {
-      font-size: 0.72rem; color: var(--text-secondary); text-decoration: none;
+      font-size: 0.98rem; color: var(--text-secondary); text-decoration: none;
       padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px;
       font-family: "SF Mono", ui-monospace, monospace; transition: border-color 0.15s;
     }
     .project-link:hover { border-color: var(--text-secondary); color: var(--text); }
     .project-meta {
-      font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 10px;
+      font-size: 1.09rem; color: var(--text-secondary); margin-bottom: 10px;
       font-family: "SF Mono", ui-monospace, monospace;
     }
-    .project-summary { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px; }
+    .project-summary { font-size: 1.23rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px; }
     .project-layout { display: grid; grid-template-columns: 1fr 300px; gap: 24px; }
     @media (max-width: 800px) { .project-layout { grid-template-columns: 1fr; } }
     .project-sidebar > * + * { margin-top: 16px; }
@@ -171,7 +171,7 @@
       border-radius: var(--radius); padding: 14px 16px;
     }
     .sidebar-label {
-      font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+      font-size: 0.89rem; font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 8px;
     }
 
@@ -186,7 +186,7 @@
     .heatmap-cell-4 { background: var(--accent); opacity: 1; }
     .heatmap-labels {
       display: flex; justify-content: space-between;
-      font-size: 0.6rem; color: var(--text-secondary);
+      font-size: 0.82rem; color: var(--text-secondary);
       font-family: "SF Mono", ui-monospace, monospace; margin-bottom: 4px;
     }
 
@@ -195,7 +195,7 @@
       background: var(--card); padding: 3px; border-radius: var(--radius);
     }
     .sub-tab {
-      padding: 7px 16px; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);
+      padding: 7px 16px; font-size: 1.09rem; font-weight: 600; color: var(--text-secondary);
       background: none; border: none; cursor: pointer; border-radius: 6px; font-family: inherit;
     }
     .sub-tab.active { background: var(--accent); color: white; }
@@ -210,18 +210,18 @@
       padding: 14px 16px; margin-bottom: 10px;
     }
     .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-    .card-title { font-size: 0.85rem; font-weight: 600; }
-    .card-date { font-size: 0.7rem; color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace; }
-    .card-body { font-size: 0.82rem; color: var(--text-secondary); line-height: 1.55; }
+    .card-title { font-size: 1.16rem; font-weight: 600; }
+    .card-date { font-size: 0.95rem; color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace; }
+    .card-body { font-size: 1.12rem; color: var(--text-secondary); line-height: 1.55; }
     .card-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
-    .tag { font-size: 0.68rem; padding: 2px 7px; background: var(--border); color: var(--text-secondary); border-radius: 3px; }
+    .tag { font-size: 0.93rem; padding: 2px 7px; background: var(--border); color: var(--text-secondary); border-radius: 3px; }
     .count-badges { display: flex; gap: 10px; margin-top: 8px; }
-    .count-badge { font-size: 0.68rem; color: var(--text-secondary); }
+    .count-badge { font-size: 0.93rem; color: var(--text-secondary); }
     .count-badge strong { color: var(--text); }
 
     /* Status badges */
     .status-badge {
-      display: inline-block; padding: 2px 7px; font-size: 0.65rem;
+      display: inline-block; padding: 2px 7px; font-size: 0.89rem;
       font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; border-radius: 3px;
     }
     .status-active { background: var(--green-dim); color: var(--green); }
@@ -235,13 +235,13 @@
       width: 1px; background: var(--border);
     }
     .timeline-date {
-      font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);
+      font-size: 1.09rem; font-weight: 600; color: var(--text-secondary);
       margin: 20px 0 8px; position: relative;
       font-family: "SF Mono", ui-monospace, monospace;
     }
     .timeline-date:first-child { margin-top: 0; }
     .timeline-entry {
-      position: relative; font-size: 0.88rem; color: var(--text-secondary);
+      position: relative; font-size: 1.2rem; color: var(--text-secondary);
       line-height: 1.6; padding: 6px 0; cursor: pointer;
       border-radius: 6px; transition: background 0.15s;
     }
@@ -255,35 +255,35 @@
     .timeline-entry.rollup:hover { background: none; margin: 0; padding: 6px 0; }
     .timeline-entry.rollup::before { background: var(--green); }
     .timeline-entry.rollup:hover::before { left: -20px; }
-    .timeline-phrase { font-size: 0.88rem; }
+    .timeline-phrase { font-size: 1.2rem; }
     .timeline-expand {
       margin-top: 8px; padding: 10px 12px; background: var(--card);
       border: 1px solid var(--border); border-radius: 6px;
     }
     .timeline-expand-summary {
-      font-size: 0.82rem; color: var(--text); line-height: 1.6; margin-bottom: 8px;
+      font-size: 1.12rem; color: var(--text); line-height: 1.6; margin-bottom: 8px;
     }
     .timeline-expand-decisions {
       list-style: none; padding: 0; margin: 0 0 8px;
     }
     .timeline-expand-decisions li {
-      font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5;
+      font-size: 1.06rem; color: var(--text-secondary); line-height: 1.5;
       padding: 2px 0 2px 12px; position: relative;
     }
     .timeline-expand-decisions li::before {
       content: '·'; position: absolute; left: 0; font-weight: 700;
     }
     .timeline-expand-counts {
-      display: flex; gap: 12px; font-size: 0.7rem; color: var(--text-secondary);
+      display: flex; gap: 12px; font-size: 0.95rem; color: var(--text-secondary);
       font-family: "SF Mono", ui-monospace, monospace;
     }
     .timeline-expand-counts strong { color: var(--text); }
     .timeline-rollup-text {
-      font-size: 0.82rem; color: var(--text-secondary); line-height: 1.55;
+      font-size: 1.12rem; color: var(--text-secondary); line-height: 1.55;
       padding: 6px 0 2px;
     }
     .timeline-rollup-label {
-      font-size: 0.65rem; font-weight: 600; color: var(--green);
+      font-size: 0.89rem; font-weight: 600; color: var(--green);
       text-transform: uppercase; letter-spacing: 0.3px;
     }
 
@@ -292,7 +292,7 @@
     .review-content { max-height: 200px; overflow: hidden; transition: max-height 0.3s; }
     .review-content.expanded { max-height: none; }
     .review-expand {
-      font-size: 0.75rem; color: var(--accent-light); background: none;
+      font-size: 1.02rem; color: var(--accent-light); background: none;
       border: none; cursor: pointer; margin-top: 6px; padding: 0; font-family: inherit;
     }
 
@@ -305,29 +305,29 @@
       background: var(--card); border: 1px solid var(--border); border-radius: 12px;
       width: 90%; max-width: 560px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
     }
-    .ask-modal-title { font-size: 0.85rem; font-weight: 600; margin-bottom: 12px; }
+    .ask-modal-title { font-size: 1.16rem; font-weight: 600; margin-bottom: 12px; }
     .ask-input-row { display: flex; gap: 8px; margin-bottom: 12px; }
     .ask-input {
       flex: 1; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border);
-      border-radius: var(--radius); color: var(--text); font-size: 0.85rem; font-family: inherit;
+      border-radius: var(--radius); color: var(--text); font-size: 1.16rem; font-family: inherit;
     }
     .ask-input::placeholder { color: var(--text-secondary); }
     .ask-btn {
       padding: 10px 16px; background: var(--accent); color: white;
-      border: none; border-radius: var(--radius); font-size: 0.85rem; font-weight: 600;
+      border: none; border-radius: var(--radius); font-size: 1.16rem; font-weight: 600;
       cursor: pointer; font-family: inherit;
     }
     .ask-btn:disabled { opacity: 0.4; }
     .ask-answer {
       background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 14px; font-size: 0.82rem; line-height: 1.6; white-space: pre-wrap;
+      padding: 14px; font-size: 1.12rem; line-height: 1.6; white-space: pre-wrap;
       max-height: 50vh; overflow-y: auto;
     }
     .ask-examples {
       display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;
     }
     .ask-example {
-      font-size: 0.72rem; padding: 4px 10px; background: var(--border);
+      font-size: 0.98rem; padding: 4px 10px; background: var(--border);
       color: var(--text-secondary); border: none; border-radius: 4px;
       cursor: pointer; font-family: inherit;
     }
@@ -337,14 +337,14 @@
     .machine { font-style: italic; color: var(--text-secondary); }
     .machine-mark {
       display: inline-block; margin-left: 8px;
-      font-style: normal; font-size: 0.6rem; font-weight: 600;
+      font-style: normal; font-size: 0.82rem; font-weight: 600;
       text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6;
       font-family: "SF Mono", ui-monospace, monospace; white-space: nowrap;
     }
 
     /* Section labels (project page Now/Trajectory/Cost/History) */
     .section-label {
-      font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+      font-size: 0.89rem; font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.5px; color: var(--text-secondary);
       margin: 28px 0 12px;
     }
@@ -357,16 +357,16 @@
     .stream-project:hover { color: var(--accent-light); }
     .dormant-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .dormant-chip {
-      font-size: 0.8rem; color: var(--text-secondary); cursor: pointer;
+      font-size: 1.09rem; color: var(--text-secondary); cursor: pointer;
       padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
     }
     .dormant-chip:hover { border-color: var(--text-secondary); color: var(--text); }
 
     /* Misc */
-    .loading { text-align: center; padding: 40px; color: var(--text-secondary); font-size: 0.85rem; }
-    .error { color: var(--red); text-align: center; padding: 20px; font-size: 0.85rem; }
+    .loading { text-align: center; padding: 40px; color: var(--text-secondary); font-size: 1.16rem; }
+    .error { color: var(--red); text-align: center; padding: 20px; font-size: 1.16rem; }
     .empty {
-      color: var(--text-secondary); text-align: center; padding: 40px; font-size: 0.85rem;
+      color: var(--text-secondary); text-align: center; padding: 40px; font-size: 1.16rem;
       border: 1px dashed var(--border); border-radius: var(--radius); margin-bottom: 12px;
     }
     .skeleton {
@@ -682,7 +682,7 @@
               <p>${error}</p>
               <button onClick=${loadOverview} style="margin-top: 10px; padding: 6px 14px;
                 background: var(--accent); color: white; border: none; border-radius: var(--radius);
-                cursor: pointer; font-size: 0.85rem;">Retry</button>
+                cursor: pointer; font-size: 1.16rem;">Retry</button>
             </div>
           `}
 
@@ -793,17 +793,17 @@
           ${tiles.map(t => {
             const inner = html`
               <div style="display:flex; flex-direction:column; gap:6px; height:100%">
-                <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.62rem;
+                <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.85rem;
                             letter-spacing:0.08em; text-transform:uppercase; color:var(--text-secondary)">
                   ${t.label}
                 </div>
-                <div style="font-size:1.7rem; font-weight:650; letter-spacing:-0.02em;
+                <div style="font-size:2.32rem; font-weight:650; letter-spacing:-0.02em;
                             font-variant-numeric:tabular-nums; line-height:1">${t.value}</div>
                 <div style="flex:1"></div>
                 ${t.series
                   ? html`<${Spark} values=${t.series} color=${t.color} />`
                   : t.sub
-                    ? html`<div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.62rem;
+                    ? html`<div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.85rem;
                                        color:var(--text-secondary)">${t.sub}</div>`
                     : html`<div style="height:28px"></div>`}
               </div>`;
@@ -857,11 +857,11 @@
         <div style="margin-bottom:26px; padding:16px; background:var(--card);
                     border:1px solid var(--border); border-radius:var(--radius)">
           <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px">
-            <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.68rem;
+            <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.93rem;
                         letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary)">
               Activity · last 30 days
             </div>
-            <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.62rem; color:var(--text-secondary)">
+            <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.85rem; color:var(--text-secondary)">
               prompts per day, stacked by project
             </div>
           </div>
@@ -888,7 +888,7 @@
                     <div style="position:absolute; bottom:100%; z-index:5; margin-bottom:4px; ${anchor};
                                 background:var(--bg); border:1px solid var(--border); border-radius:6px;
                                 padding:8px 10px; white-space:nowrap; box-shadow:0 4px 16px rgba(0,0,0,0.4);
-                                font-size:0.7rem">
+                                font-size:0.95rem">
                       <div style="font-weight:600; margin-bottom:4px">${fmtShortDate(d)} · ${total} prompts</div>
                       ${segs.slice(0, 6).map(([p, v]) => html`
                         <div style="display:flex; align-items:center; gap:6px; color:var(--text-secondary)">
@@ -903,7 +903,7 @@
           </div>
           <div style="display:flex; gap:2px; margin-top:4px; margin-bottom:12px">
             ${dates.map((d, i) => html`
-              <div style="flex:1; min-width:3px; text-align:center; font-size:0.55rem;
+              <div style="flex:1; min-width:3px; text-align:center; font-size:0.75rem;
                           color:var(--text-secondary); font-family:'SF Mono',ui-monospace,monospace;
                           white-space:nowrap">${tickIdxs.has(i) ? fmtShortDate(d) : ''}</div>`)}
           </div>
@@ -911,11 +911,11 @@
             ${ranked.slice(0, COST_PALETTE.length).map(([p]) => html`
               <a href=${'#/project/' + encodeURIComponent(p)}
                  style="display:inline-flex; align-items:center; gap:6px; text-decoration:none;
-                        color:var(--text-secondary); font-size:0.72rem">
+                        color:var(--text-secondary); font-size:0.98rem">
                 <span style="width:8px; height:8px; border-radius:2px; background:${segColor(p)}"></span>${p}
               </a>`)}
             ${ranked.length > COST_PALETTE.length && html`
-              <span style="display:inline-flex; align-items:center; gap:6px; font-size:0.72rem; color:var(--text-secondary)">
+              <span style="display:inline-flex; align-items:center; gap:6px; font-size:0.98rem; color:var(--text-secondary)">
                 <span style="width:8px; height:8px; border-radius:2px; background:${COST_OTHER}"></span>+${ranked.length - COST_PALETTE.length} more
               </span>`}
           </div>
@@ -969,7 +969,7 @@
         <${PulseTiles} overview=${overview} cost30=${cost30} views30=${views30} />
         <${CrossProjectActivity} overview=${overview} />
 
-        <div class="sec-label" style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.68rem;
+        <div class="sec-label" style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.93rem;
              letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary);
              margin:0 0 12px">Recent activity</div>
 
@@ -1012,7 +1012,7 @@
 
         ${dormantProjects.length > 0 && html`
           <div style="margin-top: 24px">
-            <button style="font-size: 0.85rem; color: var(--text-secondary); background: none;
+            <button style="font-size: 1.16rem; color: var(--text-secondary); background: none;
               border: none; cursor: pointer; font-family: inherit; padding: 6px 0"
               onClick=${() => setShowDormant(!showDormant)}>
               ${showDormant ? 'Hide' : 'Show'} ${dormantProjects.length} dormant project${dormantProjects.length > 1 ? 's' : ''}
@@ -1148,8 +1148,8 @@
       };
 
       const header = html`
-        <h1 style="margin: 0 0 4px; font-size: 1.4rem">Todos</h1>
-        <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 16px">
+        <h1 style="margin: 0 0 4px; font-size: 1.91rem">Todos</h1>
+        <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 16px">
           Open GitHub issues across your repos, grouped by project.
         </div>`;
 
@@ -1226,7 +1226,7 @@
         <div style="display: flex; gap: 4px; margin-bottom: 12px">
           ${[['repo', 'by project'], ['type', 'by type']].map(([g, lbl]) => html`
             <button onClick=${() => setGroupBy(g)}
-              style="font-size: 0.72rem; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+              style="font-size: 0.98rem; padding: 4px 12px; border-radius: 999px; cursor: pointer;
                      font-family: inherit; border: 1px solid var(--border);
                      background: ${groupBy === g ? 'var(--accent)' : 'transparent'};
                      color: ${groupBy === g ? '#fff' : 'var(--text-secondary)'}">${lbl}</button>`)}
@@ -1236,7 +1236,7 @@
         <input type="text" placeholder="Search issues — title, label, #number, repo"
           value=${query} onInput=${e => setQuery(e.target.value)}
           style="width: 100%; box-sizing: border-box; margin-bottom: 14px; padding: 8px 12px;
-                 font-size: 0.85rem; font-family: inherit; color: var(--text);
+                 font-size: 1.16rem; font-family: inherit; color: var(--text);
                  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius)" />`;
 
       // ---- by type ----
@@ -1250,19 +1250,19 @@
               ? html`<div class="cost-placeholder">Classifying issues by type…</div>`
               : html`
                 <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; flex-wrap: wrap">
-                  <div style="font-size: 1.6rem; font-weight: 700">${catTotal}</div>
-                  <div style="font-size: 0.78rem; color: var(--text-secondary)">
+                  <div style="font-size: 2.18rem; font-weight: 700">${catTotal}</div>
+                  <div style="font-size: 1.06rem; color: var(--text-secondary)">
                     ${q ? 'matching' : 'open'} across ${catList.length} categor${catList.length === 1 ? 'y' : 'ies'}${showAll ? '' : ' (tracked)'}
                   </div>
                   <div style="margin-left: auto; display: flex; gap: 12px; align-items: baseline">
                     ${(showAll || hiddenRepos > 0) && html`
                       <button onClick=${() => setShowAll(s => !s)}
-                        style="font-size: 0.7rem; color: var(--accent); background: none; border: none;
+                        style="font-size: 0.95rem; color: var(--accent); background: none; border: none;
                                cursor: pointer; font-family: inherit">
                         ${showAll ? 'Tracked only' : `Show all repos (+${hiddenRepos})`}
                       </button>`}
                     <button onClick=${reclassify}
-                      style="font-size: 0.7rem; color: var(--text-secondary); background: none; border: none;
+                      style="font-size: 0.95rem; color: var(--text-secondary); background: none; border: none;
                              cursor: pointer; font-family: inherit" title="Re-run the LLM classification for every issue">
                       ↻ reclassify
                     </button>
@@ -1270,7 +1270,7 @@
                 </div>
 
                 ${catData && catData.categorized === undefined && html`
-                  <div style="font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 12px">
+                  <div style="font-size: 0.98rem; color: var(--text-secondary); margin-bottom: 12px">
                     Showing cached categories. Sign in as admin to classify new issues.
                   </div>`}
 
@@ -1283,10 +1283,10 @@
                       <div style="border-bottom: 1px solid var(--border)">
                         <div style="display: flex; align-items: center; gap: 8px; padding: 10px 0; cursor: pointer"
                              onClick=${() => catToggle(c)}>
-                          <span style="font-size: 0.7rem; color: var(--text-secondary); width: 10px; flex: none">${open ? '▾' : '▸'}</span>
+                          <span style="font-size: 0.95rem; color: var(--text-secondary); width: 10px; flex: none">${open ? '▾' : '▸'}</span>
                           <span style="width: 9px; height: 9px; border-radius: 2px; background: ${meta.color}; flex: none"></span>
-                          <span style="font-size: 0.95rem; font-weight: 600">${meta.label}</span>
-                          <span style="font-size: 0.7rem; color: var(--text-secondary)">${items.length}</span>
+                          <span style="font-size: 1.3rem; font-weight: 600">${meta.label}</span>
+                          <span style="font-size: 0.95rem; color: var(--text-secondary)">${items.length}</span>
                         </div>
                         ${open && html`
                           <div style="padding: 0 0 10px 18px">
@@ -1294,11 +1294,11 @@
                               <a href=${iss.url} target="_blank" rel="noopener"
                                  style="display: flex; align-items: baseline; gap: 8px; padding: 6px 0;
                                         text-decoration: none; color: var(--text); border-top: 1px solid var(--border)">
-                                <span style="font-size: 0.66rem; color: var(--accent-light); flex: none; min-width: 96px;
+                                <span style="font-size: 0.9rem; color: var(--accent-light); flex: none; min-width: 96px;
                                              overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${p}</span>
-                                <span style="font-size: 0.7rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none">#${iss.number}</span>
-                                <span style="font-size: 0.85rem; flex: 1; min-width: 0">${iss.title}</span>
-                                <span style="font-size: 0.65rem; color: var(--text-secondary); flex: none">${timeAgo(iss.updated_at)}</span>
+                                <span style="font-size: 0.95rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none">#${iss.number}</span>
+                                <span style="font-size: 1.16rem; flex: 1; min-width: 0">${iss.title}</span>
+                                <span style="font-size: 0.89rem; color: var(--text-secondary); flex: none">${timeAgo(iss.updated_at)}</span>
                               </a>`)}
                           </div>`}
                       </div>`;
@@ -1315,19 +1315,19 @@
           ${searchBox}
 
           <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; flex-wrap: wrap">
-            <div style="font-size: 1.6rem; font-weight: 700">${shownTotal}</div>
-            <div style="font-size: 0.78rem; color: var(--text-secondary)">
+            <div style="font-size: 2.18rem; font-weight: 700">${shownTotal}</div>
+            <div style="font-size: 1.06rem; color: var(--text-secondary)">
               ${q ? 'matching' : 'open'} across ${filtered.length} project${filtered.length === 1 ? '' : 's'}${showAll ? '' : ' (tracked)'}
             </div>
             <div style="margin-left: auto; display: flex; gap: 12px; align-items: baseline">
               ${(showAll || hiddenRepos > 0) && html`
                 <button onClick=${() => setShowAll(s => !s)}
-                  style="font-size: 0.7rem; color: var(--accent); background: none; border: none;
+                  style="font-size: 0.95rem; color: var(--accent); background: none; border: none;
                          cursor: pointer; font-family: inherit">
                   ${showAll ? 'Tracked only' : `Show all repos (+${hiddenRepos})`}
                 </button>`}
               <button onClick=${toggleAll}
-                style="font-size: 0.7rem; color: var(--accent); background: none; border: none;
+                style="font-size: 0.95rem; color: var(--accent); background: none; border: none;
                        cursor: pointer; font-family: inherit">
                 ${allOpen ? 'Collapse all' : 'Expand all'}
               </button>
@@ -1342,12 +1342,12 @@
             <div style="border-bottom: 1px solid var(--border)">
               <div style="display: flex; align-items: center; gap: 8px; padding: 10px 0; cursor: pointer"
                    onClick=${() => toggle(p)}>
-                <span style="font-size: 0.7rem; color: var(--text-secondary); width: 10px; flex: none">${isOpen ? '▾' : '▸'}</span>
-                <span style="font-size: 0.95rem; font-weight: 600">${p}</span>
-                <span style="font-size: 0.7rem; color: var(--text-secondary)">${issues.length}${q && issues.length !== projects[p].length ? '/' + projects[p].length : ''}</span>
-                ${!isTracked(p) && html`<span style="font-size: 0.58rem; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 0 5px">untracked</span>`}
+                <span style="font-size: 0.95rem; color: var(--text-secondary); width: 10px; flex: none">${isOpen ? '▾' : '▸'}</span>
+                <span style="font-size: 1.3rem; font-weight: 600">${p}</span>
+                <span style="font-size: 0.95rem; color: var(--text-secondary)">${issues.length}${q && issues.length !== projects[p].length ? '/' + projects[p].length : ''}</span>
+                ${!isTracked(p) && html`<span style="font-size: 0.79rem; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 0 5px">untracked</span>`}
                 <a onClick=${(e) => { e.stopPropagation(); navigate('#/project/' + encodeURIComponent(p)); }}
-                   style="margin-left: auto; font-size: 0.66rem; color: var(--accent); cursor: pointer; text-decoration: none">
+                   style="margin-left: auto; font-size: 0.9rem; color: var(--accent); cursor: pointer; text-decoration: none">
                   project →
                 </a>
               </div>
@@ -1357,12 +1357,12 @@
                     <a href=${iss.url} target="_blank" rel="noopener"
                        style="display: flex; align-items: baseline; gap: 8px; padding: 6px 0;
                               text-decoration: none; color: var(--text); border-top: 1px solid var(--border)">
-                      <span style="font-size: 0.7rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none">#${iss.number}</span>
-                      <span style="font-size: 0.85rem; flex: 1; min-width: 0">${iss.title}</span>
+                      <span style="font-size: 0.95rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none">#${iss.number}</span>
+                      <span style="font-size: 1.16rem; flex: 1; min-width: 0">${iss.title}</span>
                       ${iss.labels.map(lb => html`
-                        <span style="font-size: 0.6rem; padding: 1px 6px; border-radius: 8px; flex: none;
+                        <span style="font-size: 0.82rem; padding: 1px 6px; border-radius: 8px; flex: none;
                                      background: ${labelColor(lb)}; color: #fff; white-space: nowrap">${lb}</span>`)}
-                      <span style="font-size: 0.65rem; color: var(--text-secondary); flex: none">${timeAgo(iss.updated_at)}</span>
+                      <span style="font-size: 0.89rem; color: var(--text-secondary); flex: none">${timeAgo(iss.updated_at)}</span>
                     </a>`)}
                 </div>`}
             </div>`;
@@ -1411,7 +1411,7 @@
         <div style="display: flex; gap: 4px">
           ${[30, 90, 365].map(d => html`
             <button onClick=${() => setDays(d)}
-              style="font-size: 0.72rem; padding: 4px 10px; border-radius: 4px;
+              style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
                      cursor: pointer; font-family: inherit;
                      border: 1px solid var(--border);
                      background: ${days === d ? 'var(--accent)' : 'transparent'};
@@ -1423,10 +1423,10 @@
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
-          <h1 style="margin: 0; font-size: 1.4rem">Costs</h1>
+          <h1 style="margin: 0; font-size: 1.91rem">Costs</h1>
           ${windowPicker}
         </div>
-        <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 20px">
+        <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
           API spend across all projects. Claude Code (subscription) usage isn't
           attributable per project, so subscription-only projects read $0 here —
           these totals are API spend, not all spend.
@@ -1488,8 +1488,8 @@
           ${header}
 
           <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px">
-            <div style="font-size: 1.6rem; font-weight: 700">${fmtUsd(total)}</div>
-            <div style="font-size: 0.78rem; color: var(--text-secondary)">
+            <div style="font-size: 2.18rem; font-weight: 700">${fmtUsd(total)}</div>
+            <div style="font-size: 1.06rem; color: var(--text-secondary)">
               total · last ${days === 365 ? 'year' : days + ' days'}
             </div>
           </div>
@@ -1497,7 +1497,7 @@
           ${panel(html`
             <div style="display: grid; grid-template-columns: 56px 1fr; gap: 8px">
               <div style="display: flex; flex-direction: column; justify-content: space-between;
-                          align-items: flex-end; height: ${CHART_H}px; font-size: 0.62rem;
+                          align-items: flex-end; height: ${CHART_H}px; font-size: 0.85rem;
                           color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace">
                 <span>${fmtUsd(peak)}</span>
                 <span>${fmtUsd(peak / 2)}</span>
@@ -1530,7 +1530,7 @@
                                       ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
                                       background: var(--bg); border: 1px solid var(--border);
                                       border-radius: 6px; padding: 8px 10px; white-space: nowrap;
-                                      box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.7rem">
+                                      box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
                             <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${fmtUsd(dayTotal)}</div>
                             ${segs.slice(0, 6).map(([p, v]) => html`
                               <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
@@ -1545,7 +1545,7 @@
                 </div>
                 <div style="display: flex; gap: 2px; margin-top: 4px">
                   ${dates.map((d, i) => html`
-                    <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.55rem;
+                    <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.75rem;
                                 color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
                                 overflow: visible; white-space: nowrap">
                       ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
@@ -1558,12 +1558,12 @@
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px">
             <div>
               <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px">
-                <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary);
+                <div style="font-size: 0.98rem; font-weight: 600; color: var(--text-secondary);
                             font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase">
                   By project
                 </div>
                 <button onClick=${() => setSortBy(s => s === 'cost' ? 'name' : 'cost')}
-                  style="font-size: 0.66rem; color: var(--accent); background: none; border: none;
+                  style="font-size: 0.9rem; color: var(--accent); background: none; border: none;
                          cursor: pointer; font-family: inherit">
                   sort: ${sortBy} ↕
                 </button>
@@ -1573,27 +1573,27 @@
                    style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
                           text-decoration: none; color: var(--text); border-bottom: 1px solid var(--border)">
                   <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(p)}; flex: none"></span>
-                  <span style="font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${p}</span>
-                  <span style="margin-left: auto; font-size: 0.62rem; color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
-                  <span style="font-size: 0.82rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${fmtUsd(v)}</span>
+                  <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${p}</span>
+                  <span style="margin-left: auto; font-size: 0.85rem; color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
+                  <span style="font-size: 1.12rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${fmtUsd(v)}</span>
                 </a>`)}
               ${hasOther && html`
-                <div style="font-size: 0.62rem; color: var(--text-secondary); padding-top: 6px">
+                <div style="font-size: 0.85rem; color: var(--text-secondary); padding-top: 6px">
                   ${ranked.length - COST_PALETTE.length} smaller projects share the “other” color.
                 </div>`}
             </div>
 
             <div>
-              <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary);
+              <div style="font-size: 0.98rem; font-weight: 600; color: var(--text-secondary);
                           font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
                 By model
               </div>
               ${models.map(([m, v]) => html`
                 <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
                             border-bottom: 1px solid var(--border)">
-                  <span style="font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${m}</span>
-                  <span style="margin-left: auto; font-size: 0.62rem; color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
-                  <span style="font-size: 0.82rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${fmtUsd(v)}</span>
+                  <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${m}</span>
+                  <span style="margin-left: auto; font-size: 0.85rem; color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
+                  <span style="font-size: 1.12rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${fmtUsd(v)}</span>
                 </div>`)}
             </div>
           </div>
@@ -1626,7 +1626,7 @@
         <div style="display: flex; gap: 4px">
           ${[30, 90, 365].map(d => html`
             <button onClick=${() => setDays(d)}
-              style="font-size: 0.72rem; padding: 4px 10px; border-radius: 4px;
+              style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
                      cursor: pointer; font-family: inherit;
                      border: 1px solid var(--border);
                      background: ${days === d ? 'var(--accent)' : 'transparent'};
@@ -1638,10 +1638,10 @@
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
-          <h1 style="margin: 0; font-size: 1.4rem">Visitors</h1>
+          <h1 style="margin: 0; font-size: 1.91rem">Visitors</h1>
           ${windowPicker}
         </div>
-        <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 20px">
+        <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
           Anonymous page views from the first-party beacon — cookie-less, IPs
           never stored, visitor hashes rotate daily (so uniques are per-day by
           design). Only instrumented sites appear here.
@@ -1688,17 +1688,17 @@
         <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated, var(--card));
                     border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
       const sectionTitle = (t) => html`
-        <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary);
+        <div style="font-size: 0.98rem; font-weight: 600; color: var(--text-secondary);
                     font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
           ${t}
         </div>`;
       const listRow = (label, sub, v) => html`
         <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
                     border-bottom: 1px solid var(--border)">
-          <span style="font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${label}</span>
-          ${sub && html`<span style="font-size: 0.62rem; color: var(--text-secondary); overflow: hidden;
+          <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${label}</span>
+          ${sub && html`<span style="font-size: 0.85rem; color: var(--text-secondary); overflow: hidden;
                                      text-overflow: ellipsis; white-space: nowrap">${sub}</span>`}
-          <span style="margin-left: auto; font-size: 0.82rem; font-variant-numeric: tabular-nums">${v.toLocaleString()}</span>
+          <span style="margin-left: auto; font-size: 1.12rem; font-variant-numeric: tabular-nums">${v.toLocaleString()}</span>
         </div>`;
 
       return html`
@@ -1706,8 +1706,8 @@
           ${header}
 
           <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px">
-            <div style="font-size: 1.6rem; font-weight: 700">${totalViews.toLocaleString()}</div>
-            <div style="font-size: 0.78rem; color: var(--text-secondary)">
+            <div style="font-size: 2.18rem; font-weight: 700">${totalViews.toLocaleString()}</div>
+            <div style="font-size: 1.06rem; color: var(--text-secondary)">
               page views · ${ranked.length} site${ranked.length === 1 ? '' : 's'} ·
               last ${days === 365 ? 'year' : days + ' days'}
             </div>
@@ -1716,7 +1716,7 @@
           ${panel(html`
             <div style="display: grid; grid-template-columns: 56px 1fr; gap: 8px">
               <div style="display: flex; flex-direction: column; justify-content: space-between;
-                          align-items: flex-end; height: ${CHART_H}px; font-size: 0.62rem;
+                          align-items: flex-end; height: ${CHART_H}px; font-size: 0.85rem;
                           color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace">
                 <span>${peak.toLocaleString()}</span>
                 <span>${Math.round(peak / 2).toLocaleString()}</span>
@@ -1748,7 +1748,7 @@
                                       ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
                                       background: var(--bg); border: 1px solid var(--border);
                                       border-radius: 6px; padding: 8px 10px; white-space: nowrap;
-                                      box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.7rem">
+                                      box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
                             <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${dayTotal.toLocaleString()} views</div>
                             ${segs.slice(0, 6).map(([s, v]) => html`
                               <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
@@ -1763,7 +1763,7 @@
                 </div>
                 <div style="display: flex; gap: 2px; margin-top: 4px">
                   ${dates.map((d, i) => html`
-                    <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.55rem;
+                    <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.75rem;
                                 color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
                                 overflow: visible; white-space: nowrap">
                       ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
@@ -1780,9 +1780,9 @@
                 <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
                             border-bottom: 1px solid var(--border)">
                   <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(s)}; flex: none"></span>
-                  <span style="font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${s}</span>
-                  <span style="margin-left: auto; font-size: 0.62rem; color: var(--text-secondary)">${(v / totalViews * 100).toFixed(0)}%</span>
-                  <span style="font-size: 0.82rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${v.toLocaleString()}</span>
+                  <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${s}</span>
+                  <span style="margin-left: auto; font-size: 0.85rem; color: var(--text-secondary)">${(v / totalViews * 100).toFixed(0)}%</span>
+                  <span style="font-size: 1.12rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${v.toLocaleString()}</span>
                 </div>`)}
             </div>
             <div>
@@ -1795,12 +1795,12 @@
             <div>
               ${sectionTitle('Referrers')}
               ${referrers.length ? referrers.map(r => listRow(r.referrer, r.site, r.views))
-                : html`<div style="font-size: 0.78rem; color: var(--text-secondary)">None yet.</div>`}
+                : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">None yet.</div>`}
             </div>
             <div>
               ${sectionTitle('Countries')}
               ${countries.length ? countries.map(r => listRow(r.country, null, r.views))
-                : html`<div style="font-size: 0.78rem; color: var(--text-secondary)">None yet.</div>`}
+                : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">None yet.</div>`}
             </div>
           </div>
         </div>`;
@@ -1880,17 +1880,17 @@
                     border: 1px solid var(--border); border-radius: 6px">
           <div style="display: flex; justify-content: space-between; align-items: baseline;
                       margin-bottom: 12px">
-            <div style="font-size: 0.68rem; font-weight: 600;
+            <div style="font-size: 0.93rem; font-weight: 600;
                         color: var(--text-secondary);
                         font-family: 'SF Mono', ui-monospace, monospace">
               API cost · last 30d
             </div>
             <div style="display: flex; align-items: baseline; gap: 12px">
-              <div style="font-size: 0.95rem; font-weight: 600">
+              <div style="font-size: 1.3rem; font-weight: 600">
                 $${total.toFixed(2)}
               </div>
               <a href="#/project/${encodeURIComponent(project)}/cost"
-                 style="font-size: 0.7rem; color: var(--accent); text-decoration: none;
+                 style="font-size: 0.95rem; color: var(--accent); text-decoration: none;
                         font-family: 'SF Mono', ui-monospace, monospace">
                 details →
               </a>
@@ -1900,7 +1900,7 @@
             <!-- Y axis labels -->
             <div style="display: flex; flex-direction: column;
                         justify-content: space-between; align-items: flex-end;
-                        height: ${CHART_H}px; font-size: 0.62rem;
+                        height: ${CHART_H}px; font-size: 0.85rem;
                         color: var(--text-secondary);
                         font-family: 'SF Mono', ui-monospace, monospace">
               <span>$${peak.toFixed(2)}</span>
@@ -1945,7 +1945,7 @@
                                     border-radius: 4px;
                                     padding: 6px 8px;
                                     font-family: 'SF Mono', ui-monospace, monospace;
-                                    font-size: 0.7rem;
+                                    font-size: 0.95rem;
                                     line-height: 1.4;
                                     white-space: nowrap;
                                     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
@@ -1967,7 +1967,7 @@
                 })}
               </div>
               <div style="display: flex; gap: 2px; margin-top: 4px;
-                          font-size: 0.6rem; color: var(--text-secondary);
+                          font-size: 0.82rem; color: var(--text-secondary);
                           font-family: 'SF Mono', ui-monospace, monospace">
                 ${dates.map((d, i) => html`
                   <div style="flex: 1; min-width: 4px; text-align: center;
@@ -1980,7 +1980,7 @@
           </div>
           ${models.length > 0 && html`
             <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
-                        font-size: 0.65rem; color: var(--text-secondary);
+                        font-size: 0.89rem; color: var(--text-secondary);
                         font-family: 'SF Mono', ui-monospace, monospace">
               ${models.map(([m, v]) => html`
                 <span>${m}: $${v.toFixed(2)}</span>
@@ -2042,18 +2042,18 @@
         <div>
           <div style="display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px">
             <a href="#/project/${encodeURIComponent(project)}"
-               style="color: var(--text-secondary); text-decoration: none; font-size: 0.85rem">
+               style="color: var(--text-secondary); text-decoration: none; font-size: 1.16rem">
               ← ${project}
             </a>
-            <h2 style="margin: 0; font-size: 1.15rem">Cost detail</h2>
-            <div style="margin-left: auto; font-size: 0.95rem; font-weight: 600">
+            <h2 style="margin: 0; font-size: 1.57rem">Cost detail</h2>
+            <div style="margin-left: auto; font-size: 1.3rem; font-weight: 600">
               $${total.toFixed(2)} <span style="font-weight: 400; color: var(--text-secondary);
-                font-size: 0.75rem">(${sorted.length} rows)</span>
+                font-size: 1.02rem">(${sorted.length} rows)</span>
             </div>
           </div>
 
           <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
-                      font-size: 0.78rem; align-items: center">
+                      font-size: 1.06rem; align-items: center">
             <label>Window:
               <select value=${days} onChange=${e => setDays(Number(e.target.value))}
                       style="margin-left: 4px">
@@ -2081,7 +2081,7 @@
             ? html`<div class="empty">No cost rows in this window.</div>`
             : html`
               <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: 6px">
-                <table style="width: 100%; border-collapse: collapse; font-size: 0.78rem;
+                <table style="width: 100%; border-collapse: collapse; font-size: 1.06rem;
                               font-family: 'SF Mono', ui-monospace, monospace">
                   <thead>
                     <tr style="background: var(--bg-elevated); text-align: left">
@@ -2311,7 +2311,7 @@
                            border: 1px solid var(--border);
                            color: var(--text-secondary);
                            border-radius: 4px; cursor: pointer;
-                           font-size: 0.75rem;
+                           font-size: 1.02rem;
                            font-family: 'SF Mono', ui-monospace, monospace">
               Show ${hiddenCount} more
             </button>
@@ -2323,7 +2323,7 @@
                            border: 1px solid var(--border);
                            color: var(--text-secondary);
                            border-radius: 4px; cursor: pointer;
-                           font-size: 0.75rem;
+                           font-size: 1.02rem;
                            font-family: 'SF Mono', ui-monospace, monospace">
               Show less
             </button>
@@ -2425,7 +2425,7 @@
               </button>
             </div>
             ${asking && html`
-              <div style="padding: 14px; color: var(--text-secondary); font-size: 0.82rem; display: flex; align-items: center; gap: 8px">
+              <div style="padding: 14px; color: var(--text-secondary); font-size: 1.12rem; display: flex; align-items: center; gap: 8px">
                 <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite"></span>
                 Thinking...
               </div>
@@ -2433,13 +2433,13 @@
             ${error && html`<div class="error" style="padding: 8px">${error}</div>`}
             ${answer && html`
               <div class="ask-answer">${answer}</div>
-              <button style="font-size: 0.72rem; color: var(--accent-light); background: none;
+              <button style="font-size: 0.98rem; color: var(--accent-light); background: none;
                 border: none; cursor: pointer; margin-top: 6px; padding: 0; font-family: inherit"
                 onClick=${copyAnswer}>${copied ? 'Copied' : 'Copy response'}</button>
             `}
 
             ${!asking && !answer && html`
-              <button style="font-size: 0.72rem; color: var(--text-secondary); background: none;
+              <button style="font-size: 0.98rem; color: var(--text-secondary); background: none;
                 border: none; cursor: pointer; margin-top: 4px; padding: 0; font-family: inherit"
                 onClick=${() => setShowHistory(!showHistory)}>
                 ${showHistory ? 'Hide' : 'Show'} previous asks
@@ -2449,20 +2449,20 @@
               <div style="margin-top: 10px; max-height: 40vh; overflow-y: auto">
                 ${getHistory().map(h => html`
                   <div style="border-bottom: 1px solid var(--border); padding: 8px 0">
-                    <div style="font-size: 0.75rem; color: var(--text); font-weight: 600; margin-bottom: 4px">
+                    <div style="font-size: 1.02rem; color: var(--text); font-weight: 600; margin-bottom: 4px">
                       ${h.q}
                       <span style="font-weight: 400; color: var(--text-secondary); margin-left: 6px;
-                        font-family: 'SF Mono', ui-monospace, monospace; font-size: 0.65rem">
+                        font-family: 'SF Mono', ui-monospace, monospace; font-size: 0.89rem">
                         ${h.date}${h.project !== 'all' ? ' · ' + h.project : ''}
                       </span>
                     </div>
-                    <div style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.5; white-space: pre-wrap">
+                    <div style="font-size: 1.02rem; color: var(--text-secondary); line-height: 1.5; white-space: pre-wrap">
                       ${(h.a || '').slice(0, 300)}${(h.a || '').length > 300 ? '...' : ''}
                     </div>
                   </div>
                 `)}
                 ${getHistory().length === 0 && html`
-                  <div style="font-size: 0.75rem; color: var(--text-secondary); padding: 8px 0">No previous asks.</div>
+                  <div style="font-size: 1.02rem; color: var(--text-secondary); padding: 8px 0">No previous asks.</div>
                 `}
               </div>
             `}
