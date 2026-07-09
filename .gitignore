@@ -11,3 +11,5 @@ reports/
 .DS_Store
 .claude/
 .playwright-mcp/
+.vercel
+.env*
