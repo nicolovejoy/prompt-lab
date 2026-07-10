@@ -1085,6 +1085,15 @@
 
     // ---- Activity Heatmap (GitHub-style, up to 12 months) ----
     function ActivityHeatmap({ activity }) {
+      // The grid renders oldest-first (left) to today (right) inside a
+      // horizontally-scrolling container; browsers default scrollLeft to 0,
+      // so without this it opens showing a wall of blank past squares
+      // instead of the recent activity. Scroll to the right edge on mount.
+      const scrollRef = useRef(null);
+      useEffect(() => {
+        if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+      }, [activity]);
+
       if (!activity?.length) return null;
 
       // Build a date->count map
@@ -1128,7 +1137,7 @@
           <div class="heatmap-labels">
             ${monthLabels.map(m => html`<span>${m.label}</span>`)}
           </div>
-          <div class="heatmap" style="display: flex; gap: 2px">
+          <div class="heatmap" ref=${scrollRef} style="display: flex; gap: 2px">
             ${weeks.map(w => html`
               <div class="heatmap-month">
                 ${w.map(cell => html`
