@@ -71,6 +71,7 @@ def main() -> int:
 
     load_env()
     local = SqliteKnowledgeStore()
+    local.migrate()
 
     allowlist = load_allowlist()
     if not allowlist:

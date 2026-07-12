@@ -16,12 +16,15 @@ Requires TURSO_DATABASE_URL and TURSO_AUTH_TOKEN in .env or environment.
 
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timedelta
 
 from claude_api import load_env
 from store.sqlite_store import SqliteKnowledgeStore
 from store.turso_store import TursoKnowledgeStore
+
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
 def sync_table(local, remote, table_name, query_fn, upsert_fn, dry_run=False, chunk=100):
@@ -64,6 +67,34 @@ def sync_table(local, remote, table_name, query_fn, upsert_fn, dry_run=False, ch
             print(f"  {table_name}: {done}/{n} synced")
     print(f"  {table_name}: {len(rows)} rows synced")
     return len(rows)
+
+
+def check_public_allowlist_drift():
+    """Non-fatal post-sync guard: flag public_* rows outside docs/public-allowlist.txt.
+
+    Sync is where drift actually lands in Turso (this script only upserts, never
+    deletes), so it's the natural place to catch it. Never affects this script's
+    own exit code — see scripts/check_public_allowlist.py for the audit itself
+    and the unpublish fix path.
+    """
+    script = os.path.join(REPO_ROOT, "scripts", "check_public_allowlist.py")
+    try:
+        result = subprocess.run(
+            [sys.executable, script], capture_output=True, text=True, timeout=30
+        )
+    except Exception as e:
+        print(f"\npublic-allowlist check: could not run ({e}) — skipping, non-fatal")
+        return
+
+    if result.returncode == 0:
+        print("\npublic-allowlist check: OK (no drift)")
+    elif result.returncode == 1:
+        print("\n⚠️  public-allowlist check: DRIFT — public rows outside the allowlist")
+        print(result.stdout.strip())
+    else:
+        print(f"\npublic-allowlist check: could not complete (exit {result.returncode})")
+        if result.stderr:
+            print(result.stderr.strip())
 
 
 def main():
@@ -297,6 +328,8 @@ def main():
     remote.close()
 
     print(f"\nTotal: {total} rows {'would be ' if dry_run else ''}synced")
+
+    check_public_allowlist_drift()
 
 
 if __name__ == "__main__":
