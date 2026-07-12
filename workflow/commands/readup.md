@@ -1,7 +1,7 @@
 ---
 name: readup
 description: Start a session — register a session row, sync to remote, read project context
-allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(~/.claude/bin/sync-claude-md.sh:*), Bash(~/.claude/bin/handoff.sh:*), Bash(stat:*), Bash(date:*), Bash(basename:*), Bash(mkdir:*), Bash(touch:*), Bash(gh issue list:*), Bash(gh pr list:*), Bash(gh run list:*), Bash(gh run view:*), Read, Write, Edit, Glob, Agent
+allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(~/.claude/bin/sync-claude-md.sh:*), Bash(~/.claude/bin/handoff.sh:*), Bash(stat:*), Bash(date:*), Bash(basename:*), Bash(mkdir:*), Bash(touch:*), Bash(gh issue list:*), Bash(gh pr list:*), Bash(gh run list:*), Bash(gh run view:*), Bash(.venv/bin/python scripts/check_public_allowlist.py:*), Bash(python3 scripts/check_public_allowlist.py:*), Read, Write, Edit, Glob, Agent
 ---
 
 Start a session. Be concise.
@@ -122,12 +122,29 @@ Behavior:
 - Latest run per branch has `conclusion: "success"`, or `status` is still `in_progress`/`queued` → say nothing.
 - Latest run's `conclusion` is `failure` / `cancelled` / `timed_out` → **this is CI actively broken.** Don't bury it in the wall of text — surface it as its own ⚠️ line in the summary below, naming the workflow, the branch, and roughly how long it's been red (walk the returned `createdAt`/`conclusion` pairs back to the last `success` to bound it, e.g. "red since <date>, N consecutive failures"). If the workflow YAML defines a `deploy` (or other) job with `needs: test` or similar, call that out too — a red `test` run silently starves it, and a starved job never shows as "failed," just perpetually skipped, so it's easy to miss unless named explicitly. Don't auto-fix; offer to pull the failing step's log (`gh run view <run-id> --log-failed`) and investigate if the user wants to chase it now.
 
+## 9. Check public-data drift (prompt-lab only)
+
+`public_session_summaries` / `public_weekly_rollups` feed the unauthenticated `/api/public_history` endpoint — safe-by-construction only if every row belongs to a project on `docs/public-allowlist.txt`. Drift lands at sync time (`sync_to_turso.py` now runs this same check non-fatally after every sync — see CLAUDE.md), but a sync doesn't always run right before you sit down, so double-check here too. This table only exists in this repo:
+
+```bash
+if [ "$(basename "$PWD")" = "prompt-lab" ] && [ -f scripts/check_public_allowlist.py ]; then
+  ( [ -x .venv/bin/python ] && .venv/bin/python scripts/check_public_allowlist.py || python3 scripts/check_public_allowlist.py ) 2>&1
+fi
+```
+
+Behavior:
+
+- Not in the prompt-lab repo, or the script's missing → skip silently.
+- Exit 0 (`OK: no public rows outside the allowlist.`) → say nothing.
+- Exit 1 (drift) → flag it — this means a project that's supposed to be private has public rows on the live, unauthenticated endpoint. List the offending project(s) and which store/table (from the script's output), and point at the fix: `python scripts/unpublish_public.py <project> --apply` (or re-run with `--fix` to have the audit print the exact commands). Treat this as urgent — it's a privacy miss, not a stale-branch nuisance.
+- Exit 2 (allowlist missing/empty) → flag once as a config problem (`docs/public-allowlist.txt` missing or empty), distinct from data drift.
+
 ## Then
 
 Summarize in a few lines: where the project stands (from CLAUDE.md), what's next, and whether the working tree needs attention (uncommitted changes, behind/ahead of remote). Open with the Machine label from the SessionStart-hook context (e.g. "On mini.") so cross-machine context is immediate.
 
 If any branch (current or otherwise) is behind origin, end with a short ⚠️ block listing each behind branch and the suggested `git pull --rebase` / `git checkout` command. If there are remote-only branches that look like in-progress work from another machine, mention them too.
 
-If step 8 found broken CI, lead the summary with that ⚠️ block — a red build is more urgent than a stale branch or a drifted CLAUDE.md.
+If step 8 found broken CI or step 9 found public-data drift, lead the summary with those ⚠️ blocks (drift first — it's a live privacy exposure, not just a build being red) — both are more urgent than a stale branch or a drifted CLAUDE.md.
 
 If the user passed arguments with this command, address those — don't suggest a separate task.
