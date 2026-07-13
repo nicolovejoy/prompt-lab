@@ -232,6 +232,12 @@
       .sub-tab { white-space: nowrap; flex-shrink: 0; }
     }
 
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    .chart-scroll { overflow-x: auto; }
+    @media (max-width: 600px) {
+      .two-col { grid-template-columns: 1fr; }
+    }
+
     /* Cards */
     .card {
       background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
@@ -1439,6 +1445,12 @@
     const COST_OTHER = '#555';
     const costOverviewMemo = new Map();  // window(days) -> payload
 
+    // Floating tooltips get clipped by the chart's scroll container on touch
+    // devices (overflow-x: auto forces overflow-y: auto too) — gate the
+    // hover tooltip to pointers that actually hover, and use tap-to-select
+    // (a static panel below the chart) for touch instead.
+    const CAN_HOVER = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
     function fmtUsd(n) {
       return '$' + (Number(n) || 0).toLocaleString('en-US',
         { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1456,6 +1468,8 @@
       const [loading, setLoading] = useState(!costOverviewMemo.has(30));
       const [sortBy, setSortBy] = useState('cost');  // 'cost' | 'name'
       const [hovered, setHovered] = useState(null);   // date index
+      const [selected, setSelected] = useState(null); // date index, tap-to-select
+      const scrollRef = useRef(null);
 
       useEffect(() => {
         const cached = costOverviewMemo.get(days);
@@ -1469,6 +1483,12 @@
           .catch(e => { if (alive && !cached) { setData({ error: e.message }); setLoading(false); } });
         return () => { alive = false; };
       }, [days]);
+
+      useEffect(() => { setSelected(null); }, [days]);
+
+      useEffect(() => {
+        if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+      }, [data, days]);
 
       const windowPicker = html`
         <div style="display: flex; gap: 4px">
@@ -1541,6 +1561,7 @@
       if (sortBy === 'name') legend.sort((a, b) => a[0].localeCompare(b[0]));
 
       const models = Object.entries(byModel).sort((a, b) => b[1] - a[1]);
+      const maxProj = ranked[0]?.[1] || 1;
 
       const panel = (children) => html`
         <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated, var(--card));
@@ -1566,59 +1587,82 @@
                 <span>${fmtUsd(peak / 2)}</span>
                 <span>$0</span>
               </div>
-              <div>
-                <div style="display: flex; gap: 2px; align-items: stretch; height: ${CHART_H}px;
-                            border-bottom: 1px solid var(--border)">
-                  ${dates.map((d, i) => {
-                    const dayTotal = byDate[d] || 0;
-                    const barH = dayTotal > 0 ? Math.max(1, Math.round((dayTotal / peak) * (CHART_H - 4))) : 0;
-                    const isHovered = hovered === i;
-                    const edge = n > 1 ? i / (n - 1) : 0.5;
-                    const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
-                    // Stack segments within the bar, biggest project at the bottom.
-                    const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
-                    return html`
-                      <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: default"
-                           onMouseEnter=${() => setHovered(i)}
-                           onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}>
-                        <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
-                                    display: flex; flex-direction: column-reverse;
-                                    border-radius: 2px 2px 0 0; overflow: hidden;
-                                    opacity: ${isHovered ? 1 : 0.85}; transition: opacity 0.1s">
-                          ${segs.map(([p, v]) => html`
-                            <div style="height: ${(v / dayTotal) * 100}%; background: ${segColor(p)}"></div>`)}
-                        </div>
-                        ${isHovered && dayTotal > 0 && html`
-                          <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
-                                      ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
-                                      background: var(--bg); border: 1px solid var(--border);
-                                      border-radius: 6px; padding: 8px 10px; white-space: nowrap;
-                                      box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
-                            <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${fmtUsd(dayTotal)}</div>
-                            ${segs.slice(0, 6).map(([p, v]) => html`
-                              <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-                                <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(p)}; display: inline-block"></span>
-                                <span style="color: var(--text)">${p}</span>
-                                <span style="margin-left: auto">${fmtUsd(v)}</span>
-                              </div>`)}
-                            ${segs.length > 6 && html`<div style="color: var(--text-secondary)">+${segs.length - 6} more</div>`}
-                          </div>`}
-                      </div>`;
-                  })}
-                </div>
-                <div style="display: flex; gap: 2px; margin-top: 4px">
-                  ${dates.map((d, i) => html`
-                    <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.75rem;
-                                color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
-                                overflow: visible; white-space: nowrap">
-                      ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
-                    </div>`)}
+              <div class="chart-scroll" ref=${scrollRef}>
+                <div style="min-width: ${n * 7}px">
+                  <div style="display: flex; gap: 2px; align-items: stretch; height: ${CHART_H}px;
+                              border-bottom: 1px solid var(--border)">
+                    ${dates.map((d, i) => {
+                      const dayTotal = byDate[d] || 0;
+                      const barH = dayTotal > 0 ? Math.max(1, Math.round((dayTotal / peak) * (CHART_H - 4))) : 0;
+                      const isHovered = hovered === i;
+                      const edge = n > 1 ? i / (n - 1) : 0.5;
+                      const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
+                      // Stack segments within the bar, biggest project at the bottom.
+                      const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
+                      return html`
+                        <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
+                             onMouseEnter=${() => setHovered(i)}
+                             onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
+                             onClick=${() => setSelected(s => s === i ? null : i)}>
+                          <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
+                                      display: flex; flex-direction: column-reverse;
+                                      border-radius: 2px 2px 0 0; overflow: hidden;
+                                      opacity: ${isHovered || selected === i ? 1 : 0.85}; transition: opacity 0.1s">
+                            ${segs.map(([p, v]) => html`
+                              <div style="height: ${(v / dayTotal) * 100}%; background: ${segColor(p)}"></div>`)}
+                          </div>
+                          ${CAN_HOVER && isHovered && dayTotal > 0 && html`
+                            <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
+                                        ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
+                                        background: var(--bg); border: 1px solid var(--border);
+                                        border-radius: 6px; padding: 8px 10px; white-space: nowrap;
+                                        box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
+                              <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${fmtUsd(dayTotal)}</div>
+                              ${segs.slice(0, 6).map(([p, v]) => html`
+                                <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
+                                  <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(p)}; display: inline-block"></span>
+                                  <span style="color: var(--text)">${p}</span>
+                                  <span style="margin-left: auto">${fmtUsd(v)}</span>
+                                </div>`)}
+                              ${segs.length > 6 && html`<div style="color: var(--text-secondary)">+${segs.length - 6} more</div>`}
+                            </div>`}
+                        </div>`;
+                    })}
+                  </div>
+                  <div style="display: flex; gap: 2px; margin-top: 4px">
+                    ${dates.map((d, i) => html`
+                      <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.75rem;
+                                  color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
+                                  overflow: visible; white-space: nowrap">
+                        ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
+                      </div>`)}
+                  </div>
                 </div>
               </div>
             </div>
           `)}
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px">
+          ${selected != null && (byDate[dates[selected]] || 0) > 0 && (() => {
+            const d = dates[selected];
+            const dayTotal = byDate[d] || 0;
+            const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
+            return panel(html`
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
+                <div style="font-weight: 600">${fmtShortDate(d)} · ${fmtUsd(dayTotal)}</div>
+                <button onClick=${() => setSelected(null)}
+                  style="background: none; border: none; color: var(--text-secondary);
+                         font-size: 1.2rem; line-height: 1; cursor: pointer; font-family: inherit">×</button>
+              </div>
+              ${segs.map(([p, v]) => html`
+                <div style="display: flex; align-items: center; gap: 6px; padding: 3px 0">
+                  <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(p)}; display: inline-block; flex: none"></span>
+                  <span style="color: var(--text)">${p}</span>
+                  <span style="margin-left: auto; font-variant-numeric: tabular-nums">${fmtUsd(v)}</span>
+                </div>`)}
+            `);
+          })()}
+
+          <div class="two-col">
             <div>
               <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px">
                 <div style="font-size: 0.98rem; font-weight: 600; color: var(--text-secondary);
@@ -1633,12 +1677,17 @@
               </div>
               ${legend.map(([p, v]) => html`
                 <a href="#/project/${encodeURIComponent(p)}/cost"
-                   style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
+                   style="display: block; padding: 5px 0;
                           text-decoration: none; color: var(--text); border-bottom: 1px solid var(--border)">
-                  <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(p)}; flex: none"></span>
-                  <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${p}</span>
-                  <span style="margin-left: auto; font-size: 0.85rem; color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
-                  <span style="font-size: 1.12rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${fmtUsd(v)}</span>
+                  <div style="display: flex; align-items: center; gap: 8px">
+                    <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(p)}; flex: none"></span>
+                    <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${p}</span>
+                    <span style="margin-left: auto; font-size: 0.85rem; color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
+                    <span style="font-size: 1.12rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${fmtUsd(v)}</span>
+                  </div>
+                  <div style="height: 3px; border-radius: 2px; margin-top: 3px;
+                              width: ${(v / maxProj * 100).toFixed(1)}%;
+                              background: ${segColor(p)}; opacity: 0.6"></div>
                 </a>`)}
               ${hasOther && html`
                 <div style="font-size: 0.85rem; color: var(--text-secondary); padding-top: 6px">
@@ -1671,6 +1720,8 @@
       const [data, setData] = useState(() => visitorOverviewMemo.get(30) || null);
       const [loading, setLoading] = useState(!visitorOverviewMemo.has(30));
       const [hovered, setHovered] = useState(null);
+      const [selected, setSelected] = useState(null); // date index, tap-to-select
+      const scrollRef = useRef(null);
 
       useEffect(() => {
         const cached = visitorOverviewMemo.get(days);
@@ -1684,6 +1735,12 @@
           .catch(e => { if (alive && !cached) { setData({ error: e.message }); setLoading(false); } });
         return () => { alive = false; };
       }, [days]);
+
+      useEffect(() => { setSelected(null); }, [days]);
+
+      useEffect(() => {
+        if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+      }, [data, days]);
 
       const windowPicker = html`
         <div style="display: flex; gap: 4px">
@@ -1785,58 +1842,81 @@
                 <span>${Math.round(peak / 2).toLocaleString()}</span>
                 <span>0</span>
               </div>
-              <div>
-                <div style="display: flex; gap: 2px; align-items: stretch; height: ${CHART_H}px;
-                            border-bottom: 1px solid var(--border)">
-                  ${dates.map((d, i) => {
-                    const dayTotal = byDate[d] || 0;
-                    const barH = dayTotal > 0 ? Math.max(1, Math.round((dayTotal / peak) * (CHART_H - 4))) : 0;
-                    const isHovered = hovered === i;
-                    const edge = n > 1 ? i / (n - 1) : 0.5;
-                    const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
-                    const segs = Object.entries(byDateSite[d] || {}).sort((a, b) => b[1] - a[1]);
-                    return html`
-                      <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: default"
-                           onMouseEnter=${() => setHovered(i)}
-                           onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}>
-                        <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
-                                    display: flex; flex-direction: column-reverse;
-                                    border-radius: 2px 2px 0 0; overflow: hidden;
-                                    opacity: ${isHovered ? 1 : 0.85}; transition: opacity 0.1s">
-                          ${segs.map(([s, v]) => html`
-                            <div style="height: ${(v / dayTotal) * 100}%; background: ${segColor(s)}"></div>`)}
-                        </div>
-                        ${isHovered && dayTotal > 0 && html`
-                          <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
-                                      ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
-                                      background: var(--bg); border: 1px solid var(--border);
-                                      border-radius: 6px; padding: 8px 10px; white-space: nowrap;
-                                      box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
-                            <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${dayTotal.toLocaleString()} views</div>
-                            ${segs.slice(0, 6).map(([s, v]) => html`
-                              <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-                                <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(s)}; display: inline-block"></span>
-                                <span style="color: var(--text)">${s}</span>
-                                <span style="margin-left: auto">${v.toLocaleString()}</span>
-                              </div>`)}
-                            ${segs.length > 6 && html`<div style="color: var(--text-secondary)">+${segs.length - 6} more</div>`}
-                          </div>`}
-                      </div>`;
-                  })}
-                </div>
-                <div style="display: flex; gap: 2px; margin-top: 4px">
-                  ${dates.map((d, i) => html`
-                    <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.75rem;
-                                color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
-                                overflow: visible; white-space: nowrap">
-                      ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
-                    </div>`)}
+              <div class="chart-scroll" ref=${scrollRef}>
+                <div style="min-width: ${n * 7}px">
+                  <div style="display: flex; gap: 2px; align-items: stretch; height: ${CHART_H}px;
+                              border-bottom: 1px solid var(--border)">
+                    ${dates.map((d, i) => {
+                      const dayTotal = byDate[d] || 0;
+                      const barH = dayTotal > 0 ? Math.max(1, Math.round((dayTotal / peak) * (CHART_H - 4))) : 0;
+                      const isHovered = hovered === i;
+                      const edge = n > 1 ? i / (n - 1) : 0.5;
+                      const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
+                      const segs = Object.entries(byDateSite[d] || {}).sort((a, b) => b[1] - a[1]);
+                      return html`
+                        <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
+                             onMouseEnter=${() => setHovered(i)}
+                             onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
+                             onClick=${() => setSelected(s => s === i ? null : i)}>
+                          <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
+                                      display: flex; flex-direction: column-reverse;
+                                      border-radius: 2px 2px 0 0; overflow: hidden;
+                                      opacity: ${isHovered || selected === i ? 1 : 0.85}; transition: opacity 0.1s">
+                            ${segs.map(([s, v]) => html`
+                              <div style="height: ${(v / dayTotal) * 100}%; background: ${segColor(s)}"></div>`)}
+                          </div>
+                          ${CAN_HOVER && isHovered && dayTotal > 0 && html`
+                            <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
+                                        ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
+                                        background: var(--bg); border: 1px solid var(--border);
+                                        border-radius: 6px; padding: 8px 10px; white-space: nowrap;
+                                        box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
+                              <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${dayTotal.toLocaleString()} views</div>
+                              ${segs.slice(0, 6).map(([s, v]) => html`
+                                <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
+                                  <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(s)}; display: inline-block"></span>
+                                  <span style="color: var(--text)">${s}</span>
+                                  <span style="margin-left: auto">${v.toLocaleString()}</span>
+                                </div>`)}
+                              ${segs.length > 6 && html`<div style="color: var(--text-secondary)">+${segs.length - 6} more</div>`}
+                            </div>`}
+                        </div>`;
+                    })}
+                  </div>
+                  <div style="display: flex; gap: 2px; margin-top: 4px">
+                    ${dates.map((d, i) => html`
+                      <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.75rem;
+                                  color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
+                                  overflow: visible; white-space: nowrap">
+                        ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
+                      </div>`)}
+                  </div>
                 </div>
               </div>
             </div>
           `)}
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px">
+          ${selected != null && (byDate[dates[selected]] || 0) > 0 && (() => {
+            const d = dates[selected];
+            const dayTotal = byDate[d] || 0;
+            const segs = Object.entries(byDateSite[d] || {}).sort((a, b) => b[1] - a[1]);
+            return panel(html`
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
+                <div style="font-weight: 600">${fmtShortDate(d)} · ${dayTotal.toLocaleString()} views</div>
+                <button onClick=${() => setSelected(null)}
+                  style="background: none; border: none; color: var(--text-secondary);
+                         font-size: 1.2rem; line-height: 1; cursor: pointer; font-family: inherit">×</button>
+              </div>
+              ${segs.map(([s, v]) => html`
+                <div style="display: flex; align-items: center; gap: 6px; padding: 3px 0">
+                  <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(s)}; display: inline-block; flex: none"></span>
+                  <span style="color: var(--text)">${s}</span>
+                  <span style="margin-left: auto; font-variant-numeric: tabular-nums">${v.toLocaleString()}</span>
+                </div>`)}
+            `);
+          })()}
+
+          <div class="two-col">
             <div>
               ${sectionTitle('By site')}
               ${ranked.map(([s, v]) => html`
@@ -1854,7 +1934,7 @@
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px">
+          <div class="two-col">
             <div>
               ${sectionTitle('Referrers')}
               ${referrers.length ? referrers.map(r => listRow(r.referrer, r.site, r.views))
