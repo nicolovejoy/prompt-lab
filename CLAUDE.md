@@ -57,6 +57,13 @@ It inserts the entry at the **top** of `## Active`. When an entry is acted on, m
 
 ## Next Steps
 
+### Ask feature 500s — root cause found, key rotation pending (2026-07-14)
+Nico reported `/api/ask` returning 500 (surfaced on `#/todos`, but Ask is used dashboard-wide). Root-caused via `vercel logs prompt-labs.org --status-code 500 --json`: Vercel's `ANTHROPIC_API_KEY` is getting `401 Unauthorized` from `https://api.anthropic.com/v1/messages` — the key itself is dead, not a model/code issue (checked: `claude-sonnet-4-6`/`claude-opus-4-6`/`4-7` in `claude_api.py` are all still active per Anthropic's current catalog). Todos' by-type classification still looked fine because its cache covers existing issues and hadn't needed a fresh API call.
+
+**Next session: finish the rotation.** A candidate key (`prompt-lab-key-1`, workspace `prompt-lab`, console-visible as `sk-ant-api03-JVh...fgAA`) looked right, but Nico couldn't re-reveal its value (Anthropic only shows a key's value once, at creation) — so mint a **new** key at https://console.anthropic.com/settings/keys, set `ANTHROPIC_API_KEY` (Production + Preview + Development) at https://vercel.com/nico-lovejoys-projects/prompt-lab/settings/environment-variables, redeploy (`vercel --prod` from `web/`, or a git push), then verify Ask works on https://prompt-labs.org. **Don't confuse with `ANTHROPIC_ADMIN_KEY-4-prompt-lab`** (1Password `dev-secrets` vault) — that's a separate Admin-API-only credential used by `pull_api_costs.py`, not valid for `/v1/messages`.
+
+**Also pending:** Nico flagged that the mobile-forward UX pass (#21/#22 mobile chart work) came at some cost to desktop/web UX and said he'd share details — session ended before he did. Ask him directly next session rather than assuming the mobile work is fully clean.
+
 ### Feature-request batch 2026-07-13 → issues #21–#24 (#21+#22 SHIPPED, #23+#24 PLANNED)
 Nico's checklist (screenshot) triaged into a 4-step sequence, all filed:
 - **#21 + #22 — mobile chart passes (SHIPPED 2026-07-13, phone-verified).** PR #25, per `docs/plan-mobile-charts.md`: both `#/visitors` and `#/costs` charts scroll horizontally within their own panel opening at the recent end (mirrors #19's heatmap fix), floating hover tooltip gated to `hover: hover` pointers with a tap-to-select breakdown panel replacing it on touch, four two-column legend grids collapse under 600px via `.two-col`, costs legend gets per-project spend-share bars. Live phone test passed same day. Follow-up noted, not filed: `CostChart` (project detail) and the home activity chart have the same hover-only/two-col pattern.
