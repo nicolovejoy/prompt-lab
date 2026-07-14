@@ -30,14 +30,20 @@ The real gap is the inverse: `projects` is local-SQLite-only and **never reaches
 - It is what `.env.tpl:5` points `ANTHROPIC_API_KEY` at, which is why the nightly synthesizer and review emails never broke — only the cloud dashboard did.
 - Vercel held a **different, older** key: its `ANTHROPIC_API_KEY` var was created 109 days ago vs. the op item's ~30. That older copy is what 401s.
 
-Fix was to copy the good value into Vercel, not to mint:
+Fix was to copy the good value into Vercel, not to mint. **One command per environment — do not loop, and do not strip the newline:**
 
 ```
-cd ~/src/prompt-lab/web && for e in production preview development; do op read "op://dev-secrets/prompt-lab-key-1/credential" | tr -d '\n' | vercel env add ANTHROPIC_API_KEY $e --force -y; done
-cd ~/src/prompt-lab/web && vercel --prod
+cd ~/src/prompt-lab/web && op read "op://dev-secrets/prompt-lab-key-1/credential" | vercel env add ANTHROPIC_API_KEY production --force -y
 ```
 
-`tr -d '\n'` is load-bearing — `op read` emits a trailing newline, and a key with `\n` appended 401s indistinguishably from a dead one.
+Repeat verbatim for `preview` and `development`, running each on its own, then `vercel --prod`.
+
+**Two traps, both hit for real on 2026-07-14:**
+
+1. **Never pipe through `tr -d '\n'`.** It looks prudent (avoid a trailing newline in the value) and it is exactly wrong. `vercel env add` does not take the value as an argument — it opens an **interactive `? Value?` prompt** and reads one line from stdin. The newline is the *submit*, not part of the value; the prompt discards it as the line terminator. Strip it and the CLI accepts all 108 characters, then blocks forever waiting for an Enter that never arrives, writes nothing, and exits with no error. The symptom is a `? Value?` line with asterisks and **no `Overrode`/`Added` confirmation**.
+2. **Don't wrap it in a `for` loop.** The first iteration's interactive prompt takes over the TTY and consumes the rest of the loop's stdin, so iterations 2+ get an empty `? Value?` and silently write nothing. Observed exactly: production was written, preview and development were not.
+
+**Verify the write, don't assume it.** `vercel env ls` shows each var's age — after a successful write it reads seconds, not days. A partial write shows up as a split: `ANTHROPIC_API_KEY | Production | 45s ago` on one row and `ANTHROPIC_API_KEY | Development, Preview | 109d ago` on another. Env vars are applied at deploy time, so a redeploy is required for any change to take effect.
 
 **Pass:** Ask on https://prompt-labs.org returns an answer; `vercel logs prompt-labs.org --status-code 500 --json` shows no new 401s from `api.anthropic.com`.
 **Fail:** still 401 → stray newline, or saved to only one environment.
