@@ -1,0 +1,53 @@
+# Garm needs-assessment (2026-07-13)
+
+Cross-repo survey feeding issue #24 (per-repo, per-user access control across the ecosystem). Design principle already agreed: **centralize authorization, not identity** — every app keeps its own login; Garm centralizes `(email, project) → role` (viewer/collaborator/owner, `*` wildcard) via a `/gnipahellir` endpoint; **Howl** is the alerting/audit channel.
+
+Surveyed 7 repos: ibuild4you, byside, recountly, selected-projects, musicforge, bakerylouise-v1, prompt-lab (self).
+
+## Per-repo breakdown
+
+**ibuild4you** — Firebase Auth (identity). Authz: `approved_emails` allowlist + `project_members` ((email, project) → role: maker/apprentice/builder/owner), plus `brief_role` (per-brief, not per-repo) with turn-state semantics. This is ibuild4you's own hand-rolled `/gnipahellir`. PII-in-authz: real emails + names in `project_members`. Gotcha: `/api/auth/passcode` matches email+passcode together — a passcode shared to the wrong person logs them in AS that person (identity/authz boundary bug). `project_members` conflates identity credential (plaintext passcode) + authz (role) + PII (names) + per-viewer state (archived_at, removal lifecycle) in one row — a Garm migration would only take the role column, forcing the rest apart. Full detail: `project_garm_ibuild4you_findings` memory.
+
+**byside** — Better Auth, real per-user accounts (email+password, signup disabled, provisioned via CLI script). Authz: `user_roles` table, `(userId, role)`, enum `buyer/broker/assistant/admin`, multi-role. Centralized checks (`hasAnyRole`/`requireAnyRole`), admin is a role superset not a separate check. Per-resource layer on top: `offers.assignedBrokerId` (claim-based assignment) + a 12-state offer-status workflow (`canTransition`). No allowlist beyond `user.email` as the grant key. No shared-credential gotcha — explicitly retired in favor of per-user accounts. **Cleanest real role system of the set** — closest 1:1 fit to Garm's model, modulo the per-offer state machine staying local.
+
+**recountly** — Better Auth, but architecturally single-user (`disableSignUp: true`, one seeded owner via CLI script). No authz layer at all — binary authenticated-or-not, no role table. `entries` (the actual data) has **no `user_id`/owner column** — nothing to attach a per-resource role to even if Garm gated the app. Adding Garm here without first adding row-level ownership would be theater.
+
+**selected-projects** — self-rolled magic-link (no library), real per-user accounts (`users`/`sessions`/`magic_tokens`). Authz: almost nothing — one hardcoded `ADMIN_EMAIL` env-var check (`isAdmin()`), used in exactly one place (community-note deletion). No role table, no per-project mapping. Flatter than Garm's 3-tier, not richer. The `/vibe-coding-lessons` gate (issue #4) is `if (user)` only — exactly the "identity conflated with authz" gap Garm would fix, but there's no existing viewer/collaborator distinction to migrate; it'd be new.
+
+**musicforge** — Firebase Auth (uid-keyed) + a separate HTTP Basic Auth gate on the backend. Authz is **fragmented across four uncoordinated mechanisms**: doc-level `ownerId` (songs), `groups/{id}/members/{uid}.role` (admin/member), `showcaseCollections.invitedEmails` (the one email-keyed ACL), and a hardcoded iOS-only admin UID allowlist (Nico + Eric) with no backend backing. Eric's real collaborator-vs-owner distinction lives entirely outside the repo (GitHub perms + Firebase Console IAM) — changing his access today means an app rebuild (the iOS hardcode). Two different identity keys (uid vs email) across surfaces — Garm's email-keyed model doesn't map cleanly without a reduction decision per surface. A `setlists.ownerId` field appears to be dead/ignored by the actual Firestore rule — needs verification before treating as authoritative.
+
+**bakerylouise-v1** — no app-level login at all (public marketing site). The only "login" is Sanity Studio's own hosted auth/member-role system (Administrator/Editor/Viewer on sanity.io, entirely out-of-repo). Nothing in-repo for Garm to centralize. If Garm ever wants to cover Studio access uniformly, it needs a Sanity-specific integration (Sanity's member API), not a standard app integration — a different shape of work than every other repo.
+
+**prompt-lab (self)** — two shared secrets (`AUTH_SECRET`=admin, `AUTH_READ_SECRET`=reader), **no per-user identity at all**. Flat binary tier, no per-project scoping. This is the real blocker: Garm's `(email, project) → role` model presupposes real per-user identity to hang roles on, which prompt-lab doesn't have. "First consumer: prompt-labs.org itself, replaces two-secret auth" implies prompt-lab needs an identity upgrade (magic link or OAuth — the long-standing "migrate to Google login" backlog item) **before** Garm integration is meaningful here, not as part of it. This also directly unblocks issue #10 (per-user tool-usage visibility), which is currently impossible with a shared secret.
+
+## Cross-cutting findings
+
+1. **Only byside and ibuild4you have a real, working per-user role system today** that Garm could plausibly front or migrate. musicforge has real identity but fragmented/inconsistent authz. recountly, selected-projects, bakerylouise, and prompt-lab have little-to-no authz to migrate — for them, Garm would be adding a capability, not centralizing an existing one. That's a very different pitch and different risk profile per repo; don't treat the batch as uniform.
+
+2. **Identity-key mismatch.** Garm's model joins on email. byside, ibuild4you, and selected-projects already key authz by email. musicforge keys primarily by Firebase `uid`, with only one email-keyed surface (`invitedEmails`) — a musicforge integration needs a uid→email resolution step Garm doesn't currently account for.
+
+3. **Every repo with real authz has richness Garm's flat 3-tier doesn't cover**, confirming the "Garm sits above, doesn't replace" framing is necessary, not optional: byside's offer-assignment + 12-state workflow, musicforge's per-group/per-song/per-showcase mix, ibuild4you's per-brief role + turn-state. Scoping Garm to actually replace any of these would stall it — it should only ever answer the coarse "can this email touch this project at all, and roughly how" question.
+
+4. **PII-in-authz is consistently separable from content PII** across every repo (emails/uids/role rows vs. transcripts/files/songs/entries) — confirms Garm's data footprint can stay narrow (allowlist + role rows only) without needing access to app content anywhere.
+
+5. **Non-repo authz exists and Garm can't reach it by default**: bakerylouise's Sanity Studio roles, musicforge's Firebase Console IAM for Eric. These are real access-control surfaces that a "survey the repos" approach misses entirely — worth deciding explicitly whether Garm v1 ignores them or needs a wider net.
+
+## Real blockers to adoption (not just design questions)
+
+- **prompt-lab needs an identity upgrade before Garm, not alongside it** — no per-user accounts exist to attach roles to.
+- **recountly needs row-level ownership added to `entries`** before any per-user role would mean anything — currently single-user by design.
+- **bakerylouise's actual access control is Sanity's, not this codebase's** — a Garm integration here is a different shape of work (Sanity member API) than everywhere else.
+- **musicforge's uid/email split and the hardcoded iOS admin list** are pre-existing inconsistencies Garm would inherit, not cause — worth fixing musicforge's own authz coherence somewhat independently of whether Garm arrives.
+
+## Open decision, carried from ibuild4you's findings
+
+Where do passcode-holders (ibuild4you) sit — Garm role subjects, or app-local guests invisible to Garm? This is the sharpest instance of the identity/authz boundary question and should be resolved as part of Garm's v1 scope, not deferred.
+
+## Suggested sequencing implication
+
+**byside is the cleanest first real-migration target** — real per-user accounts, one clean role table, email-keyed, no legacy hardcoded escape hatches. prompt-lab as "first consumer" (per the original issue framing) is viable but requires prerequisite identity work first — it's a good *dogfooding* target, not necessarily the easiest technical first migration. Consider sequencing Garm's v1 build against byside (or ibuild4you, modulo its passcode/PII untangling) rather than prompt-lab, and treat prompt-lab's Google-login migration as a parallel, separate piece of work that Garm consumption depends on.
+
+## Decisions (2026-07-13, post-assessment)
+
+- **byside and/or ibuild4you to own the initial Garm build-out** (new `garm` repo scaffold + `/gnipahellir` + wiring itself as first consumer) — not necessarily exclusive; either repo's own agent already has live context this needs assessment doesn't fully replace. byside is the simpler/cleaner starting shape (real accounts, one clean email-keyed role table, no PII untangling required). ibuild4you already has the closest literal match to Garm's `(email, project) → role` model (`project_members`) and its agent proactively engaged with this exact design question unprompted this session — but it needs the passcode/PII untangling (see ibuild4you findings above) done first, or at least in parallel. Either is a reasonable first mover; both referencing/building toward the same `garm` repo is fine too. Caveat for whichever session builds it: keep Garm's actual schema to the generic `(email, project) → role` core, not shaped by either repo's own richer specifics (byside's offer-workflow, ibuild4you's per-brief/turn-state roles stay local) — hand it this full 7-repo assessment doc as spec, not just one repo's shape, so the others aren't awkward retrofits later.
+- **bakerylouise-v1 is out of scope — likely permanently.** No in-repo authz exists to centralize; its only access control is Sanity Studio's own hosted role system, a different integration shape (Sanity member API) than every other repo. Not worth Garm's design bending to accommodate it.
