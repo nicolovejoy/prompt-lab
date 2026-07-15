@@ -59,14 +59,24 @@ CI has been green on `main` since the 2026-07-09 ruff fix; the last 5 runs all s
 
 **Pass:** #12 closed, referencing the fixing commit.
 
-### 0.3 recountly production deploy — not a beacon bug
-The beacon **is** on recountly's main (`src/app/layout.tsx:42`), correctly placed in the single root layout. The reason it isn't firing: **recountly has not deployed to production since 2026-06-27** (17 days). `vercel ls` shows zero deployments of any kind since — no previews either, though PRs #12 and #13 both merged after that date. Since Git integration auto-creates a preview per PR push, producing none points at a **disconnected Vercel↔GitHub integration**, not a failing build (there are no ERROR-state deploys). Prod HTML confirms it: `https://recountly.org` serves neither `beacon.js` nor `_vercel/insights` — a bundle predating both PRs.
+### 0.3 recountly production deploy — DONE 2026-07-14 (root cause was not what I predicted)
 
-Nico: check recountly's Git settings at https://vercel.com/nico-lovejoys-projects and redeploy main.
+Correct part: the beacon was never broken (it was correctly placed at `src/app/layout.tsx:42`), and a redeploy was the fix. Verified end-to-end — real headed browser → 204 → Turso row, `ts 2026-07-15T00:18:42Z`, `site=recountly.org`.
 
-**Pass:** recountly.org HTML contains `prompt-labs.org/beacon.js` **and** `_vercel/insights` (both appearing together confirms the stale-deploy diagnosis), and a `page_views` row with `site=recountly.org` lands in Turso.
+**Wrong part: I diagnosed a "disconnected Vercel↔GitHub integration." There was never an integration to disconnect.** `GET /v9/projects/<id>` returned `link: NULL`, and the project had **zero preview deployments across its entire 43-day history** — not just since Jun 27. Every deploy it ever had was a hand-run `vercel --prod`. Nothing broke on Jun 27; the workflow moved to GitHub PRs, and on an unlinked project merging a PR deploys nothing. The 17-day gap was simply time since someone last ran the command.
 
-Local hygiene, unrelated to prod: the `~/src/recountly` clone sits on branch `add-visitor-beacon` with `origin/main` pinned at `955aa48` — GitHub's real main is `610650a`, which isn't even in the local object store. `git fetch && git checkout main && git pull` before touching that repo.
+**Where my reasoning failed, and the fix:** I looked only at the recent window ("zero deploys *since Jun 27*") and inferred a break. Had I checked the *whole* history I'd have seen zero previews ever, which cannot mean "the webhook broke" — a removed webhook leaves previews behind from before it broke. **Never-linked and recently-broken are distinguishable, but only by looking past the window you're suspicious about.**
+
+**Three diagnostics retired — all three actively mislead:**
+1. **`gh api repos/:owner/:repo/hooks` says nothing about Vercel linkage.** Vercel connects via a **GitHub App**, which creates no repo-level webhooks — it returns empty whether linked or not (still empty now that recountly IS connected). I called this "corroborating"; it was worth exactly zero. Check `link` on `GET /v9/projects/<id>`.
+2. **`_vercel/insights` is a stale marker.** `@vercel/analytics` 2.0.1 serves via a randomized anti-adblock path (recountly's: `/7bd029f5969d4043/script.js`, containing `vercel/insights` internally, POSTing to `/<hash>/view`). Analytics was working the whole time; grepping for `_vercel/insights` is a false negative on any current site — including the "both appear together" pass criterion I wrote below, whose Analytics half was meaningless.
+3. **`githubCommitSha`/`githubCommitRef` don't imply a git trigger.** The CLI stamps local checkout metadata onto manual deploys — precisely what makes an unlinked project look linked. The tell is `target`: every deploy production, zero previews ever.
+
+**Result:** repo is now connected; main auto-deploys and PRs get previews, both halves verified.
+
+**Consequence worth carrying:** that Turso row is the **only** `recountly.org` row that has ever existed. The beacon had never fired once, so anything reading beacon data for recountly was reading **a hole, not a zero**. A site missing from `#/visitors` means "never instrumented," not "no traffic."
+
+Local hygiene: the `~/src/recountly` clone sat on branch `add-visitor-beacon` with `origin/main` pinned at `955aa48` while real main was `610650a` — a commit not even in the local object store, so local `git grep` reported the beacon absent. `git fetch && git checkout main && git pull` before drawing conclusions from a clone.
 
 ### 0.4 Finish the beacon fan-out — prntd + musicforge
 The last two holds from issue #9. Both trees are workable now:
