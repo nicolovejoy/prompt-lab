@@ -26,6 +26,28 @@ def _resolve(name, alias_to_canonical):
     return alias_to_canonical.get(name, name)
 
 
+def _load_metadata(alias_to_canonical):
+    """Per-project category/private/status (issue #23).
+
+    Turso-owned, written only by web/api/project_metadata.py. Missing row =
+    defaults, so a project with no metadata still renders. Never fatal: this is
+    display polish, not data the page needs to exist.
+    """
+    try:
+        rows = turso_query(
+            "SELECT project, category, private, status FROM project_metadata")
+    except Exception:
+        return {}
+    return {
+        _resolve(r["project"], alias_to_canonical): {
+            "category": r.get("category"),
+            "private": bool(int(r.get("private") or 0)),
+            "status": r.get("status") or "active",
+        }
+        for r in rows
+    }
+
+
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not is_authenticated(self.headers):
@@ -104,6 +126,7 @@ class handler(BaseHTTPRequestHandler):
             },
             "activity_by_project": activity_by_project,
             "all_projects": all_projects,
+            "project_metadata": _load_metadata(alias_to_canonical),
         })
 
     def _json(self, data):

@@ -71,6 +71,40 @@ def invoke(endpoint_module, path: str, headers: dict | None = None) -> Captured:
     return captured
 
 
+def invoke_post(endpoint_module, path: str, body, headers: dict | None = None) -> Captured:
+    """Same as invoke() but calls do_POST with a stubbed request body.
+
+    `body` may be a dict (encoded to JSON) or raw bytes, so tests can send
+    malformed payloads too. Headers are a plain dict, so — unlike the real
+    case-insensitive email.message.Message that BaseHTTPRequestHandler hands a
+    live handler — lookups here are case-SENSITIVE. Endpoints in this repo read
+    lowercase header names; keep it that way or a handler will silently see no
+    body under test while working fine in production.
+    """
+    import io
+
+    raw = body if isinstance(body, bytes) else json.dumps(body).encode()
+    cls = endpoint_module.handler
+    inst = cls.__new__(cls)
+    inst.path = path
+    inst.headers = {**(headers or {}), "content-length": str(len(raw))}
+    inst.rfile = io.BytesIO(raw)
+
+    captured = Captured()
+
+    class _Writer:
+        def write(self, data: bytes):
+            captured._body += data
+
+    inst.send_response = lambda code: setattr(captured, "status_code", code)
+    inst.send_header = lambda k, v: captured.response_headers.append((k, v))
+    inst.end_headers = lambda: None
+    inst.wfile = _Writer()
+
+    cls.do_POST(inst)
+    return captured
+
+
 # Import turso_helper once so we can patch its turso_query — that's the one
 # resolve_project_names calls internally.
 import turso_helper  # noqa: E402
@@ -608,30 +642,6 @@ def _():
 
 # === beacon.py ===
 
-def invoke_post(endpoint_module, headers: dict, body: bytes) -> Captured:
-    """Like invoke(), but for do_POST with a stubbed request body."""
-    import io
-    cls = endpoint_module.handler
-    inst = cls.__new__(cls)
-    inst.path = "/api/beacon"
-    inst.headers = {**headers, "content-length": str(len(body))}
-    inst.rfile = io.BytesIO(body)
-
-    captured = Captured()
-
-    class _Writer:
-        def write(self, data: bytes):
-            captured._body += data
-
-    inst.send_response = lambda code: setattr(captured, "status_code", code)
-    inst.send_header = lambda k, v: captured.response_headers.append((k, v))
-    inst.end_headers = lambda: None
-    inst.wfile = _Writer()
-
-    cls.do_POST(inst)
-    return captured
-
-
 GOOD_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
            "AppleWebKit/537.36 Chrome/126.0 Safari/537.36")
 GOOD_HEADERS = {
@@ -726,7 +736,7 @@ def _():
     restore = patch_turso_query(mod, fake_turso)
     body = json.dumps({"path": "/x"}).encode()
     try:
-        h = invoke_post(mod, GOOD_HEADERS, body)
+        h = invoke_post(mod, "/api/beacon", body, GOOD_HEADERS)
         assert h.status_code == 204, f"got {h.status_code}"
         inserts = [c for c in captured_sql if "INSERT INTO page_views" in c[0]]
         assert len(inserts) == 1, f"expected 1 insert, got {captured_sql}"
@@ -735,7 +745,7 @@ def _():
         def boom(sql, args=None):
             raise RuntimeError("turso down")
         patch_turso_query(mod, boom)
-        h2 = invoke_post(mod, GOOD_HEADERS, body)
+        h2 = invoke_post(mod, "/api/beacon", body, GOOD_HEADERS)
         assert h2.status_code == 204, f"error leaked: {h2.status_code}"
     finally:
         restore()
@@ -752,8 +762,8 @@ def _():
 
     restore = patch_turso_query(mod, fake_turso)
     try:
-        h = invoke_post(mod, {**GOOD_HEADERS, "user-agent": "Googlebot"},
-                        json.dumps({"path": "/"}).encode())
+        h = invoke_post(mod, "/api/beacon", json.dumps({"path": "/"}).encode(),
+                        {**GOOD_HEADERS, "user-agent": "Googlebot"})
         assert h.status_code == 204
         assert not captured_sql, f"bot hit reached the DB: {captured_sql}"
     finally:
@@ -808,6 +818,205 @@ def _():
         assert all("pageview" in s for s, _ in captured), "event filter missing"
     finally:
         restore()
+
+
+# === project_metadata.py (issue #23) ===
+
+def _meta_mod(name: str, fake_turso, role="admin"):
+    """Load project_metadata.py with turso + auth patched. Returns (mod, restore)."""
+    mod = load_endpoint("web/api/project_metadata.py", name)
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod,
+                      is_authenticated=lambda _: role is not None,
+                      get_role=lambda _: role)
+
+    def restore():
+        restore_a()
+        restore_q()
+    return mod, restore
+
+
+@test("project_metadata: GET 401 when not authenticated")
+def _():
+    mod, restore = _meta_mod("endpoint_meta_unauth", lambda *a, **kw: [], role=None)
+    try:
+        h = invoke(mod, "/api/project_metadata")
+        assert h.status_code == 401, f"got {h.status_code}"
+    finally:
+        restore()
+
+
+@test("project_metadata: GET returns projects keyed by name, private as bool")
+def _():
+    rows = [{"project": "byside", "category": "Collabs", "private": "1",
+             "status": "active", "updated_at": "2026-07-14T00:00:00Z"}]
+    mod, restore = _meta_mod("endpoint_meta_get", lambda *a, **kw: rows, role="reader")
+    try:
+        h = invoke(mod, "/api/project_metadata")
+        assert h.status_code == 200, f"got {h.status_code}"
+        m = h.body["projects"]["byside"]
+        assert m["private"] is True, f"private not coerced to bool: {m}"
+        assert m["category"] == "Collabs" and m["status"] == "active"
+    finally:
+        restore()
+
+
+@test("project_metadata: POST 403 for reader, 401 for anonymous")
+def _():
+    mod, restore = _meta_mod("endpoint_meta_reader", lambda *a, **kw: [], role="reader")
+    try:
+        h = invoke_post(mod, "/api/project_metadata", {"project": "x", "status": "dormant"})
+        assert h.status_code == 403, f"reader got {h.status_code}, expected 403"
+    finally:
+        restore()
+
+    mod, restore = _meta_mod("endpoint_meta_anon", lambda *a, **kw: [], role=None)
+    try:
+        h = invoke_post(mod, "/api/project_metadata", {"project": "x", "status": "dormant"})
+        assert h.status_code == 401, f"anon got {h.status_code}, expected 401"
+    finally:
+        restore()
+
+
+@test("project_metadata: POST folds an alias to its canonical project")
+def _():
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        if "SELECT canonical FROM project_aliases" in sql:
+            return [{"canonical": "byside"}]
+        if "SELECT alias FROM project_aliases" in sql:
+            return [{"alias": "offer-builder"}]
+        if sql.startswith("SELECT project"):
+            return [{"project": "byside", "category": None, "private": 0,
+                     "status": "dormant", "updated_at": "now"}]
+        return []
+
+    mod, restore = _meta_mod("endpoint_meta_alias", fake_turso)
+    try:
+        h = invoke_post(mod, "/api/project_metadata",
+                        {"project": "offer-builder", "status": "dormant"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["project"] == "byside", f"alias not folded: {h.body}"
+        upserts = [(s, a) for s, a in captured if s.startswith("INSERT INTO project_metadata")]
+        assert upserts, "no upsert emitted"
+        assert upserts[0][1][0] == "byside", f"wrote alias, not canonical: {upserts[0][1]}"
+    finally:
+        restore()
+
+
+@test("project_metadata: POST partial update touches only the sent field")
+def _():
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        if "project_aliases" in sql:
+            return []
+        if sql.startswith("SELECT project"):
+            return [{"project": "musicforge", "category": "Music", "private": 0,
+                     "status": "active", "updated_at": "now"}]
+        return []
+
+    mod, restore = _meta_mod("endpoint_meta_partial", fake_turso)
+    try:
+        h = invoke_post(mod, "/api/project_metadata",
+                        {"project": "musicforge", "category": "Music"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        sql, args = [(s, a) for s, a in captured
+                     if s.startswith("INSERT INTO project_metadata")][0]
+        # A category-only POST must not reset status/private on an existing row.
+        assert "status=excluded.status" not in sql, f"status clobbered: {sql}"
+        assert "private=excluded.private" not in sql, f"private clobbered: {sql}"
+        assert "category=excluded.category" in sql, f"category not updated: {sql}"
+    finally:
+        restore()
+
+
+@test("project_metadata: POST rejects bad category, status, private, and empty body")
+def _():
+    mod, restore = _meta_mod("endpoint_meta_validate", lambda *a, **kw: [])
+    try:
+        cases = [
+            ({"project": "p", "category": "Nonsense"}, "bad category"),
+            ({"project": "p", "status": "archived"}, "bad status"),
+            ({"project": "p", "private": "yes"}, "private as string"),
+            ({"project": "p"}, "no fields"),
+            ({"status": "active"}, "no project"),
+        ]
+        for body, label in cases:
+            h = invoke_post(mod, "/api/project_metadata", body)
+            assert h.status_code == 400, f"{label}: got {h.status_code}, expected 400"
+
+        h = invoke_post(mod, "/api/project_metadata", b"{not json")
+        assert h.status_code == 400, f"malformed json: got {h.status_code}"
+    finally:
+        restore()
+
+
+@test("project_metadata: POST accepts an explicit null category (clears it)")
+def _():
+    def fake_turso(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if sql.startswith("SELECT project"):
+            return [{"project": "p", "category": None, "private": 0,
+                     "status": "active", "updated_at": "now"}]
+        return []
+
+    mod, restore = _meta_mod("endpoint_meta_null_cat", fake_turso)
+    try:
+        h = invoke_post(mod, "/api/project_metadata", {"project": "p", "category": None})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["metadata"]["category"] is None
+    finally:
+        restore()
+
+
+@test("overview: project_metadata rides along, and a missing table isn't fatal")
+def _():
+    def fake_turso(sql, args=None):
+        if "FROM project_metadata" in sql:
+            raise RuntimeError("no such table: project_metadata")
+        return []
+
+    mod = load_endpoint("web/api/overview.py", "endpoint_overview_meta")
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+    try:
+        h = invoke(mod, "/api/overview")
+        # The table not existing yet must degrade to {}, never 503 the page.
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["project_metadata"] == {}, f"got {h.body['project_metadata']}"
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("overview: project_metadata folds aliases onto the canonical name")
+def _():
+    def fake_turso(sql, args=None):
+        if "SELECT alias, canonical FROM project_aliases" in sql:
+            return [{"alias": "offer-builder", "canonical": "byside"}]
+        if "FROM project_metadata" in sql:
+            return [{"project": "offer-builder", "category": "Collabs",
+                     "private": 1, "status": "dormant"}]
+        return []
+
+    mod = load_endpoint("web/api/overview.py", "endpoint_overview_meta_alias")
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+    try:
+        h = invoke(mod, "/api/overview")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        meta = h.body["project_metadata"]
+        assert "byside" in meta, f"alias not folded: {meta}"
+        assert "offer-builder" not in meta, f"alias leaked: {meta}"
+        assert meta["byside"]["private"] is True
+    finally:
+        restore_a()
+        restore_q()
 
 
 # === Main ===

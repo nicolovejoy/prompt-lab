@@ -396,6 +396,28 @@
     }
     .dormant-chip:hover { border-color: var(--text-secondary); color: var(--text); }
 
+    /* Project metadata (issue #23) — category / private / status */
+    .meta-editor {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+      margin-top: 10px; font-size: 1.09rem; color: var(--text-secondary);
+    }
+    .meta-editor select {
+      font-family: inherit; font-size: 1.09rem; padding: 4px 8px;
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+    }
+    .meta-editor select:disabled { opacity: 0.5; cursor: default; }
+    .meta-editor label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .meta-saved { color: var(--green); }
+    .meta-error { color: var(--red); }
+    .badge {
+      font-size: 0.95rem; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 2px 7px; border-radius: 4px; border: 1px solid var(--border);
+      color: var(--text-secondary); white-space: nowrap;
+    }
+    .badge-private { border-color: var(--text-secondary); }
+    .is-private { opacity: 0.62; }
+
     /* Misc */
     .loading { text-align: center; padding: 40px; color: var(--text-secondary); font-size: 1.16rem; }
     .error { color: var(--red); text-align: center; padding: 20px; font-size: 1.16rem; }
@@ -712,6 +734,17 @@
         return () => window.removeEventListener('keydown', onKey);
       }, [role]);
 
+      // Metadata edits (issue #23) write straight to Turso, so merge the result
+      // back into the overview + its cache rather than refetching everything.
+      const onMetaChange = useCallback((project, meta) => {
+        setOverview(o => {
+          if (!o) return o;
+          const next = { ...o, project_metadata: { ...(o.project_metadata || {}), [project]: meta } };
+          lsSet('promptlab_overview', next);
+          return next;
+        });
+      }, []);
+
       const logout = async () => {
         await fetch('/api/login', { method: 'DELETE' });
         // Clear caches so a different login never sees the prior user's data.
@@ -723,11 +756,15 @@
       if (authed === null) return html`<div class="loading">Loading...</div>`;
       if (!authed) return html`<${Login} onLogin=${(r) => { setAuthed(true); setRole(r || 'admin'); }} />`;
 
-      // Project lists for the top-nav picker: active (recency-sorted) then dormant.
+      // Project lists for the top-nav picker. An explicitly set status (issue
+      // #23) wins; with none set, dormancy is derived from 7-day activity as
+      // it always was, so un-annotated projects group exactly as before.
       const bp = overview?.by_project || {};
-      const active = Object.keys(bp).sort((a, b) =>
-        (bp[b]?.summaries?.[0]?.date || '').localeCompare(bp[a]?.summaries?.[0]?.date || ''));
-      const dormant = (overview?.all_projects || []).filter(p => !active.includes(p)).sort();
+      const byRecency = (a, b) =>
+        (bp[b]?.summaries?.[0]?.date || '').localeCompare(bp[a]?.summaries?.[0]?.date || '');
+      const known = [...new Set([...Object.keys(bp), ...(overview?.all_projects || [])])];
+      const active = known.filter(p => projectStatus(overview, p) === 'active').sort(byRecency);
+      const dormant = known.filter(p => projectStatus(overview, p) !== 'active').sort();
 
       return html`
         <div class="container">
@@ -750,7 +787,8 @@
             <${HomeView} overview=${overview} />
           `}
           ${overview && route.view === 'project' && html`
-            <${ProjectPage} name=${route.project} overview=${overview} section=${route.section} />
+            <${ProjectPage} name=${route.project} overview=${overview} section=${route.section}
+              role=${role} onMetaChange=${onMetaChange} />
           `}
           ${route.view === 'costs' && html`<${CostsOverview} />`}
           ${route.view === 'visitors' && html`<${VisitorsOverview} />`}
@@ -759,6 +797,14 @@
           ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
         </div>
       `;
+    }
+
+    // An explicitly set status (issue #23) wins; with none set, dormancy is
+    // derived from 7-day activity as it always was, so un-annotated projects
+    // behave exactly as before.
+    function projectStatus(overview, p) {
+      return overview?.project_metadata?.[p]?.status
+        || ((overview?.by_project || {})[p] ? 'active' : 'dormant');
     }
 
     // ---- Distill a summary row into a short phrase ----
@@ -810,9 +856,10 @@
     // instantly; spend + views fill in when their endpoints resolve.
     function PulseTiles({ overview, cost30, views30 }) {
       const week = overview.week || {};
-      const activeCount = Object.keys(overview.by_project || {}).length;
-      const dormantCount = (overview.all_projects || [])
-        .filter(p => !(overview.by_project || {})[p]).length;
+      const known = [...new Set([
+        ...Object.keys(overview.by_project || {}), ...(overview.all_projects || [])])];
+      const activeCount = known.filter(p => projectStatus(overview, p) === 'active').length;
+      const dormantCount = known.length - activeCount;
 
       const promptSeries = dailySeries(overview.activity_by_project, 30).map(d => d.n);
 
@@ -882,9 +929,17 @@
     }
 
     // Cross-project 30-day activity — one stacked bar per day, colored by project.
-    function CrossProjectActivity({ overview }) {
+    // `hide` is the set of projects the private toggle is currently hiding
+    // (issue #23). They drop out of the chart entirely rather than being folded
+    // into "other" — matching the activity stream, which drops them too. The
+    // point of the toggle is that the name never appears on screen, and a
+    // legend entry would defeat that.
+    function CrossProjectActivity({ overview, hide }) {
       const [hovered, setHovered] = useState(null);
-      const act = overview.activity_by_project || {};
+      const all = overview.activity_by_project || {};
+      const act = hide?.size
+        ? Object.fromEntries(Object.entries(all).filter(([p]) => !hide.has(p)))
+        : all;
 
       // Rank projects by total prompts; top 8 get colors, rest fold into "other".
       const totals = {};
@@ -987,6 +1042,7 @@
       const { week, by_project } = overview;
       const [expanded, setExpanded] = useState({});
       const [showDormant, setShowDormant] = useState(false);
+      const [showPrivate, setShowPrivate] = useState(false);
       const [cost30, setCost30] = useState(() => costOverviewMemo.get(30)?.rows || null);
       const [views30, setViews30] = useState(() => visitorOverviewMemo.get(30)?.daily || null);
 
@@ -1001,9 +1057,18 @@
       }, []);
       const toggle = (id) => setExpanded(p => ({ ...p, [id]: !p[id] }));
 
+      // `private` is a cosmetic hide-toggle (issue #23), not a confidentiality
+      // control — the API returns these projects to any reader regardless.
+      const pmeta = overview.project_metadata || {};
+      const isPrivate = (p) => !!pmeta[p]?.private;
+      const privateCount = (overview.all_projects || []).filter(isPrivate).length;
+      const hidden = (p) => isPrivate(p) && !showPrivate;
+      const hiddenSet = new Set((overview.all_projects || []).filter(hidden));
+
       // Flatten every project's daily summaries into one reverse-chron feed.
       const items = [];
       for (const p of Object.keys(by_project)) {
+        if (hidden(p)) continue;
         for (const s of (by_project[p]?.summaries || [])) {
           items.push({ id: p + '-' + s.date, project: p, date: s.date, data: s,
                        phrase: distillPhrase(s), decisions: tryParseJson(s.key_decisions) });
@@ -1011,9 +1076,11 @@
       }
       items.sort((a, b) => b.date.localeCompare(a.date) || a.project.localeCompare(b.project));
 
-      const activeProjects = new Set(items.map(i => i.project));
+      // Stays "everything not in the stream" so a project can never fall
+      // between the two lists and vanish from home entirely.
+      const streamed = new Set(items.map(i => i.project));
       const dormantProjects = (overview.all_projects || [])
-        .filter(p => !activeProjects.has(p)).sort();
+        .filter(p => !streamed.has(p) && !hidden(p)).sort();
 
       // Group by date for the timeline rail.
       const groups = [];
@@ -1027,7 +1094,7 @@
 
       return html`
         <${PulseTiles} overview=${overview} cost30=${cost30} views30=${views30} />
-        <${CrossProjectActivity} overview=${overview} />
+        <${CrossProjectActivity} overview=${overview} hide=${hiddenSet} />
 
         <div class="sec-label" style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.93rem;
              letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary);
@@ -1043,7 +1110,7 @@
                   const isOpen = expanded[item.id];
                   const s = item.data;
                   return html`
-                    <div class="timeline-entry" onClick=${() => toggle(item.id)}>
+                    <div class="timeline-entry ${isPrivate(item.project) ? 'is-private' : ''}" onClick=${() => toggle(item.id)}>
                       <a class="stream-project" onClick=${(e) => { e.stopPropagation(); open(item.project); }}>${item.project}</a>
                       <span class="timeline-phrase" style="margin-left: 6px">${item.phrase}</span>
                       ${isOpen && html`
@@ -1080,10 +1147,20 @@
             ${showDormant && html`
               <div class="dormant-list">
                 ${dormantProjects.map(p => html`
-                  <span class="dormant-chip" onClick=${() => open(p)}>${p}</span>
+                  <span class="dormant-chip ${isPrivate(p) ? 'is-private' : ''}" onClick=${() => open(p)}>${p}</span>
                 `)}
               </div>
             `}
+          </div>
+        `}
+
+        ${privateCount > 0 && html`
+          <div style="margin-top: 8px">
+            <button style="font-size: 1.16rem; color: var(--text-secondary); background: none;
+              border: none; cursor: pointer; font-family: inherit; padding: 6px 0"
+              onClick=${() => setShowPrivate(v => !v)}>
+              ${showPrivate ? 'Hide' : 'Show'} ${privateCount} private project${privateCount > 1 ? 's' : ''}
+            </button>
           </div>
         `}
       `;
@@ -2266,7 +2343,58 @@
     }
 
     // ---- Project Page ----
-    function ProjectPage({ name, overview, section }) {
+    // ---- Project metadata editor (issue #23) ----
+    // `private` is cosmetic only: it mutes and hides the project in this UI.
+    // It is NOT a confidentiality control — readers still get every field from
+    // the API. Real per-user access control is Garm (#24).
+    const CATEGORIES = ['Music', 'Art', 'Collabs', 'Tools', 'Other'];
+
+    function MetadataEditor({ project, meta, role, onMetaChange }) {
+      const [saving, setSaving] = useState(false);
+      const [flash, setFlash] = useState(null);
+      const readOnly = role !== 'admin';
+
+      const save = async (fields) => {
+        setSaving(true); setFlash(null);
+        try {
+          const res = await fetch('/api/project_metadata', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project, ...fields }),
+          });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'save failed');
+          const d = await res.json();
+          onMetaChange(d.project, d.metadata);
+          setFlash({ ok: true, msg: 'saved' });
+        } catch (e) {
+          setFlash({ ok: false, msg: e.message });
+        }
+        setSaving(false);
+      };
+
+      return html`
+        <div class="meta-editor">
+          <select disabled=${readOnly || saving} value=${meta.status}
+            onChange=${(e) => save({ status: e.target.value })}>
+            <option value="active">active</option>
+            <option value="dormant">dormant</option>
+          </select>
+          <select disabled=${readOnly || saving} value=${meta.category || ''}
+            onChange=${(e) => save({ category: e.target.value || null })}>
+            <option value="">no category</option>
+            ${CATEGORIES.map(c => html`<option value=${c}>${c}</option>`)}
+          </select>
+          <label title="Cosmetic only — hides and mutes this project in the dashboard. Not a confidentiality control.">
+            <input type="checkbox" disabled=${readOnly || saving} checked=${meta.private}
+              onChange=${(e) => save({ private: e.target.checked })} />
+            private
+          </label>
+          ${flash && html`<span class=${flash.ok ? 'meta-saved' : 'meta-error'}>${flash.msg}</span>`}
+        </div>
+      `;
+    }
+
+    function ProjectPage({ name, overview, section, role, onMetaChange }) {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [summaryOpen, setSummaryOpen] = useState(false);
@@ -2315,16 +2443,25 @@
         : null;
       const hasMore = stateSummary && teaser && stateSummary.length > teaser.length;
 
+      // No metadata row yet = the defaults, so the editor renders either way.
+      const meta = {
+        category: null, private: false, status: 'active',
+        ...(overview?.project_metadata?.[name] || {}),
+      };
+
       return html`
         <div>
           <div class="project-header">
             <div class="project-title-row">
-              <span class="project-name">${name}</span>
+              <span class="project-name ${meta.private ? 'is-private' : ''}">${name}</span>
+              ${meta.private && html`<span class="badge badge-private">private</span>`}
+              ${meta.category && html`<span class="badge">${meta.category}</span>`}
               <div class="project-links">
                 ${githubUrl && html`<a class="project-link" href=${githubUrl} target="_blank" rel="noopener">GitHub</a>`}
                 ${siteLabel && html`<a class="project-link" href=${siteUrl} target="_blank" rel="noopener">${siteLabel}</a>`}
               </div>
             </div>
+            <${MetadataEditor} project=${name} meta=${meta} role=${role} onMetaChange=${onMetaChange} />
           </div>
 
           <div class="section-label">Now</div>
