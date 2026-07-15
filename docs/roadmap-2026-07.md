@@ -2,6 +2,22 @@
 
 Phased plan with pass/fail criteria. Written 2026-07-14, grounded in a code survey (not in CLAUDE.md, which had drifted on two load-bearing points — see "Corrections" below).
 
+---
+
+## STATE OF PLAY (end of 2026-07-14) — read this first
+
+**Done today:** Ask fixed and verified on prod (§0.1 — no key was minted; the whole "key is dead" premise was wrong). Phase 1 / issue #23 shipped and merged (PR #26) — the metadata layer is live and the status toggle stalled since 2026-05-28 works. recountly deployed, Git-linked, beacon firing for the first time ever (§0.3 — root cause was *never linked*, not a broken webhook). Garm's `GARM_ADMIN_KEY` blocker unblocked via the new `garm-prompt-lab` handoff channel — it was the same `vercel env add` trap documented in §0.1.
+
+**Recommended next session, in order:**
+
+1. **§2.0 — decouple the beacon salt.** Small, safe, fully specified, and a hard prerequisite for all of Phase 2. Perfect cold-start task: it touches one file, has a crisp pass criterion (hash unchanged for a fixed input), and de-risks the keystone. **Do this first even if Phase 2 then stalls** — it's independently correct.
+2. **§2.1+ — Google login.** The design question is now settled (hand-roll in Python, zero deps — see the DECISION block in Phase 2). This is the keystone: it unblocks #10 and prompt-lab's own Garm consumption.
+3. **Ask deserves a full page, not a modal** — NOT YET FILED; file it if wanted. Ask returns long-form markdown (a ~60-line cross-project digest with headers and nested lists on 2026-07-14) and the modal is too cramped; Nico noted the raw paste read better than the app's own rendering, which is a damning signal. Leaning toward a dedicated `#/ask` route: Ask is dashboard-wide, answers are documents not one-liners, and a route gets deep-linking and back-nav free. Also check whether the modal renders markdown at all or just dumps text. Admin-only surface, so don't over-design.
+
+**Small and open, none urgent:** close #12 (CI green since 2026-07-09); §0.4 beacon fan-out for prntd + musicforge; Preview's Anthropic key is set but unverified (blocked by Vercel deployment protection; only affects Ask on preview deploys).
+
+**Unexplained, worth 10 minutes:** `page_views` has 3 rows for **`free-vite.com`** (2026-07-10/11), but CLAUDE.md says invitekit has no custom domain and fires only as `freevite.vercel.app`. Something serves our beacon from a domain nobody recorded. Confirm before trusting the "no real traffic" note.
+
 Sequencing rationale: Phase 2 (identity) is the keystone — it unblocks #10 and prompt-lab's own Garm consumption. Phase 1 is done first anyway because it's fully buildable today, is smaller, and clears the status-toggle item that has been stalled since 2026-05-28. Phase 5 is fill-in work with no dependencies.
 
 ---
@@ -142,9 +158,30 @@ Add to `scripts/test_web_api.py`.
 
 The keystone. Per `docs/garm-needs-assessment.md:21`, prompt-lab has "no per-user identity at all" — two shared passwords. **This is not swapping one login for another; it's introducing a principal where none exists.** No users table, no email column, nothing keyed by person anywhere in the schema.
 
-### Landmines found in the survey — all of these bite before any OAuth code runs
+### DECISION: no `package.json` — hand-roll OAuth in Python (decided 2026-07-14)
 
-- **`web/` is plain static HTML + Python serverless.** No `package.json` anywhere in the repo, no Next.js, no build step. **There is no NextAuth/Auth.js path.** Either hand-roll the OAuth code exchange in Python, or convert `web/` to Next.js first. **Recommend hand-rolling** — the app is 11 small `BaseHTTPRequestHandler` files; a framework conversion is a much larger, unrelated project that would swallow this one.
+The blocker everyone reaches for first is "Google login means Auth.js, Auth.js means Next.js, and `web/` has no `package.json`." Four options were weighed:
+
+**A. Hand-roll the OAuth flow in Python — CHOSEN.** ~150 lines, **zero new dependencies**, no new runtime, and it fits the existing architecture exactly (the app is 11 small `BaseHTTPRequestHandler` files; this adds a 12th). Details below.
+
+**B. Convert `web/` to Next.js — rejected.** Rewrites 11 Python handlers into TypeScript *and* the entire single-file Preact/HTM frontend, and introduces a build step where there is none. Enormous, and almost entirely unrelated to "let Nico sign in with Google." It would swallow the project whole.
+
+**C. Mixed runtime — a few Node/Next auth routes beside the Python API — rejected.** Vercel does support this. But the session cookie would have to be written by TypeScript and read by Python, so both sides must agree on a token format. Auth.js defaults to encrypted JWE, which Python can't easily read; you'd have to force a shared HMAC JWT and hand-verify it in Python anyway — i.e. do option A's work *plus* carry a second runtime and language. Worst of both.
+
+**D. Third-party auth (Clerk / Auth0 / Descope) — rejected.** Same interop problem (JS-first SDKs; Python would verify their JWTs via JWKS), plus a vendor and a bill. Enormous overkill when admin is one person and there is exactly one provider.
+
+**Why A is smaller than it sounds — the key insight: no JWT signature verification is needed.** This is a *confidential client* using the authorization-code flow, so the `id_token` arrives at our server **directly from Google's token endpoint over TLS**, authenticated with our `client_secret` — not via the browser. Google's own docs say a server doing its own code exchange may skip verifying the ID token signature, precisely because the TLS channel to Google *is* the trust anchor. (Signature verification is what you need when a token reaches you through an untrusted channel, e.g. the implicit flow.) So: exchange the code, base64-decode the `id_token` payload, read `email` / `email_verified`. **No crypto library, no JWKS fetch, no `google-auth` dependency, nothing added to `web/requirements.txt`.** `urllib` — already used throughout this repo — is sufficient.
+
+Sketch of the whole flow:
+1. `GET /api/login?provider=google` → 302 to Google's authorize URL with `client_id`, `redirect_uri`, `scope=openid email`, and a **signed `state`** (HMAC it with `AUTH_SECRET` using the existing `auth_helper` primitives — this is the CSRF defense and is not optional).
+2. Google → `GET /api/callback?code=…&state=…`. Verify `state`'s HMAC first, before touching `code`.
+3. `POST https://oauth2.googleapis.com/token` (code + client_id + client_secret + redirect_uri) → response contains `id_token`.
+4. Base64-decode the `id_token` payload. Require `email_verified == true`. Map `email` → role.
+5. Mint the existing session token (extended to carry `sub`/`email`, not just `role`) and set the cookie.
+
+New env vars: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (1Password + Vercel — and see §0.1's hard-won notes on `vercel env add` before touching that CLI). The redirect URI must be registered in Google Cloud Console for both prod and preview origins.
+
+**Still true and still the real work:** the landmines below (the `AUTH_SECRET` triple-overload and `SameSite=Strict`) are what make Phase 2 non-trivial — not the absence of a `package.json`. Do §2.0 first.
 - **`AUTH_SECRET` is overloaded three ways**: admin password (`login.py:22`), HMAC token-signing key (`auth_helper.py:16`), **and the beacon visitor-hash salt** (`beacon.py:73`). Retiring it without care silently rotates every visitor hash and breaks `#/visitors` continuity at the seam.
 - **`SameSite=Strict` (`auth_helper.py:78`) breaks the OAuth callback redirect.** Must become `Lax`.
 - Token payload carries only `{exp, role}` (`auth_helper.py:19`) — needs `sub`/`email`.
