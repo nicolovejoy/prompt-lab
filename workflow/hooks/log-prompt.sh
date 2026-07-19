@@ -20,13 +20,19 @@ if [ -z "$PROMPT" ] || [ ${#PROMPT} -lt 20 ]; then
     exit 0
 fi
 
-# Skip command invocations
-if [[ "$PROMPT" == "<command-"* ]]; then
+# Skip command invocations and harness-generated task notifications
+if [[ "$PROMPT" == "<command-"* || "$PROMPT" == "<task-notification>"* ]]; then
     exit 0
 fi
 
-# Get project name from cwd in the input
-PROJECT=$(echo "$INPUT" | jq -r '.cwd // empty' | xargs basename)
+# Get project name from cwd in the input. Agent worktrees live at
+# <repo>/.claude/worktrees/agent-<hash> — attribute those to the repo,
+# not the throwaway worktree dir.
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+case "$CWD" in
+    */.claude/worktrees/*) CWD="${CWD%%/.claude/worktrees/*}" ;;
+esac
+PROJECT=$(basename "$CWD" 2>/dev/null)
 if [ -z "$PROJECT" ]; then
     PROJECT="unknown"
 fi
