@@ -10,6 +10,20 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-07-19 — Opening files: bare path on its own line, not an `open` command
+
+Scope: all projects
+
+iTerm lets Nico right-click a file path to open it — no copy-paste needed. So
+when Claude wants him to open a file (image, PDF, report, anything non-command):
+
+- Write a short label line ("Open this file:"), then the bare absolute path
+  **alone on its own line**. Multiple files = one path per line.
+- Do NOT wrap file-opening in an `open …` fenced command block — that forces a
+  copy-paste for something one right-click does.
+- The 📋 COPY-THE-BELOW fenced-block convention still applies to actual shell
+  commands; this replaces it only for opening files.
+
 ## 2026-07-08 — Measurement minimalism (analytics/telemetry policy)
 
 Scope: all projects
