@@ -10,6 +10,18 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-07-19 — Spell out every ask fresh (no "commands above")
+
+Scope: all projects
+
+Whenever Claude asks Nico to do something manually — click session, command
+sequence, open a file, test steps — that message must carry the COMPLETE
+instructions: full paths, every command, every step, restated even if they
+appeared earlier. Never reference "the command above" / "as before": the
+scrollback fills with superseded copies and finding the current one is a
+headache. Repetition beats scrolling. (Generalizes the existing smoke-test
+rule to all asks; also in `~/.claude/CLAUDE.md`.)
+
 ## 2026-07-19 — Opening files: bare path on its own line, not an `open` command
 
 Scope: all projects
