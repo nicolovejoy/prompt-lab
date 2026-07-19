@@ -57,6 +57,9 @@ It inserts the entry at the **top** of `## Active`. When an entry is acted on, m
 
 ## Next Steps
 
+### /resync 2026-07-18 — #12 and #24 closed, #27 filed
+CI has been green since 2026-07-09 (issue #12 was stale) — closed. Garm (#24) is shipped and live in production (`garm.prompt-labs.org`, ibuild4you consuming with verified dual-write) — closed, rollout continuation tracked in **#27**. Also confirmed via `/readup`: still open — Vercel `preview`/`development` envs hold the dead `ANTHROPIC_API_KEY` (prod is fixed); beacon salt decouple (§2.0) not yet started; Phase 2 OAuth is slated for next session on mini per the 2026-07-16 laptop session's decision.
+
 ### Ask feature 500s — FIXED 2026-07-14 (no key was minted)
 Nico reported `/api/ask` returning 500 (surfaced on `#/todos`, but Ask is used dashboard-wide). Root-caused via `vercel logs prompt-labs.org --status-code 500 --json`: Vercel's `ANTHROPIC_API_KEY` got `401 Unauthorized` from `https://api.anthropic.com/v1/messages` — a credential problem, not a model/code one (`claude-sonnet-4-6`/`claude-opus-4-6`/`4-7` in `claude_api.py` are all still active). Todos' by-type classification still looked fine because its cache covers existing issues and hadn't needed a fresh API call.
 
@@ -72,7 +75,7 @@ Fix was to copy the good value into Vercel: `op read "op://dev-secrets/prompt-la
 **Next credential scare: check the secret store for a working value, and compare var ages, BEFORE concluding anything is unrecoverable.** The op record is `prompt-lab-key-1`; don't create a second one (Vercel has its own env store and never reads `.env.tpl`). Don't use `ANTHROPIC_ADMIN_KEY-4-prompt-lab` or `admin-cost-tracking-2026-05` (the item `.env.tpl:6` actually references for `ANTHROPIC_ADMIN_KEY`) — both are Admin-API-only, invalid for `/v1/messages`. Known consequence: local and prod now share one key, so revoking it kills both; mint a Vercel-only key if that isolation is ever wanted.
 
 ### Phased roadmap — `docs/roadmap-2026-07.md` — START HERE (its STATE OF PLAY block is the live status)
-Phase 0 unblock → Phase 1 #23 metadata → Phase 2 Google login (the keystone) → Phase 3 #10 → Phase 4 #24 Garm → Phase 5 #14 tokens. Each phase has pass/fail criteria.
+Phase 0 unblock → Phase 1 #23 metadata → Phase 2 Google login (the keystone) → Phase 3 #10 → Phase 4 Garm rollout (#27, was #24) → Phase 5 #14 tokens. Each phase has pass/fail criteria.
 
 **Status 2026-07-14: Phase 0 essentially done** (Ask fixed + verified on prod; recountly deployed, Git-linked, beacon firing) **and Phase 1 shipped** (#23, PR #26). Remaining Phase 0 scraps: close #12, beacon fan-out for prntd + musicforge, verify Preview's Anthropic key.
 
