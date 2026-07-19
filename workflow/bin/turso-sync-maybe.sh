@@ -8,7 +8,9 @@
 #   ≥8h                            : run sync, update timestamp on success
 #
 # The synchronous SessionStart hook (session-start.sh) reads the same
-# timestamp file and warns when it's ≥24h stale.
+# timestamp file and warns only when it's ≥48h stale AND this log's newest
+# line shows a failed attempt (a stale stamp alone just means the machine
+# was idle — this script runs after that hook and catches up immediately).
 
 set -u
 

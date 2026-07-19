@@ -113,15 +113,27 @@ $ACTIVE
   fi
 fi
 
-# Turso staleness check: warn if last sync >24h ago (or missing despite this
-# being a project session — meaning we've never synced from this machine).
-# Sync cadence is 8h, so 24h = 3 missed cycles.
+# Turso staleness check. The async sync runs at most once per 8h and only when
+# the machine is in use, and it runs AFTER this hook — so a merely-old stamp
+# usually means "machine was idle" and the sync is about to catch up (a >24h
+# mtime check here warned on exactly that, falsely). Real breakage = attempts
+# are happening and failing: the newest log line isn't an ok. Warn only when
+# the stamp is ≥48h old AND the most recent logged attempt didn't succeed.
 TURSO_STAMP="$HOME/.claude/.turso-last-sync"
-if [ -f "$TURSO_STAMP" ] && [ -z "$(find "$TURSO_STAMP" -mmin -1440 2>/dev/null)" ]; then
-  LAST_SYNC="$(stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$TURSO_STAMP" 2>/dev/null || stat -c '%y' "$TURSO_STAMP" 2>/dev/null | cut -d. -f1)"
-  CTX+="
-⚠️ Turso sync last succeeded $LAST_SYNC on this machine. If you've been using this machine recently, something's broken — check ~/.claude/.turso-last-sync.log for the failure reason. The async sync hook will retry on every session, but it keeps failing.
+TURSO_LOG="$HOME/.claude/.turso-last-sync.log"
+if [ -f "$TURSO_STAMP" ] && [ -z "$(find "$TURSO_STAMP" -mmin -2880 2>/dev/null)" ] \
+   && [ -f "$TURSO_LOG" ]; then
+  TURSO_LAST_LINE="$(tail -1 "$TURSO_LOG" 2>/dev/null)"
+  case "$TURSO_LAST_LINE" in
+    *" ok: "*) : ;;  # newest attempt succeeded — stale stamp is just idle time
+    "") : ;;         # empty log — nothing attempted, nothing to diagnose
+    *)
+      LAST_SYNC="$(stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$TURSO_STAMP" 2>/dev/null || stat -c '%y' "$TURSO_STAMP" 2>/dev/null | cut -d. -f1)"
+      CTX+="
+⚠️ Turso sync last succeeded $LAST_SYNC on this machine and the most recent attempt did NOT succeed: [$TURSO_LAST_LINE] — check ~/.claude/.turso-last-sync.log. The async sync hook retries each session, but it keeps failing.
 "
+      ;;
+  esac
 fi
 
 # Neglected custom commands nudge — at most once per 7 days, only if any
