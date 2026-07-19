@@ -36,6 +36,15 @@ iterm_tab_color() {
 # Optional: clear a tab's color back to default.
 iterm_tab_color_reset() { printf '\033]6;1;bg;*;default\a'; }
 
+# Show text as an iTerm2 badge — the faint watermark in the pane's
+# top-right corner. Unlike the tab/window title, a badge can't be
+# overwritten by programs running in the pane (Claude Code sets its
+# own title, so the title alone doesn't reliably show the project).
+iterm_badge() { printf '\033]1337;SetBadgeFormat=%s\a' "$(printf '%s' "$1" | base64)"; }
+
+# Optional: remove the current pane's badge.
+iterm_badge_reset() { printf '\033]1337;SetBadgeFormat=\a'; }
+
 # Map a project name to a stable "R G B" color: hash the name
 # to a hue (0-359), then convert HSV -> RGB at fixed
 # saturation/brightness so every project gets a distinct but
@@ -108,8 +117,11 @@ tell application "iTerm"
       set rows to $bottom_rows                             -- shrink to ~20%
     end tell
 
-    -- top pane (full width): cd, color the tab, then launch Claude
-    tell s1 to write text "cd '$proj_dir' && iterm_tab_color $r $g $b && clear && claude"
+    -- top pane (full width): cd, color the tab, badge it with the
+    -- project name, then launch Claude. --name pre-names the session
+    -- so the tab/window title reads "· <project>" from the first
+    -- moment instead of a generic "Claude Code" (title = session name).
+    tell s1 to write text "cd '$proj_dir' && iterm_tab_color $r $g $b && iterm_badge '$name' && clear && claude --name '$name'"
     -- the two bottom shells: just cd into the project
     tell s2 to write text "cd '$proj_dir'"
     tell s3 to write text "cd '$proj_dir'"
@@ -136,6 +148,8 @@ if (( $+functions[compdef] )); then compdef _work work; fi
 # - Two tabs instead of panes? Replace the split lines with
 #   `tell w to create tab with default profile`.
 # - Run something other than claude: edit the s1 write line.
+# - No project badge: drop the iterm_badge call from the s1 line
+#   (or run iterm_badge_reset in a pane to clear it live).
 # - Different color feel: tweak s (saturation) / v (brightness)
 #   in _work_color.
 # ============================================================
