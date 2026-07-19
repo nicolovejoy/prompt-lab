@@ -128,7 +128,11 @@ Behavior:
 
 ```bash
 if [ "$(basename "$PWD")" = "prompt-lab" ] && [ -f scripts/check_public_allowlist.py ]; then
-  ( [ -x .venv/bin/python ] && .venv/bin/python scripts/check_public_allowlist.py || python3 scripts/check_public_allowlist.py ) 2>&1
+  if [ -x .venv/bin/python ]; then
+    .venv/bin/python scripts/check_public_allowlist.py 2>&1
+  else
+    python3 scripts/check_public_allowlist.py 2>&1
+  fi
 fi
 ```
 
@@ -136,7 +140,7 @@ Behavior:
 
 - Not in the prompt-lab repo, or the script's missing → skip silently.
 - Exit 0 (`OK: no public rows outside the allowlist.`) → say nothing.
-- Exit 1 (drift) → flag it — this means a project that's supposed to be private has public rows on the live, unauthenticated endpoint. List the offending project(s) and which store/table (from the script's output), and point at the fix: `python scripts/unpublish_public.py <project> --apply` (or re-run with `--fix` to have the audit print the exact commands). Treat this as urgent — it's a privacy miss, not a stale-branch nuisance.
+- Exit 1 (drift) → flag it — this means a project that's supposed to be private has public rows on the live, unauthenticated endpoint. List the offending project(s) and which store/table (from the script's output), and point at the fix: `.venv/bin/python scripts/unpublish_public.py <project> --apply` (venv python, not system `python3` — the script imports `anthropic` via `claude_api`) (or re-run with `--fix` to have the audit print the exact commands). Treat this as urgent — it's a privacy miss, not a stale-branch nuisance.
 - Exit 2 (allowlist missing/empty) → flag once as a config problem (`docs/public-allowlist.txt` missing or empty), distinct from data drift.
 
 ## Then
