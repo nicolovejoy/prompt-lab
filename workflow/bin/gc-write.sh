@@ -24,8 +24,20 @@ case "$CMD" in
     fi
     python3 "$HOME/.claude/bin/_update_session_summary.py" "$DB" "$SID"
     ;;
+  end-session)
+    # args: <session_id>. Explicit close, split out of update-session-summary so
+    # a mid-session /handoff can summarize without orphaning later prompts.
+    SID="$1"
+    case "${SID:-}" in
+      ''|*[!0-9]*)
+        echo "usage: gc-write.sh end-session <session_id>" >&2
+        exit 2
+        ;;
+    esac
+    sqlite3 "$DB" "UPDATE sessions SET ended_at=datetime('now') WHERE id=$SID;"
+    ;;
   *)
-    echo "usage: gc-write.sh {register-session|update-session-summary <id> <summary>}" >&2
+    echo "usage: gc-write.sh {register-session|update-session-summary <id>|end-session <id>}" >&2
     exit 2
     ;;
 esac

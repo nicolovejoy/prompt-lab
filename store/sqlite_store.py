@@ -252,6 +252,16 @@ class SqliteKnowledgeStore(KnowledgeStore):
         # on installs where dashboard/server.py hasn't run.
         self._add_column_if_missing("sessions", "token_count", "INTEGER")
         self._add_column_if_missing("sessions", "hostname", "TEXT")
+        # Binds a row to the real Claude Code conversation. Without it, "the
+        # current session" was resolved positionally (newest open row for the
+        # project), so a mid-session /handoff closing the row silently re-filed
+        # every later prompt onto an unrelated stale session.
+        self._add_column_if_missing("sessions", "claude_session_id", "TEXT")
+        if self._has_column("sessions", "claude_session_id"):
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_claude_session_id "
+                "ON sessions(claude_session_id)"
+            )
         self._add_column_if_missing("prompts", "hostname", "TEXT")
         self._add_column_if_missing("projects", "github_url", "TEXT")
         self._add_column_if_missing("projects", "site_url", "TEXT")
@@ -266,6 +276,10 @@ class SqliteKnowledgeStore(KnowledgeStore):
         if not cols or column in cols:
             return
         self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+    def _has_column(self, table: str, column: str) -> bool:
+        cols = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})")}
+        return column in cols
 
     # ---- Daily summaries ----
 

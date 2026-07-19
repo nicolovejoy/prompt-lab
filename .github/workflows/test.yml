@@ -35,6 +35,9 @@ jobs:
       - name: Alias layer smoke tests
         run: python scripts/test_alias_layer.py
 
+      - name: Session identity tests
+        run: python scripts/test_session_identity.py
+
       - name: Cost pipeline smoke tests
         run: python scripts/test_cost_pipeline.py
 

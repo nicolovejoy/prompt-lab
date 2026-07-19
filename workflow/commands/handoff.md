@@ -36,6 +36,9 @@ If there are uncommitted changes, list the changed files and ask the user whethe
   <your 50-word summary here>
   SUMMARY
   ```
+  This writes the summary only — it does NOT end the session. Step 7 does that,
+  last, so that work continuing after a mid-session `/handoff` still logs to the
+  right row.
 
 - **Update CLAUDE.md** Next Steps: remove done items, add new ones (3-5 max)
 
@@ -135,3 +138,16 @@ If this session produced anything a peer repo (selected-projects, prntd) needs t
 ```
 
 Files: `selected-projects-prompt-lab.md`, `prntd-prompt-lab.md` (in `~/src/.handoff`). The wrapper inserts at the top of `## Active` and pushes atomically. If you instead hand-edited a handoff file (e.g. moved an acted-on entry to `## Archived`), flush it with `~/.claude/bin/handoff.sh sync`. Non-zero exit means the note was kept locally but not pushed (3 = conflict, resolve in `~/src/.handoff`; 4 = offline, re-run `sync` later) — surface it, don't ignore it. Nothing to coordinate → skip silently.
+
+## 7. End the session
+
+Last step, after everything else has been written:
+
+```bash
+~/.claude/bin/gc-write.sh end-session <session_id>
+```
+
+Use the same `<session_id>` from step 1. This stamps `ended_at`. It is safe to run
+`/handoff` again later in the same conversation — prompts are bound to the real
+Claude Code session id, so a closed row keeps receiving them and re-running just
+refreshes the summary and end time.

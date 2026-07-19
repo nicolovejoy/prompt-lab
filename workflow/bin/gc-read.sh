@@ -7,23 +7,49 @@ set -euo pipefail
 
 DB="$HOME/.claude/prompt-history.db"
 PROJECT="$(basename "$PWD")"
+POINTER="$HOME/.claude/state/current-session-$PROJECT"
 CMD="${1:-}"
+
+# The prompt hook writes the resolved session row id to POINTER on every prompt.
+# Prefer it: "newest open row for this project" mis-resolves as soon as a
+# mid-session /handoff has closed the row. Falls back to the old query for a
+# brand-new session that hasn't submitted a prompt yet.
+resolve_session_id() {
+  local sid=""
+  if [ -f "$POINTER" ]; then
+    sid="$(tr -dc '0-9' < "$POINTER" 2>/dev/null || true)"
+    # Ignore a pointer to a row that no longer exists (e.g. a restored DB).
+    if [ -n "$sid" ] && [ -z "$(sqlite3 "$DB" "SELECT 1 FROM sessions WHERE id=$sid;")" ]; then
+      sid=""
+    fi
+  fi
+  if [ -z "$sid" ]; then
+    sid="$(sqlite3 "$DB" "SELECT id FROM sessions WHERE project='$PROJECT' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;")"
+  fi
+  printf '%s' "$sid"
+}
 
 case "$CMD" in
   project)
     echo "$PROJECT"
     ;;
   current-session)
-    # id|started_at of the most recent open session for this project
-    sqlite3 "$DB" "SELECT id, started_at FROM sessions WHERE project='$PROJECT' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;"
+    # id|started_at of the current session (contract: slash commands parse this)
+    SID="$(resolve_session_id)"
+    if [ -n "$SID" ]; then
+      sqlite3 "$DB" "SELECT id, started_at FROM sessions WHERE id=$SID;"
+    fi
     ;;
   last-summary)
     # summary|ended_at of the most recent ENDED session
     sqlite3 "$DB" "SELECT summary, ended_at FROM sessions WHERE project='$PROJECT' AND ended_at IS NOT NULL ORDER BY started_at DESC LIMIT 1;"
     ;;
   pulse-prompts)
-    # last 5 prompts in the current open session, truncated to 200 chars
-    sqlite3 "$DB" "SELECT substr(prompt, 1, 200) FROM prompts WHERE session_id=(SELECT id FROM sessions WHERE project='$PROJECT' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1) ORDER BY id DESC LIMIT 5;"
+    # last 5 prompts in the current session, truncated to 200 chars
+    SID="$(resolve_session_id)"
+    if [ -n "$SID" ]; then
+      sqlite3 "$DB" "SELECT substr(prompt, 1, 200) FROM prompts WHERE session_id=$SID ORDER BY id DESC LIMIT 5;"
+    fi
     ;;
   today-counts)
     # today's prompt/session/commit counts for this project

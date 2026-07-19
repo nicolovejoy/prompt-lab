@@ -39,9 +39,22 @@ fi
 TOKENS=$(echo "$USAGE" | cut -d, -f1)
 PCT=$(( TOKENS * 100 / CONTEXT_WINDOW ))
 
-# Update sessions table with final token count
+# Update sessions table with final token count.
+# Resolve the row by the real conversation id (same fix as log-prompt.sh) so a
+# stale open row can't absorb this session's token count.
 if [[ -n "$PROJECT" && -n "$TOKENS" ]]; then
-    SESSION_ID=$(sqlite3 ~/.claude/prompt-history.db "SELECT id FROM sessions WHERE project='$PROJECT' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;" 2>/dev/null)
+    CLAUDE_SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
+    if [[ -z "$CLAUDE_SESSION_ID" ]]; then
+        CLAUDE_SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl)
+    fi
+    SESSION_ID=""
+    if [[ -n "$CLAUDE_SESSION_ID" ]]; then
+        CSID=$(echo "$CLAUDE_SESSION_ID" | sed "s/'/''/g")
+        SESSION_ID=$(sqlite3 ~/.claude/prompt-history.db "SELECT id FROM sessions WHERE claude_session_id='$CSID' ORDER BY id DESC LIMIT 1;" 2>/dev/null)
+    fi
+    if [[ -z "$SESSION_ID" ]]; then
+        SESSION_ID=$(sqlite3 ~/.claude/prompt-history.db "SELECT id FROM sessions WHERE project='$PROJECT' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;" 2>/dev/null)
+    fi
     if [[ -n "$SESSION_ID" ]]; then
         sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET token_count=$TOKENS WHERE id=$SESSION_ID;" 2>/dev/null
     fi
