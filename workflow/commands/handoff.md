@@ -119,7 +119,34 @@ print('Weekly rollup saved for', d['project'], d['week_start'])
 
 If no weeks need rollups, skip silently.
 
-> **Note:** `/handoff` deliberately does NOT write the public `public_session_summaries` / `public_weekly_rollups` tables. Those are written ONLY by the hand-reviewed, git-committed `scripts/backfill_public_*.py` one-shots (see CLAUDE.md `web/api/public_history.py` invariant). Public portfolio data is a deliberate, per-project publish action — never an automatic per-session write.
+> **Note:** `/handoff` deliberately does NOT write the public `public_session_summaries` / `public_weekly_rollups` tables. It may only ever *draft* into a reviewable file (step 4.5). Public portfolio data is a deliberate, per-project publish action — never an automatic per-session write.
+
+## 4.5 Offer a public-refresh draft (prompt-lab repo only, opt-in)
+
+Public data does not refresh itself by design, so it goes stale silently — it sat six weeks stale before a consumer repo noticed. Surface the backlog here, but never act on it unprompted.
+
+Run (prompt-lab repo only; skip silently elsewhere):
+
+```bash
+.venv/bin/python scripts/draft_public_refresh.py --list
+```
+
+If every project reads `0 unpublished week(s)`, say nothing. Otherwise mention the backlog in one line and offer to draft — do **not** generate a draft unless the user asks. Drafting is cheap; reviewing it is the expensive part, and it's the user's time.
+
+If asked, generate the draft for that project:
+
+```bash
+.venv/bin/python scripts/draft_public_refresh.py <project>
+```
+
+Then fill in each `### PUBLIC` block in the generated `drafts/public-<project>-<date>.md`. Write each one **from scratch** against the private text as source material — do not lightly edit the private prose. It is unscrubbed synthesizer output over raw prompts and routinely names clients and collaborators, quotes absolute paths, and describes unreleased plans. Target what a stranger reading a portfolio should see: what was built and why it mattered, no issue numbers, no people, no infrastructure specifics. Leave a block as `TODO` to skip that week.
+
+Then stop and hand it to the user for review. **Never run the publish step yourself** — the human review of the committed file *is* the privacy gate. The user runs:
+
+```bash
+.venv/bin/python scripts/publish_public_draft.py drafts/public-<project>-<date>.md --apply
+.venv/bin/python sync_to_turso.py
+```
 
 ## 5. Commit doc changes if any
 

@@ -44,6 +44,9 @@ jobs:
       - name: Web API unit tests
         run: python scripts/test_web_api.py
 
+      - name: Public draft/publish tests
+        run: python scripts/test_public_draft.py
+
   deploy:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
