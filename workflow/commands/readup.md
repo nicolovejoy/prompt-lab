@@ -103,10 +103,28 @@ The SessionStart hook only *pulls* the handoff repo (read-only). If a prior sess
 
 Silent CI breakage is easy to miss for days — e.g. a lint error blocked `test` (and everything downstream, including `deploy`) on every push to `main` for 3 days before anyone noticed. Check the most recent runs, not just "does a workflow exist":
 
+The probe must distinguish "CI is fine", "CI is broken", and "I could not tell" — never collapse the third into the first two. An earlier version piped stderr to `/dev/null` and fell back to `echo '[]'`, so a transient `gh` failure was indistinguishable from a repo with no CI, and a *passing* build got reported as an absent one (seen 2026-07-19 in selected-projects).
+
 ```bash
 default_branch="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')"
 default_branch="${default_branch:-main}"
-gh run list --branch "$default_branch" --limit 5 --json status,conclusion,name,displayTitle,createdAt,headSha,url 2>/dev/null || echo '[]'
+ci_fields=status,conclusion,name,displayTitle,createdAt,headSha,url
+if ! command -v gh >/dev/null 2>&1; then
+  echo "CI_PROBE=skip reason=gh-not-installed"
+elif ! gh auth status >/dev/null 2>&1; then
+  echo "CI_PROBE=skip reason=not-authenticated"
+else
+  # Retry once: the session's first gh call can fail on a cold keychain lookup.
+  ci_out="$(gh run list --branch "$default_branch" --limit 5 --json "$ci_fields" 2>&1)" \
+    || ci_out="$(gh run list --branch "$default_branch" --limit 5 --json "$ci_fields" 2>&1)"
+  if [ $? -ne 0 ]; then
+    echo "CI_PROBE=error"; echo "$ci_out" | head -3
+  else
+    echo "CI_PROBE=ok"; echo "$ci_out"
+    { [ "$ci_out" = "[]" ] && ls .github/workflows/*.y*ml >/dev/null 2>&1 \
+      && echo "CI_PROBE_NOTE=workflow-files-exist-but-no-runs"; } || true
+  fi
+fi
 ```
 
 If the current branch isn't `$default_branch`, also check it (a PR/feature branch can have its own failing CI independent of main):
@@ -118,7 +136,10 @@ current_branch="$(git branch --show-current)"
 
 Behavior:
 
-- `gh` missing, not authenticated, no workflows configured, or the API call errors → skip silently. Not every repo runs CI, and this must never block session start.
+- `CI_PROBE=skip` (gh missing or not authenticated) → skip silently. Not every machine has `gh`, and this must never block session start.
+- `CI_PROBE=error` → say **one line**: "couldn't read CI status (`<first line of the error>`)". Do **not** report this as "no CI configured" or "CI may not be running" — you don't know, and guessing sends the user chasing a non-bug. This is the case the old snippet got wrong.
+- `CI_PROBE=ok` with `[]` and no `CI_PROBE_NOTE` → no CI in this repo, skip silently.
+- `CI_PROBE=ok` with `[]` **and** `CI_PROBE_NOTE=workflow-files-exist-but-no-runs` → flag one line. Workflow files present but zero runs is a real signal (Actions disabled for the repo, or every trigger filtered out).
 - Latest run per branch has `conclusion: "success"`, or `status` is still `in_progress`/`queued` → say nothing.
 - Latest run's `conclusion` is `failure` / `cancelled` / `timed_out` → **this is CI actively broken.** Don't bury it in the wall of text — surface it as its own ⚠️ line in the summary below, naming the workflow, the branch, and roughly how long it's been red (walk the returned `createdAt`/`conclusion` pairs back to the last `success` to bound it, e.g. "red since <date>, N consecutive failures"). If the workflow YAML defines a `deploy` (or other) job with `needs: test` or similar, call that out too — a red `test` run silently starves it, and a starved job never shows as "failed," just perpetually skipped, so it's easy to miss unless named explicitly. Don't auto-fix; offer to pull the failing step's log (`gh run view <run-id> --log-failed`) and investigate if the user wants to chase it now.
 
