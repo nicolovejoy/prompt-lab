@@ -18,6 +18,11 @@ TURSO_AUTH_TOKEN=op://dev-secrets/Turso/token
 # Cloud dashboard auth
 AUTH_SECRET=op://dev-secrets/Prompt Lab Auth/secret
 
+# Beacon visitor-hash salt (web/api/beacon.py). Same value as AUTH_SECRET on
+# purpose — it pins the salt so retiring AUTH_SECRET in the Phase 2 OAuth
+# migration doesn't rotate every visitor hash. Also set in the Vercel project env.
+BEACON_SALT=op://dev-secrets/Prompt Lab Auth/secret
+
 # Cross-project Todos page: read-only PAT for open-issue search (web/api/todos.py).
 # Also set this in the Vercel project env. GITHUB_USER defaults to nicolovejoy.
 GITHUB_TOKEN=op://dev-secrets/prompt-lab-github-pat/credential

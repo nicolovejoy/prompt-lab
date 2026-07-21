@@ -825,6 +825,41 @@ def _():
     assert "203" not in a
 
 
+@test("beacon: BEACON_SALT is the salt of record and pins the hash byte-for-byte")
+def _():
+    import hashlib
+    import os
+    import time
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_salt")
+    saved = {k: os.environ.get(k) for k in ("BEACON_SALT", "AUTH_SECRET")}
+    try:
+        os.environ["BEACON_SALT"] = "beacon-salt-v1"
+        os.environ["AUTH_SECRET"] = "auth-secret-A"
+        ip, ua = "203.0.113.9", GOOD_UA
+        got = mod._visitor_hash(ip, ua)
+        # Byte-identical to an independent sha256 over BEACON_SALT (not AUTH_SECRET).
+        day = time.strftime("%Y-%m-%d", time.gmtime())
+        want = hashlib.sha256(
+            f"beacon-salt-v1|{day}|{ip}|{ua}".encode()).hexdigest()[:16]
+        assert got == want, f"salt not BEACON_SALT-derived: {got} != {want}"
+        # Continuity: rotating AUTH_SECRET must NOT change the hash while
+        # BEACON_SALT is set — this is what survives the OAuth cutover.
+        os.environ["AUTH_SECRET"] = "auth-secret-B"
+        assert mod._visitor_hash(ip, ua) == got, "AUTH_SECRET rotation moved the hash"
+        # Fallback: with BEACON_SALT unset, it falls back to AUTH_SECRET.
+        del os.environ["BEACON_SALT"]
+        os.environ["AUTH_SECRET"] = "legacy-secret"
+        fb = hashlib.sha256(
+            f"legacy-secret|{day}|{ip}|{ua}".encode()).hexdigest()[:16]
+        assert mod._visitor_hash(ip, ua) == fb, "fallback to AUTH_SECRET broken"
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 @test("beacon: do_POST inserts row and returns 204; turso failure still 204")
 def _():
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_post")

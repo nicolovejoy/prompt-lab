@@ -6,9 +6,16 @@ reads — deliberately no local-SQLite leg and no sync step (the cost pipeline's
 pull/sync split drifted for a month; this path can't).
 
 Privacy by construction: no cookies, raw IP never stored. `visitor_hash` is
-sha256(AUTH_SECRET | UTC date | ip | user-agent) truncated — approximate
+sha256(BEACON_SALT | UTC date | ip | user-agent) truncated — approximate
 uniques that forget themselves daily. Query strings and referrer paths are
 stripped before storage.
+
+The salt is BEACON_SALT, falling back to AUTH_SECRET only until BEACON_SALT is
+set in every environment. AUTH_SECRET is being retired by the Phase 2 OAuth
+migration; pinning the salt to its own var keeps every visitor hash byte-stable
+across that cutover (a salt change silently rotates all hashes and breaks the
+#/visitors unique-count continuity). Once BEACON_SALT is deployed everywhere,
+the AUTH_SECRET fallback is removed.
 
 Abuse posture: `site` is derived server-side from the Origin header (never
 client-supplied), obvious bot user-agents and localhost origins are dropped,
@@ -70,7 +77,9 @@ def _device(ua):
 
 def _visitor_hash(ip, ua):
     day = time.strftime("%Y-%m-%d", time.gmtime())
-    secret = os.environ.get("AUTH_SECRET", "")
+    # BEACON_SALT is the salt of record; AUTH_SECRET is a transitional fallback
+    # removed once BEACON_SALT is set in every environment (Phase 2, §2.3).
+    secret = os.environ.get("BEACON_SALT") or os.environ.get("AUTH_SECRET", "")
     raw = f"{secret}|{day}|{ip}|{ua}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
