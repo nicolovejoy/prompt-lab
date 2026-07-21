@@ -12,9 +12,9 @@
 #
 # Blank lines and #-comments are ignored. One historyKey per line.
 #
-# Last synced from manifest: 2026-06-13 (confirmed by the selected-projects agent)
+# Last synced from manifest: 2026-07-20 (dropped am-i-an-ai — the site removed
+# lojong; its public rows were unpublished via scripts/unpublish_public.py)
 
-am-i-an-ai
 ibuild4you
 musicforge
 prntd

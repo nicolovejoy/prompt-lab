@@ -29,12 +29,23 @@ STATEMENTS = [
         category TEXT,
         private INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'active',
+        public_counts INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT
     )""",
 ]
 
 for sql in STATEMENTS:
     turso_query(sql)
+
+# Idempotent ALTER for tables created before public_counts existed.
+try:
+    turso_query(
+        "ALTER TABLE project_metadata "
+        "ADD COLUMN public_counts INTEGER NOT NULL DEFAULT 0")
+    print("added public_counts column")
+except Exception as e:
+    if "duplicate column" not in str(e).lower():
+        raise
 
 count = turso_query("SELECT COUNT(*) AS n FROM project_metadata")[0]["n"]
 print(f"project_metadata ready on Turso ({count} rows)")

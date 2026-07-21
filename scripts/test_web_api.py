@@ -294,6 +294,107 @@ def _():
         restore()
 
 
+def _projection_turso(captured, *, public_counts, prose_weeks, private_weeks):
+    """Fake turso for the counts-projection tests.
+
+    prose_weeks: list of (week_of, session_count, commit_count) published rows.
+    private_weeks: list of (week_start, session_count, commit_count) private rows.
+    """
+    def fake(sql, args=None):
+        captured.append((sql, args or []))
+        if "canonical FROM project_aliases" in sql and "alias = ?" in sql:
+            return []  # not an alias
+        if "alias FROM project_aliases" in sql:
+            return []  # no aliases
+        if "public_session_summaries" in sql:
+            return []
+        if "public_weekly_rollups" in sql:
+            return [{"week_of": w, "public_summary": f"prose-{w}",
+                     "session_count": s, "commit_count": c}
+                    for (w, s, c) in prose_weeks]
+        if "public_counts FROM project_metadata" in sql:
+            return [{"public_counts": 1 if public_counts else 0}]
+        if "week_start" in sql and "FROM weekly_rollups" in sql:
+            return [{"week_start": w, "session_count": s, "commit_count": c}
+                    for (w, s, c) in private_weeks]
+        return []
+    return fake
+
+
+@test("public_history: opted-in project overlays counts-only weeks, prose wins")
+def _():
+    mod = load_endpoint("web/api/public_history.py", "endpoint_publichist_proj")
+    captured = []
+    fake = _projection_turso(
+        captured, public_counts=True,
+        prose_weeks=[("2026-07-13", 9, 9)],
+        private_weeks=[("2026-07-13", 1, 1), ("2026-07-06", 0, 4),
+                       ("2026-06-29", 1, 1)])
+    restore = patch_turso_query(mod, fake)
+    try:
+        h = invoke(mod, "/api/public_history?project=prompt-lab")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        rollups = h.body["rollups"]
+        weeks = [r["week_of"] for r in rollups]
+        # 3 distinct weeks, sorted newest first.
+        assert weeks == ["2026-07-13", "2026-07-06", "2026-06-29"], weeks
+        # Published week keeps its prose AND its published counts (9,9),
+        # NOT the private (1,1) values.
+        top = rollups[0]
+        assert top["public_summary"] == "prose-2026-07-13", top
+        assert top["session_count"] == 9 and top["commit_count"] == 9, top
+        # Projected weeks are counts-only (null prose).
+        assert rollups[1]["public_summary"] is None, rollups[1]
+        assert rollups[1]["session_count"] == 0 and rollups[1]["commit_count"] == 4
+        assert rollups[2]["public_summary"] is None, rollups[2]
+    finally:
+        restore()
+
+
+@test("public_history: NOT opted-in project never queries private weekly_rollups")
+def _():
+    mod = load_endpoint("web/api/public_history.py", "endpoint_publichist_noopt")
+    captured = []
+    fake = _projection_turso(
+        captured, public_counts=False,
+        prose_weeks=[("2026-07-13", 2, 2)],
+        private_weeks=[("2026-07-06", 5, 5)])
+    restore = patch_turso_query(mod, fake)
+    try:
+        h = invoke(mod, "/api/public_history?project=prompt-lab")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        # Only the published week appears; no projection.
+        assert [r["week_of"] for r in h.body["rollups"]] == ["2026-07-13"]
+        private_calls = [c for c in captured
+                         if "week_start" in c[0] and "FROM weekly_rollups" in c[0]]
+        assert not private_calls, f"private table queried when not opted in: {private_calls}"
+    finally:
+        restore()
+
+
+@test("public_history: projection query selects numeric columns only (no prose)")
+def _():
+    mod = load_endpoint("web/api/public_history.py", "endpoint_publichist_safe")
+    captured = []
+    fake = _projection_turso(
+        captured, public_counts=True, prose_weeks=[],
+        private_weeks=[("2026-07-06", 1, 1)])
+    restore = patch_turso_query(mod, fake)
+    try:
+        h = invoke(mod, "/api/public_history?project=prompt-lab")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        private_calls = [c for c in captured
+                         if "week_start" in c[0] and "FROM weekly_rollups" in c[0]]
+        assert private_calls, "projection query never ran"
+        sql = private_calls[0][0]
+        # Structural prose-safety: the private query must NEVER touch prose cols.
+        assert "narrative" not in sql, f"prose column leaked into query: {sql}"
+        assert "highlights" not in sql, f"prose column leaked into query: {sql}"
+        assert "session_count" in sql and "commit_count" in sql, sql
+    finally:
+        restore()
+
+
 # === cost_timeline.py ===
 
 @test("cost_timeline: 401 when not authenticated")
@@ -849,14 +950,48 @@ def _():
 @test("project_metadata: GET returns projects keyed by name, private as bool")
 def _():
     rows = [{"project": "byside", "category": "Collabs", "private": "1",
-             "status": "active", "updated_at": "2026-07-14T00:00:00Z"}]
+             "status": "active", "public_counts": "1",
+             "updated_at": "2026-07-14T00:00:00Z"}]
     mod, restore = _meta_mod("endpoint_meta_get", lambda *a, **kw: rows, role="reader")
     try:
         h = invoke(mod, "/api/project_metadata")
         assert h.status_code == 200, f"got {h.status_code}"
         m = h.body["projects"]["byside"]
         assert m["private"] is True, f"private not coerced to bool: {m}"
+        assert m["public_counts"] is True, f"public_counts not coerced to bool: {m}"
         assert m["category"] == "Collabs" and m["status"] == "active"
+    finally:
+        restore()
+
+
+@test("project_metadata: POST sets public_counts as a boolean, rejects non-bool")
+def _():
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        if "project_aliases" in sql:
+            return []
+        if sql.startswith("SELECT project"):
+            return [{"project": "split-recording", "category": None, "private": 0,
+                     "status": "active", "public_counts": 1, "updated_at": "now"}]
+        return []
+
+    mod, restore = _meta_mod("endpoint_meta_pubcounts", fake_turso)
+    try:
+        h = invoke_post(mod, "/api/project_metadata",
+                        {"project": "split-recording", "public_counts": True})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["metadata"]["public_counts"] is True, h.body
+        sql = [(s, a) for s, a in captured
+               if s.startswith("INSERT INTO project_metadata")][0][0]
+        assert "public_counts=excluded.public_counts" in sql, sql
+        # A public_counts-only POST must not clobber siblings.
+        assert "status=excluded.status" not in sql, sql
+
+        h = invoke_post(mod, "/api/project_metadata",
+                        {"project": "split-recording", "public_counts": "yes"})
+        assert h.status_code == 400, f"non-bool accepted: {h.status_code}"
     finally:
         restore()
 

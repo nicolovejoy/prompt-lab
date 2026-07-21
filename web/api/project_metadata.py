@@ -19,6 +19,13 @@ mistake the PUBLIC_PROJECTS read-time allowlist was (deleted 2026-06-03).
 
 `category` is display-only — it organizes the UI and is explicitly not a sharing
 unit.
+
+`public_counts` IS a real gate, unlike `private`. When set, /api/public_history
+projects this project's weekly session/commit counts (numeric columns only,
+never prose) from the private `weekly_rollups` table at read time. It is
+admin-set data-as-truth (not a code constant — those drifted twice), seeded from
+the public allowlist. Safe because counts are structurally incapable of leaking
+prose; the projection query is pinned to numeric columns by a test.
 """
 
 import json
@@ -40,8 +47,8 @@ class handler(BaseHTTPRequestHandler):
             return
         try:
             rows = turso_query(
-                "SELECT project, category, private, status, updated_at "
-                "FROM project_metadata")
+                "SELECT project, category, private, status, public_counts, "
+                "updated_at FROM project_metadata")
         except Exception as e:
             self._send(503, {"error": "temporarily unavailable",
                              "detail": str(e)})
@@ -93,8 +100,9 @@ class handler(BaseHTTPRequestHandler):
             canonical = resolve_project_names(name)[0]
             self._upsert(canonical, fields)
             row = turso_query(
-                "SELECT project, category, private, status, updated_at "
-                "FROM project_metadata WHERE project = ?", [canonical])[0]
+                "SELECT project, category, private, status, public_counts, "
+                "updated_at FROM project_metadata WHERE project = ?",
+                [canonical])[0]
         except Exception as e:
             self._send(503, {"error": "temporarily unavailable",
                              "detail": str(e)})
@@ -154,6 +162,12 @@ def _validate(body):
             raise ValueError("private must be a boolean")
         fields["private"] = 1 if pv else 0
 
+    if "public_counts" in body:
+        pc = body["public_counts"]
+        if not isinstance(pc, bool):
+            raise ValueError("public_counts must be a boolean")
+        fields["public_counts"] = 1 if pc else 0
+
     return fields
 
 
@@ -162,5 +176,6 @@ def _row(r):
         "category": r.get("category"),
         "private": bool(int(r.get("private") or 0)),
         "status": r.get("status") or "active",
+        "public_counts": bool(int(r.get("public_counts") or 0)),
         "updated_at": r.get("updated_at"),
     }
