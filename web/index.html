@@ -538,7 +538,7 @@
     }
 
     // ---- Login ----
-    function Login({ onLogin, passwordLogin }) {
+    function Login({ onLogin, passwordLogin, googleLogin }) {
       const [password, setPassword] = useState('');
       const [error, setError] = useState(null);
       const [loading, setLoading] = useState(false);
@@ -562,9 +562,11 @@
           <div class="login">
             <h2>Prompt Lab</h2>
             <p>Sign in to continue</p>
-            <button class="google-btn" onClick=${() => { window.location = '/api/login?provider=google'; }}>
-              Sign in with Google
-            </button>
+            ${googleLogin && html`
+              <button class="google-btn" onClick=${() => { window.location = '/api/login?provider=google'; }}>
+                Sign in with Google
+              </button>
+            `}
             ${passwordLogin && html`
               <div class="login-divider">preview access</div>
               <input type="password" placeholder="Password" autofocus
@@ -683,6 +685,7 @@
       const [role, setRole] = useState(null);
       const [email, setEmail] = useState(null);
       const [passwordLogin, setPasswordLogin] = useState(false);
+      const [googleLogin, setGoogleLogin] = useState(false);
       const [overview, setOverview] = useState(null);
       const [info, setInfo] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -706,9 +709,13 @@
             const d = await resp.json();
             setRole(d.role); setEmail(d.email || null); setAuthed(true);
           } else {
-            let pw = false;
-            try { pw = (await resp.json()).password_login === true; } catch { /* production-safe default: false */ }
-            setPasswordLogin(pw); setAuthed(false);
+            let pw = false, gl = false;
+            try {
+              const d = await resp.json();
+              pw = d.password_login === true;
+              gl = d.google_login === true;
+            } catch { /* production-safe defaults: both false */ }
+            setPasswordLogin(pw); setGoogleLogin(gl); setAuthed(false);
           }
         }).catch(() => setAuthed(false));
       }, []);
@@ -782,7 +789,7 @@
       };
 
       if (authed === null) return html`<div class="loading">Loading...</div>`;
-      if (!authed) return html`<${Login} passwordLogin=${passwordLogin}
+      if (!authed) return html`<${Login} passwordLogin=${passwordLogin} googleLogin=${googleLogin}
         onLogin=${(r) => { setRole(r); setEmail(null); setAuthed(true); }} />`;
 
       // Project lists for the top-nav picker. An explicitly set status (issue
