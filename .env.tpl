@@ -27,7 +27,8 @@ BEACON_SALT=op://dev-secrets/Prompt Lab Auth/secret
 # create it after minting the Google Cloud OAuth client (redirect URI
 # https://prompt-labs.org/api/callback). Vercel: Production only (previews use
 # the password path). ADMIN_EMAILS is not a secret; comma-separated,
-# case-insensitive. Set it in Vercel Production + Preview.
+# case-insensitive. Vercel Production only — callback.py is its sole reader
+# and previews never serve the OAuth callback.
 GOOGLE_CLIENT_ID=op://dev-secrets/Prompt Lab Google OAuth/client_id
 GOOGLE_CLIENT_SECRET=op://dev-secrets/Prompt Lab Google OAuth/client_secret
 ADMIN_EMAILS=nlovejoy@me.com

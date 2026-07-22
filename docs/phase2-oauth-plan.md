@@ -25,7 +25,7 @@ Verified 2026-07-21: no `GOOGLE_*`/`CLIENT` vars in Vercel, no matching item in 
    - Yields a client ID and client secret.
 2. **1Password** (`op item create`, run by Nico — hook blocks it for the agent): store both under one item, e.g. `Prompt Lab Google OAuth` with fields `client_id` and `client_secret`. Pin the exact `op://dev-secrets/...` paths for `.env.tpl`.
 3. **Vercel env** — `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`, Production only (previews don't use Google). **Heed roadmap §0.1 traps:** one `vercel env add` per var, no `tr -d '\n'`, no `for` loop, verify with `vercel env ls` (fresh write reads seconds-old). Prime with `op read >/dev/null` first to dodge the op-session-timeout empty-stdin failure.
-4. **`ADMIN_EMAILS`** — set in Vercel (Production + Preview) to `nlovejoy@me.com` (comma-separated if more later).
+4. **`ADMIN_EMAILS`** — set in Vercel, **Production only**, to `nlovejoy@me.com` (comma-separated if more later). Preview doesn't need it: `callback.py` is its sole reader and previews never serve the OAuth callback (redirect URI is pinned to prod; previews use the password path). Note from the live setup 2026-07-21: the CLI's `? Git branch?` prompt on Preview adds isn't answerable via `--force -y` piping anyway.
 5. `.env.tpl` — add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (→ the new 1P item), `ADMIN_EMAILS`.
 
 ---
