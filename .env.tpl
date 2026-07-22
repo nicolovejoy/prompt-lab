@@ -32,6 +32,9 @@ BEACON_SALT=op://dev-secrets/Prompt Lab Auth/secret
 GOOGLE_CLIENT_ID=op://dev-secrets/Prompt Lab Google OAuth/client_id
 GOOGLE_CLIENT_SECRET=op://dev-secrets/Prompt Lab Google OAuth/client_secret
 ADMIN_EMAILS=nlovejoy@me.com
+# Read-only dashboard access (no Ask, no metadata edits). Same rules as
+# ADMIN_EMAILS; admin wins if an email is in both. Vercel Production only.
+READER_EMAILS=elovejoy5@gmail.com
 
 # Cross-project Todos page: read-only PAT for open-issue search (web/api/todos.py).
 # Also set this in the Vercel project env. GITHUB_USER defaults to nicolovejoy.

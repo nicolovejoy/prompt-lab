@@ -1813,6 +1813,101 @@ def _():
         restore()
 
 
+@test("callback: READER_EMAILS email → 302 + reader cookie")
+def _():
+    import os
+    restore = _callback_env()
+    saved_r = os.environ.get("READER_EMAILS")
+    os.environ["READER_EMAILS"] = "ELovejoy5@gmail.com, other@x.test"
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_reader")
+
+        def fake_exchange(code):
+            return {"id_token": _fake_id_token({
+                "email": "elovejoy5@gmail.com", "email_verified": True,
+                "aud": "test-client-id"})}
+
+        r = patch(mod, _exchange_code=fake_exchange)
+        try:
+            state = auth_helper.make_state()
+            h = invoke(mod, f"/api/callback?code=c&state={state}")
+            assert h.status_code == 302, f"got {h.status_code}"
+            token = _cookie_token(h)
+            assert token, "no cookie for reader email"
+            payload = auth_helper.verify_token(token)
+            assert payload and payload["role"] == "reader", f"got {payload}"
+            assert payload["email"] == "elovejoy5@gmail.com"
+        finally:
+            r()
+    finally:
+        if saved_r is None:
+            os.environ.pop("READER_EMAILS", None)
+        else:
+            os.environ["READER_EMAILS"] = saved_r
+        restore()
+
+
+@test("callback: admin email wins even if also listed in READER_EMAILS")
+def _():
+    import os
+    restore = _callback_env()
+    saved_r = os.environ.get("READER_EMAILS")
+    os.environ["READER_EMAILS"] = "nlovejoy@me.com"
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_adminwins")
+
+        def fake_exchange(code):
+            return {"id_token": _fake_id_token({
+                "email": "nlovejoy@me.com", "email_verified": True,
+                "aud": "test-client-id"})}
+
+        r = patch(mod, _exchange_code=fake_exchange)
+        try:
+            state = auth_helper.make_state()
+            h = invoke(mod, f"/api/callback?code=c&state={state}")
+            assert h.status_code == 302, f"got {h.status_code}"
+            payload = auth_helper.verify_token(_cookie_token(h))
+            assert payload and payload["role"] == "admin", f"got {payload}"
+        finally:
+            r()
+    finally:
+        if saved_r is None:
+            os.environ.pop("READER_EMAILS", None)
+        else:
+            os.environ["READER_EMAILS"] = saved_r
+        restore()
+
+
+@test("callback: email in neither list still 403 when READER_EMAILS set")
+def _():
+    import os
+    restore = _callback_env()
+    saved_r = os.environ.get("READER_EMAILS")
+    os.environ["READER_EMAILS"] = "elovejoy5@gmail.com"
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_neither")
+
+        def fake_exchange(code):
+            return {"id_token": _fake_id_token({
+                "email": "stranger@gmail.com", "email_verified": True,
+                "aud": "test-client-id"})}
+
+        r = patch(mod, _exchange_code=fake_exchange)
+        try:
+            state = auth_helper.make_state()
+            h = invoke(mod, f"/api/callback?code=c&state={state}")
+            assert h.status_code == 403, f"got {h.status_code}"
+            assert _cookie_token(h) is None, "stranger got a cookie"
+        finally:
+            r()
+    finally:
+        if saved_r is None:
+            os.environ.pop("READER_EMAILS", None)
+        else:
+            os.environ["READER_EMAILS"] = saved_r
+        restore()
+
+
 @test("callback: HTML in ?error= param is escaped (reflected XSS)")
 def _():
     restore = _callback_env()
