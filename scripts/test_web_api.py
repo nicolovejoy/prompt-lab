@@ -1189,6 +1189,672 @@ def _():
         restore_q()
 
 
+# === auth_helper / login / callback (Phase 2 OAuth) ===
+
+import auth_helper  # noqa: E402
+
+
+def _ah_sign(payload: dict, secret: str) -> str:
+    """Mint a token the same way auth_helper.make_token does:
+    urlsafe_b64(json).hexhmac, joined by a dot. Used to hand-build legacy /
+    malformed / expired tokens (and states) the public make_* helpers won't.
+    """
+    import base64
+    import hashlib
+    import hmac
+
+    data = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+    sig = hmac.new(secret.encode(), data.encode(), hashlib.sha256).hexdigest()
+    return f"{data}.{sig}"
+
+
+def _save_env(*keys):
+    """Return (restore_fn) that resets the named env vars to their current values."""
+    import os
+
+    saved = {k: os.environ.get(k) for k in keys}
+
+    def restore():
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    return restore
+
+
+def _cookie_token(captured):
+    """Pull the gc_session token out of a captured Set-Cookie header, or None."""
+    prefix = auth_helper.COOKIE_NAME + "="
+    for k, v in captured.response_headers:
+        if k == "Set-Cookie" and v.startswith(prefix):
+            return v.split(";", 1)[0][len(prefix):]
+    return None
+
+
+def _location(captured):
+    for k, v in captured.response_headers:
+        if k == "Location":
+            return v
+    return None
+
+
+def _fake_id_token(claims: dict) -> str:
+    """Unsigned JWT: header.payload.sig, each segment base64url WITHOUT padding
+    (strip '='). Pins that the callback pads before urlsafe_b64decode."""
+    import base64
+
+    def seg(d):
+        return base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b"=").decode()
+
+    return f"{seg({'alg': 'none', 'typ': 'JWT'})}.{seg(claims)}.sig"
+
+
+# --- auth_helper: make_token / verify_token ---
+
+def _mint(role="admin", email="nico@example.com", secret="test-secret", exp_delta=3600):
+    """Hand-sign a NEW-shape {exp, role, email} token (bypasses make_token so the
+    verify_token assertions run even before make_token grows an `email` param)."""
+    import time
+
+    return _ah_sign(
+        {"exp": int(time.time()) + exp_delta, "role": role, "email": email}, secret)
+
+
+@test("auth_helper: verify_token returns the full payload dict, not the role string")
+def _():
+    import os
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        payload = auth_helper.verify_token(_mint("admin", "nico@example.com"))
+        assert isinstance(payload, dict), (
+            f"verify_token must return the payload dict, got {payload!r}")
+        assert payload["role"] == "admin", payload
+        assert payload["email"] == "nico@example.com", payload
+        assert "exp" in payload, payload
+    finally:
+        restore()
+
+
+@test("auth_helper: make_token(role, email=) round-trips through verify_token")
+def _():
+    import os
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        # make_token MUST accept an email arg; a TypeError here IS the failure.
+        tok = auth_helper.make_token("admin", email="nico@example.com")
+        payload = auth_helper.verify_token(tok)
+        assert isinstance(payload, dict) and payload["email"] == "nico@example.com", payload
+    finally:
+        restore()
+
+
+@test("auth_helper: password token (email=None) still verifies (key-presence)")
+def _():
+    import os
+    import time
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        # email KEY present, value null — the password/preview break-glass shape.
+        tok = _ah_sign(
+            {"exp": int(time.time()) + 3600, "role": "admin", "email": None},
+            "test-secret")
+        payload = auth_helper.verify_token(tok)
+        assert isinstance(payload, dict), f"email=None token rejected: {payload!r}"
+        assert payload["role"] == "admin", payload
+        assert "email" in payload, f"email key must be present even when null: {payload}"
+        assert payload["email"] is None, payload
+    finally:
+        restore()
+
+
+@test("auth_helper: legacy {exp,role} token (no email key) → None")
+def _():
+    import os
+    import time
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        legacy = _ah_sign({"exp": int(time.time()) + 3600, "role": "admin"}, "test-secret")
+        assert auth_helper.verify_token(legacy) is None, (
+            "legacy no-email cookie must be rejected (decision 3)")
+    finally:
+        restore()
+
+
+@test("auth_helper: token missing role key → None (fail-open removed)")
+def _():
+    import os
+    import time
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        no_role = _ah_sign(
+            {"exp": int(time.time()) + 3600, "email": "nico@example.com"}, "test-secret")
+        assert auth_helper.verify_token(no_role) is None, (
+            "missing role must not default to admin")
+    finally:
+        restore()
+
+
+@test("auth_helper: tampered signature → None")
+def _():
+    import os
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        tok = _mint("admin", "nico@example.com")
+        bad = tok[:-1] + ("a" if tok[-1] != "a" else "b")
+        assert auth_helper.verify_token(bad) is None, "tampered sig accepted"
+    finally:
+        restore()
+
+
+@test("auth_helper: expired token → None")
+def _():
+    import os
+    import time
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        expired = _ah_sign(
+            {"exp": int(time.time()) - 10, "role": "admin", "email": "nico@example.com"},
+            "test-secret")
+        assert auth_helper.verify_token(expired) is None, "expired token accepted"
+    finally:
+        restore()
+
+
+@test("auth_helper: get_identity returns the payload dict (email + role)")
+def _():
+    import os
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        headers = {"cookie": f"{auth_helper.COOKIE_NAME}={_mint('admin', 'nico@example.com')}"}
+        ident = auth_helper.get_identity(headers)
+        assert isinstance(ident, dict), f"get_identity must return a dict, got {ident!r}"
+        assert ident["role"] == "admin" and ident["email"] == "nico@example.com", ident
+    finally:
+        restore()
+
+
+@test("auth_helper: get_role returns the role string")
+def _():
+    import os
+    import time
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        tok = _ah_sign(
+            {"exp": int(time.time()) + 3600, "role": "reader", "email": None},
+            "test-secret")
+        headers = {"cookie": f"{auth_helper.COOKIE_NAME}={tok}"}
+        assert auth_helper.get_role(headers) == "reader", auth_helper.get_role(headers)
+    finally:
+        restore()
+
+
+@test("auth_helper: set_cookie_header / clear_cookie_header use SameSite=Lax not Strict")
+def _():
+    import os
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        # These two run against current code (no new signature needed) → red on Strict now.
+        clear_hdr = auth_helper.clear_cookie_header()
+        assert "SameSite=Lax" in clear_hdr, f"clear_cookie not Lax: {clear_hdr}"
+        assert "SameSite=Strict" not in clear_hdr, f"clear_cookie still Strict: {clear_hdr}"
+        set_hdr = auth_helper.set_cookie_header("admin")
+        assert "SameSite=Lax" in set_hdr, f"set_cookie not Lax: {set_hdr}"
+        assert "SameSite=Strict" not in set_hdr, f"set_cookie still Strict: {set_hdr}"
+        # And it must thread email through (TypeError here = must-accept-email).
+        with_email = auth_helper.set_cookie_header("admin", email="nico@example.com")
+        assert "SameSite=Lax" in with_email, with_email
+        tok = with_email.split(";", 1)[0][len(auth_helper.COOKIE_NAME) + 1:]
+        assert auth_helper.verify_token(tok)["email"] == "nico@example.com", (
+            "email not threaded into the cookie token")
+    finally:
+        restore()
+
+
+# --- auth_helper: state (CSRF) ---
+
+@test("auth_helper: make_state/verify_state round-trips")
+def _():
+    import os
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        state = auth_helper.make_state()
+        assert state, "make_state returned nothing"
+        assert auth_helper.verify_state(state), "fresh state failed to verify"
+    finally:
+        restore()
+
+
+@test("auth_helper: verify_state rejects a tampered state")
+def _():
+    import os
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        state = auth_helper.make_state()
+        bad = state[:-1] + ("a" if state[-1] != "a" else "b")
+        assert not auth_helper.verify_state(bad), "tampered state accepted"
+    finally:
+        restore()
+
+
+@test("auth_helper: verify_state rejects an expired state")
+def _():
+    import os
+    import time
+    restore = _save_env("AUTH_SECRET")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    try:
+        expired = _ah_sign(
+            {"exp": int(time.time()) - 10, "nonce": "deadbeef"}, "test-secret")
+        assert not auth_helper.verify_state(expired), "expired state accepted"
+    finally:
+        restore()
+
+
+# --- login.py ---
+
+@test("login GET ?provider=google: 302 to Google authorize URL")
+def _():
+    import os
+    from urllib.parse import quote
+    mod = load_endpoint("web/api/login.py", "endpoint_login_google")
+    restore = _save_env("AUTH_SECRET", "GOOGLE_CLIENT_ID", "VERCEL_ENV")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
+    os.environ.pop("VERCEL_ENV", None)
+    try:
+        h = invoke(mod, "/api/login?provider=google")
+        assert h.status_code == 302, f"got {h.status_code}"
+        loc = _location(h)
+        assert loc, "no Location header"
+        assert "accounts.google.com" in loc, loc
+        assert "test-client-id" in loc, loc
+        assert quote("https://prompt-labs.org/api/callback", safe="") in loc, loc
+        assert "response_type=code" in loc, loc
+        assert "openid" in loc and "email" in loc, loc
+        # The state param must be a real signed state, not a literal placeholder.
+        from urllib.parse import parse_qs, urlparse
+        qs = parse_qs(urlparse(loc).query)
+        assert qs.get("state"), f"no state param: {loc}"
+        assert auth_helper.verify_state(qs["state"][0]), "emitted state does not verify"
+    finally:
+        restore()
+
+
+@test("login GET bare unauthenticated: 401 with password_login=true (non-prod)")
+def _():
+    import os
+    mod = load_endpoint("web/api/login.py", "endpoint_login_bare_nonprod")
+    restore = _save_env("AUTH_SECRET", "VERCEL_ENV")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    os.environ.pop("VERCEL_ENV", None)
+    try:
+        h = invoke(mod, "/api/login")
+        assert h.status_code == 401, f"got {h.status_code}"
+        assert h.body.get("authenticated") is False, h.body
+        assert h.body.get("password_login") is True, (
+            f"password_login must be true off-production: {h.body}")
+    finally:
+        restore()
+
+
+@test("login GET bare unauthenticated: password_login=false in production")
+def _():
+    import os
+    mod = load_endpoint("web/api/login.py", "endpoint_login_bare_prod")
+    restore = _save_env("AUTH_SECRET", "VERCEL_ENV")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    os.environ["VERCEL_ENV"] = "production"
+    try:
+        h = invoke(mod, "/api/login")
+        assert h.status_code == 401, f"got {h.status_code}"
+        assert h.body.get("password_login") is False, (
+            f"password_login must be false in production: {h.body}")
+    finally:
+        restore()
+
+
+@test("login GET bare authenticated: 200 with role + email")
+def _():
+    import os
+    mod = load_endpoint("web/api/login.py", "endpoint_login_bare_auth")
+    restore = _save_env("AUTH_SECRET", "VERCEL_ENV")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    os.environ.pop("VERCEL_ENV", None)
+    try:
+        tok = _mint("admin", "nico@example.com")
+        h = invoke(mod, "/api/login",
+                   headers={"cookie": f"{auth_helper.COOKIE_NAME}={tok}"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body.get("authenticated") is True, h.body
+        assert h.body.get("role") == "admin", h.body
+        assert h.body.get("email") == "nico@example.com", h.body
+    finally:
+        restore()
+
+
+def _post_login(mod, body):
+    """POST to login with a CAPITALIZED Content-Length header.
+
+    login.py reads `self.headers.get("Content-Length")` (capitalized), but
+    invoke_post only injects a lowercase `content-length`. On the plain-dict
+    test headers that lookup is case-sensitive, so without this the handler
+    sees an empty body and every password login spuriously 401s. Supplying the
+    capitalized header (merged before invoke_post's lowercase one) is what lets
+    the real password path be exercised.
+    """
+    clen = str(len(json.dumps(body).encode()))
+    return invoke_post(mod, "/api/login", body, headers={"Content-Length": clen})
+
+
+@test("login POST password: 403 in production")
+def _():
+    import os
+    mod = load_endpoint("web/api/login.py", "endpoint_login_post_prod")
+    restore = _save_env("AUTH_SECRET", "AUTH_READ_SECRET", "VERCEL_ENV")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    os.environ.pop("AUTH_READ_SECRET", None)
+    os.environ["VERCEL_ENV"] = "production"
+    try:
+        # Correct password + production must STILL be refused (gating, not auth).
+        h = _post_login(mod, {"password": "test-secret"})
+        assert h.status_code == 403, (
+            f"password login must be disabled in production, got {h.status_code}")
+    finally:
+        restore()
+
+
+@test("login POST password: correct password → 200 + cookie (non-prod)")
+def _():
+    import os
+    mod = load_endpoint("web/api/login.py", "endpoint_login_post_ok")
+    restore = _save_env("AUTH_SECRET", "AUTH_READ_SECRET", "VERCEL_ENV")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    os.environ.pop("AUTH_READ_SECRET", None)
+    os.environ.pop("VERCEL_ENV", None)
+    try:
+        h = _post_login(mod, {"password": "test-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert _cookie_token(h), "no Set-Cookie on successful login"
+    finally:
+        restore()
+
+
+@test("login POST password: wrong password → 401 (non-prod, real body)")
+def _():
+    import os
+    mod = load_endpoint("web/api/login.py", "endpoint_login_post_wrong")
+    restore = _save_env("AUTH_SECRET", "AUTH_READ_SECRET", "VERCEL_ENV")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    os.environ.pop("AUTH_READ_SECRET", None)
+    os.environ.pop("VERCEL_ENV", None)
+    try:
+        # A non-empty, WRONG password (not an empty body) must 401.
+        h = _post_login(mod, {"password": "definitely-not-the-secret"})
+        assert h.status_code == 401, f"got {h.status_code}"
+        assert _cookie_token(h) is None, "wrong password minted a cookie"
+    finally:
+        restore()
+
+
+# --- callback.py (does not exist until implemented — load will error → red) ---
+
+def _callback_env():
+    """Set OAuth env for callback tests; returns restore()."""
+    import os
+    restore = _save_env(
+        "AUTH_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "ADMIN_EMAILS")
+    os.environ["AUTH_SECRET"] = "test-secret"
+    os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
+    os.environ["GOOGLE_CLIENT_SECRET"] = "test-client-secret"
+    os.environ["ADMIN_EMAILS"] = "nlovejoy@me.com"
+    return restore
+
+
+@test("callback: valid state + verified admin id_token → 302 + admin cookie")
+def _():
+    restore = _callback_env()
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_valid")
+        calls = []
+
+        def fake_exchange(code):
+            calls.append(code)
+            return {"id_token": _fake_id_token({
+                "email": "nlovejoy@me.com", "email_verified": True,
+                "aud": "test-client-id"})}
+
+        r = patch(mod, _exchange_code=fake_exchange)
+        try:
+            state = auth_helper.make_state()
+            h = invoke(mod, f"/api/callback?code=authcode&state={state}")
+            assert h.status_code == 302, f"got {h.status_code}"
+            assert _location(h) == "/", f"redirect target: {_location(h)}"
+            assert calls == ["authcode"], f"exchange not called with code: {calls}"
+            tok = _cookie_token(h)
+            assert tok, "no session cookie minted"
+            payload = auth_helper.verify_token(tok)
+            assert payload and payload["role"] == "admin", payload
+            assert payload["email"] == "nlovejoy@me.com", payload
+        finally:
+            r()
+    finally:
+        restore()
+
+
+@test("callback: unknown email → readable 403")
+def _():
+    restore = _callback_env()
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_unknown")
+
+        def fake_exchange(code):
+            return {"id_token": _fake_id_token({
+                "email": "stranger@gmail.com", "email_verified": True,
+                "aud": "test-client-id"})}
+
+        r = patch(mod, _exchange_code=fake_exchange)
+        try:
+            state = auth_helper.make_state()
+            h = invoke(mod, f"/api/callback?code=c&state={state}")
+            assert h.status_code == 403, f"got {h.status_code}"
+            blob = h._body.decode().lower()
+            assert blob.strip(), "403 body must not be blank"
+            assert ("stranger@gmail.com" in blob or "authoriz" in blob
+                    or "forbidden" in blob or "not allowed" in blob), (
+                f"403 body should be readable/explanatory, got: {blob!r}")
+            assert _cookie_token(h) is None, "unknown email got a session cookie"
+        finally:
+            r()
+    finally:
+        restore()
+
+
+@test("callback: email_verified false → 403")
+def _():
+    restore = _callback_env()
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_unverified")
+
+        def fake_exchange(code):
+            return {"id_token": _fake_id_token({
+                "email": "nlovejoy@me.com", "email_verified": False,
+                "aud": "test-client-id"})}
+
+        r = patch(mod, _exchange_code=fake_exchange)
+        try:
+            state = auth_helper.make_state()
+            h = invoke(mod, f"/api/callback?code=c&state={state}")
+            assert h.status_code == 403, f"got {h.status_code}"
+            assert _cookie_token(h) is None, "unverified email got a cookie"
+        finally:
+            r()
+    finally:
+        restore()
+
+
+@test("callback: wrong aud → 403")
+def _():
+    restore = _callback_env()
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_wrongaud")
+
+        def fake_exchange(code):
+            return {"id_token": _fake_id_token({
+                "email": "nlovejoy@me.com", "email_verified": True,
+                "aud": "wrong-client"})}
+
+        r = patch(mod, _exchange_code=fake_exchange)
+        try:
+            state = auth_helper.make_state()
+            h = invoke(mod, f"/api/callback?code=c&state={state}")
+            assert h.status_code == 403, f"got {h.status_code}"
+            assert _cookie_token(h) is None, "wrong-aud token got a cookie"
+        finally:
+            r()
+    finally:
+        restore()
+
+
+@test("callback: bad state → 400 and exchange is never called")
+def _():
+    restore = _callback_env()
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_badstate")
+        calls = []
+
+        def fake_exchange(code):
+            calls.append(code)
+            return {"id_token": _fake_id_token({
+                "email": "nlovejoy@me.com", "email_verified": True,
+                "aud": "test-client-id"})}
+
+        r = patch(mod, _exchange_code=fake_exchange)
+        try:
+            h = invoke(mod, "/api/callback?code=c&state=forged.deadbeef")
+            assert h.status_code == 400, f"got {h.status_code}"
+            assert not calls, "code was exchanged despite bad state"
+        finally:
+            r()
+    finally:
+        restore()
+
+
+@test("callback: ?error=access_denied with no code → 4xx, no crash")
+def _():
+    restore = _callback_env()
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_error")
+        calls = []
+        r = patch(mod, _exchange_code=lambda code: calls.append(code))
+        try:
+            h = invoke(mod, "/api/callback?error=access_denied")
+            assert 400 <= (h.status_code or 0) <= 403, f"got {h.status_code}"
+            assert not calls, "exchange attempted on an error redirect"
+        finally:
+            r()
+    finally:
+        restore()
+
+
+@test("callback: token exchange with no id_token → readable error, no crash/cookie")
+def _():
+    restore = _callback_env()
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_noidtoken")
+        # Google error responses omit id_token (e.g. {"error": "invalid_grant"}).
+        r = patch(mod, _exchange_code=lambda code: {"error": "invalid_grant"})
+        try:
+            state = auth_helper.make_state()
+            h = invoke(mod, f"/api/callback?code=c&state={state}")
+            assert 400 <= (h.status_code or 0) < 600 and h.status_code != 302, (
+                f"missing id_token should be a readable error, got {h.status_code}")
+            assert h.status_code >= 400, f"got {h.status_code}"
+            assert _cookie_token(h) is None, "minted a cookie without an id_token"
+        finally:
+            r()
+    finally:
+        restore()
+
+
+@test("callback: ADMIN_EMAILS match is case-insensitive")
+def _():
+    restore = _callback_env()
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_case")
+
+        def fake_exchange(code):
+            return {"id_token": _fake_id_token({
+                "email": "NLovejoy@ME.com", "email_verified": True,
+                "aud": "test-client-id"})}
+
+        r = patch(mod, _exchange_code=fake_exchange)
+        try:
+            state = auth_helper.make_state()
+            h = invoke(mod, f"/api/callback?code=c&state={state}")
+            assert h.status_code == 302, f"case-sensitive compare rejected admin: {h.status_code}"
+            assert _cookie_token(h), "no cookie for case-variant admin email"
+        finally:
+            r()
+    finally:
+        restore()
+
+
+@test("callback: HTML in ?error= param is escaped (reflected XSS)")
+def _():
+    restore = _callback_env()
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_xss_error")
+        r = patch(mod, _exchange_code=lambda code: {})
+        try:
+            h = invoke(mod, "/api/callback?error=%3Cscript%3Ealert(1)%3C/script%3E")
+            body = h._body.decode()
+            assert "<script>" not in body, f"unescaped error param reflected: {body}"
+            assert "&lt;script&gt;" in body or "script" not in body, (
+                f"error param neither escaped nor omitted: {body}")
+        finally:
+            r()
+    finally:
+        restore()
+
+
+@test("callback: HTML in unauthorized email is escaped (reflected XSS)")
+def _():
+    restore = _callback_env()
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_xss_email")
+
+        def fake_exchange(code):
+            return {"id_token": _fake_id_token({
+                "email": '<img src=x onerror=alert(1)>@evil.test',
+                "email_verified": True, "aud": "test-client-id"})}
+
+        r = patch(mod, _exchange_code=fake_exchange)
+        try:
+            state = auth_helper.make_state()
+            h = invoke(mod, f"/api/callback?code=c&state={state}")
+            body = h._body.decode()
+            assert h.status_code == 403, f"got {h.status_code}"
+            assert "<img" not in body, f"unescaped email reflected: {body}"
+        finally:
+            r()
+    finally:
+        restore()
+
+
 # === Main ===
 
 def main() -> int:

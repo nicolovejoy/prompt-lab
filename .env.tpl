@@ -23,6 +23,16 @@ AUTH_SECRET=op://dev-secrets/Prompt Lab Auth/secret
 # migration doesn't rotate every visitor hash. Also set in the Vercel project env.
 BEACON_SALT=op://dev-secrets/Prompt Lab Auth/secret
 
+# Google OAuth (web/api/login.py + callback.py). 1P item does not exist yet —
+# create it after minting the Google Cloud OAuth client (redirect URI
+# https://prompt-labs.org/api/callback). Vercel: Production only (previews use
+# the password path). ADMIN_EMAILS is not a secret; comma-separated,
+# case-insensitive. Vercel Production only — callback.py is its sole reader
+# and previews never serve the OAuth callback.
+GOOGLE_CLIENT_ID=op://dev-secrets/Prompt Lab Google OAuth/client_id
+GOOGLE_CLIENT_SECRET=op://dev-secrets/Prompt Lab Google OAuth/client_secret
+ADMIN_EMAILS=nlovejoy@me.com
+
 # Cross-project Todos page: read-only PAT for open-issue search (web/api/todos.py).
 # Also set this in the Vercel project env. GITHUB_USER defaults to nicolovejoy.
 GITHUB_TOKEN=op://dev-secrets/prompt-lab-github-pat/credential

@@ -101,6 +101,14 @@
       border: none; border-radius: var(--radius); font-size: 1.23rem; font-weight: 600; cursor: pointer;
     }
     .login button:disabled { opacity: 0.4; }
+    .login .google-btn { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+    .login .login-divider {
+      display: flex; align-items: center; gap: 10px;
+      color: var(--text-secondary); font-size: 0.92rem; margin: 20px 0 14px;
+    }
+    .login .login-divider::before, .login .login-divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
 
     /* Header */
     header {
@@ -530,7 +538,7 @@
     }
 
     // ---- Login ----
-    function Login({ onLogin }) {
+    function Login({ onLogin, passwordLogin }) {
       const [password, setPassword] = useState('');
       const [error, setError] = useState(null);
       const [loading, setLoading] = useState(false);
@@ -553,14 +561,20 @@
         <div class="container">
           <div class="login">
             <h2>Prompt Lab</h2>
-            <p>Enter password to continue</p>
-            <input type="password" placeholder="Password" autofocus
-              value=${password} onInput=${e => setPassword(e.target.value)}
-              onKeyDown=${e => e.key === 'Enter' && submit()} />
-            ${error && html`<p class="error" style="margin-bottom: 10px; padding: 0">${error}</p>`}
-            <button onClick=${submit} disabled=${loading || !password}>
-              ${loading ? 'Signing in...' : 'Sign in'}
+            <p>Sign in to continue</p>
+            <button class="google-btn" onClick=${() => { window.location = '/api/login?provider=google'; }}>
+              Sign in with Google
             </button>
+            ${passwordLogin && html`
+              <div class="login-divider">preview access</div>
+              <input type="password" placeholder="Password" autofocus
+                value=${password} onInput=${e => setPassword(e.target.value)}
+                onKeyDown=${e => e.key === 'Enter' && submit()} />
+              ${error && html`<p class="error" style="margin-bottom: 10px; padding: 0">${error}</p>`}
+              <button onClick=${submit} disabled=${loading || !password}>
+                ${loading ? 'Signing in...' : 'Sign in'}
+              </button>
+            `}
           </div>
         </div>
       `;
@@ -610,7 +624,7 @@
     }
 
     // ---- Header ----
-    function Header({ route, info, role, onLogout, onAsk, active, dormant, refreshing, theme, onToggleTheme }) {
+    function Header({ route, info, role, email, onLogout, onAsk, active, dormant, refreshing, theme, onToggleTheme }) {
       const freshness = info?.data_freshness ? timeAgo(info.data_freshness) : null;
       // build_time arrives as ISO 8601 UTC; show it in Pacific time
       // (PDT/PST handled automatically by the Intl API).
@@ -649,6 +663,7 @@
                     title=${theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
               ${theme === 'light' ? '☾' : '☀'}
             </button>
+            ${email && html`<span class="header-meta" title=${email}>${email}</span>`}
             <button class="header-btn" onClick=${onLogout}>Log out</button>
           </div>
         </header>
@@ -666,6 +681,8 @@
     function App() {
       const [authed, setAuthed] = useState(null);
       const [role, setRole] = useState(null);
+      const [email, setEmail] = useState(null);
+      const [passwordLogin, setPasswordLogin] = useState(false);
       const [overview, setOverview] = useState(null);
       const [info, setInfo] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -681,8 +698,19 @@
         setTheme(next);
       };
 
+      // Direct fetch (not api()) because the 401 body carries password_login,
+      // which api() swallows. Server always returns role now — no fail-open.
       useEffect(() => {
-        api('/api/login').then(d => { setAuthed(true); setRole(d.role || 'admin'); }).catch(() => setAuthed(false));
+        fetch('/api/login').then(async resp => {
+          if (resp.ok) {
+            const d = await resp.json();
+            setRole(d.role); setEmail(d.email || null); setAuthed(true);
+          } else {
+            let pw = false;
+            try { pw = (await resp.json()).password_login === true; } catch { /* production-safe default: false */ }
+            setPasswordLogin(pw); setAuthed(false);
+          }
+        }).catch(() => setAuthed(false));
       }, []);
 
       // Stale-while-revalidate: paint the cached overview immediately (no
@@ -750,11 +778,12 @@
         // Clear caches so a different login never sees the prior user's data.
         memo.project.clear(); memo.cost.clear();
         try { localStorage.removeItem('promptlab_overview'); } catch { /* ignore */ }
-        setAuthed(false); setOverview(null);
+        setAuthed(false); setOverview(null); setEmail(null);
       };
 
       if (authed === null) return html`<div class="loading">Loading...</div>`;
-      if (!authed) return html`<${Login} onLogin=${(r) => { setAuthed(true); setRole(r || 'admin'); }} />`;
+      if (!authed) return html`<${Login} passwordLogin=${passwordLogin}
+        onLogin=${(r) => { setRole(r); setEmail(null); setAuthed(true); }} />`;
 
       // Project lists for the top-nav picker. An explicitly set status (issue
       // #23) wins; with none set, dormancy is derived from 7-day activity as
@@ -768,7 +797,7 @@
 
       return html`
         <div class="container">
-          <${Header} route=${route} info=${info} role=${role} onLogout=${logout}
+          <${Header} route=${route} info=${info} role=${role} email=${email} onLogout=${logout}
             active=${active} dormant=${dormant} refreshing=${refreshing}
             onAsk=${role === 'admin' ? () => setAskOpen(true) : null}
             theme=${theme} onToggleTheme=${toggleTheme} />
