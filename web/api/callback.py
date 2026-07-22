@@ -83,18 +83,24 @@ class handler(BaseHTTPRequestHandler):
             return self._error(403, "Your Google email address is not verified.")
 
         email = (claims.get("email") or "").strip()
-        admins = [
-            e.strip().lower()
-            for e in os.environ.get("ADMIN_EMAILS", "").split(",")
-            if e.strip()
-        ]
-        if not email or email.lower() not in admins:
+
+        def _allowlist(var):
+            return [e.strip().lower() for e in os.environ.get(var, "").split(",")
+                    if e.strip()]
+
+        role = None
+        if email:
+            if email.lower() in _allowlist("ADMIN_EMAILS"):
+                role = "admin"
+            elif email.lower() in _allowlist("READER_EMAILS"):
+                role = "reader"
+        if not role:
             return self._error(
                 403, f"{email or 'This account'} is not authorized to access "
                      "this dashboard.")
 
         self.send_response(302)
-        self.send_header("Set-Cookie", set_cookie_header("admin", email))
+        self.send_header("Set-Cookie", set_cookie_header(role, email))
         self.send_header("Location", "/")  # fixed target — no open-redirect surface
         self.end_headers()
 

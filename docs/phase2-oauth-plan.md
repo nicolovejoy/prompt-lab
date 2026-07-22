@@ -9,6 +9,7 @@ Companion to `docs/roadmap-2026-07.md` Phase 2 — that has the *why* (option A 
 ## Settled decisions (2026-07-21)
 
 1. **Reader tier → admin-only until Garm.** `ADMIN_EMAILS` env allowlist only. No `READER_EMAILS`. Any verified Google email not in `ADMIN_EMAILS` → readable 403. Reader tier is Garm's job; building a second allowlist here is the thing Garm exists to delete.
+   **AMENDED same day (post-cutover):** Nico wants Elijah (elovejoy5@gmail.com) to have read access to everything — so `READER_EMAILS` (comma-separated env, same case-insensitive rules, admin wins on overlap) maps to the existing `reader` role. Still an env var, not a table; Garm deletes both allowlists the same way. Readers get the whole dashboard read-only (all projects, costs, visitors) but no Ask (admin's Anthropic spend) and no metadata edits.
 2. **Preview auth → keep the password path preview-only.** Google won't register wildcard `*.vercel.app` redirect URIs, so preview deploys can't do the OAuth round-trip. The password `POST /api/login` survives, gated to non-production only, as the way into previews. Production uses Google exclusively.
 3. **Legacy `{exp, role}` cookies → reject on deploy.** `verify_token` requires the new `{exp, role, email}` shape. Old cookies fail verification → one re-login for Nico. This immediately kills the fail-open `role` default (no overlap window where it lingers).
 4. **email→role → env allowlist, not a table.** `ADMIN_EMAILS` (comma-separated). `nlovejoy@me.com` → admin.
