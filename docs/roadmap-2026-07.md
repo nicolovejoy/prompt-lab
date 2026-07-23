@@ -4,15 +4,13 @@ Phased plan with pass/fail criteria. Written 2026-07-14, grounded in a code surv
 
 ---
 
-## STATE OF PLAY (end of 2026-07-14) — read this first
+## STATE OF PLAY (updated 2026-07-21) — read this first
 
-**Done today:** Ask fixed and verified on prod (§0.1 — no key was minted; the whole "key is dead" premise was wrong). Phase 1 / issue #23 shipped and merged (PR #26) — the metadata layer is live and the status toggle stalled since 2026-05-28 works. recountly deployed, Git-linked, beacon firing for the first time ever (§0.3 — root cause was *never linked*, not a broken webhook). Garm's `GARM_ADMIN_KEY` blocker unblocked via the new `garm-prompt-lab` handoff channel — it was the same `vercel env add` trap documented in §0.1.
+**Phase 2 (Google OAuth) SHIPPED + live-verified 2026-07-21** (PRs #29, #32) — prod is Google-exclusive (`ADMIN_EMAILS` → admin, `READER_EMAILS` → reader), previews keep password login. Full detail in `docs/phase2-oauth-plan.md`. §2.3/§2.4 cleanup (the `AUTH_SECRET`→beacon fallback removal, issue #30's preview-Google-button fix, this doc sweep) is being done as **"Phase A"**, tracked there — see that plan for current status rather than the stale numbered list below.
 
-**Recommended next session, in order:**
+**Done previously (2026-07-14):** Ask fixed and verified on prod (§0.1 — no key was minted; the whole "key is dead" premise was wrong). Phase 1 / issue #23 shipped and merged (PR #26) — the metadata layer is live and the status toggle stalled since 2026-05-28 works. recountly deployed, Git-linked, beacon firing for the first time ever (§0.3 — root cause was *never linked*, not a broken webhook). Garm's `GARM_ADMIN_KEY` blocker unblocked via the new `garm-prompt-lab` handoff channel — it was the same `vercel env add` trap documented in §0.1.
 
-1. **§2.0 — decouple the beacon salt.** Small, safe, fully specified, and a hard prerequisite for all of Phase 2. Perfect cold-start task: it touches one file, has a crisp pass criterion (hash unchanged for a fixed input), and de-risks the keystone. **Do this first even if Phase 2 then stalls** — it's independently correct.
-2. **§2.1+ — Google login.** The design question is now settled (hand-roll in Python, zero deps — see the DECISION block in Phase 2). This is the keystone: it unblocks #10 and prompt-lab's own Garm consumption.
-3. **Ask deserves a full page, not a modal** — NOT YET FILED; file it if wanted. Ask returns long-form markdown (a ~60-line cross-project digest with headers and nested lists on 2026-07-14) and the modal is too cramped; Nico noted the raw paste read better than the app's own rendering, which is a damning signal. Leaning toward a dedicated `#/ask` route: Ask is dashboard-wide, answers are documents not one-liners, and a route gets deep-linking and back-nav free. Also check whether the modal renders markdown at all or just dumps text. Admin-only surface, so don't over-design.
+**Open, not urgent:** Ask deserves a full page, not a modal — NOT YET FILED; file it if wanted. Ask returns long-form markdown (a ~60-line cross-project digest with headers and nested lists on 2026-07-14) and the modal is too cramped; Nico noted the raw paste read better than the app's own rendering, which is a damning signal. Leaning toward a dedicated `#/ask` route: Ask is dashboard-wide, answers are documents not one-liners, and a route gets deep-linking and back-nav free. Also check whether the modal renders markdown at all or just dumps text. Admin-only surface, so don't over-design.
 
 **Small and open, none urgent:** close #12 (CI green since 2026-07-09); §0.4 beacon fan-out for prntd + musicforge; Preview's Anthropic key is set but unverified (blocked by Vercel deployment protection; only affects Ask on preview deploys).
 
@@ -194,25 +192,29 @@ New `BEACON_SALT` env var, defaulting to `AUTH_SECRET` for one deploy, then set 
 **Pass:** `visitor_hash` for a fixed `(ip, ua, date)` triple is byte-identical before and after the change; only then proceed.
 **Fail:** any hash change — means the `#/visitors` series would break at the cutover.
 
-### 2.1 OAuth flow
-`login.py` `do_POST` becomes the initiate/redirect; new `web/api/callback.py` does the code exchange and ID-token verification. Preserve the `GET /api/login` session-check contract — `index.html:663` depends on it. Replace the password form at `index.html:511-545` with a "Sign in with Google" link.
+### 2.1 OAuth flow — SHIPPED 2026-07-21 (PR #29)
+As built: `login.py` `do_GET` handles `?provider=google` (the initiate/redirect); `web/api/callback.py` does the code exchange and ID-token verification (no signature check needed — confidential client, TLS direct from Google). The `GET /api/login` session-check contract was preserved. Password form replaced with a "Sign in with Google" link, gated by the 401 body's `password_login`/`google_login` flags (see §2.3.1 below). Superseded the stale line refs this section used to cite (`index.html:663`, "`do_POST` becomes the initiate") — see `docs/phase2-oauth-plan.md` for the as-built file-by-file breakdown.
 
-**Pass:** Google sign-in sets the cookie; `GET /api/login` returns role **and** email.
+**Pass:** Google sign-in sets the cookie; `GET /api/login` returns role **and** email. Verified live 2026-07-21.
 
-### 2.2 email→role mapping
-Start with an env allowlist (`ADMIN_EMAILS`), **not** a table. The table is Garm's job — building a local grants table here would be the thing Garm exists to delete.
+### 2.2 email→role mapping — SHIPPED 2026-07-21 (PR #29, amended same day in #32)
+Env allowlist (`ADMIN_EMAILS`), **not** a table — the table is Garm's job. Amended same day: `READER_EMAILS` added (Elijah, `elovejoy5@gmail.com`) for full read access, no Ask/metadata; admin wins on overlap.
 
-**Pass:** `nlovejoy@me.com` → admin. An unknown email → an explicit 403 with a readable message, never a blank page or a silent admin grant.
+**Pass:** `nlovejoy@me.com` → admin. An unknown email → an explicit 403 with a readable message, never a blank page or a silent admin grant. Verified live.
 
-### 2.3 Overlap, then remove the password path
-Keep password login behind a flag for one deploy as break-glass.
+### 2.3 Cleanup after cutover ("Phase A")
+Password login was gated to non-production from day one (no overlap window needed) rather than run behind a flag. Remaining cleanup, done as "Phase A" per `docs/phase2-oauth-plan.md`'s Deploy/cutover step 5:
+- Remove the `BEACON_SALT`→`AUTH_SECRET` fallback in `beacon.py` (unset `BEACON_SALT` now fails closed — drops the hit rather than borrowing another secret).
+- **2.3.1 — issue #30:** previews showed a "Sign in with Google" button pinned to prod's redirect URI, silently logging you into prod instead of the preview. Fixed by mirroring `password_login` with a `google_login` flag (`VERCEL_ENV == "production"`) in the `GET /api/login` 401 body; the frontend renders the Google button only when it's true.
+- `AUTH_READ_SECRET` deleted from Vercel (kills preview *reader* password login — accepted; previews are admin-password-only now).
+- `BEACON_SALT` set in Preview/Dev Vercel envs (Nico's manual step).
 
-**Pass:** both paths work during overlap; after removal, `AUTH_READ_SECRET` is deleted from Vercel and no code references it.
+**Pass:** both preview and prod auth paths work correctly for their environment; `AUTH_READ_SECRET` deleted from Vercel and no code references it; `beacon.py` has no `AUTH_SECRET` dependency.
 
-### 2.4 Docs + tests
-`scripts/test_web_api.py:649,708` (sets `AUTH_SECRET="test-secret"`), `.env.tpl`, `README.md:85`, `docs/data-and-access.md:37,42`, `CLAUDE.md:19`.
+### 2.4 Docs + tests — done as part of "Phase A"
+`scripts/test_web_api.py`, `.env.tpl`, `README.md:85`, `docs/data-and-access.md:37,42`, `CLAUDE.md` (owned by the main session, not touched here).
 
-**Pass:** suite green; `docs/data-and-access.md`'s two-tier-auth section describes what actually ships.
+**Pass:** suite green (74+ tests); `docs/data-and-access.md`'s auth section describes what actually ships (Google-exclusive prod, password-only preview).
 
 ---
 

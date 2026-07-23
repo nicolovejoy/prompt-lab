@@ -10,12 +10,11 @@ sha256(BEACON_SALT | UTC date | ip | user-agent) truncated — approximate
 uniques that forget themselves daily. Query strings and referrer paths are
 stripped before storage.
 
-The salt is BEACON_SALT, falling back to AUTH_SECRET only until BEACON_SALT is
-set in every environment. AUTH_SECRET is being retired by the Phase 2 OAuth
-migration; pinning the salt to its own var keeps every visitor hash byte-stable
-across that cutover (a salt change silently rotates all hashes and breaks the
-#/visitors unique-count continuity). Once BEACON_SALT is deployed everywhere,
-the AUTH_SECRET fallback is removed.
+The salt is BEACON_SALT, set independently of AUTH_SECRET (the transitional
+fallback was removed in Phase 2 §2.3 once BEACON_SALT was deployed to every
+environment). If BEACON_SALT is unset, the hit is dropped rather than salted
+with anything else — no accidental dependency on AUTH_SECRET, and no
+traceback: the endpoint stays an opaque 204 on every path.
 
 Abuse posture: `site` is derived server-side from the Origin header (never
 client-supplied), obvious bot user-agents and localhost origins are dropped,
@@ -76,10 +75,13 @@ def _device(ua):
 
 
 def _visitor_hash(ip, ua):
+    # BEACON_SALT is the only salt of record (no AUTH_SECRET fallback, §2.3).
+    # Unset -> None, and the caller drops the hit rather than hash with
+    # nothing / another secret.
+    secret = os.environ.get("BEACON_SALT")
+    if not secret:
+        return None
     day = time.strftime("%Y-%m-%d", time.gmtime())
-    # BEACON_SALT is the salt of record; AUTH_SECRET is a transitional fallback
-    # removed once BEACON_SALT is set in every environment (Phase 2, §2.3).
-    secret = os.environ.get("BEACON_SALT") or os.environ.get("AUTH_SECRET", "")
     raw = f"{secret}|{day}|{ip}|{ua}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
@@ -128,6 +130,10 @@ def parse_event(headers, body_bytes):
     country = headers.get("x-vercel-ip-country", "") or None
     ip = _client_ip(headers)
 
+    visitor_hash = _visitor_hash(ip, ua)
+    if visitor_hash is None:
+        return _drop("no-beacon-salt")
+
     return {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "site": site,
@@ -136,7 +142,7 @@ def parse_event(headers, body_bytes):
         "country": country,
         "device": _device(ua),
         "event": event,
-        "visitor_hash": _visitor_hash(ip, ua),
+        "visitor_hash": visitor_hash,
     }
 
 

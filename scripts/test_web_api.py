@@ -757,7 +757,7 @@ GOOD_HEADERS = {
 def _():
     import os
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_ok")
-    os.environ.setdefault("AUTH_SECRET", "test-secret")
+    os.environ.setdefault("BEACON_SALT", "test-salt")
     body = json.dumps({"path": "/pricing?token=secret#frag",
                        "ref": "https://www.google.com/search?q=x"}).encode()
     row = mod.parse_event(GOOD_HEADERS, body)
@@ -816,7 +816,7 @@ def _():
 def _():
     import os
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_hash")
-    os.environ.setdefault("AUTH_SECRET", "test-secret")
+    os.environ.setdefault("BEACON_SALT", "test-salt")
     a = mod._visitor_hash("203.0.113.9", GOOD_UA)
     b = mod._visitor_hash("203.0.113.10", GOOD_UA)
     a2 = mod._visitor_hash("203.0.113.9", GOOD_UA)
@@ -825,7 +825,7 @@ def _():
     assert "203" not in a
 
 
-@test("beacon: BEACON_SALT is the salt of record and pins the hash byte-for-byte")
+@test("beacon: BEACON_SALT is the only salt of record, no AUTH_SECRET fallback")
 def _():
     import hashlib
     import os
@@ -843,15 +843,19 @@ def _():
             f"beacon-salt-v1|{day}|{ip}|{ua}".encode()).hexdigest()[:16]
         assert got == want, f"salt not BEACON_SALT-derived: {got} != {want}"
         # Continuity: rotating AUTH_SECRET must NOT change the hash while
-        # BEACON_SALT is set — this is what survives the OAuth cutover.
+        # BEACON_SALT is set.
         os.environ["AUTH_SECRET"] = "auth-secret-B"
         assert mod._visitor_hash(ip, ua) == got, "AUTH_SECRET rotation moved the hash"
-        # Fallback: with BEACON_SALT unset, it falls back to AUTH_SECRET.
+        # §2.3: BEACON_SALT unset must fail closed (None), never silently
+        # fall back to AUTH_SECRET or any other secret.
         del os.environ["BEACON_SALT"]
-        os.environ["AUTH_SECRET"] = "legacy-secret"
-        fb = hashlib.sha256(
-            f"legacy-secret|{day}|{ip}|{ua}".encode()).hexdigest()[:16]
-        assert mod._visitor_hash(ip, ua) == fb, "fallback to AUTH_SECRET broken"
+        assert mod._visitor_hash(ip, ua) is None, (
+            "BEACON_SALT-unset must return None, not fall back to AUTH_SECRET")
+        # parse_event must drop the hit (still opaque) rather than crash or
+        # insert a hash salted with something else.
+        body = json.dumps({"path": "/"}).encode()
+        assert mod.parse_event(GOOD_HEADERS, body) is None, (
+            "parse_event must drop when BEACON_SALT is unset")
     finally:
         for k, v in saved.items():
             if v is None:
@@ -1494,7 +1498,7 @@ def _():
         restore()
 
 
-@test("login GET bare unauthenticated: 401 with password_login=true (non-prod)")
+@test("login GET bare unauthenticated: 401 with password_login=true, google_login=false (non-prod)")
 def _():
     import os
     mod = load_endpoint("web/api/login.py", "endpoint_login_bare_nonprod")
@@ -1507,11 +1511,15 @@ def _():
         assert h.body.get("authenticated") is False, h.body
         assert h.body.get("password_login") is True, (
             f"password_login must be true off-production: {h.body}")
+        assert h.body.get("google_login") is False, (
+            # issue #30: the OAuth redirect is pinned to prod, so previews
+            # must not offer a Google button that silently logs you into prod.
+            f"google_login must be false off-production: {h.body}")
     finally:
         restore()
 
 
-@test("login GET bare unauthenticated: password_login=false in production")
+@test("login GET bare unauthenticated: password_login=false, google_login=true in production")
 def _():
     import os
     mod = load_endpoint("web/api/login.py", "endpoint_login_bare_prod")
@@ -1523,6 +1531,8 @@ def _():
         assert h.status_code == 401, f"got {h.status_code}"
         assert h.body.get("password_login") is False, (
             f"password_login must be false in production: {h.body}")
+        assert h.body.get("google_login") is True, (
+            f"google_login must be true in production: {h.body}")
     finally:
         restore()
 

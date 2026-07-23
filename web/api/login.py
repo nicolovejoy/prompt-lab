@@ -51,10 +51,15 @@ class handler(BaseHTTPRequestHandler):
             self.send_response(401)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
+            is_production = os.environ.get("VERCEL_ENV") == "production"
             self.wfile.write(json.dumps({
                 "authenticated": False,
                 # Frontend renders the password form only off-production.
-                "password_login": os.environ.get("VERCEL_ENV") != "production",
+                "password_login": not is_production,
+                # Frontend renders the Google button only on production — the
+                # OAuth redirect URI is pinned to prod, so on a preview it
+                # would sign you into prod instead (issue #30).
+                "google_login": is_production,
             }).encode())
 
     def do_POST(self):
