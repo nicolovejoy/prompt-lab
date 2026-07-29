@@ -10,6 +10,29 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-07-28 — Secrets: .env.tpl of op:// references, piped straight to the platform
+
+Scope: all projects with deployed secrets
+
+The pattern that worked cleanly for rock-art-fab's Fly app — make it the
+default everywhere:
+
+- **Every credential lives in 1Password `dev-secrets`, one item per credential,
+  project-prefixed titles** (`rockart-google-oauth`, `rockart-resend`,
+  `rockart-session-secret`). Per-project API keys (one Resend key per project),
+  never shared across apps. Create items via `op item create` one-liners Claude
+  drafts and Nico runs — that pins the exact title/field path to reference.
+- **The repo commits only `.env.tpl`**: `KEY=op://dev-secrets/<item>/<field>`
+  lines (unquoted), plus non-secret config baked in as plain values.
+  `.gitignore` gets `.env`, `.env.local`, `.env.*.local`.
+- **Loading is one pipe, no plaintext on disk or in scrollback** (Nico runs it;
+  the block-secrets hook rightly stops Claude):
+  - Fly: `op inject -i .env.tpl | fly secrets import --app <app> --stage`
+  - Local dev: `op inject -i .env.tpl -o .env.local`
+  - Vercel projects keep using Vercel env vars as before.
+- Rotation = update the 1Password item, rerun the same pipe. The `.env.tpl` in
+  git is the always-current inventory of what the app needs.
+
 ## 2026-07-19 — Spell out every ask fresh (no "commands above")
 
 Scope: all projects
