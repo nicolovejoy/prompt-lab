@@ -36,6 +36,13 @@ ADMIN_EMAILS=nlovejoy@me.com
 # ADMIN_EMAILS; admin wins if an email is in both. Vercel Production only.
 READER_EMAILS=elovejoy5@gmail.com
 
+# Daily health email (web/api/health_report.py, issue #34). Vercel Production
+# only — the cron runs there, local never sends. CRON_SECRET authenticates
+# Vercel's cron requests (Vercel attaches it as a bearer automatically).
+# HEALTH_FROM_EMAIL defaults to health@prompt-labs.org in code.
+CRON_SECRET=op://dev-secrets/Prompt Lab Cron/credential
+HEALTH_TO_EMAIL=nlovejoy@me.com
+
 # Cross-project Todos page: read-only PAT for open-issue search (web/api/todos.py).
 # Also set this in the Vercel project env. GITHUB_USER defaults to nicolovejoy.
 GITHUB_TOKEN=op://dev-secrets/prompt-lab-github-pat/credential
