@@ -8,8 +8,15 @@ telemetry touches), not just prompt-lab.
 
 **Add a metric only when you have a question it answers, at the coarsest
 granularity that answers it.** Never because collection is easy. The right
-shape for new signal is one named event with a purpose (e.g. `login` for #10),
-not a general tracking upgrade.
+shape for new signal is one named event with a purpose, not a general tracking
+upgrade.
+
+Allowlist as of 2026-07-29: `pageview`, and `login` (#10) — written server-side
+by `callback.py` on a successful Google sign-in, `path=/login/<role>` with the
+role checked against an allowlist so the email in scope at that moment cannot
+reach the row. It answers "who signs in, how often" at role granularity, which
+is the coarsest answer that answers it: with two accounts the role is a strong
+hint, but the data holds no identity, so the page counts sign-ins, not people.
 
 ## Why minimal, in order of weight
 

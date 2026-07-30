@@ -13,6 +13,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler
 
 from auth_helper import REDIRECT_URI, set_cookie_header, verify_state
+from beacon_helper import record_login
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
@@ -98,6 +99,11 @@ class handler(BaseHTTPRequestHandler):
             return self._error(
                 403, f"{email or 'This account'} is not authorized to access "
                      "this dashboard.")
+
+        # Anonymous login event (issue #10): role only, never the email, which
+        # is in scope right here — that's the point. record_login() swallows
+        # every failure, so a metrics write can't cost anyone their sign-in.
+        record_login(self.headers, role)
 
         self.send_response(302)
         self.send_header("Set-Cookie", set_cookie_header(role, email))
