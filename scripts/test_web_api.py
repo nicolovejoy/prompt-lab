@@ -566,6 +566,212 @@ def _():
         restore()
 
 
+# === activity_timeline.py ===
+
+@test("activity_timeline: 401 when not authenticated")
+def _():
+    mod = load_endpoint("web/api/activity_timeline.py", "endpoint_acttl_unauth")
+    restore_q = patch_turso_query(mod, lambda *a, **kw: [])
+    restore_a = patch(mod, is_authenticated=lambda _: False)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/activity_timeline")
+        assert h.status_code == 401, f"got {h.status_code}"
+        assert h.body.get("error") == "unauthorized", f"got {h.body}"
+    finally:
+        restore()
+
+
+@test("activity_timeline: folds raw project names into canonical and re-sums")
+def _():
+    mod = load_endpoint("web/api/activity_timeline.py", "endpoint_acttl_fold")
+
+    def fake_turso(sql, args=None):
+        if "FROM project_aliases" in sql:
+            return [{"alias": "offer-builder", "canonical": "byside"}]
+        if "FROM daily_summaries" in sql:
+            # Same date under canonical + alias → should collapse to one row.
+            return [
+                {"date": "2026-06-01", "project": "byside",
+                 "sessions": 1, "prompts": 10, "commits": 2},
+                {"date": "2026-06-01", "project": "offer-builder",
+                 "sessions": 2, "prompts": 5, "commits": 1},
+                {"date": "2026-06-01", "project": "prompt-lab",
+                 "sessions": 3, "prompts": 40, "commits": 7},
+            ]
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/activity_timeline?days=30")
+        assert h.status_code == 200, f"got {h.status_code}"
+        rows = h.body["rows"]
+        byside = [r for r in rows if r["project"] == "byside"]
+        assert len(byside) == 1, f"expected aliases folded into one byside row, got {byside}"
+        assert byside[0]["sessions"] == 3, f"got {byside[0]}"
+        assert byside[0]["prompts"] == 15, f"got {byside[0]}"
+        assert byside[0]["commits"] == 3, f"got {byside[0]}"
+        assert not any(r["project"] == "offer-builder" for r in rows), "alias name leaked"
+        assert any(r["project"] == "prompt-lab" for r in rows)
+        # Sorted by (date, project).
+        assert rows == sorted(rows, key=lambda r: (r["date"], r["project"])), f"unsorted: {rows}"
+    finally:
+        restore()
+
+
+@test("activity_timeline: all three metrics are ints, NULL columns become 0")
+def _():
+    mod = load_endpoint("web/api/activity_timeline.py", "endpoint_acttl_metrics")
+
+    def fake_turso(sql, args=None):
+        if "FROM project_aliases" in sql:
+            return []
+        if "FROM daily_summaries" in sql:
+            return [
+                {"date": "2026-06-02", "project": "musicforge",
+                 "sessions": None, "prompts": 4, "commits": None},
+                {"date": "2026-06-01", "project": "prntd",
+                 "sessions": 1, "prompts": None, "commits": 0},
+            ]
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/activity_timeline")
+        assert h.status_code == 200, f"got {h.status_code}"
+        rows = h.body["rows"]
+        assert len(rows) == 2, f"got {rows}"
+        for r in rows:
+            for metric in ("sessions", "prompts", "commits"):
+                assert metric in r, f"{metric} missing from {r}"
+                assert isinstance(r[metric], int), f"{metric} not int in {r}"
+                assert r[metric] is not None
+        mf = [r for r in rows if r["project"] == "musicforge"][0]
+        assert (mf["sessions"], mf["prompts"], mf["commits"]) == (0, 4, 0), f"got {mf}"
+        pr = [r for r in rows if r["project"] == "prntd"][0]
+        assert (pr["sessions"], pr["prompts"], pr["commits"]) == (1, 0, 0), f"got {pr}"
+        # Sorted by date ascending.
+        assert [r["date"] for r in rows] == ["2026-06-01", "2026-06-02"], f"got {rows}"
+        assert ("Cache-Control", "no-store") in h.response_headers, f"got {h.response_headers}"
+    finally:
+        restore()
+
+
+@test("activity_timeline: coerces Turso's string-encoded SUM() values to ints")
+def _():
+    mod = load_endpoint("web/api/activity_timeline.py", "endpoint_acttl_strints")
+
+    def fake_turso(sql, args=None):
+        if "FROM project_aliases" in sql:
+            return []
+        if "FROM daily_summaries" in sql:
+            # Turso's HTTP API returns integer column values as JSON strings.
+            return [{"date": "2026-06-01", "project": "prompt-lab",
+                     "sessions": "3", "prompts": "42", "commits": "7"}]
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/activity_timeline")
+        assert h.status_code == 200, f"got {h.status_code}"
+        r = h.body["rows"][0]
+        assert (r["sessions"], r["prompts"], r["commits"]) == (3, 42, 7), f"got {r}"
+        for metric in ("sessions", "prompts", "commits"):
+            assert isinstance(r[metric], int), f"{metric} left as {type(r[metric])}: {r}"
+    finally:
+        restore()
+
+
+@test("activity_timeline: ?days= bounds the window")
+def _():
+    import datetime as _dt
+
+    mod = load_endpoint("web/api/activity_timeline.py", "endpoint_acttl_days")
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        h = invoke(mod, "/api/activity_timeline?days=90")
+        assert h.status_code == 200, f"got {h.status_code}"
+        calls = [(s, a) for s, a in captured if "FROM daily_summaries" in s]
+        assert calls, "no daily_summaries query emitted"
+        sql, args = calls[0]
+        assert "date >= ?" in sql, f"sql: {sql}"
+        today = _dt.datetime.now(_dt.timezone.utc).date()
+        expected = (today - _dt.timedelta(days=89)).isoformat()
+        assert args and args[0] == expected, f"expected {expected}, args: {args}"
+        assert h.body.get("days") == 90, f"got {h.body.get('days')}"
+
+        # Default window is 30 days.
+        captured.clear()
+        h2 = invoke(mod, "/api/activity_timeline")
+        assert h2.status_code == 200
+        _, args2 = [(s, a) for s, a in captured if "FROM daily_summaries" in s][0]
+        assert args2[0] == (today - _dt.timedelta(days=29)).isoformat(), f"args: {args2}"
+        assert h2.body.get("days") == 30
+    finally:
+        restore()
+
+
+@test("activity_timeline: garbage/absurd ?days= falls back or clamps, never 500s")
+def _():
+    mod = load_endpoint("web/api/activity_timeline.py", "endpoint_acttl_baddays")
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+
+    def restore():
+        restore_a()
+        restore_q()
+    try:
+        for bad in ("abc", "", "1e9", "-5", "0", "nan"):
+            captured.clear()
+            h = invoke(mod, f"/api/activity_timeline?days={bad}")
+            assert h.status_code == 200, f"days={bad!r} got {h.status_code}"
+            assert h.body["rows"] == [], f"days={bad!r} got {h.body}"
+            days = h.body.get("days")
+            assert isinstance(days, int) and 1 <= days <= 3650, f"days={bad!r} → {days}"
+        # Absurdly large clamps to the 3650-day ceiling rather than erroring.
+        captured.clear()
+        h = invoke(mod, "/api/activity_timeline?days=999999")
+        assert h.status_code == 200, f"got {h.status_code}"
+        assert h.body.get("days") == 3650, f"got {h.body.get('days')}"
+    finally:
+        restore()
+
+
 # === todos.py ===
 
 @test("todos: 401 when not authenticated")
