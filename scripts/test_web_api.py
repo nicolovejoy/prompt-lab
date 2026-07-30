@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -1946,6 +1948,191 @@ def _():
             assert "<img" not in body, f"unescaped email reflected: {body}"
         finally:
             r()
+    finally:
+        restore()
+
+
+# === health_report (issue #34) ===
+
+def _health_env():
+    """Set the env the health endpoint needs; returns a restore fn."""
+    saved = {k: os.environ.get(k) for k in
+             ("AUTH_SECRET", "CRON_SECRET", "RESEND_API_KEY", "HEALTH_TO_EMAIL")}
+    os.environ["AUTH_SECRET"] = "test-secret"
+    os.environ["CRON_SECRET"] = "cron-secret"
+    os.environ["RESEND_API_KEY"] = "re_test"
+    os.environ["HEALTH_TO_EMAIL"] = "nico@test.invalid"
+
+    def restore():
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    return restore
+
+
+def _health_mod(up=True):
+    """Load health_report with targets, joke, and send stubbed. Returns
+    (mod, sent) where sent collects (subject, html, text) tuples."""
+    mod = load_endpoint("web/api/health_report.py", "health_report_test")
+    sent = []
+
+    def fake_check(name, url, deep=False):
+        return {"name": name, "ok": up, "status": 200 if up else 503,
+                "note": "db ok" if deep else "", "ms": 42}
+
+    mod._check_target = fake_check
+    mod._joke = lambda: "a test joke"
+    mod._send_email = lambda subject, html, text: sent.append((subject, html, text))
+    mod.turso_query = lambda sql, args=None: []
+    return mod, sent
+
+
+@test("health_report: no auth → 401, nothing sent")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report")
+        assert h.status_code == 401, f"got {h.status_code}: {h.body}"
+        assert not sent
+    finally:
+        restore()
+
+
+@test("health_report: cron bearer → polls targets, sends, reports")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(up=True)
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body == {"sent": True, "down": []}, h.body
+        assert len(sent) == 1
+        subject, html, text = sent[0]
+        assert "2/2 up" in subject, subject
+        assert "a test joke" in text and "a test joke" in html
+        assert "action=pause&token=" in text, "pause link missing"
+        assert "Tune the daily health email" in text, "tune-up prompt missing"
+    finally:
+        restore()
+
+
+@test("health_report: a down target is named in subject and body")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(up=False)
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["down"] == ["garm", "prompt-labs.org"], h.body
+        assert "DOWN" in sent[0][0], sent[0][0]
+    finally:
+        restore()
+
+
+@test("health_report: paused state skips the send")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        far = "2099-01-01T00:00:00Z"
+        mod.turso_query = lambda sql, args=None: [{"value": far}]
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body == {"skipped": "paused", "paused_until": far}, h.body
+        assert not sent
+    finally:
+        restore()
+
+
+@test("health_report: pause check fails OPEN — turso down, email still sends")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+
+        def boom(sql, args=None):
+            raise RuntimeError("turso unreachable")
+        mod.turso_query = boom
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert len(sent) == 1
+    finally:
+        restore()
+
+
+@test("health_report: ?dry=1 polls without sending")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["would_send"] is True, h.body
+        assert [t["name"] for t in h.body["targets"]] == ["garm", "prompt-labs.org"]
+        assert not sent
+    finally:
+        restore()
+
+
+@test("health_report: valid pause token writes paused_until ≈ 7 days out")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        writes = []
+        mod.turso_query = lambda sql, args=None: writes.append((sql, args))
+        token = mod._make_pause_token()
+        h = invoke(mod, f"/api/health_report?action=pause&token={token}")
+        assert h.status_code == 200, f"got {h.status_code}"
+        assert len(writes) == 1 and "health_email_state" in writes[0][0]
+        until = writes[0][1][0]
+        expected = time.time() + 7 * 86400
+        import calendar
+        got = calendar.timegm(time.strptime(until, "%Y-%m-%dT%H:%M:%SZ"))
+        assert abs(got - expected) < 3600, f"paused_until off: {until}"
+        assert not sent
+    finally:
+        restore()
+
+
+@test("health_report: bad pause token → 403, no state write")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        writes = []
+        mod.turso_query = lambda sql, args=None: writes.append((sql, args))
+        h = invoke(mod, "/api/health_report?action=pause&token=garbage.sig")
+        assert h.status_code == 403, f"got {h.status_code}"
+        assert not writes and not sent
+    finally:
+        restore()
+
+
+@test("health_report: joke falls back to canned when anthropic unavailable")
+def _():
+    restore = _health_env()
+    try:
+        mod, _sent = _health_mod()
+        saved = sys.modules.get("anthropic")
+        sys.modules["anthropic"] = None  # forces ImportError inside _joke
+        try:
+            mod2 = load_endpoint("web/api/health_report.py", "health_report_joke_test")
+            joke = mod2._joke()
+            assert joke in mod2.CANNED_JOKES, f"not canned: {joke}"
+        finally:
+            if saved is None:
+                sys.modules.pop("anthropic", None)
+            else:
+                sys.modules["anthropic"] = saved
     finally:
         restore()
 

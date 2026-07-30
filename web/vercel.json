@@ -4,6 +4,9 @@
       "includeFiles": "{auth_helper.py,turso_helper.py,classify_helper.py}"
     }
   },
+  "crons": [
+    { "path": "/api/health_report", "schedule": "0 15 * * *" }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/robots.txt", "destination": "/robots.txt" },
