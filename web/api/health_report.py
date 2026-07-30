@@ -41,7 +41,7 @@ from turso_helper import turso_query
 # on failure. Grow this list as apps adopt docs/health-convention.md.
 TARGETS = [
     ("garm", "https://garm.prompt-labs.org/api/health?db=1", True),
-    ("prompt-labs.org", "https://prompt-labs.org/api/info", False),
+    ("prompt-labs.org", "https://prompt-labs.org/api/health?db=1", True),
 ]
 
 PAUSE_DAYS = 7
