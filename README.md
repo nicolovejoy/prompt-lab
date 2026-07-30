@@ -82,7 +82,9 @@ The cloud dashboard reads from Turso (hosted SQLite) and is deployed to Vercel.
 
 - `TURSO_DATABASE_URL` — Turso database URL
 - `TURSO_AUTH_TOKEN` — Turso auth token
-- `AUTH_SECRET` — password for the cloud dashboard login
+- `AUTH_SECRET` — HMAC token-signing key, plus the preview-only password login (production auth is Google OAuth, see below)
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ADMIN_EMAILS`, `READER_EMAILS` — Google sign-in for production (`ADMIN_EMAILS`/`READER_EMAILS` are email allowlists, not secrets)
+- `BEACON_SALT` — visitor-hash salt for the page-view beacon, independent of `AUTH_SECRET`
 - `ANTHROPIC_API_KEY` — also used for the cloud dashboard's Ask feature
 
 To self-host: fork the repo, create a Turso database, set the env vars above in Vercel, deploy `web/` to Vercel.
