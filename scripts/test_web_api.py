@@ -1984,11 +1984,15 @@ def _health_env():
 
 def _health_mod(up=True):
     """Load health_report with targets, joke, and send stubbed. Returns
-    (mod, sent) where sent collects (subject, html, text) tuples."""
+    (mod, sent) where sent collects (subject, html, text) tuples. Every poll
+    appends to `mod._polls`, so a test can pin that an unauthorized caller
+    never made us do the target-polling work."""
     mod = load_endpoint("web/api/health_report.py", "health_report_test")
     sent = []
+    mod._polls = []
 
     def fake_check(name, url, deep=False):
+        mod._polls.append(name)
         return {"name": name, "ok": up, "status": 200 if up else 503,
                 "note": "db ok" if deep else "", "ms": 42}
 
@@ -2088,6 +2092,82 @@ def _():
         assert h.body["would_send"] is True, h.body
         assert [t["name"] for t in h.body["targets"]] == ["garm", "prompt-labs.org"]
         assert not sent
+    finally:
+        restore()
+
+
+def _health_cookie(role, email="someone@test.invalid"):
+    """A real signed session cookie header for `role`. Call AFTER _health_env()
+    so AUTH_SECRET matches what the endpoint's get_role() will verify against."""
+    tok = auth_helper.make_token(role, email=email)
+    return {"cookie": f"{auth_helper.COOKIE_NAME}={tok}"}
+
+
+@test("health_report: reader cookie + ?dry=1 → 200 targets, nothing sent")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report?dry=1", _health_cookie("reader"))
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert [t["name"] for t in h.body["targets"]] == ["garm", "prompt-labs.org"]
+        assert "paused_until" in h.body and "would_send" in h.body, h.body
+        assert not sent, "reader dry run sent an email"
+    finally:
+        restore()
+
+
+@test("health_report: reader cookie without dry → 403 (not 401), nothing sent")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report", _health_cookie("reader"))
+        assert h.status_code == 403, (
+            f"authenticated reader got {h.status_code}, expected 403 — a 401 "
+            "would say 'not logged in' when the truth is 'may not trigger a send'")
+        assert h.body.get("error"), f"no error body: {h.body}"
+        assert not sent, "reader triggered a send"
+    finally:
+        restore()
+
+
+@test("health_report: admin cookie without dry still sends (send path intact)")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report", _health_cookie("admin"))
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body == {"sent": True, "down": []}, h.body
+        assert len(sent) == 1, f"admin send path broken: {sent}"
+    finally:
+        restore()
+
+
+@test("health_report: no auth + ?dry=1 → 401 and targets never polled")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report?dry=1")
+        assert h.status_code == 401, f"got {h.status_code}: {h.body}"
+        assert not sent
+        assert mod._polls == [], f"polled targets before rejecting: {mod._polls}"
+    finally:
+        restore()
+
+
+@test("health_report: bad cookie + ?dry=1 → 401 and targets never polled")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"cookie": f"{auth_helper.COOKIE_NAME}=garbage.sig"})
+        assert h.status_code == 401, f"got {h.status_code}: {h.body}"
+        assert not sent
+        assert mod._polls == [], f"polled targets before rejecting: {mod._polls}"
     finally:
         restore()
 
