@@ -37,10 +37,10 @@ Pass: dry-run lists only genuine duplicates; after `--execute`, no orphan shells
 ## Deferred (do not pick up)
 #14 design tokens (own session), #27 Garm rollout (other repos), `/api/private_history` Tier 1 (awaiting selected-projects reply), public rollup backlog (human-gated drafting), UptimeRobot overlay on #/health.
 
-## Open decisions for Nico
-1. Phase 2.3: inline expansion under the tiles (recommended) or a full `#/projects` page?
-2. Phase 3: anonymous beacon `login` event with role-only path (recommended) or a `login_events` table with email (a real "who" audit log, different privacy posture)?
-3. Phase order OK? (1 → 2 → 3 → 4; 2 is most of the session.)
+## Decisions — RATIFIED by Nico 2026-07-29 (no open questions)
+1. Phase 2.3: inline expansion under the tiles (not a `#/projects` page).
+2. Phase 3: anonymous beacon `login` event, role-only path (no `login_events` table).
+3. Phase order 1 → 2 → 3 → 4 as written.
 
 ## Context from 2026-07-29 the fresh session needs
 - Health email is LIVE: cron `0 15 * * *`, first send expected 2026-07-30 ~8am Pacific — check it arrived before building Phase 1; if it didn't, debugging that comes first (`vercel logs`, `?dry=1` as admin).
