@@ -462,6 +462,7 @@
       if (parts[0] === 'costs') return { view: 'costs' };
       if (parts[0] === 'visitors') return { view: 'visitors' };
       if (parts[0] === 'todos') return { view: 'todos' };
+      if (parts[0] === 'health') return { view: 'health' };
       return { view: 'home' };
     }
 
@@ -660,6 +661,7 @@
             <button class="header-btn ${route.view === 'todos' ? 'active' : ''}" onClick=${() => navigate('#/todos')}>Todos</button>
             <button class="header-btn ${route.view === 'costs' ? 'active' : ''}" onClick=${() => navigate('#/costs')}>Costs</button>
             <button class="header-btn ${route.view === 'visitors' ? 'active' : ''}" onClick=${() => navigate('#/visitors')}>Visitors</button>
+            <button class="header-btn ${route.view === 'health' ? 'active' : ''}" onClick=${() => navigate('#/health')}>Health</button>
             ${onAsk && html`<button class="header-btn" onClick=${onAsk} title="Ask (/)">Ask</button>`}
             <button class="header-btn" onClick=${onToggleTheme}
                     title=${theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
@@ -829,6 +831,7 @@
           ${route.view === 'costs' && html`<${CostsOverview} />`}
           ${route.view === 'visitors' && html`<${VisitorsOverview} />`}
           ${route.view === 'todos' && html`<${TodosView} overview=${overview} />`}
+          ${route.view === 'health' && html`<${HealthView} onUnauthorized=${() => setAuthed(false)} />`}
 
           ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
         </div>
@@ -2058,6 +2061,164 @@
               ${countries.length ? countries.map(r => listRow(r.country, null, r.views))
                 : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">None yet.</div>`}
             </div>
+          </div>
+        </div>`;
+    }
+
+    // ---- Health (ecosystem target status, issue #34) ----
+    // Reads /api/health_report?dry=1 — the same endpoint the daily cron email
+    // uses, in its read-only preview mode: it polls every target live at
+    // request time (~1-2s) and sends nothing. Deliberately un-cached; a
+    // remembered "up" is worse than a spinner.
+
+    // ISO 8601 UTC -> Pacific, same shape as the header's build stamp.
+    function fmtPacific(iso) {
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+          hour12: false, timeZone: 'America/Los_Angeles', timeZoneName: 'short',
+        }).format(new Date(iso));
+      } catch { return String(iso); }
+    }
+
+    function HealthView({ onUnauthorized }) {
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+      const [checkedAt, setCheckedAt] = useState(null);
+      const [nonce, setNonce] = useState(0);  // bumped by the ↻ control
+
+      useEffect(() => {
+        let alive = true;
+        setLoading(true); setError(null);
+        // retries=0: the request already spends 1-2s polling targets, so an
+        // auto-retry would double the wait before the user sees anything.
+        api('/api/health_report?dry=1', 0)
+          .then(d => { if (alive) { setData(d); setCheckedAt(new Date()); setLoading(false); } })
+          .catch(e => {
+            if (!alive) return;
+            if (e.message === 'unauthorized') { onUnauthorized && onUnauthorized(); return; }
+            setError(e.message === 'HTTP 403'
+              ? "This deploy won't serve the health report to your account (403)."
+              : e.message);
+            setLoading(false);
+          });
+        return () => { alive = false; };
+      }, [nonce]);
+
+      const targets = Array.isArray(data?.targets) ? data.targets : [];
+      const down = targets.filter(t => !t.ok);
+      const pausedUntil = data?.paused_until;
+      const paused = !!(pausedUntil && new Date(pausedUntil).getTime() > Date.now());
+
+      const header = html`
+        <div style="display: flex; justify-content: space-between; align-items: baseline;
+                    flex-wrap: wrap; gap: 8px 12px; margin-bottom: 4px">
+          <h1 style="margin: 0; font-size: 1.91rem; color: var(--accent-light)">Health</h1>
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+            ${loading && html`<span class="header-meta refreshing" title="Polling…">↻</span>`}
+            ${!loading && checkedAt && html`
+              <span style="font-size: 0.89rem; color: var(--text-secondary);
+                           font-family: 'SF Mono', ui-monospace, monospace">
+                checked ${checkedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+              </span>`}
+            <button onClick=${() => setNonce(n => n + 1)} disabled=${loading}
+              title="Poll every target again"
+              style="font-size: 0.95rem; padding: 4px 12px; border-radius: 4px; cursor: pointer;
+                     font-family: inherit; border: 1px solid var(--border);
+                     background: transparent; color: var(--text-secondary);
+                     opacity: ${loading ? 0.5 : 1}">
+              ↻ re-poll
+            </button>
+          </div>
+        </div>
+        <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 18px">
+          Live poll of each target's health endpoint — the same check behind the
+          daily 8am Pacific email. Alerting lives in UptimeRobot, deliberately
+          off this stack; this page is the read-only view.
+        </div>`;
+
+      if (loading && !data) return html`<div>${header}
+        <div class="cost-placeholder">Polling targets…</div></div>`;
+      if (error) return html`<div>${header}
+        <div class="cost-placeholder">Couldn't load the health report. (${error})
+          <div style="margin-top: 10px">
+            <button onClick=${() => setNonce(n => n + 1)}
+              style="font-size: 1.06rem; padding: 6px 14px; background: var(--accent); color: #fff;
+                     border: none; border-radius: var(--radius); cursor: pointer; font-family: inherit">
+              Retry
+            </button>
+          </div>
+        </div></div>`;
+
+      const banner = (bg, fg, children) => html`
+        <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+                    padding: 10px 14px; margin-bottom: 16px; border-radius: var(--radius);
+                    background: ${bg}; border: 1px solid ${fg}; color: ${fg};
+                    font-size: 1.06rem; line-height: 1.5">${children}</div>`;
+
+      return html`
+        <div>
+          ${header}
+
+          ${paused && banner('var(--yellow-dim)', 'var(--yellow)', html`
+            <span>⏸</span>
+            <span><strong>Health emails paused until ${fmtPacific(pausedUntil)}</strong>
+              — checks still run, only the daily email is suppressed.</span>`)}
+
+          ${down.length > 0 && banner('var(--red-dim)', 'var(--red)', html`
+            <span>⚠</span>
+            <span><strong>${down.length} target${down.length === 1 ? '' : 's'} DOWN</strong>
+              — ${down.map(t => t.name).join(', ')}</span>`)}
+
+          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; flex-wrap: wrap">
+            <div style="font-size: 2.18rem; font-weight: 700; color: var(--accent-light)">
+              ${targets.length - down.length}/${targets.length}
+            </div>
+            <div style="font-size: 1.06rem; color: var(--text-secondary)">
+              target${targets.length === 1 ? '' : 's'} up
+              ${paused ? ' · email paused' : (data?.would_send === false ? ' · email suppressed' : '')}
+            </div>
+          </div>
+
+          ${targets.length === 0
+            ? html`<div class="empty">No targets configured. Add one to
+                <code>TARGETS</code> in <code>web/api/health_report.py</code>.</div>`
+            : html`
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                          gap: 12px">
+                ${targets.map(t => {
+                  const ok = !!t.ok;
+                  const status = t.status == null ? 'no response' : 'HTTP ' + t.status;
+                  const ms = Number(t.ms);
+                  return html`
+                    <div style="background: var(--card); border: 1px solid ${ok ? 'var(--border)' : 'var(--red)'};
+                                border-left: 3px solid ${ok ? 'var(--green)' : 'var(--red)'};
+                                border-radius: var(--radius); padding: 13px 15px">
+                      <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap">
+                        <span style="font-size: 1.3rem; font-weight: 600; word-break: break-word">${t.name}</span>
+                        <span style="margin-left: auto; font-size: 0.89rem; font-weight: 700;
+                                     letter-spacing: 0.06em; padding: 2px 8px; border-radius: 3px;
+                                     white-space: nowrap;
+                                     background: ${ok ? 'var(--green-dim)' : 'var(--red-dim)'};
+                                     color: ${ok ? 'var(--green)' : 'var(--red)'}">
+                          ${ok ? '● UP' : '⚠ DOWN'}
+                        </span>
+                      </div>
+                      <div style="margin-top: 6px; font-size: 1.02rem; color: var(--text-secondary);
+                                  font-family: 'SF Mono', ui-monospace, monospace">
+                        ${status}${Number.isFinite(ms) ? ' · ' + ms.toLocaleString() + 'ms' : ''}
+                      </div>
+                      ${t.note && html`
+                        <div style="margin-top: 6px; font-size: 1.02rem; color: var(--text-secondary);
+                                    line-height: 1.5; word-break: break-word">${t.note}</div>`}
+                    </div>`;
+                })}
+              </div>`}
+
+          <div style="margin-top: 18px; font-size: 0.95rem; color: var(--text-secondary); line-height: 1.5">
+            Targets and thresholds live in <code>web/api/health_report.py</code>;
+            the convention each app implements is <code>docs/health-convention.md</code>.
           </div>
         </div>`;
     }

@@ -6,9 +6,14 @@ a Vercel cron hits this endpoint daily, it polls each target's health endpoint
 Immediate alerting is deliberately NOT here — UptimeRobot on independent infra
 is the pager; this is the trend layer, and it dies with the shared stack.
 
-Auth: the cron authenticates with `Authorization: Bearer $CRON_SECRET` (Vercel
-attaches it automatically when the env var is set); an admin cookie also works
-for manual runs. `?dry=1` polls targets and returns JSON without sending.
+Auth: two levels. `?dry=1` (poll targets, return JSON, send nothing) is open to
+ANY authenticated role — that's what the `#/health` page reads, so readers see
+status. Triggering a send is cron-or-admin: the cron authenticates with
+`Authorization: Bearer $CRON_SECRET` (Vercel attaches it automatically when the
+env var is set) and an admin cookie also works for manual runs. An authenticated
+reader asking for a send gets 403, not 401 — the distinction is deliberate
+("you're logged in but may not trigger this"). Anonymous gets 401, and is
+rejected before any target is polled.
 
 Pause: each email carries an HMAC-signed link (`?action=pause&token=…`) that
 suppresses sends for 7 days — state in the Turso `health_email_state` table
@@ -240,8 +245,12 @@ class handler(BaseHTTPRequestHandler):
                 self._handle_pause(qs)
                 return
 
-            if not self._authorized():
-                self._json({"error": "unauthorized"}, 401)
+            dry = "dry" in qs
+            denial = self._denial(dry)
+            if denial:
+                # Before any _check_target call: an unauthorized caller must not
+                # be able to make us do the polling work.
+                self._json(denial[1], denial[0])
                 return
 
             paused_until = _get_paused_until()
@@ -249,7 +258,7 @@ class handler(BaseHTTPRequestHandler):
 
             results = [_check_target(n, u, d) for n, u, d in TARGETS]
 
-            if "dry" in qs:
+            if dry:
                 self._json({"targets": results, "paused_until": paused_until,
                             "would_send": not paused})
                 return
@@ -267,12 +276,24 @@ class handler(BaseHTTPRequestHandler):
             print(f"health_report error: {e}"[:300])
             self._json({"error": str(e)}, 500)
 
-    def _authorized(self):
+    def _is_cron(self):
         secret = os.environ.get("CRON_SECRET", "")
         auth = self.headers.get("authorization", "") or self.headers.get("Authorization", "")
-        if secret and hmac.compare_digest(auth, f"Bearer {secret}"):
-            return True
-        return get_role(self.headers) == "admin"
+        return bool(secret) and hmac.compare_digest(auth, f"Bearer {secret}")
+
+    def _denial(self, dry):
+        """(status, body) to refuse this caller, or None if it may proceed.
+
+        Read-only dry runs: any authenticated role. Sends: cron or admin only.
+        """
+        if self._is_cron():
+            return None
+        role = get_role(self.headers)
+        if role is None:
+            return 401, {"error": "unauthorized"}
+        if not dry and role != "admin":
+            return 403, {"error": "forbidden", "detail": "sending requires admin"}
+        return None
 
     def _handle_pause(self, qs):
         token = (qs.get("token") or [""])[0]
