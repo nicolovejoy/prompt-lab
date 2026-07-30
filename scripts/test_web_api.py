@@ -2726,6 +2726,52 @@ def _():
         restore()
 
 
+# === health (public liveness, docs/health-convention.md) ===
+
+@test("health: shallow → 200 {ok: true}, no auth required")
+def _():
+    mod = load_endpoint("web/api/health.py", "health_test")
+    mod.turso_query = lambda sql, args=None: (_ for _ in ()).throw(
+        AssertionError("shallow check must not touch Turso"))
+    h = invoke(mod, "/api/health")
+    assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+    assert h.body == {"ok": True}, h.body
+
+
+@test("health: deep ?db=1 with Turso up → 200 {ok: true, db: true}")
+def _():
+    mod = load_endpoint("web/api/health.py", "health_test")
+    mod.turso_query = lambda sql, args=None: [{"1": 1}]
+    h = invoke(mod, "/api/health?db=1")
+    assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+    assert h.body == {"ok": True, "db": True}, h.body
+
+
+@test("health: deep ?db=1 with Turso down → 503 {ok: false, db: false}")
+def _():
+    mod = load_endpoint("web/api/health.py", "health_test")
+
+    def boom(sql, args=None):
+        raise OSError("turso unreachable")
+
+    mod.turso_query = boom
+    h = invoke(mod, "/api/health?db=1")
+    assert h.status_code == 503, f"got {h.status_code}: {h.body}"
+    assert h.body == {"ok": False, "db": False}, h.body
+
+
+@test("health_report: prompt-labs target is the public /api/health, deep")
+def _():
+    # Regression pin: the first health email reported prompt-labs.org DOWN
+    # because TARGETS polled auth-gated /api/info and got a 401.
+    mod = load_endpoint("web/api/health_report.py", "health_report_targets_test")
+    by_name = {name: (url, deep) for name, url, deep in mod.TARGETS}
+    url, deep = by_name["prompt-labs.org"]
+    assert url == "https://prompt-labs.org/api/health?db=1", url
+    assert deep is True
+    assert "/api/info" not in url
+
+
 # === Main ===
 
 def main() -> int:

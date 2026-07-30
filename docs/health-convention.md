@@ -7,6 +7,8 @@ Every app in the ecosystem exposes:
 
 Reference implementation: Garm — `https://garm.prompt-labs.org/api/health?db=1` returns `{ok, db, howl: {ageSeconds, stale}}` and 503s on a dead DB or a denial-digest cron stale >26h.
 
+prompt-lab's own: `https://prompt-labs.org/api/health?db=1` (`web/api/health.py`) returns `{ok, db}` and 503s when Turso is unreachable. The endpoint must stay unauthenticated — the first health email (2026-07-30) reported prompt-labs.org DOWN because `TARGETS` polled auth-gated `/api/info` and got a 401.
+
 ## Consumers
 
 - **UptimeRobot** (immediate alerting, independent infra) — one monitor per app, pointed at the deep URL where one exists, homepage otherwise. A homepage-200 check can pass while the backend is dead; upgrade the monitor URL when the app adopts this convention.
