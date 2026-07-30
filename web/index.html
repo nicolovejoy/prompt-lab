@@ -2323,10 +2323,98 @@
       if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading visitors…</div></div>`;
       if (!data || data.error) return html`<div>${header}<div class="cost-placeholder">Couldn't load visitors.</div></div>`;
 
+      const panel = (children) => html`
+        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated, var(--card));
+                    border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
+      const sectionTitle = (t) => html`
+        <div style="font-size: 0.98rem; font-weight: 600; color: var(--text-secondary);
+                    font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
+          ${t}
+        </div>`;
+      const listRow = (label, sub, v) => html`
+        <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
+                    border-bottom: 1px solid var(--border)">
+          <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${label}</span>
+          ${sub && html`<span style="font-size: 0.85rem; color: var(--text-secondary); overflow: hidden;
+                                     text-overflow: ellipsis; white-space: nowrap">${sub}</span>`}
+          <span style="margin-left: auto; font-size: 1.12rem; font-variant-numeric: tabular-nums">${v.toLocaleString()}</span>
+        </div>`;
+
+      // ---- Sign-ins (issue #10) ----
+      // Anonymous `login` beacon events, path=/login/<role>. The API block is
+      // absent on deploys older than the beacon change, so this renders NOTHING
+      // at all in that case rather than an empty panel. Login rows are filtered
+      // out of every pageview query server-side, so they never touch the numbers
+      // above. Deliberately role-only: no email, no id, no stable identifier.
+      const LOGIN_DAY_CAP = 14;
+      const signIns = (() => {
+        const raw = data.logins;
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+
+        const byRole = (Array.isArray(raw.by_role) ? raw.by_role : [])
+          .map(r => [String(r?.role || 'unknown'), Number(r?.count) || 0])
+          .filter(([, c]) => c > 0)
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+        const byDay = (Array.isArray(raw.by_day) ? raw.by_day : [])
+          .map(r => [String(r?.date || ''), Number(r?.count) || 0])
+          .filter(([d, c]) => d && c > 0)
+          .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0));  // newest first
+
+        const declared = Number(raw.total);
+        const total = Number.isFinite(declared) && declared > 0
+          ? declared
+          : Math.max(byDay.reduce((s, [, c]) => s + c, 0),
+                     byRole.reduce((s, [, c]) => s + c, 0));
+
+        const shownDays = byDay.slice(0, LOGIN_DAY_CAP);
+        const restDays = byDay.slice(LOGIN_DAY_CAP);
+        const restCount = restDays.reduce((s, [, c]) => s + c, 0);
+        const thisYear = String(new Date().getFullYear());
+
+        return panel(html`
+          ${sectionTitle('Sign-ins')}
+          <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap">
+            <div style="font-size: 1.68rem; font-weight: 700; color: var(--accent-light);
+                        font-variant-numeric: tabular-nums">${total.toLocaleString()}</div>
+            <div style="font-size: 1.06rem; color: var(--text-secondary)">
+              sign-in${total === 1 ? '' : 's'} · last ${days === 365 ? 'year' : days + ' days'}
+            </div>
+          </div>
+          <div style="font-size: 0.98rem; color: var(--text-secondary); margin-top: 6px">
+            Role only — no email or account id is recorded, so this counts
+            sign-ins, not people.
+          </div>
+          ${total === 0
+            ? html`<div style="font-size: 1.06rem; color: var(--text-secondary); margin-top: 12px">
+                No sign-ins in this window.
+              </div>`
+            : html`<div class="two-col">
+                <div>
+                  ${sectionTitle('By role')}
+                  ${byRole.length
+                    ? byRole.map(([role, c]) => listRow(role, role === 'unknown' ? 'role not recorded' : null, c))
+                    : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">Not broken out.</div>`}
+                </div>
+                <div>
+                  ${sectionTitle('By day')}
+                  ${shownDays.length
+                    ? shownDays.map(([d, c]) =>
+                        listRow(fmtShortDate(d), d.slice(0, 4) === thisYear ? null : d.slice(0, 4), c))
+                    : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">Not broken out.</div>`}
+                  ${restDays.length > 0 && html`
+                    <div style="font-size: 0.98rem; color: var(--text-secondary); padding-top: 6px">
+                      +${restCount.toLocaleString()} on ${restDays.length} earlier day${restDays.length === 1 ? '' : 's'}
+                    </div>`}
+                </div>
+              </div>`}
+        `);
+      })();
+
       const daily = data.daily || [];
       if (!daily.length) return html`<div>${header}
         <div class="cost-placeholder">No page views in this window yet — only
-        instrumented sites report. Roll out beacon.js to more sites to see them here.</div></div>`;
+        instrumented sites report. Roll out beacon.js to more sites to see them here.</div>
+        ${signIns}</div>`;
 
       const bySite = {}, byDate = {}, byDateSite = {};
       let totalViews = 0;
@@ -2356,23 +2444,6 @@
       const paths = (data.paths || []).slice(0, 15);
       const referrers = (data.referrers || []).slice(0, 10);
       const countries = (data.countries || []).slice(0, 10);
-
-      const panel = (children) => html`
-        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated, var(--card));
-                    border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
-      const sectionTitle = (t) => html`
-        <div style="font-size: 0.98rem; font-weight: 600; color: var(--text-secondary);
-                    font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
-          ${t}
-        </div>`;
-      const listRow = (label, sub, v) => html`
-        <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
-                    border-bottom: 1px solid var(--border)">
-          <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${label}</span>
-          ${sub && html`<span style="font-size: 0.85rem; color: var(--text-secondary); overflow: hidden;
-                                     text-overflow: ellipsis; white-space: nowrap">${sub}</span>`}
-          <span style="margin-left: auto; font-size: 1.12rem; font-variant-numeric: tabular-nums">${v.toLocaleString()}</span>
-        </div>`;
 
       return html`
         <div>
@@ -2499,6 +2570,8 @@
                 : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">None yet.</div>`}
             </div>
           </div>
+
+          ${signIns}
         </div>`;
     }
 

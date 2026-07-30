@@ -5,6 +5,12 @@ Sites are hostnames (from the Origin header), not project names, so no
 alias folding applies here — the mapping of site → project is a display
 concern for later.
 
+The four traffic queries all pin `event = 'pageview'`, so `login` rows
+(issue #10) can never inflate a view count — which also means they are
+invisible unless asked for separately. Hence the `logins` block, built from two
+`event = 'login'` queries. Role comes from the path (`/login/admin`); the row
+holds no identity at all, by design (docs/measurement-policy.md).
+
 Query params:
   since=<YYYY-MM-DD> inclusive lower bound.
   until=<YYYY-MM-DD> inclusive upper bound.
@@ -16,6 +22,18 @@ from urllib.parse import parse_qs, urlparse
 
 from auth_helper import is_authenticated
 from turso_helper import turso_query
+
+LOGIN_ROLES = ("admin", "reader")
+
+
+def _login_role(path):
+    """`/login/admin` -> "admin". Anything unrecognised -> "unknown" — an
+    allowlist, not a parse, so no unexpected path text ever lands in the
+    payload."""
+    parts = (path or "").strip("/").split("/")
+    if len(parts) == 2 and parts[0] == "login" and parts[1] in LOGIN_ROLES:
+        return parts[1]
+    return "unknown"
 
 
 class handler(BaseHTTPRequestHandler):
@@ -31,14 +49,15 @@ class handler(BaseHTTPRequestHandler):
         since = params.get("since", [None])[0]
         until = params.get("until", [None])[0]
 
-        clauses, args = ["event = 'pageview'"], []
+        bounds, args = [], []
         if since:
-            clauses.append("substr(ts, 1, 10) >= ?")
+            bounds.append("substr(ts, 1, 10) >= ?")
             args.append(since)
         if until:
-            clauses.append("substr(ts, 1, 10) <= ?")
+            bounds.append("substr(ts, 1, 10) <= ?")
             args.append(until)
-        where = " AND ".join(clauses)
+        where = " AND ".join(["event = 'pageview'"] + bounds)
+        login_where = " AND ".join(["event = 'login'"] + bounds)
 
         daily = turso_query(
             f"SELECT substr(ts, 1, 10) AS date, site, "
@@ -67,17 +86,44 @@ class handler(BaseHTTPRequestHandler):
             args,
         )
 
+        login_days = turso_query(
+            f"SELECT substr(ts, 1, 10) AS date, COUNT(*) AS count "
+            f"FROM page_views WHERE {login_where} "
+            f"GROUP BY date ORDER BY date",
+            args,
+        )
+        login_paths = turso_query(
+            f"SELECT path, COUNT(*) AS count "
+            f"FROM page_views WHERE {login_where} "
+            f"GROUP BY path",
+            args,
+        )
+
         def _ints(rows, keys):
             for r in rows:
                 for k in keys:
                     r[k] = int(r[k] or 0)
             return rows
 
+        # Turso hands back COUNT(*) as a JSON string — every count is coerced.
+        by_day = [{"date": r["date"], "count": int(r["count"] or 0)}
+                  for r in login_days]
+        by_role = {}
+        for r in login_paths:
+            role = _login_role(r.get("path"))
+            by_role[role] = by_role.get(role, 0) + int(r["count"] or 0)
+
         payload = {
             "daily": _ints(daily, ["views", "uniques"]),
             "paths": _ints(paths, ["views"]),
             "referrers": _ints(referrers, ["views"]),
             "countries": _ints(countries, ["views", "uniques"]),
+            "logins": {
+                "by_day": by_day,
+                "by_role": [{"role": k, "count": v} for k, v in
+                            sorted(by_role.items(), key=lambda kv: (-kv[1], kv[0]))],
+                "total": sum(r["count"] for r in by_day),
+            },
         }
 
         self.send_response(200)

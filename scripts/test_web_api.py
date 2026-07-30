@@ -1012,12 +1012,44 @@ def _():
 @test("beacon: drops unknown event types and bad payloads")
 def _():
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_events")
-    bad = [json.dumps({"path": "/", "event": "login"}).encode(),  # not allowed yet
+    # `login` used to be the not-allowed example here; it joined ALLOWED_EVENTS
+    # in issue #10, so the drop case is now an event that is still unknown.
+    bad = [json.dumps({"path": "/", "event": "signup"}).encode(),
+           json.dumps({"path": "/", "event": "click"}).encode(),
            json.dumps({"path": "no-slash"}).encode(),
            json.dumps(["not", "a", "dict"]).encode(),
            b"not json at all"]
     for body in bad:
         assert mod.parse_event(GOOD_HEADERS, body) is None, f"not dropped: {body!r}"
+
+
+@test("beacon: login event is accepted and inserted (issue #10)")
+def _():
+    import os
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_login_event")
+    os.environ.setdefault("BEACON_SALT", "test-salt")
+    body = json.dumps({"path": "/login/admin", "event": "login"}).encode()
+    row = mod.parse_event(GOOD_HEADERS, body)
+    assert row, "login event was dropped"
+    assert row["event"] == "login", f"event not preserved: {row}"
+    assert row["path"] == "/login/admin", f"path not preserved: {row}"
+
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        return []
+
+    restore = patch_turso_query(mod, fake_turso)
+    try:
+        h = invoke_post(mod, "/api/beacon", body, GOOD_HEADERS)
+        assert h.status_code == 204, f"got {h.status_code}"
+        inserts = [c for c in captured if "INSERT INTO page_views" in c[0]]
+        assert len(inserts) == 1, f"expected 1 insert, got {captured}"
+        assert "login" in inserts[0][1], f"event not in args: {inserts[0][1]}"
+        assert "/login/admin" in inserts[0][1], f"path not in args: {inserts[0][1]}"
+    finally:
+        restore()
 
 
 @test("beacon: visitor hash varies by IP, never exposes it")
@@ -1163,9 +1195,116 @@ def _():
         assert body["daily"][0]["views"] == 12, f"views not int: {body['daily']}"
         assert body["daily"][0]["uniques"] == 3
         assert all("2026-06-05" in a for _, a in captured), "since bound missing"
-        assert all("pageview" in s for s, _ in captured), "event filter missing"
+        # The four page-view queries must all pin event = 'pageview'. The login
+        # queries added in issue #10 deliberately filter event = 'login'
+        # instead, so scope the assertion to the non-login SQL.
+        pv = [s for s, _ in captured if "'login'" not in s]
+        assert len(pv) == 4, f"expected 4 pageview queries, got {len(pv)}"
+        assert all("pageview" in s for s in pv), "event filter missing"
     finally:
         restore()
+
+
+# === visitor_overview: login events (issue #10) ===
+
+def _visov_logins(login_day_rows, login_path_rows, path="/api/visitor_overview"):
+    """Invoke visitor_overview with the two login queries stubbed.
+    Returns (captured_sql_list, response_body)."""
+    mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_logins")
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        if "'login'" not in sql:
+            return []
+        return login_path_rows if "GROUP BY path" in sql else login_day_rows
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+    try:
+        h = invoke(mod, path)
+    finally:
+        restore_a()
+        restore_q()
+    return captured, h
+
+
+@test("visitor_overview: logins block — int counts, roles from paths, total")
+def _():
+    captured, h = _visov_logins(
+        [{"date": "2026-07-28", "count": "2"}, {"date": "2026-07-29", "count": "5"}],
+        [{"path": "/login/admin", "count": "5"}, {"path": "/login/reader", "count": "2"}],
+    )
+    assert h.status_code == 200, f"got {h.status_code}"
+    logins = h.body.get("logins")
+    assert logins is not None, f"no logins block: {sorted(h.body)}"
+    assert logins["by_day"] == [{"date": "2026-07-28", "count": 2},
+                                {"date": "2026-07-29", "count": 5}], logins["by_day"]
+    assert logins["by_role"] == [{"role": "admin", "count": 5},
+                                 {"role": "reader", "count": 2}], logins["by_role"]
+    assert logins["total"] == 7, f"total not summed as int: {logins['total']!r}"
+    for row in logins["by_day"] + logins["by_role"]:
+        assert isinstance(row["count"], int), f"count not int: {row}"
+    assert isinstance(logins["total"], int), "total not int"
+
+
+@test("visitor_overview: malformed login path → role 'unknown', never null")
+def _():
+    _, h = _visov_logins(
+        [{"date": "2026-07-29", "count": "3"}],
+        [{"path": "/login", "count": "1"}, {"path": "/", "count": "1"},
+         {"path": None, "count": "1"}],
+    )
+    assert h.status_code == 200, f"got {h.status_code}"
+    roles = h.body["logins"]["by_role"]
+    assert roles == [{"role": "unknown", "count": 3}], roles
+
+
+@test("visitor_overview: empty logins block is present with int zero total")
+def _():
+    _, h = _visov_logins([], [])
+    logins = h.body["logins"]
+    assert logins == {"by_day": [], "by_role": [], "total": 0}, logins
+
+
+@test("visitor_overview: login rows can't reach daily/paths (pageview filter stays)")
+def _():
+    mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_nomix")
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append(sql)
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+    try:
+        h = invoke(mod, "/api/visitor_overview")
+        assert h.status_code == 200, f"got {h.status_code}"
+        pv = [s for s in captured if "'login'" not in s]
+        assert len(pv) == 4, f"expected 4 pageview queries, got {pv}"
+        for s in pv:
+            assert "event = 'pageview'" in s, f"pageview filter dropped: {s}"
+        lg = [s for s in captured if "'login'" in s]
+        assert len(lg) == 2, f"expected 2 login queries, got {lg}"
+        for s in lg:
+            assert "event = 'login'" in s, f"login query not event-scoped: {s}"
+            assert "pageview" not in s, f"login query mixes pageviews: {s}"
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("visitor_overview: login queries honor since/until like the rest")
+def _():
+    captured, h = _visov_logins(
+        [], [], path="/api/visitor_overview?since=2026-06-05&until=2026-07-29")
+    assert h.status_code == 200, f"got {h.status_code}"
+    lg = [(s, a) for s, a in captured if "'login'" in s]
+    assert len(lg) == 2, f"expected 2 login queries, got {lg}"
+    for s, a in lg:
+        assert a == ["2026-06-05", "2026-07-29"], f"bounds not passed: {a}"
+        assert s.count("substr(ts, 1, 10)") >= 2, f"bounds not in SQL: {s}"
 
 
 # === project_metadata.py (issue #23) ===
@@ -1834,11 +1973,17 @@ def _callback_env():
     """Set OAuth env for callback tests; returns restore()."""
     import os
     restore = _save_env(
-        "AUTH_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "ADMIN_EMAILS")
+        "AUTH_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "ADMIN_EMAILS",
+        "BEACON_SALT", "TURSO_DATABASE_URL")
     os.environ["AUTH_SECRET"] = "test-secret"
     os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
     os.environ["GOOGLE_CLIENT_SECRET"] = "test-client-secret"
     os.environ["ADMIN_EMAILS"] = "nlovejoy@me.com"
+    # A successful callback now fires a best-effort login beacon row (#10).
+    # Salt it so the row is built, and blank the DB URL so any test that
+    # doesn't patch turso_query can never reach a real database.
+    os.environ["BEACON_SALT"] = "test-salt"
+    os.environ["TURSO_DATABASE_URL"] = ""
     return restore
 
 
@@ -2166,6 +2311,154 @@ def _():
             r()
     finally:
         restore()
+
+
+# === callback login events (issue #10) ===
+
+def _cb_login(email, role_env=None, name="endpoint_cb_login", turso=None,
+              headers=None):
+    """Run a callback sign-in with turso_query captured. Returns
+    (captured_calls, response, cookie_payload) — the cookie is decoded before
+    the env restore drops AUTH_SECRET. `role_env` sets READER_EMAILS."""
+    import os
+    restore = _callback_env()
+    saved_r = os.environ.get("READER_EMAILS")
+    if role_env is not None:
+        os.environ["READER_EMAILS"] = role_env
+    calls = []
+
+    def fake_turso(sql, args=None):
+        calls.append((sql, args or []))
+        return []
+
+    try:
+        mod = load_endpoint("web/api/callback.py", name)
+        rq = patch(turso_helper, turso_query=turso or fake_turso)
+        r = patch(mod, _exchange_code=lambda code: {"id_token": _fake_id_token({
+            "email": email, "email_verified": True, "aud": "test-client-id"})})
+        try:
+            state = auth_helper.make_state()
+            h = invoke(mod, f"/api/callback?code=c&state={state}",
+                       headers=headers)
+            token = _cookie_token(h)
+            payload = auth_helper.verify_token(token) if token else None
+        finally:
+            r()
+            rq()
+    finally:
+        if saved_r is None:
+            os.environ.pop("READER_EMAILS", None)
+        else:
+            os.environ["READER_EMAILS"] = saved_r
+        restore()
+    return calls, h, payload
+
+
+def _page_view_inserts(calls):
+    return [c for c in calls if "INSERT INTO page_views" in c[0]]
+
+
+@test("callback login event: admin sign-in writes exactly one /login/admin row")
+def _():
+    calls, h, payload = _cb_login("nlovejoy@me.com", name="endpoint_cb_login_admin")
+    assert h.status_code == 302, f"got {h.status_code}"
+    assert payload and payload["role"] == "admin", f"no admin cookie: {payload}"
+    inserts = _page_view_inserts(calls)
+    assert len(inserts) == 1, f"expected exactly 1 login row, got {calls}"
+    args = inserts[0][1]
+    assert "login" in args, f"event not 'login': {args}"
+    assert "/login/admin" in args, f"path not /login/admin: {args}"
+
+
+@test("callback login event: reader sign-in writes /login/reader")
+def _():
+    calls, h, payload = _cb_login("elovejoy5@gmail.com",
+                                  role_env="elovejoy5@gmail.com",
+                                  name="endpoint_cb_login_reader")
+    assert h.status_code == 302, f"got {h.status_code}"
+    assert payload and payload["role"] == "reader", payload
+    inserts = _page_view_inserts(calls)
+    assert len(inserts) == 1, f"expected exactly 1 login row, got {calls}"
+    assert "/login/reader" in inserts[0][1], f"path not /login/reader: {inserts[0][1]}"
+
+
+@test("callback login event: no email — or any fragment of it — in the row")
+def _():
+    email = "nlovejoy@me.com"
+    calls, h, _payload = _cb_login(email, name="endpoint_cb_login_noemail")
+    inserts = _page_view_inserts(calls)
+    assert len(inserts) == 1, f"expected exactly 1 login row, got {calls}"
+    sql, args = inserts[0]
+    # Every column value, checked individually — nothing derived from the
+    # identity may appear anywhere in the row.
+    for value in args:
+        blob = str(value).lower()
+        for needle in (email, email.split("@")[0], email.split("@")[1],
+                       "nlovejoy", "lovejoy", "me.com"):
+            assert needle not in blob, (
+                f"identity fragment {needle!r} leaked into column value "
+                f"{value!r} (row: {args})")
+    assert email.lower() not in sql.lower(), f"email in SQL text: {sql}"
+    # And the whole serialized row, as a belt-and-braces check.
+    assert "lovejoy" not in json.dumps(args).lower(), f"email leaked: {args}"
+
+
+@test("callback login event: sign-in still succeeds when the row insert raises")
+def _():
+    def boom(sql, args=None):
+        raise RuntimeError("turso down")
+
+    ok_calls, ok, _ok_payload = _cb_login(
+        "nlovejoy@me.com", name="endpoint_cb_login_ok_ref")
+    bad_calls, bad, bad_payload = _cb_login(
+        "nlovejoy@me.com", name="endpoint_cb_login_boom", turso=boom)
+    assert bad.status_code == ok.status_code == 302, (
+        f"insert failure changed status: {bad.status_code} vs {ok.status_code}")
+    assert _location(bad) == _location(ok) == "/", f"redirect changed: {_location(bad)}"
+    bad_cookie = [v for k, v in bad.response_headers if k == "Set-Cookie"]
+    ok_cookie = [v for k, v in ok.response_headers if k == "Set-Cookie"]
+    assert len(bad_cookie) == len(ok_cookie) == 1, (
+        f"cookie count changed: {bad_cookie} vs {ok_cookie}")
+    assert bad_payload and bad_payload["role"] == "admin", bad_payload
+    assert not _page_view_inserts(bad_calls), "boom should have recorded nothing"
+    assert _page_view_inserts(ok_calls), "reference run wrote no row"
+
+
+@test("callback login event: BEACON_SALT unset → no row, sign-in still succeeds")
+def _():
+    import os
+    restore = _callback_env()
+    os.environ.pop("BEACON_SALT", None)
+    calls = []
+    try:
+        mod = load_endpoint("web/api/callback.py", "endpoint_cb_login_nosalt")
+        rq = patch(turso_helper,
+                   turso_query=lambda sql, args=None: calls.append((sql, args)) or [])
+        r = patch(mod, _exchange_code=lambda code: {"id_token": _fake_id_token({
+            "email": "nlovejoy@me.com", "email_verified": True,
+            "aud": "test-client-id"})})
+        try:
+            state = auth_helper.make_state()
+            h = invoke(mod, f"/api/callback?code=c&state={state}")
+            assert h.status_code == 302, f"got {h.status_code}"
+            payload = auth_helper.verify_token(_cookie_token(h))
+            assert payload and payload["role"] == "admin", payload
+            assert not _page_view_inserts(calls), (
+                f"row written without BEACON_SALT: {calls}")
+        finally:
+            r()
+            rq()
+    finally:
+        restore()
+
+
+@test("callback login event: a rejected sign-in records nothing")
+def _():
+    calls, h, payload = _cb_login("stranger@gmail.com",
+                                  name="endpoint_cb_login_rejected")
+    assert payload is None, f"rejected sign-in got a cookie: {payload}"
+    assert h.status_code == 403, f"got {h.status_code}"
+    assert not _page_view_inserts(calls), f"403 wrote a login row: {calls}"
 
 
 # === health_report (issue #34) ===
