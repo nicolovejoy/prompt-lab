@@ -60,14 +60,16 @@ UPTIMEROBOT_API_KEY=op://dev-secrets/UptimeRobot/api-key
 # authenticated, so treat them as secrets: anyone holding one can report a dead
 # job as fresh. Unset = no-op, which is why the call sites ship before these do.
 #
-# COMMENTED until the monitors exist and their URLs are stored — `op inject`
-# fails hard on a reference it can't resolve, which would take .env.local with
-# it. Uncomment in the same pass that creates the 1Password item.
-# HEARTBEAT_URL_REVIEW=op://dev-secrets/Prompt Lab Heartbeats/review
-# HEARTBEAT_URL_SYNTHESIZER=op://dev-secrets/Prompt Lab Heartbeats/synthesizer
-# HEARTBEAT_URL_COST_PULL=op://dev-secrets/Prompt Lab Heartbeats/cost-pull
-# HEARTBEAT_URL_REPORT=op://dev-secrets/Prompt Lab Heartbeats/report
+# NOT YET DECLARED — the 1Password item doesn't exist until the monitors are
+# provisioned. Do NOT write the references here early, not even commented out:
+# `op inject` substitutes by scanning the whole file, comments included, and
+# fails hard on an item it can't find (hit for real 2026-07-31). A commented
+# reference is still a live reference.
+#
+# When the monitors exist, add an item "Prompt Lab Heartbeats" in dev-secrets
+# with fields review / synthesizer / cost-pull / report, then declare the four
+# HEARTBEAT_URL_<JOB> variables here pointing at those fields.
 
 # Cross-project Todos page: read-only PAT for open-issue search (web/api/todos.py).
 # Also set this in the Vercel project env. GITHUB_USER defaults to nicolovejoy.
-GITHUB_TOKEN=op://dev-secrets/prompt-lab-github-pat/credential
+GITHUB_TOKEN=op://dev-secrets/PromptLabs GitHub Personal Access Token 2/token

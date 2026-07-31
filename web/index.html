@@ -2651,6 +2651,12 @@
 
       const targets = Array.isArray(data?.targets) ? data.targets : [];
       const down = targets.filter(t => !t.ok);
+      // ok is tri-state: true fresh, false stale/never, null couldn't check.
+      // Compare against false explicitly — a null must not read as stale, and
+      // must not read as fresh either.
+      const heartbeats = Array.isArray(data?.heartbeats) ? data.heartbeats : [];
+      const stale = heartbeats.filter(h => h.ok === false);
+      const unchecked = heartbeats.filter(h => h.ok == null);
       const pausedUntil = data?.paused_until;
       const paused = !!(pausedUntil && new Date(pausedUntil).getTime() > Date.now());
 
@@ -2714,6 +2720,11 @@
             <span><strong>${down.length} target${down.length === 1 ? '' : 's'} DOWN</strong>
               — ${down.map(t => t.name).join(', ')}</span>`)}
 
+          ${stale.length > 0 && banner('var(--yellow-dim)', 'var(--yellow)', html`
+            <span>⏳</span>
+            <span><strong>${stale.length} stale artifact${stale.length === 1 ? '' : 's'}</strong>
+              — ${stale.map(h => h.name).join(', ')}</span>`)}
+
           <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; flex-wrap: wrap">
             <div style="font-size: 2.18rem; font-weight: 700; color: var(--accent-light)">
               ${targets.length - down.length}/${targets.length}
@@ -2759,8 +2770,58 @@
                 })}
               </div>`}
 
+          ${heartbeats.length > 0 && html`
+            <div style="margin-top: 26px">
+              <div style="display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+                          margin-bottom: 4px">
+                <h2 style="margin: 0; font-size: 1.3rem">Heartbeats</h2>
+                <span style="font-size: 1.02rem; color: ${stale.length || unchecked.length
+                    ? 'var(--yellow)' : 'var(--green)'}">
+                  ${stale.length || unchecked.length
+                    ? `${stale.length} stale${unchecked.length ? `, ${unchecked.length} unchecked` : ''}`
+                    : `all ${heartbeats.length} fresh`}
+                </span>
+              </div>
+              <div style="font-size: 1.02rem; color: var(--text-secondary); margin-bottom: 12px;
+                          line-height: 1.5">
+                Age of each recurring job's real output, not whether the job reported success —
+                a job that dies never gets to tell you.
+              </div>
+              <div style="display: grid; gap: 8px">
+                ${heartbeats.map(h => {
+                  // null = couldn't read Turso. Deliberately its own state:
+                  // showing it as fresh would manufacture confidence, showing
+                  // it as stale would cry wolf on an outage of the checker.
+                  const state = h.ok === true ? 'fresh' : h.ok === false ? 'STALE' : 'UNCHECKED';
+                  const color = h.ok === true ? 'var(--green)'
+                    : h.ok === false ? 'var(--red)' : 'var(--text-secondary)';
+                  const dim = h.ok === true ? 'var(--green-dim)'
+                    : h.ok === false ? 'var(--red-dim)' : 'transparent';
+                  return html`
+                    <div style="display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+                                background: var(--card); border: 1px solid var(--border);
+                                border-left: 3px solid ${color};
+                                border-radius: var(--radius); padding: 9px 13px">
+                      <span style="font-size: 1.13rem; font-weight: 600">${h.name}</span>
+                      <span style="font-size: 0.89rem; font-weight: 700; letter-spacing: 0.06em;
+                                   padding: 2px 8px; border-radius: 3px; white-space: nowrap;
+                                   background: ${dim}; color: ${color}">${state}</span>
+                      <span style="margin-left: auto; font-size: 1.02rem; text-align: right;
+                                   color: var(--text-secondary);
+                                   font-family: 'SF Mono', ui-monospace, monospace">
+                        ${h.last ? `${h.last} · ${h.age_days}d` : '—'}
+                        <span style="opacity: 0.7"> / ${h.max_age_days}d</span>
+                      </span>
+                      ${h.note && html`
+                        <div style="flex-basis: 100%; font-size: 1.02rem; color: ${color};
+                                    line-height: 1.5">${h.note}</div>`}
+                    </div>`;
+                })}
+              </div>
+            </div>`}
+
           <div style="margin-top: 18px; font-size: 0.95rem; color: var(--text-secondary); line-height: 1.5">
-            Targets and thresholds live in <code>web/api/health_report.py</code>;
+            Targets, heartbeats, and thresholds live in <code>web/api/health_report.py</code>;
             the convention each app implements is <code>docs/health-convention.md</code>.
           </div>
         </div>`;

@@ -17,6 +17,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -2481,11 +2482,17 @@ def _health_env():
     return restore
 
 
-def _health_mod(up=True):
+def _health_mod(up=True, hb="fresh"):
     """Load health_report with targets, joke, and send stubbed. Returns
     (mod, sent) where sent collects (subject, html, text) tuples. Every poll
     appends to `mod._polls`, so a test can pin that an unauthorized caller
-    never made us do the target-polling work."""
+    never made us do the target-polling work.
+
+    `hb` drives the heartbeat (artifact-freshness) stub: fresh / stale /
+    never (table empty) / error (Turso unreadable). The stub dispatches on the
+    SQL because the endpoint issues two different kinds of query against the
+    same helper — the pause lookup and the freshness lookups — and they must
+    not be conflated: the pause check fails OPEN, freshness must not."""
     mod = load_endpoint("web/api/health_report.py", "health_report_test")
     sent = []
     mod._polls = []
@@ -2495,10 +2502,21 @@ def _health_mod(up=True):
         return {"name": name, "ok": up, "status": 200 if up else 503,
                 "note": "db ok" if deep else "", "ms": 42}
 
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    def fake_turso(sql, args=None):
+        if "health_email_state" in sql:
+            return []  # not paused
+        if hb == "error":
+            raise RuntimeError("turso unreachable")
+        if hb == "never":
+            return []
+        return [{"d": "2020-01-01" if hb == "stale" else today}]
+
     mod._check_target = fake_check
     mod._joke = lambda: "a test joke"
     mod._send_email = lambda subject, html, text: sent.append((subject, html, text))
-    mod.turso_query = lambda sql, args=None: []
+    mod.turso_query = fake_turso
     return mod, sent
 
 
@@ -2522,7 +2540,7 @@ def _():
         h = invoke(mod, "/api/health_report",
                    {"authorization": "Bearer cron-secret"})
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
-        assert h.body == {"sent": True, "down": []}, h.body
+        assert h.body == {"sent": True, "down": [], "stale": []}, h.body
         assert len(sent) == 1
         subject, html, text = sent[0]
         assert "2/2 up" in subject, subject
@@ -2638,10 +2656,133 @@ def _():
         mod, sent = _health_mod()
         h = invoke(mod, "/api/health_report", _health_cookie("admin"))
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
-        assert h.body == {"sent": True, "down": []}, h.body
+        assert h.body == {"sent": True, "down": [], "stale": []}, h.body
         assert len(sent) == 1, f"admin send path broken: {sent}"
     finally:
         restore()
+
+
+# === heartbeats / artifact freshness (issue #45) ===
+
+@test("heartbeats: all fresh → one summary line, subject stays ✅")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(hb="fresh")
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["stale"] == [], h.body
+        subject, html_body, text = sent[0]
+        assert subject.startswith("✅"), subject
+        n = len(mod.HEARTBEATS)
+        assert f"all {n} artifacts fresh" in text, text
+        # Healthy state must stay one line, or the email stops being glanceable.
+        assert "expected within" not in text, text
+    finally:
+        restore()
+
+
+@test("heartbeats: a stale artifact escalates the subject and is named")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(hb="stale")
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert len(h.body["stale"]) == len(mod.HEARTBEATS), h.body
+        subject, html_body, text = sent[0]
+        assert subject.startswith("🟡"), subject
+        assert "stale" in subject, subject
+        # Named, with the age and the threshold it broke.
+        assert "review email" in text, text
+        assert "expected within" in text, text
+        assert "review email" in html_body, html_body
+    finally:
+        restore()
+
+
+@test("heartbeats: an unreadable Turso reports UNCHECKED, never fresh")
+def _():
+    """The bug this whole feature exists to kill is absence reading as fine.
+    The pause check above fails open on purpose; freshness must not."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(hb="error")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        hbs = h.body["heartbeats"]
+        assert len(hbs) == len(mod.HEARTBEATS), hbs
+        assert all(x["ok"] is None for x in hbs), hbs
+        assert all("could not check" in x["note"] for x in hbs), hbs
+        # Crucially: not reported as fresh, and not miscounted as stale either.
+        assert h.body.get("stale") is None, h.body
+    finally:
+        restore()
+
+
+@test("heartbeats: an unreadable Turso still lets the email send")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(hb="error")
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert len(sent) == 1, "a failed freshness check killed the email"
+        assert "unchecked" in sent[0][0], sent[0][0]
+    finally:
+        restore()
+
+
+@test("heartbeats: an empty table is stale ('never produced'), not fresh")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(hb="never")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        hbs = h.body["heartbeats"]
+        assert all(x["ok"] is False for x in hbs), hbs
+        assert all("never produced" in x["note"] for x in hbs), hbs
+        assert all(x["last"] is None for x in hbs), hbs
+    finally:
+        restore()
+
+
+@test("heartbeats: ?dry=1 exposes the block for the #/health page")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(hb="fresh")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        hbs = h.body["heartbeats"]
+        assert [x["name"] for x in hbs] == [n for n, _, _ in mod.HEARTBEATS], hbs
+        for x in hbs:
+            assert x["ok"] is True, x
+            assert x["age_days"] == 0, x
+            assert set(x) >= {"name", "ok", "last", "age_days", "max_age_days", "note"}, x
+        assert not sent
+    finally:
+        restore()
+
+
+@test("heartbeats: thresholds are days and exceed each job's real period")
+def _():
+    """A threshold at or below the job's own cadence alarms on a healthy run.
+    Nightly jobs must tolerate one miss (#45's bar is catching night two)."""
+    mod, _ = _health_mod()
+    by_name = {n: d for n, _, d in mod.HEARTBEATS}
+    for nightly in ("review email", "synthesizer"):
+        assert by_name[nightly] == 2, f"{nightly}: {by_name[nightly]}"
+    # Anthropic reports a day late, so yesterday is the healthy newest row.
+    assert by_name["cost pull + sync"] >= 3, by_name
+    # 1st & 16th → gaps of ~16 days.
+    assert by_name["bi-monthly report"] >= 17, by_name
+    assert by_name["weekly rollups"] >= 8, by_name
 
 
 @test("health_report: no auth + ?dry=1 → 401 and targets never polled")

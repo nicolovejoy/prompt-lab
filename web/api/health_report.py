@@ -20,6 +20,11 @@ suppresses sends for 7 days — state in the Turso `health_email_state` table
 (cloud-direct, no local copy, no sync leg — same class as page_views). The
 pause check fails open: if Turso is unreachable the email still sends.
 
+Two kinds of check. `TARGETS` answers "is this URL up" by polling. `HEARTBEATS`
+answers "did this recurring job run" by measuring the age of the artifact the
+job produces (issue #45) — a URL check can never see a dead cron, and that is
+the failure class that has actually bitten us.
+
 The joke: generated per-send with the Anthropic API (Haiku tier), falling back
 to a canned rotation — the email must send even when the API doesn't.
 """
@@ -30,6 +35,7 @@ import os
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from html import escape
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlsplit
@@ -42,6 +48,34 @@ from turso_helper import turso_query
 TARGETS = [
     ("garm", "https://garm.prompt-labs.org/api/health?db=1", True),
     ("prompt-labs.org", "https://prompt-labs.org/api/health?db=1", True),
+]
+
+# (label, sql, max_age_days) — artifact freshness, issue #45.
+#
+# "Alarm on the artifact, not the job's exit status." Every one of the six
+# incidents behind #45 was a job that kept running while its output stopped,
+# and in each the job's own reporting was what failed. So this checks the real
+# output rather than a side-channel claim that the job ran: a synthetic ping
+# can succeed while the artifact is missing, a max(date) cannot.
+#
+# The check lives outside the jobs it watches — they run on launchd on the
+# mini and write through the Turso sync; this runs on Vercel and reads. If the
+# mini dies entirely, these stop advancing and the email says so.
+#
+# Thresholds are DAYS, not hours: every artifact here is date-granular, so an
+# hours figure would imply precision that doesn't exist. "2" means one missed
+# night is quiet and two is a breach — #45's stated bar was catching the review
+# email on night two rather than night sixty.
+HEARTBEATS = [
+    ("review email", "SELECT max(date) AS d FROM review_snapshots "
+                     "WHERE review_type IN ('daily_email', 'weekly_email')", 2),
+    ("synthesizer", "SELECT max(date) AS d FROM daily_summaries", 2),
+    ("weekly rollups", "SELECT max(week_start) AS d FROM weekly_rollups", 10),
+    # Anthropic's Admin API reports a day behind, so yesterday is the normal
+    # newest row — 2 would alarm on a healthy pipeline.
+    ("cost pull + sync", "SELECT max(date) AS d FROM api_costs", 3),
+    ("bi-monthly report", "SELECT max(date) AS d FROM review_snapshots "
+                          "WHERE review_type = 'monthly_report'", 20),
 ]
 
 PAUSE_DAYS = 7
@@ -133,6 +167,52 @@ def _check_target(name, url, deep=False):
             "note": note, "ms": int((time.time() - t0) * 1000)}
 
 
+def _check_heartbeats():
+    """Freshness of each declared artifact. Never raises.
+
+    ok is tri-state and the distinction is the point:
+      True  — fresh
+      False — stale, or never produced at all
+      None  — could not check
+
+    A failed query must NOT report fresh. The pause check above deliberately
+    fails open (a Turso outage shouldn't block an email); this one must fail
+    *loud*, because "absence recorded as nothing" is the exact bug #45 exists
+    to kill. A freshness check that goes quiet when it can't see is worse than
+    no check, since it manufactures confidence.
+    """
+    today = datetime.now(timezone.utc).date()
+    out = []
+    for name, sql, max_age in HEARTBEATS:
+        entry = {"name": name, "max_age_days": max_age, "last": None,
+                 "age_days": None, "ok": None, "note": ""}
+        try:
+            rows = turso_query(sql)
+        except Exception as e:
+            entry["note"] = f"could not check ({type(e).__name__})"
+            print(f"health_report: heartbeat {name} unreadable: {e}"[:200])
+            out.append(entry)
+            continue
+        raw = rows[0].get("d") if rows else None
+        if not raw:
+            entry["ok"] = False
+            entry["note"] = "no rows — never produced"
+            out.append(entry)
+            continue
+        try:
+            last = datetime.strptime(str(raw)[:10], "%Y-%m-%d").date()
+        except ValueError:
+            entry["note"] = f"unparseable date {str(raw)[:20]!r}"
+            out.append(entry)
+            continue
+        age = (today - last).days
+        entry.update(last=last.isoformat(), age_days=age, ok=age < max_age)
+        if not entry["ok"]:
+            entry["note"] = f"{age}d old, expected within {max_age}d"
+        out.append(entry)
+    return out
+
+
 def _joke():
     try:
         from anthropic import Anthropic
@@ -164,13 +244,23 @@ TUNE_PROMPT = (
 )
 
 
-def _compose(results, joke, pause_url):
+def _compose(results, joke, pause_url, heartbeats=None):
     """Return (subject, text, html)."""
+    heartbeats = heartbeats or []
     up = [r for r in results if r["ok"]]
     down = [r for r in results if not r["ok"]]
+    stale = [h for h in heartbeats if h["ok"] is False]
+    unknown = [h for h in heartbeats if h["ok"] is None]
+
     if down:
         subject = (f"🔴 ecosystem health: {', '.join(r['name'] for r in down)} DOWN "
                    f"({len(up)}/{len(results)} up)")
+    elif stale:
+        subject = (f"🟡 ecosystem health: {len(up)}/{len(results)} up · "
+                   f"{len(stale)} stale ({', '.join(h['name'] for h in stale)})")
+    elif unknown:
+        subject = (f"🟡 ecosystem health: {len(up)}/{len(results)} up · "
+                   f"{len(unknown)} unchecked")
     else:
         subject = f"✅ ecosystem health: {len(up)}/{len(results)} up"
 
@@ -180,6 +270,17 @@ def _compose(results, joke, pause_url):
         status = r["status"] if r["status"] is not None else "—"
         note = f" — {r['note']}" if r["note"] else ""
         lines.append(f"{r['name']}: {mark} ({status}, {r['ms']}ms){note}")
+
+    # Silent when everything is fresh — one line, so the email stays glanceable.
+    if heartbeats:
+        lines.append("")
+        if not stale and not unknown:
+            lines.append(f"heartbeats: all {len(heartbeats)} artifacts fresh")
+        else:
+            lines.append("heartbeats:")
+            for h in stale + unknown:
+                lines.append(f"  {h['name']}: {h['note']}"
+                             + (f" (last {h['last']})" if h["last"] else ""))
 
     text = "\n".join(lines) + (
         "\n\n--\n"
@@ -197,9 +298,25 @@ def _compose(results, joke, pause_url):
         f"<td style='padding:4px 0'>{escape(r['note'] or '')}</td></tr>"
         for r in results
     )
+    if not heartbeats:
+        hb_html = ""
+    elif not stale and not unknown:
+        hb_html = ("<p style='color:#2e7d32'>heartbeats: all "
+                   f"{len(heartbeats)} artifacts fresh</p>")
+    else:
+        items = "".join(
+            f"<li><b>{escape(h['name'])}</b> — {escape(h['note'])}"
+            + (f" (last {escape(str(h['last']))})" if h["last"] else "") + "</li>"
+            for h in stale + unknown
+        )
+        hb_html = (f"<p style='color:#c62828;margin-bottom:4px'>heartbeats: "
+                   f"{len(stale)} stale, {len(unknown)} unchecked</p>"
+                   f"<ul style='margin-top:0'>{items}</ul>")
+
     html = (
         "<div style='font-family:-apple-system,sans-serif;font-size:15px;color:#222'>"
         f"<table style='border-collapse:collapse'>{rows}</table>"
+        f"{hb_html}"
         f"<p><a href='{escape(pause_url, quote=True)}'>Pause these emails for a week</a></p>"
         "<p style='color:#666'>To tune this email, tell the prompt-lab agent:<br>"
         f"<code>{escape(TUNE_PROMPT)}</code></p>"
@@ -257,9 +374,11 @@ class handler(BaseHTTPRequestHandler):
             paused = bool(paused_until and paused_until > _utc())
 
             results = [_check_target(n, u, d) for n, u, d in TARGETS]
+            heartbeats = _check_heartbeats()
 
             if dry:
-                self._json({"targets": results, "paused_until": paused_until,
+                self._json({"targets": results, "heartbeats": heartbeats,
+                            "paused_until": paused_until,
                             "would_send": not paused})
                 return
             if paused:
@@ -268,10 +387,11 @@ class handler(BaseHTTPRequestHandler):
 
             pause_url = ("https://prompt-labs.org/api/health_report"
                          f"?action=pause&token={_make_pause_token()}")
-            subject, text, html = _compose(results, _joke(), pause_url)
+            subject, text, html = _compose(results, _joke(), pause_url, heartbeats)
             _send_email(subject, html, text)
             self._json({"sent": True,
-                        "down": [r["name"] for r in results if not r["ok"]]})
+                        "down": [r["name"] for r in results if not r["ok"]],
+                        "stale": [h["name"] for h in heartbeats if h["ok"] is False]})
         except Exception as e:
             print(f"health_report error: {e}"[:300])
             self._json({"error": str(e)}, 500)
