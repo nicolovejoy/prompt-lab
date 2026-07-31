@@ -130,13 +130,17 @@ def send_email(subject, html, text):
         },
     )
 
+    # Returns None on failure rather than exiting: the caller still has a
+    # generated review worth persisting, and dying here is what hid a 403 for
+    # 60 nights — the snapshot never landed, so the DB looked like the job had
+    # stopped running instead of failing at the last step.
     try:
         with urllib.request.urlopen(req) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body = e.read().decode()
         print(f"Resend API error {e.code}: {body}", file=sys.stderr)
-        sys.exit(1)
+        return None
 
 
 def main():
@@ -144,6 +148,17 @@ def main():
 
     # Load environment
     load_env()
+
+    # Exercises the Resend path only — no Claude call, so verifying a
+    # from-address or API-key change is free and takes a second rather than
+    # two minutes of generation.
+    if "--test-send" in sys.argv:
+        body = "Test send from send-review.py. If this arrived, Resend is configured correctly."
+        if send_email("Prompt Lab — review email test send", f"<p>{body}</p>", body) is None:
+            sys.exit(1)
+        print("Test send OK.")
+        return
+
     if not os.environ.get("ANTHROPIC_API_KEY"):
         print("Error: ANTHROPIC_API_KEY not found. Set it in .env.local", file=sys.stderr)
         sys.exit(1)
@@ -192,7 +207,10 @@ def main():
         return
 
     email_result = send_email(subject, html, text)
-    print(f"Sent (id: {email_result.get('id', '?')})")
+    if email_result is None:
+        print("Send FAILED — persisting the review anyway.", file=sys.stderr)
+    else:
+        print(f"Sent (id: {email_result.get('id', '?')})")
 
     # Persist the review
     store = get_store()
@@ -205,6 +223,10 @@ def main():
         output_tokens=result["output_tokens"],
     )
     store.close()
+
+    # Non-zero last, after the snapshot is safe, so launchd records the failure.
+    if email_result is None:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
