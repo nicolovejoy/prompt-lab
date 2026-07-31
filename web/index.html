@@ -110,14 +110,19 @@
       content: ''; flex: 1; height: 1px; background: var(--border);
     }
 
-    /* Header */
+    /* Header — stacked rows (logo, then built/synced, then nav) so the nav
+       buttons stay together instead of wrapping around the meta text. */
     header {
-      padding: 16px 0 14px;
-      display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
-      gap: 8px 16px;
+      padding: 16px 0 12px;
       border-bottom: 1px solid var(--border); margin-bottom: 20px;
     }
     .header-left { display: flex; align-items: center; gap: 6px; }
+    .header-sub {
+      display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 2px 0 10px;
+      font-size: 0.61rem; font-family: "SF Mono", ui-monospace, monospace;
+    }
+    .header-sub .fresh { color: var(--green); }
+    .header-sub .stale { color: #6e6e6e; }
     .header-logo {
       font-size: 1.43rem; font-weight: 700; letter-spacing: -0.3px;
       cursor: pointer; color: var(--text); text-decoration: none;
@@ -561,6 +566,17 @@
     function lsGet(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } }
     function lsSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* quota — skip */ } }
 
+    // 'fresh' (green) when the timestamp is today in Pacific, else 'stale'
+    // (grey) — the header's built/synced line colors by this.
+    function freshClass(dateStr) {
+      if (!dateStr) return 'stale';
+      try {
+        const then = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+        const day = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(d);
+        return day(then) === day(new Date()) ? 'fresh' : 'stale';
+      } catch { return 'stale'; }
+    }
+
     function timeAgo(dateStr) {
       if (!dateStr) return '';
       const now = new Date();
@@ -697,11 +713,15 @@
               <span class="header-sep">/</span>
               <${ProjectPicker} current=${route.project} active=${active} dormant=${dormant} />
             `}
-          </div>
-          <div class="header-right">
             ${refreshing && html`<span class="header-meta refreshing" title="Refreshing…">↻</span>`}
-            ${buildTime && html`<span class="header-meta">built ${buildTime}</span>`}
-            ${freshness && html`<span class="header-meta">synced ${freshness}</span>`}
+          </div>
+          ${(buildTime || freshness) && html`
+            <div class="header-sub">
+              ${buildTime && html`<span class=${freshClass(info.build_time)}>built ${buildTime}</span>`}
+              ${freshness && html`<span class=${freshClass(info.data_freshness)}>synced ${freshness}</span>`}
+            </div>
+          `}
+          <div class="header-right">
             <button class="header-btn ${route.view === 'activity' ? 'active' : ''}" onClick=${() => navigate('#/activity')}>Activity</button>
             <button class="header-btn ${route.view === 'todos' ? 'active' : ''}" onClick=${() => navigate('#/todos')}>Todos</button>
             <button class="header-btn ${route.view === 'costs' ? 'active' : ''}" onClick=${() => navigate('#/costs')}>Costs</button>
@@ -750,8 +770,13 @@
 
       // Direct fetch (not api()) because the 401 body carries password_login,
       // which api() swallows. Server always returns role now — no fail-open.
-      useEffect(() => {
-        fetch('/api/login').then(async resp => {
+      // Shared by mount, logout, and session expiry: the 401 branch is what
+      // populates the sign-in buttons, so any path that lands on the Login
+      // screen must go through here — logout used to just setAuthed(false),
+      // leaving both flags false and the Login screen buttonless until reload.
+      const probeAuth = useCallback(async () => {
+        try {
+          const resp = await fetch('/api/login');
           if (resp.ok) {
             const d = await resp.json();
             setRole(d.role); setEmail(d.email || null); setAuthed(true);
@@ -764,8 +789,10 @@
             } catch { /* production-safe defaults: both false */ }
             setPasswordLogin(pw); setGoogleLogin(gl); setAuthed(false);
           }
-        }).catch(() => setAuthed(false));
+        } catch { setAuthed(false); }
       }, []);
+
+      useEffect(() => { probeAuth(); }, []);
 
       // Stale-while-revalidate: paint the cached overview immediately (no
       // skeleton), then refetch in the background and swap in fresh data.
@@ -778,11 +805,11 @@
           const data = await api('/api/overview');
           setOverview(data); lsSet('promptlab_overview', data);
         } catch (e) {
-          if (e.message === 'unauthorized') { setAuthed(false); return; }
+          if (e.message === 'unauthorized') { probeAuth(); return; }
           if (!cached) setError(e.message);  // keep stale data on a refresh error
         }
         setLoading(false); setRefreshing(false);
-      }, []);
+      }, [probeAuth]);
 
       useEffect(() => {
         if (authed) {
@@ -832,7 +859,8 @@
         // Clear caches so a different login never sees the prior user's data.
         memo.project.clear(); memo.cost.clear();
         try { localStorage.removeItem('promptlab_overview'); } catch { /* ignore */ }
-        setAuthed(false); setOverview(null); setEmail(null);
+        setOverview(null); setEmail(null); setRole(null);
+        await probeAuth();  // 401 branch populates the sign-in buttons
       };
 
       if (authed === null) return html`<div class="loading">Loading...</div>`;
