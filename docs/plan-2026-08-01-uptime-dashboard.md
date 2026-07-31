@@ -84,11 +84,19 @@ After each merges, repoint its UptimeRobot monitor by editing `HTTP_MONITORS` in
 
 Pass: each URL returns `200 {"ok":true}` unauthenticated in production; monitor repointed and green.
 
-## Phase 4 — un-gate recountly's health endpoint (small, recountly repo)
+## Phase 4 — CANCELLED 2026-07-31: recountly is dead
+
+It became **Raconte**, a native iOS app (`~/src/raconte`). Do not do the work below. `recountly.org` still answers and still has a declared monitor in `scripts/uptimerobot.py` — drop it from `HTTP_MONITORS` and delete it in the UptimeRobot UI once the deployment actually comes down, or it will false-alarm then. An iOS app has no URL to poll, so Raconte does not inherit this slot.
+
+<details><summary>Original Phase 4 (historical)</summary>
+
+## ~~Phase 4~~ — un-gate recountly's health endpoint (small, recountly repo)
 
 `https://recountly.org/api/health` exists but returns `401`. Move it outside the auth middleware, then repoint its monitor. Until then it stays on the homepage check — pointing at it now would false-DOWN forever, which is exactly bug #40.
 
 Pass: `curl https://recountly.org/api/health` → `200 {"ok":true}` with no cookie; monitor repointed and green.
+
+</details>
 
 ## Phase 5 — grow `TARGETS` (small, prompt-lab)
 
