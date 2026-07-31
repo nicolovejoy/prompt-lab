@@ -2698,7 +2698,9 @@
               Retry
             </button>
           </div>
-        </div></div>`;
+        </div>
+        <${UptimeArchive} onUnauthorized=${onUnauthorized} />
+      </div>`;
 
       const banner = (bg, fg, children) => html`
         <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
@@ -2820,11 +2822,400 @@
               </div>
             </div>`}
 
+          <${UptimeArchive} onUnauthorized=${onUnauthorized} />
+
           <div style="margin-top: 18px; font-size: 0.95rem; color: var(--text-secondary); line-height: 1.5">
             Targets, heartbeats, and thresholds live in <code>web/api/health_report.py</code>;
             the convention each app implements is <code>docs/health-convention.md</code>.
           </div>
         </div>`;
+    }
+
+    // ---- Uptime archive (#/health, phase 2 of docs/plan-2026-08-01-uptime-dashboard.md) ----
+    // Reads /api/uptime_overview — the daily archive the health cron writes from
+    // UptimeRobot's v2 ratios (one row per monitor per day). Unlike the live
+    // targets above this section MAY serve from the in-session memo: a
+    // remembered history is still true, a remembered "up" is not.
+    const uptimeOverviewMemo = new Map();  // window(days) -> payload
+
+    // A day is a fixed-height tick colored by its ratio, not a height-encoded
+    // bar — 99.9% and 100% are indistinguishable by height and the difference
+    // between them is the whole point. A day with no row is grey, never 0%: the
+    // archive starts empty and is deliberately never backfilled (UptimeRobot
+    // exposes rolling ratios, not per-day history), so a gap means missing
+    // data, not downtime.
+    // Grey for "no row" is --text-secondary held down by opacity, not --border:
+    // --border on --card is ~invisible in BOTH themes (#e5e5e5 on #fff,
+    // #2a2a2a on #1a1a1a), so a gap would read as nothing at all.
+    const NO_DATA_COLOR = 'var(--text-secondary)';
+    const NO_DATA_OPACITY = 0.6;   // ~3:1 against the card in both themes
+    function uptimeColor(u) {
+      if (u == null) return NO_DATA_COLOR;
+      if (u >= 99.9) return 'var(--green)';
+      if (u >= 99) return 'var(--yellow)';
+      return 'var(--red)';
+    }
+    function fmtPct(u) {
+      const n = Number(u);
+      if (u == null || !Number.isFinite(n)) return '—';
+      return (Number.isInteger(n) ? n.toFixed(0) : n.toFixed(2)) + '%';
+    }
+    function fmtMs(v) {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? Math.round(n).toLocaleString('en-US') + 'ms' : '—';
+    }
+    function isoDaysAgo(i) {
+      return new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10);
+    }
+
+    // One card per monitor: rolling ratios, a per-day uptime strip, and the
+    // response-time trend under it on the same axis and the same scroll.
+    function MonitorUptimeCard({ monitor, dates }) {
+      const scrollRef = useRef(null);
+      const [hovered, setHovered] = useState(null);
+      const [selected, setSelected] = useState(null);
+
+      const n = dates.length;
+
+      // Charts open at the recent (right) end — browsers default scrollLeft to
+      // 0, which on a young archive is nothing but grey (issue #19).
+      useEffect(() => {
+        if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+      }, [n, monitor.name, (monitor.series || []).length]);
+      useEffect(() => { setSelected(null); }, [n]);
+
+      // The series is sparse by construction (only days the cron ran), so index
+      // it and read the zero-filled calendar axis off `dates`. Number() on every
+      // field: Turso hands aggregates back as strings and a string here would
+      // silently break both the color buckets and the bar math.
+      const byDate = {};
+      for (const p of (Array.isArray(monitor.series) ? monitor.series : [])) {
+        if (!p || !p.date) continue;
+        const u = p.uptime == null ? null : Number(p.uptime);
+        byDate[p.date] = {
+          uptime: Number.isFinite(u) ? u : null,
+          ms: Number.isFinite(Number(p.ms)) ? Number(p.ms) : 0,
+        };
+      }
+      const points = Object.keys(byDate).length;
+
+      const status = String(monitor.status || '').toUpperCase();
+      const up = status === 'UP' || status === '';
+      const paused = status === 'PAUSED';
+      const chipColor = paused ? 'var(--text-secondary)' : up ? 'var(--green)' : 'var(--red)';
+      const chipBg = paused ? 'transparent' : up ? 'var(--green-dim)' : 'var(--red-dim)';
+
+      const stat = (label, value, color) => html`
+        <div style="display: flex; flex-direction: column; gap: 1px; min-width: 62px">
+          <span style="font-size: 0.82rem; color: var(--text-secondary);
+                       font-family: 'SF Mono', ui-monospace, monospace">${label}</span>
+          <span style="font-size: 1.13rem; font-variant-numeric: tabular-nums;
+                       color: ${color || 'var(--text)'}">${value}</span>
+        </div>`;
+
+      const head = html`
+        <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap">
+          <span style="font-size: 1.13rem; font-weight: 600; word-break: break-word">${monitor.name}</span>
+          <span style="font-size: 0.89rem; font-weight: 700; letter-spacing: 0.06em;
+                       padding: 2px 8px; border-radius: 3px; white-space: nowrap;
+                       background: ${chipBg}; color: ${chipColor}">${status || '—'}</span>
+        </div>
+        <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px">
+          ${stat('1d', fmtPct(monitor.uptime_1d), uptimeColor(monitor.uptime_1d))}
+          ${stat('7d', fmtPct(monitor.uptime_7d), uptimeColor(monitor.uptime_7d))}
+          ${stat('30d', fmtPct(monitor.uptime_30d), uptimeColor(monitor.uptime_30d))}
+          ${stat('avg response', fmtMs(monitor.avg_response_ms))}
+        </div>`;
+
+      const card = (children) => html`
+        <div style="background: var(--card); border: 1px solid var(--border);
+                    border-left: 3px solid ${chipColor}; border-radius: var(--radius);
+                    padding: 13px 15px; margin-top: 10px">${head}${children}</div>`;
+
+      // A monitor the archive hasn't reached yet gets a sentence, not an empty
+      // chart — the grid would otherwise read as "all down".
+      if (points === 0) {
+        return card(html`
+          <div style="margin-top: 10px; font-size: 1.02rem; color: var(--text-secondary); line-height: 1.5">
+            No archived days yet — the ratios above are the latest pull, the trend needs a second day.
+          </div>`);
+      }
+
+      const STRIP_H = 22, MS_H = 54;
+      const peakMs = Math.max(...Object.values(byDate).map(v => v.ms), 1);
+      const tickIdxs = new Set();
+      if (n > 0) { const k = Math.min(6, n); for (let i = 0; i < k; i++) tickIdxs.add(Math.round((i * (n - 1)) / (k - 1))); }
+
+      const detail = (d) => {
+        const v = byDate[d];
+        return html`
+          <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)}</div>
+          ${v ? html`
+            <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
+              <span style="width: 8px; height: 8px; border-radius: 2px; flex: none;
+                           background: ${uptimeColor(v.uptime)}; display: inline-block"></span>
+              <span style="color: var(--text)">uptime</span>
+              <span style="margin-left: auto">${fmtPct(v.uptime)}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
+              <span style="width: 8px; height: 8px; border-radius: 2px; flex: none;
+                           background: var(--accent); display: inline-block"></span>
+              <span style="color: var(--text)">response</span>
+              <span style="margin-left: auto">${fmtMs(v.ms)}</span>
+            </div>`
+            : html`<div style="color: var(--text-secondary)">not archived</div>`}`;
+      };
+
+      return card(html`
+        <div style="margin-top: 10px; display: grid; grid-template-columns: 56px 1fr; gap: 8px">
+          <div style="font-size: 0.75rem; color: var(--text-secondary);
+                      font-family: 'SF Mono', ui-monospace, monospace">
+            <div style="height: ${STRIP_H}px; display: flex; align-items: center; justify-content: flex-end">
+              uptime
+            </div>
+            <div style="height: ${MS_H}px; margin-top: 6px; display: flex; flex-direction: column;
+                        justify-content: space-between; align-items: flex-end">
+              <span>${Math.round(peakMs).toLocaleString('en-US')}ms</span>
+              <span>0</span>
+            </div>
+          </div>
+          <div class="chart-scroll" ref=${scrollRef}>
+            <div style="min-width: ${n * 7}px">
+              <div style="display: flex; gap: 2px; border-bottom: 1px solid var(--border)">
+                ${dates.map((d, i) => {
+                  const v = byDate[d];
+                  const msH = v && v.ms > 0 ? Math.max(1, Math.round((v.ms / peakMs) * (MS_H - 2))) : 0;
+                  const active = hovered === i || selected === i;
+                  const edge = n > 1 ? i / (n - 1) : 0.5;
+                  const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
+                  return html`
+                    <div style="flex: 1; min-width: 3px; position: relative; cursor: pointer"
+                         onMouseEnter=${() => setHovered(i)}
+                         onMouseLeave=${() => setHovered(h => h === i ? null : h)}
+                         onClick=${() => setSelected(s => s === i ? null : i)}>
+                      <div style="height: ${STRIP_H}px; border-radius: 2px;
+                                  background: ${uptimeColor(v ? v.uptime : null)};
+                                  opacity: ${v ? (active ? 1 : 0.85) : (active ? 0.85 : NO_DATA_OPACITY)};
+                                  transition: opacity 0.1s"></div>
+                      <div style="height: ${MS_H}px; margin-top: 6px; position: relative">
+                        <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${msH}px;
+                                    background: var(--accent); border-radius: 2px 2px 0 0;
+                                    opacity: ${active ? 1 : 0.75}; transition: opacity 0.1s"></div>
+                      </div>
+                      ${CAN_HOVER && hovered === i && html`
+                        <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
+                                    ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
+                                    background: var(--bg); border: 1px solid var(--border);
+                                    border-radius: 6px; padding: 8px 10px; white-space: nowrap;
+                                    box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
+                          ${detail(d)}
+                        </div>`}
+                    </div>`;
+                })}
+              </div>
+              <div style="display: flex; gap: 2px; margin-top: 4px">
+                ${dates.map((d, i) => html`
+                  <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.75rem;
+                              color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
+                              overflow: visible; white-space: nowrap">
+                    ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
+                  </div>`)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        ${selected != null && dates[selected] && html`
+          <div style="margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border);
+                      border-radius: 6px; font-size: 0.95rem">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px">
+              <div style="flex: 1">${detail(dates[selected])}</div>
+              <button onClick=${() => setSelected(null)}
+                style="background: none; border: none; color: var(--text-secondary);
+                       font-size: 1.2rem; line-height: 1; cursor: pointer; font-family: inherit">×</button>
+            </div>
+          </div>`}`);
+    }
+
+    function UptimeArchive({ onUnauthorized }) {
+      const [days, setDays] = useState(30);
+      const [data, setData] = useState(() => uptimeOverviewMemo.get(30) || null);
+      const [loading, setLoading] = useState(!uptimeOverviewMemo.has(30));
+      const [error, setError] = useState(null);
+
+      useEffect(() => {
+        const cached = uptimeOverviewMemo.get(days);
+        if (cached) { setData(cached); setLoading(false); }
+        else { setData(null); setLoading(true); }
+        setError(null);
+        let alive = true;
+        // The contract echoes `days`, so that's the request param; `since` rides
+        // along so the window still works if the endpoint lands with
+        // cost_overview's param name instead. Unknown params are ignored.
+        const since = isoDaysAgo(days);
+        api('/api/uptime_overview?days=' + days + '&since=' + since, 0)
+          .then(d => { uptimeOverviewMemo.set(days, d); if (alive) { setData(d); setLoading(false); } })
+          .catch(e => {
+            if (!alive) return;
+            if (e.message === 'unauthorized') { onUnauthorized && onUnauthorized(); return; }
+            if (!cached) { setError(e.message); setLoading(false); }
+          });
+        return () => { alive = false; };
+      }, [days]);
+
+      const windowPicker = html`
+        <div style="display: flex; gap: 4px">
+          ${[30, 90, 365].map(d => html`
+            <button onClick=${() => setDays(d)}
+              style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
+                     cursor: pointer; font-family: inherit;
+                     border: 1px solid var(--border);
+                     background: ${days === d ? 'var(--accent)' : 'transparent'};
+                     color: ${days === d ? '#fff' : 'var(--text-secondary)'}">
+              ${d === 365 ? '1y' : d + 'd'}
+            </button>`)}
+        </div>`;
+
+      const header = html`
+        <div style="display: flex; justify-content: space-between; align-items: baseline;
+                    flex-wrap: wrap; gap: 8px 12px; margin-bottom: 4px">
+          <h2 style="margin: 0; font-size: 1.3rem">Uptime archive</h2>
+          ${windowPicker}
+        </div>
+        <div style="font-size: 1.02rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5">
+          What UptimeRobot saw, kept past its 3-month retention — one row per
+          monitor per day, written by the same 8am cron. The 1d / 7d / 30d
+          figures are its rolling ratios at the last pull, so they don't move
+          with the window above; the strip and the trend do.
+        </div>`;
+
+      const section = (children) => html`<div style="margin-top: 26px">${header}${children}</div>`;
+
+      if (loading && !data) return section(html`<div class="cost-placeholder">Loading uptime archive…</div>`);
+
+      if (error) {
+        return section(html`
+          <div class="cost-placeholder">
+            Couldn't load the uptime archive (${error}). The live targets above are
+            unaffected — they're polled directly, not read from this table.
+          </div>`);
+      }
+
+      const monitors = Array.isArray(data?.monitors) ? data.monitors : [];
+      const effDays = Number(data?.days) > 0 ? Number(data.days) : days;
+      const dates = [];
+      for (let i = effDays - 1; i >= 0; i--) dates.push(isoDaysAgo(i));
+
+      const seriesDates = new Set();
+      for (const m of monitors) {
+        for (const p of (Array.isArray(m.series) ? m.series : [])) {
+          if (p && p.date) seriesDates.add(p.date);
+        }
+      }
+
+      // Zero rows is the real state on day one and stays the state for a while
+      // — say so, with the date collection started, rather than drawing an
+      // empty chart that reads as an outage.
+      if (!monitors.length || seriesDates.size === 0) {
+        const since = data?.collecting_since
+          || (data?.generated_at ? String(data.generated_at).slice(0, 10) : isoDaysAgo(0));
+        const rest = (monitors.length
+          ? `— ${monitors.length} monitor${monitors.length === 1 ? '' : 's'} registered, no archived days yet.`
+          : '— no archived days yet.')
+          + ' A row lands per monitor per day on the health cron\'s send path, so'
+          + ' the first appears after its next run. Nothing is backfilled:'
+          + ' UptimeRobot exposes rolling ratios, not per-day history, and an'
+          + ' invented past would be worse than a short one.';
+        return section(html`
+          <div class="cost-placeholder">
+            <strong>Collecting since ${fmtShortDate(since)}</strong> ${rest}
+          </div>`);
+      }
+
+      const archivedDays = seriesDates.size;
+      const ratios = monitors.map(m => Number(m.uptime_30d)).filter(Number.isFinite);
+      const worst = ratios.length ? Math.min(...ratios) : null;
+      const ranked = monitors
+        .map(m => ({ name: m.name, ms: Number(m.avg_response_ms) }))
+        .filter(r => Number.isFinite(r.ms) && r.ms > 0)
+        .sort((a, b) => b.ms - a.ms);
+      const slowest = ranked[0]?.ms || 1;
+
+      // Built as one string, not interpolated across lines: htm trims the
+      // whitespace around a newline inside static text, which glues the
+      // separator to the next number ("· 30" -> "·30").
+      const summary = `lowest 30d uptime · ${monitors.length} monitor${monitors.length === 1 ? '' : 's'}`
+        + ` · ${archivedDays} day${archivedDays === 1 ? '' : 's'} archived`
+        + (archivedDays < effDays ? ` (window shows ${effDays})` : '');
+
+      const buckets = [
+        ['var(--green)', 1, 'no downtime recorded', '≥ 99.9%'],
+        ['var(--yellow)', 1, 'a check or two missed', '99 – 99.9%'],
+        ['var(--red)', 1, 'real downtime', '< 99%'],
+        [NO_DATA_COLOR, NO_DATA_OPACITY, 'not archived — a gap, not a zero', 'no row'],
+      ];
+
+      return section(html`
+        <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; flex-wrap: wrap">
+          <div style="font-size: 1.75rem; font-weight: 700;
+                      color: ${worst == null ? 'var(--text-secondary)' : uptimeColor(worst)}">
+            ${fmtPct(worst)}
+          </div>
+          <div style="font-size: 1.02rem; color: var(--text-secondary)">${summary}</div>
+        </div>
+
+        ${monitors.map(m => html`<${MonitorUptimeCard} key=${m.name} monitor=${m} dates=${dates} />`)}
+
+        <div class="two-col">
+          <!-- min-width: 0 on both tracks: monitor names are URLs, and a grid
+               item's automatic minimum size would let one widen the track past
+               the viewport (21px of horizontal page scroll at 375px). -->
+          <div style="min-width: 0">
+            <div style="font-size: 0.98rem; font-weight: 600; color: var(--text-secondary);
+                        font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
+              Reading the strip
+            </div>
+            ${buckets.map(([color, opacity, label, range]) => html`
+              <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
+                          border-bottom: 1px solid var(--border)">
+                <span style="width: 9px; height: 9px; border-radius: 2px; flex: none;
+                             background: ${color}; opacity: ${opacity}"></span>
+                <span style="font-size: 1.12rem">${label}</span>
+                <span style="margin-left: auto; font-size: 0.85rem; color: var(--text-secondary);
+                             font-family: 'SF Mono', ui-monospace, monospace">${range}</span>
+              </div>`)}
+          </div>
+
+          <div style="min-width: 0">
+            <div style="font-size: 0.98rem; font-weight: 600; color: var(--text-secondary);
+                        font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
+              Slowest to answer
+            </div>
+            ${ranked.length ? ranked.map(r => html`
+              <div style="padding: 5px 0; border-bottom: 1px solid var(--border)">
+                <div style="display: flex; align-items: center; gap: 8px">
+                  <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis;
+                               white-space: nowrap">${r.name}</span>
+                  <span style="margin-left: auto; font-size: 1.12rem; font-variant-numeric: tabular-nums">
+                    ${fmtMs(r.ms)}
+                  </span>
+                </div>
+                <div style="height: 3px; border-radius: 2px; margin-top: 3px; background: var(--accent);
+                            opacity: 0.6; width: ${(r.ms / slowest * 100).toFixed(1)}%"></div>
+              </div>`)
+              : html`<div style="font-size: 1.02rem; color: var(--text-secondary)">
+                  No response times archived yet.</div>`}
+            <div style="font-size: 0.85rem; color: var(--text-secondary); padding-top: 6px; line-height: 1.5">
+              Daily average of UptimeRobot's 5-minute checks — enough to see a
+              trend move, not enough for latency percentiles.
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 12px; font-size: 0.95rem; color: var(--text-secondary); line-height: 1.5">
+          Rows live in Turso's <code>uptime_daily</code> (cloud-direct, no sync leg)
+          and are written by <code>web/api/health_report.py</code>'s send path only.
+        </div>`);
     }
 
     // ---- Cost Chart (daily API spend per project) ----
