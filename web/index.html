@@ -137,6 +137,11 @@
     .header-meta {
       font-size: 1.02rem; color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace;
     }
+    /* Identity, not navigation — sized to the built/synced sub-line so it recedes. */
+    .header-user {
+      font-size: 0.61rem; color: var(--text-secondary); opacity: 0.65;
+      font-family: "SF Mono", ui-monospace, monospace;
+    }
     .header-btn {
       font-size: 1.09rem; color: var(--text-secondary); cursor: pointer;
       background: none; border: none; font-family: inherit; padding: 4px 10px;
@@ -732,7 +737,7 @@
                     title=${theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
               ${theme === 'light' ? '☾' : '☀'}
             </button>
-            ${email && html`<span class="header-meta" title=${email}>${email}</span>`}
+            ${email && html`<span class="header-user" title=${email}>${email}</span>`}
             <button class="header-btn" onClick=${onLogout}>Log out</button>
           </div>
         </header>
