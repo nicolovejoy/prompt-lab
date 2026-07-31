@@ -55,10 +55,15 @@ HTTP_MONITORS = [
     # ibuild4you implements the convention with per-dependency detail; its
     # monitor pointed at the homepage until 2026-07-31.
     ("ibuild4you", "https://ibuild4you.com/api/health"),
+    # Deep URLs, not the bare path: the shallow variant answers 200 while the
+    # database behind it is down, which is the state the homepage check already
+    # passed on. Adopted 2026-07-31 (byside PR #125, selected-projects PR #24).
+    ("byside", "https://by-side.net/api/health?db=1"),
+    # www, not the apex: the apex 307s to www (domain canonical), and a monitor
+    # that depends on redirect-following is one setting away from a false DOWN.
+    ("pianohouse", "https://www.pianohouseproject.org/api/health?db=1"),
     # No /api/health yet — homepage checks until each app adopts the convention.
-    ("byside", "https://by-side.net/"),
     ("bakerylouise", "https://bakerylouise.com/"),
-    ("pianohouse", "https://pianohouseproject.org/"),
     ("musicforge", "https://musicforge.app/"),
     # recountly's /api/health exists but is auth-gated (401), so pointing at it
     # would false-DOWN forever — the #40 failure exactly. Homepage until it is
