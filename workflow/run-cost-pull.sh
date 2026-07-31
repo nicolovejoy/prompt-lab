@@ -17,3 +17,8 @@ cd "$REPO"
 # 7-day window: covers the pull's incremental auto-window plus slack for any
 # missed nights, without re-pushing the whole history every run.
 "$PY" sync_to_turso.py --days 7
+
+# After the sync, never after the pull alone — the dashboard reads Turso, so a
+# heartbeat on the pull would report fresh through exactly the drift this
+# script exists to prevent. `set -e` means reaching here implies both legs ran.
+"$PY" "$REPO/heartbeat.py" cost-pull

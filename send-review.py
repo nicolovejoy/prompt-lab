@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 from anthropic import Anthropic
 
+import heartbeat
 from claude_api import SONNET, call_claude, load_env
 from store import get_store
 
@@ -223,6 +224,12 @@ def main():
         output_tokens=result["output_tokens"],
     )
     store.close()
+
+    # Gated on the send, not on reaching this line. The 60-night outage looked
+    # exactly like a healthy run right up to Resend's 403 — a heartbeat that
+    # fired on "the process finished" would have reported fresh throughout.
+    if email_result is not None:
+        heartbeat.ping("review")
 
     # Non-zero last, after the snapshot is safe, so launchd records the failure.
     if email_result is None:

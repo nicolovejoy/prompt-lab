@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 from anthropic import Anthropic
 
+import heartbeat
 from claude_api import SONNET, REPO_DIR, call_claude, load_env
 from store import get_store
 
@@ -171,6 +172,8 @@ def main():
         output_tokens=result["output_tokens"],
     )
     store.close()
+
+    heartbeat.ping("report")
 
 
 if __name__ == "__main__":

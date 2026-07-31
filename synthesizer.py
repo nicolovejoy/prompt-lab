@@ -9,6 +9,7 @@ from datetime import datetime
 
 from anthropic import Anthropic
 
+import heartbeat
 from claude_api import SONNET, call_claude, estimate_cost_cents, load_env
 from store import get_store
 
@@ -400,6 +401,11 @@ def main():
         print(f"  Total cost: ${total_cost/100:.4f}")
 
     store.close()
+
+    # Only --all, which is what the LaunchAgent runs. A manual --daily writes
+    # real rows but is not the nightly, and must not mask its absence.
+    if args.all:
+        heartbeat.ping("synthesizer")
 
 
 if __name__ == "__main__":

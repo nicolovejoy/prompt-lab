@@ -51,6 +51,23 @@ READER_EMAILS=elovejoy5@gmail.com
 CRON_SECRET=op://dev-secrets/Prompt Lab Cron/credential
 HEALTH_TO_EMAIL=nlovejoy@me.com
 
+# UptimeRobot (issue #45). Full account key — the dashboard only reads, but the
+# same key provisions monitors. Local + Vercel Production.
+UPTIMEROBOT_API_KEY=op://dev-secrets/UptimeRobot/api-key
+
+# Heartbeat ping URLs, one per recurring job (heartbeat.py). Local/mini only —
+# written by the launchd jobs, never by the cloud. Unguessable rather than
+# authenticated, so treat them as secrets: anyone holding one can report a dead
+# job as fresh. Unset = no-op, which is why the call sites ship before these do.
+#
+# COMMENTED until the monitors exist and their URLs are stored — `op inject`
+# fails hard on a reference it can't resolve, which would take .env.local with
+# it. Uncomment in the same pass that creates the 1Password item.
+# HEARTBEAT_URL_REVIEW=op://dev-secrets/Prompt Lab Heartbeats/review
+# HEARTBEAT_URL_SYNTHESIZER=op://dev-secrets/Prompt Lab Heartbeats/synthesizer
+# HEARTBEAT_URL_COST_PULL=op://dev-secrets/Prompt Lab Heartbeats/cost-pull
+# HEARTBEAT_URL_REPORT=op://dev-secrets/Prompt Lab Heartbeats/report
+
 # Cross-project Todos page: read-only PAT for open-issue search (web/api/todos.py).
 # Also set this in the Vercel project env. GITHUB_USER defaults to nicolovejoy.
 GITHUB_TOKEN=op://dev-secrets/prompt-lab-github-pat/credential

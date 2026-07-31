@@ -47,6 +47,9 @@ jobs:
       - name: Public draft/publish tests
         run: python scripts/test_public_draft.py
 
+      - name: Heartbeat tests
+        run: python scripts/test_heartbeat.py
+
   deploy:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
