@@ -17,7 +17,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -2467,11 +2467,13 @@ def _():
 def _health_env():
     """Set the env the health endpoint needs; returns a restore fn."""
     saved = {k: os.environ.get(k) for k in
-             ("AUTH_SECRET", "CRON_SECRET", "RESEND_API_KEY", "HEALTH_TO_EMAIL")}
+             ("AUTH_SECRET", "CRON_SECRET", "RESEND_API_KEY", "HEALTH_TO_EMAIL",
+              "UPTIMEROBOT_API_KEY")}
     os.environ["AUTH_SECRET"] = "test-secret"
     os.environ["CRON_SECRET"] = "cron-secret"
     os.environ["RESEND_API_KEY"] = "re_test"
     os.environ["HEALTH_TO_EMAIL"] = "nico@test.invalid"
+    os.environ["UPTIMEROBOT_API_KEY"] = "ur-test"
 
     def restore():
         for k, v in saved.items():
@@ -2482,20 +2484,26 @@ def _health_env():
     return restore
 
 
-def _health_mod(up=True, hb="fresh"):
-    """Load health_report with targets, joke, and send stubbed. Returns
-    (mod, sent) where sent collects (subject, html, text) tuples. Every poll
-    appends to `mod._polls`, so a test can pin that an unauthorized caller
-    never made us do the target-polling work.
+def _health_mod(up=True, hb="fresh", ur="ok"):
+    """Load health_report with targets, joke, send, and the UptimeRobot pull
+    stubbed. Returns (mod, sent) where sent collects (subject, html, text)
+    tuples. Every poll appends to `mod._polls`, so a test can pin that an
+    unauthorized caller never made us do the target-polling work; every uptime
+    archive write appends to `mod._uptime_writes`.
 
     `hb` drives the heartbeat (artifact-freshness) stub: fresh / stale /
-    never (table empty) / error (Turso unreadable). The stub dispatches on the
-    SQL because the endpoint issues two different kinds of query against the
-    same helper — the pause lookup and the freshness lookups — and they must
-    not be conflated: the pause check fails OPEN, freshness must not."""
+    never (table empty) / error (Turso unreadable). `ur` drives the uptime
+    pull: ok / error (UptimeRobot unreachable).
+
+    The turso stub dispatches on the SQL because the endpoint issues three
+    different kinds of query against the same helper — the pause lookup, the
+    freshness lookups, and the uptime upsert — and they must not be conflated:
+    the pause check fails OPEN, freshness must not, and the uptime write must
+    be separately observable."""
     mod = load_endpoint("web/api/health_report.py", "health_report_test")
     sent = []
     mod._polls = []
+    mod._uptime_writes = []
 
     def fake_check(name, url, deep=False):
         mod._polls.append(name)
@@ -2505,6 +2513,9 @@ def _health_mod(up=True, hb="fresh"):
     today = datetime.now(timezone.utc).date().isoformat()
 
     def fake_turso(sql, args=None):
+        if "uptime_daily" in sql:
+            mod._uptime_writes.append(args)
+            return []
         if "health_email_state" in sql:
             return []  # not paused
         if hb == "error":
@@ -2513,9 +2524,23 @@ def _health_mod(up=True, hb="fresh"):
             return []
         return [{"d": "2020-01-01" if hb == "stale" else today}]
 
+    def fake_fetch(api_key):
+        if ur == "error":
+            raise RuntimeError("uptimerobot unreachable")
+        return [
+            {"friendly_name": "garm-monitor", "status": 2,
+             "custom_uptime_ratio": "100.000-100.000-99.980",
+             "response_times": [{"datetime": 1, "value": 280},
+                                {"datetime": 2, "value": 282}]},
+            {"friendly_name": "prompt-labs", "status": 9,
+             "custom_uptime_ratio": "50.000-90.000-99.000",
+             "response_times": []},
+        ]
+
     mod._check_target = fake_check
     mod._joke = lambda: "a test joke"
     mod._send_email = lambda subject, html, text: sent.append((subject, html, text))
+    mod._fetch_uptime_monitors = fake_fetch
     mod.turso_query = fake_turso
     return mod, sent
 
@@ -2540,7 +2565,8 @@ def _():
         h = invoke(mod, "/api/health_report",
                    {"authorization": "Bearer cron-secret"})
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
-        assert h.body == {"sent": True, "down": [], "stale": []}, h.body
+        assert h.body == {"sent": True, "down": [], "stale": [],
+                          "uptime_rows": 2}, h.body
         assert len(sent) == 1
         subject, html, text = sent[0]
         assert "2/2 up" in subject, subject
@@ -2575,7 +2601,8 @@ def _():
         h = invoke(mod, "/api/health_report",
                    {"authorization": "Bearer cron-secret"})
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
-        assert h.body == {"skipped": "paused", "paused_until": far}, h.body
+        assert h.body == {"skipped": "paused", "paused_until": far,
+                          "uptime_rows": 2}, h.body
         assert not sent
     finally:
         restore()
@@ -2656,7 +2683,8 @@ def _():
         mod, sent = _health_mod()
         h = invoke(mod, "/api/health_report", _health_cookie("admin"))
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
-        assert h.body == {"sent": True, "down": [], "stale": []}, h.body
+        assert h.body == {"sent": True, "down": [], "stale": [],
+                          "uptime_rows": 2}, h.body
         assert len(sent) == 1, f"admin send path broken: {sent}"
     finally:
         restore()
@@ -2911,6 +2939,297 @@ def _():
     assert url == "https://prompt-labs.org/api/health?db=1", url
     assert deep is True
     assert "/api/info" not in url
+
+
+# === uptime archive (Phase 1, docs/plan-2026-08-01-uptime-dashboard.md) ===
+
+def _uptime_ddl():
+    return load_endpoint("scripts/create_uptime_daily.py", "create_uptime_daily_test")
+
+
+@test("uptime_daily: DDL re-runs clean and declares the planned columns")
+def _():
+    import sqlite3
+    ddl = _uptime_ddl()
+    con = sqlite3.connect(":memory:")
+    for _ in range(2):  # idempotent: the script is expected to be re-run
+        for sql in ddl.STATEMENTS:
+            con.execute(sql)
+    info = list(con.execute("PRAGMA table_info(uptime_daily)"))
+    assert [r[1] for r in info] == [
+        "date", "monitor", "uptime_1d", "uptime_7d", "uptime_30d",
+        "avg_response_ms", "status"], info
+    assert [r[1] for r in info if r[5]] == ["date", "monitor"], f"PK is not (date, monitor): {info}"
+
+
+@test("uptime_daily: a second same-day pull UPDATEs the row, never duplicates")
+def _():
+    import sqlite3
+    ddl = _uptime_ddl()
+    mod = load_endpoint("web/api/health_report.py", "health_report_upsert_test")
+    con = sqlite3.connect(":memory:")
+    for sql in ddl.STATEMENTS:
+        con.execute(sql)
+    con.execute(mod.UPTIME_UPSERT_SQL,
+                ["2026-08-01", "garm", 100.0, 100.0, 100.0, 281, "UP"])
+    con.execute(mod.UPTIME_UPSERT_SQL,
+                ["2026-08-01", "garm", 99.5, 99.9, 99.99, 310, "SEEMS_DOWN"])
+    rows = list(con.execute(
+        "SELECT date, monitor, uptime_1d, avg_response_ms, status FROM uptime_daily"))
+    assert len(rows) == 1, f"same-day re-run duplicated: {rows}"
+    assert rows[0] == ("2026-08-01", "garm", 99.5, 310, "SEEMS_DOWN"), rows[0]
+
+
+@test("uptime pull: custom_uptime_ratio is a STRING and must be split + floated")
+def _():
+    # The trap this test exists for: UptimeRobot returns "100.000-99.980-99.990"
+    # for custom_uptime_ratios=1-7-30. Same class as Turso handing back
+    # aggregates as strings — untouched, every downstream number is text.
+    mod = load_endpoint("web/api/health_report.py", "health_report_ratio_test")
+    row = mod._uptime_row({"friendly_name": "garm", "status": 2,
+                           "custom_uptime_ratio": "100.000-99.980-99.990"},
+                          "2026-08-01")
+    assert row["uptime_1d"] == 100.0 and isinstance(row["uptime_1d"], float), row
+    assert row["uptime_7d"] == 99.98, row
+    assert row["uptime_30d"] == 99.99, row
+    assert row["status"] == "UP", row
+
+
+@test("uptime pull: a missing or garbage ratio reads None, never crashes")
+def _():
+    mod = load_endpoint("web/api/health_report.py", "health_report_ratio_bad_test")
+    for raw in (None, "", "n/a", "100.000-"):
+        row = mod._uptime_row({"friendly_name": "x", "custom_uptime_ratio": raw},
+                              "2026-08-01")
+        assert row["uptime_7d"] is None and row["uptime_30d"] is None, (raw, row)
+    assert mod._uptime_row({"friendly_name": "x"}, "2026-08-01")["status"] == "UNKNOWN"
+
+
+@test("uptime pull: response times collapse to one daily average int")
+def _():
+    # Decision 1 in the plan: keep the daily average, not the raw 5-minute
+    # series (~2,600 rows per monitor per day).
+    mod = load_endpoint("web/api/health_report.py", "health_report_avg_test")
+    row = mod._uptime_row({"friendly_name": "garm", "status": 2,
+                           "response_times": [{"datetime": 1, "value": 280},
+                                              {"datetime": 2, "value": 283}]},
+                          "2026-08-01")
+    assert row["avg_response_ms"] == 282 and isinstance(row["avg_response_ms"], int), row
+    empty = mod._uptime_row({"friendly_name": "garm", "response_times": []},
+                            "2026-08-01")
+    assert empty["avg_response_ms"] is None, empty
+
+
+@test("uptime pull: cron send writes exactly one row per monitor, dated today")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        writes = mod._uptime_writes
+        assert len(writes) == 2, f"expected one row per monitor: {writes}"
+        today = datetime.now(timezone.utc).date().isoformat()
+        assert [w[0] for w in writes] == [today, today], writes
+        assert [w[1] for w in writes] == ["garm-monitor", "prompt-labs"], writes
+        assert h.body["uptime_rows"] == 2, h.body
+    finally:
+        restore()
+
+
+@test("uptime pull: ?dry=1 writes NOTHING — a reader must not trigger a write")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report?dry=1", _health_cookie("reader"))
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert mod._uptime_writes == [], (
+            "dry run archived uptime — ?dry=1 is open to any authenticated role, "
+            f"so that is a privilege leak: {mod._uptime_writes}")
+        assert not sent
+    finally:
+        restore()
+
+
+@test("uptime pull: an UptimeRobot outage still sends the email")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(ur="error")
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert len(sent) == 1, "a failed uptime pull killed the email"
+        assert h.body["uptime_rows"] == 0, h.body
+        assert mod._uptime_writes == [], mod._uptime_writes
+    finally:
+        restore()
+
+
+@test("uptime pull: no UPTIMEROBOT_API_KEY → skipped quietly, email unaffected")
+def _():
+    # The key is in mini's .env.local but not yet in Vercel; until it is, the
+    # cron must behave exactly as before rather than erroring nightly.
+    restore = _health_env()
+    try:
+        os.environ.pop("UPTIMEROBOT_API_KEY", None)
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert len(sent) == 1
+        assert h.body["uptime_rows"] == 0, h.body
+        assert mod._uptime_writes == [], mod._uptime_writes
+    finally:
+        restore()
+
+
+@test("uptime pull: the archive still fills while emails are paused")
+def _():
+    # Pausing the EMAIL for a week must not punch a week-long hole in the
+    # archive — the two are independent artifacts.
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        base = mod.turso_query
+
+        def paused_turso(sql, args=None):
+            if "health_email_state" in sql:
+                return [{"value": "2099-01-01T00:00:00Z"}]
+            return base(sql, args)
+        mod.turso_query = paused_turso
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.body["skipped"] == "paused", h.body
+        assert not sent
+        assert len(mod._uptime_writes) == 2, mod._uptime_writes
+    finally:
+        restore()
+
+
+# === uptime_overview.py (read side; contract fixed in the plan) ===
+
+def _uptime_ov(rows, path="/api/uptime_overview", authed=True):
+    """Invoke uptime_overview with the archive query stubbed.
+    Returns (captured_sql_list, response)."""
+    mod = load_endpoint("web/api/uptime_overview.py", "endpoint_uptime_ov")
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        if callable(rows):
+            return rows(sql, args)
+        return rows
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: authed)
+    try:
+        h = invoke(mod, path)
+    finally:
+        restore_a()
+        restore_q()
+    return captured, h
+
+
+@test("uptime_overview: anonymous → 401, archive never read")
+def _():
+    captured, h = _uptime_ov([], authed=False)
+    assert h.status_code == 401, f"got {h.status_code}: {h.body}"
+    assert captured == [], f"queried before rejecting: {captured}"
+
+
+@test("uptime_overview: returns the contract Phase 2 builds against")
+def _():
+    captured, h = _uptime_ov([
+        {"date": "2026-08-01", "monitor": "garm", "uptime_1d": 100.0,
+         "uptime_7d": 100.0, "uptime_30d": 99.98, "avg_response_ms": 281,
+         "status": "UP"},
+        {"date": "2026-08-02", "monitor": "garm", "uptime_1d": 99.5,
+         "uptime_7d": 99.9, "uptime_30d": 99.97, "avg_response_ms": 300,
+         "status": "UP"},
+        {"date": "2026-08-02", "monitor": "prntd", "uptime_1d": 100.0,
+         "uptime_7d": 100.0, "uptime_30d": 100.0, "avg_response_ms": 120,
+         "status": "UP"},
+    ])
+    assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+    body = h.body
+    assert set(body) >= {"days", "monitors", "generated_at"}, sorted(body)
+    assert body["days"] == 30, body["days"]
+    assert body["generated_at"].endswith("Z"), body["generated_at"]
+    names = [m["name"] for m in body["monitors"]]
+    assert names == ["garm", "prntd"], names
+    garm = body["monitors"][0]
+    assert set(garm) >= {"name", "uptime_30d", "uptime_7d", "uptime_1d",
+                         "avg_response_ms", "status", "series"}, sorted(garm)
+    # Headline figures come from the newest row, not the first one seen.
+    assert garm["uptime_1d"] == 99.5 and garm["uptime_30d"] == 99.97, garm
+    assert garm["avg_response_ms"] == 300 and garm["status"] == "UP", garm
+    assert garm["series"] == [
+        {"date": "2026-08-01", "uptime": 100.0, "ms": 281},
+        {"date": "2026-08-02", "uptime": 99.5, "ms": 300}], garm["series"]
+    assert "date >= ?" in captured[0][0], captured[0][0]
+
+
+@test("uptime_overview: an empty archive is a valid 200, not an error")
+def _():
+    # The archive starts at zero rows and fills one day at a time; there is no
+    # backfill (v2 exposes rolling ratios only, so history would be invented).
+    _, h = _uptime_ov([])
+    assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+    assert h.body["monitors"] == [], h.body
+    assert h.body["days"] == 30, h.body
+
+
+@test("uptime_overview: Turso's string-encoded numbers are coerced")
+def _():
+    # Recurring gotcha: Turso hands back numeric columns as JSON strings.
+    _, h = _uptime_ov([
+        {"date": "2026-08-01", "monitor": "garm", "uptime_1d": "100.000",
+         "uptime_7d": "99.980", "uptime_30d": "99.990",
+         "avg_response_ms": "281", "status": "UP"},
+    ])
+    m = h.body["monitors"][0]
+    assert isinstance(m["uptime_1d"], float) and m["uptime_1d"] == 100.0, m
+    assert isinstance(m["avg_response_ms"], int) and m["avg_response_ms"] == 281, m
+    assert m["series"][0] == {"date": "2026-08-01", "uptime": 100.0, "ms": 281}, m
+
+
+@test("uptime_overview: nulls survive as null, not 0")
+def _():
+    # A monitor with no response-time samples has an unknown latency; 0ms would
+    # be a lie the chart would happily draw.
+    _, h = _uptime_ov([
+        {"date": "2026-08-01", "monitor": "garm", "uptime_1d": None,
+         "uptime_7d": None, "uptime_30d": None, "avg_response_ms": None,
+         "status": "PAUSED"},
+    ])
+    m = h.body["monitors"][0]
+    assert m["avg_response_ms"] is None and m["uptime_30d"] is None, m
+    assert m["series"][0]["ms"] is None, m["series"]
+
+
+@test("uptime_overview: days windows the query and is clamped, never 400s")
+def _():
+    captured, h = _uptime_ov([], path="/api/uptime_overview?days=90")
+    assert h.body["days"] == 90, h.body
+    since = captured[0][1][0]
+    expected = (datetime.now(timezone.utc).date() - timedelta(days=89)).isoformat()
+    assert since == expected, f"{since} != {expected}"
+    _, h2 = _uptime_ov([], path="/api/uptime_overview?days=banana")
+    assert h2.body["days"] == 30, h2.body
+
+
+@test("uptime_overview: an unreadable archive says so — never a silent empty")
+def _():
+    # #45's whole point: absence must not read as 'nothing to report'.
+    def boom(sql, args=None):
+        raise RuntimeError("turso unreachable")
+    _, h = _uptime_ov(boom)
+    assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+    assert h.body["monitors"] == [], h.body
+    assert h.body.get("unavailable") is True, h.body
 
 
 # === Main ===

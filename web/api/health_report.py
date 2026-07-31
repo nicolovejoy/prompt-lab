@@ -25,6 +25,10 @@ answers "did this recurring job run" by measuring the age of the artifact the
 job produces (issue #45) — a URL check can never see a dead cron, and that is
 the failure class that has actually bitten us.
 
+The same cron also archives yesterday's UptimeRobot ratios into `uptime_daily`
+(_archive_uptime, phase 1 of docs/plan-2026-08-01-uptime-dashboard.md). It rides
+this handler because Vercel Hobby crons are daily and one already exists here.
+
 The joke: generated per-send with the Anthropic API (Haiku tier), falling back
 to a canned rotation — the email must send even when the API doesn't.
 """
@@ -77,6 +81,25 @@ HEARTBEATS = [
     ("bi-monthly report", "SELECT max(date) AS d FROM review_snapshots "
                           "WHERE review_type = 'monthly_report'", 20),
 ]
+
+# --- uptime archive ---------------------------------------------------------
+# v3 provisions monitors (scripts/uptimerobot.py) but has NO history endpoints:
+# /logs, /response-times and /uptimes all 404 and lastDayUptimes comes back
+# empty. Legacy v2 is the only source of history and works on the free plan
+# (probed live 2026-07-31 — the published docs are thin and partly wrong).
+UPTIMEROBOT_API = "https://api.uptimerobot.com/v2/getMonitors"
+UPTIME_RATIO_WINDOWS = "1-7-30"  # days, and the order they come back in
+UPTIME_STATUS = {0: "PAUSED", 1: "PENDING", 2: "UP", 8: "SEEMS_DOWN", 9: "DOWN"}
+
+UPTIME_UPSERT_SQL = (
+    "INSERT INTO uptime_daily "
+    "(date, monitor, uptime_1d, uptime_7d, uptime_30d, avg_response_ms, status) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?) "
+    "ON CONFLICT(date, monitor) DO UPDATE SET "
+    "uptime_1d = excluded.uptime_1d, uptime_7d = excluded.uptime_7d, "
+    "uptime_30d = excluded.uptime_30d, "
+    "avg_response_ms = excluded.avg_response_ms, status = excluded.status"
+)
 
 PAUSE_DAYS = 7
 PAUSE_TOKEN_MAX_AGE = 45 * 86400  # links in old emails keep working ~45 days
@@ -211,6 +234,115 @@ def _check_heartbeats():
             entry["note"] = f"{age}d old, expected within {max_age}d"
         out.append(entry)
     return out
+
+
+def _fetch_uptime_monitors(api_key):
+    """One v2 getMonitors call. Module-level so tests can replace it."""
+    payload = json.dumps({
+        "api_key": api_key,
+        "format": "json",
+        "custom_uptime_ratios": UPTIME_RATIO_WINDOWS,
+        "response_times": 1,
+    }).encode()
+    req = urllib.request.Request(
+        UPTIMEROBOT_API,
+        data=payload,
+        headers={"Content-Type": "application/json",
+                 "User-Agent": "prompt-lab-health/1.0"},
+    )
+    with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT) as resp:
+        data = json.loads(resp.read())
+    # v2 answers 200 with stat="fail" on an auth or quota error, so the HTTP
+    # status alone would read as success.
+    if data.get("stat") != "ok":
+        raise RuntimeError(f"uptimerobot returned {str(data)[:200]}")
+    return data.get("monitors") or []
+
+
+def _split_ratios(raw):
+    """`custom_uptime_ratio` is a STRING — "100.000-99.980-99.990" — in the
+    order requested by custom_uptime_ratios (1d-7d-30d). Same trap class as
+    Turso handing back aggregates as strings: left untouched these "numbers"
+    are text and every average downstream is nonsense. Returns three floats,
+    None for anything unparseable."""
+    out = []
+    for part in str(raw or "").split("-")[:3]:
+        try:
+            out.append(float(part))
+        except ValueError:
+            out.append(None)
+    return out + [None] * (3 - len(out))
+
+
+def _avg_ms(samples):
+    """Collapse the response-time samples to one daily average.
+
+    Deliberately an average, not the raw 5-minute series: that would be ~2,600
+    rows per monitor per day for percentiles no one has asked for yet
+    (decision 1 in the plan). None when there are no samples — an unknown
+    latency, which 0 would misreport as instant."""
+    values = []
+    for s in samples or []:
+        try:
+            values.append(float(s.get("value")))
+        except (AttributeError, TypeError, ValueError):
+            continue
+    return int(round(sum(values) / len(values))) if values else None
+
+
+def _uptime_row(monitor, date):
+    """Map one v2 monitor object to an `uptime_daily` row."""
+    u1, u7, u30 = _split_ratios(monitor.get("custom_uptime_ratio"))
+    try:
+        status = UPTIME_STATUS.get(int(monitor.get("status")), "UNKNOWN")
+    except (TypeError, ValueError):
+        status = "UNKNOWN"
+    return {
+        "date": date,
+        "monitor": monitor.get("friendly_name") or monitor.get("url") or "unnamed",
+        "uptime_1d": u1,
+        "uptime_7d": u7,
+        "uptime_30d": u30,
+        "avg_response_ms": _avg_ms(monitor.get("response_times")),
+        "status": status,
+    }
+
+
+def _archive_uptime():
+    """Archive today's UptimeRobot ratios into `uptime_daily`. Never raises.
+
+    UptimeRobot keeps 3 months of history and we want forever — that gap is the
+    only reason this exists. prompt-lab still samples nothing itself.
+
+    Wrapped the way record_login is in callback.py: swallow, log, continue. The
+    email is the more important artifact, and a monitoring side-quest must never
+    be able to kill it. Returns the number of rows written.
+    """
+    api_key = os.environ.get("UPTIMEROBOT_API_KEY")
+    if not api_key:
+        print("health_report: UPTIMEROBOT_API_KEY unset — uptime archive skipped")
+        return 0
+    try:
+        monitors = _fetch_uptime_monitors(api_key)
+    except Exception as e:
+        print(f"health_report: uptime pull failed: {e}"[:300])
+        return 0
+
+    date = _utc()[:10]
+    written = 0
+    for m in monitors:
+        row = _uptime_row(m, date)
+        try:
+            turso_query(UPTIME_UPSERT_SQL, [
+                row["date"], row["monitor"], row["uptime_1d"], row["uptime_7d"],
+                row["uptime_30d"], row["avg_response_ms"], row["status"],
+            ])
+            written += 1
+        except Exception as e:
+            # Per monitor, so one bad row doesn't strand the rest.
+            print(f"health_report: uptime write failed for "
+                  f"{row['monitor']}: {e}"[:300])
+    return written
 
 
 def _joke():
@@ -381,8 +513,16 @@ class handler(BaseHTTPRequestHandler):
                             "paused_until": paused_until,
                             "would_send": not paused})
                 return
+
+            # Send path only: ?dry=1 is open to any authenticated role (it is
+            # what #/health reads), so writing there would let a reader trigger
+            # a write. Ahead of the pause check on purpose — pausing the EMAIL
+            # for a week must not punch a week-long hole in the archive.
+            uptime_rows = _archive_uptime()
+
             if paused:
-                self._json({"skipped": "paused", "paused_until": paused_until})
+                self._json({"skipped": "paused", "paused_until": paused_until,
+                            "uptime_rows": uptime_rows})
                 return
 
             pause_url = ("https://prompt-labs.org/api/health_report"
@@ -391,7 +531,8 @@ class handler(BaseHTTPRequestHandler):
             _send_email(subject, html, text)
             self._json({"sent": True,
                         "down": [r["name"] for r in results if not r["ok"]],
-                        "stale": [h["name"] for h in heartbeats if h["ok"] is False]})
+                        "stale": [h["name"] for h in heartbeats if h["ok"] is False],
+                        "uptime_rows": uptime_rows})
         except Exception as e:
             print(f"health_report error: {e}"[:300])
             self._json({"error": str(e)}, 500)
