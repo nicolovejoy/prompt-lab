@@ -53,6 +53,9 @@ HEALTH_TO_EMAIL=nlovejoy@me.com
 
 # UptimeRobot (issue #45). Full account key — the dashboard only reads, but the
 # same key provisions monitors. Local + Vercel Production.
+# Vercel Production is now load-bearing: the health cron reads it to archive the
+# v2 uptime ratios into `uptime_daily`. Unset just skips the pull (quietly), so
+# the archive stays empty until it's added there.
 UPTIMEROBOT_API_KEY=op://dev-secrets/UptimeRobot/api-key
 
 # Heartbeat ping URLs, one per recurring job (heartbeat.py). Local/mini only —
