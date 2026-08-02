@@ -63,16 +63,26 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**⚠️ The uptime archive wrote on 2026-08-01 and not on 2026-08-02.** Unresolved.
-`uptime_daily` held 9 rows for Aug 1 (one per monitor — the pull works end to end)
-and nothing for Aug 2, checked at 20:20 UTC against a cron due at 15:00 UTC.
-Ruled out, don't re-derive: the production pull reproduces locally against the same
-key; `health_email_state` is empty so emails aren't paused (and the pull runs ahead
-of the pause check anyway); nothing was deployed between the two days. **Vercel log
-retention is ~1 hour**, so the cron's own logs are gone by the time anyone looks —
-post-hoc forensics is not available here, which is exactly why artifact checks carry
-the weight. **The question that decides it: did the health email arrive that
-morning?** Yes → cron ran, pull failed in prod only. No → cron never fired.
+**The uptime archive wrote on 2026-08-01 and not on 2026-08-02 — DIAGNOSED
+2026-08-02.** `uptime_daily` held 9 rows for Aug 1 and none for Aug 2. **The Aug 2
+health email arrived**, which settles it: the cron fired, and the pull failed
+silently in production. Not cron-dead.
+
+The mechanism, and it is the interesting part: `_archive_uptime`
+(`web/api/health_report.py:322`) returns `0` on every failure path — unset key, pull
+exception, per-row write failure — logs to stdout and lets the email send. The row
+count goes into `uptime_rows` in the **JSON response**, which only the cron's HTTP
+caller ever sees, and **Vercel log retention is ~1 hour**. So a totally failed pull
+is indistinguishable from a good one in the inbox. Aug 1 wrote 9 rows and nothing
+deployed between the two days, so the key was live and this was transient —
+plausibly the 8-second `FETCH_TIMEOUT` on the v2 call.
+
+**The fix that actually belongs here, not yet built:** put the row count in the
+email body — `9 monitors archived` normally, a loud `uptime archive: 0 rows written`
+when the pull failed. The send path already knows the answer and throws it away.
+That is same-morning and thresholdless. The `uptime archive` heartbeat added in
+`b179cc1` is the backstop, not the answer — at a 2-day threshold it would have
+reported this on Aug 3, and by design stays quiet through a single transient miss.
 
 - **Phase 3 of the uptime plan** — `/api/health` for `musicforge` and `prntd` (asked
   via handoff, awaiting reply) and `bakerylouise-v1` (**has no handoff channel** —
@@ -82,9 +92,6 @@ morning?** Yes → cron ran, pull failed in prod only. No → cron never fired.
   prompt-labs.org, against 9 in `HTTP_MONITORS`) and add the test asserting every
   deep-health `TARGETS` URL also appears in `HTTP_MONITORS`. They are two
   declarations of overlapping intent and will drift.
-- **Delete the recountly monitor in the UptimeRobot UI.** Dropped from
-  `HTTP_MONITORS` 2026-08-02; `scripts/uptimerobot.py` never deletes, so the monitor
-  itself is still live and will false-alarm when the deployment comes down.
 - **garm #7 denial-count line** in the health email (`GARM_REPORTING_KEY` shipped on
   garm's side; the garm handoff channel will post the shape).
 - **`#/health` has never been visually verified** — both themes were checked by
