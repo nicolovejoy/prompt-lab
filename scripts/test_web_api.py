@@ -2504,6 +2504,9 @@ def _health_mod(up=True, hb="fresh", ur="ok"):
     sent = []
     mod._polls = []
     mod._uptime_writes = []
+    # Ordered log of what each query was, so a test can pin that the archive's
+    # own freshness is read BEFORE the archive is written.
+    mod._sql_kinds = []
 
     def fake_check(name, url, deep=False):
         mod._polls.append(name)
@@ -2513,11 +2516,17 @@ def _health_mod(up=True, hb="fresh", ur="ok"):
     today = datetime.now(timezone.utc).date().isoformat()
 
     def fake_turso(sql, args=None):
-        if "uptime_daily" in sql:
+        # Match the write on INSERT, not on the table name: the "uptime archive"
+        # heartbeat SELECTs from uptime_daily too, and conflating the two would
+        # make the freshness read look like a write and return no rows.
+        if "INSERT INTO uptime_daily" in sql:
+            mod._sql_kinds.append("uptime-write")
             mod._uptime_writes.append(args)
             return []
         if "health_email_state" in sql:
             return []  # not paused
+        mod._sql_kinds.append(
+            "uptime-freshness" if "uptime_daily" in sql else "freshness")
         if hb == "error":
             raise RuntimeError("turso unreachable")
         if hb == "never":
@@ -2811,6 +2820,37 @@ def _():
     # 1st & 16th → gaps of ~16 days.
     assert by_name["bi-monthly report"] >= 17, by_name
     assert by_name["weekly rollups"] >= 8, by_name
+    # Written by a daily cron, so it tolerates one miss like the other nightlies.
+    assert by_name["uptime archive"] == 2, by_name
+
+
+@test("heartbeats: the uptime archive declares its own freshness")
+def _():
+    """Added 2026-08-02: the archive wrote on Aug 1, not Aug 2, and nothing
+    said so for two days because it was the one artifact with no check."""
+    mod, _ = _health_mod()
+    sqls = {n: s for n, s, _ in mod.HEARTBEATS}
+    assert "uptime archive" in sqls, list(sqls)
+    assert "uptime_daily" in sqls["uptime archive"], sqls["uptime archive"]
+
+
+@test("heartbeats: the archive's freshness is read before the archive is written")
+def _():
+    """The same request writes uptime_daily and grades it. If the write ran
+    first it would refresh the row it is about to grade and report fresh
+    forever — an alarm that can never fire is worse than none."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert mod._uptime_writes, "archive never written on the send path"
+        kinds = mod._sql_kinds
+        assert "uptime-freshness" in kinds, kinds
+        assert kinds.index("uptime-freshness") < kinds.index("uptime-write"), kinds
+    finally:
+        restore()
 
 
 @test("health_report: no auth + ?dry=1 → 401 and targets never polled")

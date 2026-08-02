@@ -57,371 +57,217 @@ It inserts the entry at the **top** of `## Active`. When an entry is acted on, m
 
 ## Next Steps
 
-### Cross-repo work goes through `~/src/.handoff` — NOT a PR from here (corrected 2026-07-31)
-This session dispatched sub-agents straight into `byside` and `selected-projects` to write their `/api/health` endpoints, because `docs/plan-2026-08-01-uptime-dashboard.md` phrased Phase 3 as "one small PR per repo, one sub-agent each." That was the wrong call and the plan's phrasing is the trap — **the repo boundary is the ownership boundary**, and each repo's agent owns its own conventions. Nico: *"put an action in the .handoff place for them to do the work, listen for their response. is that not clearly our way?"*
-- **The practical tell, worth recognising early:** agents working in a sibling repo run from a cold permission slate — there is no `additionalDirectories` in `~/.claude/settings.json`, and that repo's own `settings.local.json` only loads in a session started there. A wall of permission prompts mid-task is the convention signalling it's being bypassed, not a config annoyance to route around.
-- Both notes were posted, then archived with an honest outcome: Nico merged the PRs himself before either repo's agent replied, so the review the notes asked for never happened. The routes are theirs to change freely.
-- Saved as memory `feedback-cross-repo-via-handoff`. **Remaining Phase 3 (musicforge, prntd) went out as handoff asks, not PRs** — the correct shape, for reference.
-
-### ⚠️ OPEN 2026-08-02 — the uptime archive wrote on Aug 1 and NOT on Aug 2. Unresolved.
-Verified two days after shipping: `uptime_daily` holds **9 rows dated 2026-08-01** (one per monitor — the pull works end to end) and **nothing for 2026-08-02**, checked at 20:20 UTC against a cron due at 15:00 UTC. Also confirmed healthy the same check: the bi-monthly report fired on the 1st (that 4-month-dead job is genuinely fixed), the review email ran, the synthesizer is current.
-- **Ruled out, don't re-derive:** the production pull was reproduced locally against the same key — 9 monitors, ratios parsed correctly. `health_email_state` is empty, so emails are not paused (and the pull runs ahead of the pause check anyway). Nothing was deployed between the two days.
-- **Could not determine:** whether the Aug 2 cron fired. **Vercel log retention is ~1 hour**, so by the time anyone looks, the 8am cron is long gone from the logs. That limit is itself worth remembering — post-hoc log forensics on this cron is not available, which is precisely why the artifact check has to carry the weight.
-- **The one question that decides it is in Nico's inbox: did the health email arrive that morning?** Yes → cron ran, pull failed in prod only. No → cron never fired.
-- **The gap this session created, and the proposed fix:** five jobs have freshness checks; the uptime archive has none. Adding `uptime_daily` to `HEARTBEATS` (2-day max age, ~10 lines + a test) would have surfaced this the same morning instead of by accident two days later. **Be honest about its limit:** it catches *cron alive, pull broken* — plausibly the current state — but **cannot catch *cron dead***, because the same cron writes the row and sends the report. That case degrades to "no email arrived," the weakest signal in the system and the one that hid the review email for sixty nights. Closing it properly needs a check outside the cron, and UptimeRobot's `HEARTBEAT` type is paid-only — which is what pushed us to artifact freshness originally. Known hole; don't let the heartbeat's addition be mistaken for closing it.
-
-### Uptime dashboard phases 1+2 SHIPPED + DEPLOYED 2026-07-31 (#46 `842cafd`, #47 `96ace9d`)
-Executed `docs/plan-2026-08-01-uptime-dashboard.md` the same evening it was written. 134 tests, ruff clean, both merges deployed green; `/api/uptime_overview` live and 401s anonymously. `uptime_daily` created on Turso (0 rows — **first write is the 8am cron**, and an empty archive after that means the pull failed silently: check the log, not the table).
-- **The pull runs AHEAD of the pause check.** Pausing the health *email* for a week must not punch a week-long hole in the archive — independent artifacts. Test-pinned.
-- **An unreadable archive returns `unavailable: true`, never an empty result.** Zero rows is the normal day-one state; letting a Turso failure render as "nothing collected yet" would rebuild the exact #45 bug. Same reasoning as the freshness checks failing loud while the pause lookup fails open.
-- **`uptime_daily` is cloud-direct — no local copy, no leg in `sync_to_turso.py`.** Same class as `page_views`. Never teach the sync about it.
-- **v2 `custom_uptime_ratio` is a STRING** (`"100.000-99.980-99.990"`, 1d-7d-30d) — split and float, or every downstream average is text. Third instance of this trap class after Turso's aggregates.
-- **Frontend:** the per-day strip is statuspage grammar (fixed-height tick colored by bucket), deliberately NOT height-encoded bars — 99.9% and 100% are indistinguishable by height and that's the difference that matters; height encoding went to the response-time trend. A day with no row is grey, **never 0%** — the archive is never backfilled, so a gap is missing data, not downtime.
-- **Not visually verified.** Both themes were checked by computed contrast, not by eye (screenshots were denied). Worth one glance at `#/health`.
-- **Monitors repointed** (`1742464`): byside → `https://by-side.net/api/health?db=1`, pianohouse → `https://www.pianohouseproject.org/api/health?db=1`. **www, not the apex** — the apex 307s, and a monitor leaning on redirect-following is one setting away from a false DOWN. Both endpoints prod-probed before the repoint, per bug #40.
-- **Open:** Phase 3's remaining repos (musicforge + prntd asked via handoff, awaiting reply; **bakerylouise-v1 has no handoff channel** — needs one created or a session in that repo), Phase 5 grow `TARGETS` + the test asserting it agrees with `HTTP_MONITORS`.
-- **Phase 4 is CANCELLED — recountly is dead (2026-07-31).** It has become **Raconte**, a native iOS app (`~/src/raconte`, active; recountly's last commit 2026-07-29 is the pivot note). Un-gating its 401'd `/api/health` is dead work. `recountly.org` still answers (307) and still has a declared monitor in `scripts/uptimerobot.py` — **that monitor will start false-alarming the moment the deployment goes away**; drop it from `HTTP_MONITORS` and delete it in the UptimeRobot UI once the site actually comes down. An iOS app has no URL to poll, so Raconte does not inherit recountly's slot in the health convention.
-
-### Public rollup backlog effectively CLEARED 2026-07-31 — 43 of 44 weeks published
-selected-projects (4 weeks) and ibuild4you (6) published, synced, and verified live on `/api/public_history`; drift check clean. Only ibuild4you 2026-05-18 remains, and that is the deliberate skip (cost forensics + internal ops, nothing left after scrubbing) — it will reappear in every future draft by design.
-- **Reading the envelope: the key is `rollups`, not `weekly_rollups`.** A probe using the wrong key reports 0 rows on a perfectly healthy endpoint.
-
-### #45 SHIPPED 2026-07-31 — the health email now checks artifact freshness, not exit status (`1987440`, `e3a2f2c`)
-`TARGETS` answers "is this URL up" and can never answer "did the nightly job run" — the failure class that's bitten us six times. `HEARTBEATS` in `web/api/health_report.py` declares five artifacts + a max age each, checked with `max(date)` over tables that **already sync to Turso**: review email/`review_snapshots` 2d, synthesizer/`daily_summaries` 2d, weekly rollups 10d, cost pull/`api_costs` 3d (Anthropic reports a day late — 2 would alarm on a healthy pipeline), bi-monthly report 20d. Rendered on `#/health` beside the target cards. 117 tests.
-- **Deliberately NOT a synthetic ping.** A ping is a side-channel claim that the job ran and can succeed while the artifact is missing — precisely how the review email looked healthy for 60 nights. `max(date)` is the output itself. Still satisfies "outside the job": launchd on mini writes through the sync, Vercel reads. Prefer the real artifact wherever one exists; `heartbeat.py` (wired into all four jobs, **dormant**) is the fallback for a job with no queryable output.
-- **Thresholds are DAYS, not hours** — every artifact is date-granular, so hours implies precision that isn't there. `2` for a nightly = one missed night quiet, two a breach. That is #45's stated bar (night two, not night sixty).
-- **A failed check reports "could not check", never "fresh"** — explicitly NOT the fails-open pattern the pause lookup uses in the same module. Pause failing open is right (a Turso outage shouldn't block an email); freshness failing open would rebuild the exact bug. Test-pinned, along with "empty table = never produced", which is stale, not fresh.
-- **It caught a real 4-month outage on its first live run.** `com.promptlab.report` had produced nothing since 2026-04-01: its plist ran `source <dotenv> && python …`, that file was deleted months ago, `source` failed, `&&` short-circuited, Python never ran — six silent failures and `reports/` just stopped growing. Fixed to invoke the venv python directly (`generate-report.py` calls `load_env()` itself, so the source was redundant AND fatal); verified by running it through launchd — 197s, `reports/2026-07-31-review-30d.md`, snapshot row written, check now reads fresh. **Next natural run is the 1st — confirm it fired.**
-- **UptimeRobot is the sensor AND pager; prompt-lab samples nothing.** 5-min polling on independent infra, free tier, 3-month retention, so no Pi and no new launchd sampler is needed — settled after Nico offered both. Monitor set now declared in git: `scripts/uptimerobot.py` (dry-run default, `list`/`sync [--apply]`, never deletes). Added the missing **prntd** monitor (domain is **`.org`**, not `.com`) and repointed **ibuild4you** off its homepage to `/api/health`. 9 monitors, all green.
-- **API facts, probed live — the docs are thin and partly wrong.** v3 (`Bearer`) provisions but has **no history endpoints** (`/logs`, `/response-times`, `/uptimes` all 404; `lastDayUptimes` is empty). **v2 legacy is the only source of history** and works on free: `custom_uptime_ratios=1-7-30` returns a **string** `"100.000-100.000-100.000"` to split+float, plus `response_times` and `logs`. Free = 50 monitors, 5-min, **10 req/min**, 3-month retention. **`HEARTBEAT` type needs a paid plan** (403 `009-005` at every interval/grace) — the free-tier comparison table says otherwise and is wrong; that's what sent this down the artifact route.
-- **`op inject -i .env.tpl -o .env.local` is NOT a working workflow here and shouldn't be restored** — the template is the union of local + cloud secrets, so regenerating locally tries to materialize cloud-only values. Append single variables instead. Two traps found the hard way: `op inject` substitutes `op://` refs **inside `#` comments** (a commented reference is still live, and one unresolvable ref aborts the whole file), and `.env.tpl`'s `GITHUB_TOKEN` pointed at a long-renamed item — now `op://dev-secrets/PromptLabs GitHub Personal Access Token 2/token`. Local `.env.local` legitimately holds only the 8 pipeline vars; the other 9 are Vercel-side and were never missing.
-- **Next: `docs/plan-2026-08-01-uptime-dashboard.md`** — phases 1+2 (uptime archive + `#/health` dashboard) are parallel-safe with a JSON contract fixed in the doc; phase 3 is five independent `/api/health` PRs.
-
-### Build plan 2026-07-30 — ALL FOUR PHASES SHIPPED in one session 2026-07-29
-`docs/plan-2026-07-30-build.md` executed end to end with parallel sub-agents (TDD, one PR per phase, Nico merged as they landed). 106 tests, ruff clean.
-- **Phase 1 — `#/health` page (#36, `3a1382a`).** Live-poll page reusing `health_report.py` (no new function). To let readers see it, `?dry=1` opened to ANY authenticated role; send path stays cron/admin and an authenticated **reader asking for a send gets 403, not 401** — deliberate, "logged in but may not trigger this." Auth decision moved AHEAD of the target polling so anonymous callers can't make us do the work.
-- **Phase 2 — #31 tile drill-downs + `#/activity` (#37, `60112ed`). #31 CLOSED.** Affordance diagnosis: the spend tile's `href` was never broken; its only cue was an inline `onMouseEnter` setting a hardcoded `#3a3a3a` — hover-only (dead on touch) and near-invisible in light theme. Now a persistent `↗` on navigating tiles, rotating `▾` on the toggle tile. New `GET /api/activity_timeline?days=` over `daily_summaries`, alias-folded, all three metrics per row so the metric switch is client-side. **Deliberately its own endpoint — never fold this into `/api/overview`, whose payload is SWR-cached for the home paint.** `active projects` expands inline (ratified over a `#/projects` page); private projects collapse to a `+N private` chip.
-- **Phase 3 — #10 anonymous login events (PR #39, OPEN, `Closes #10`).** `callback.py` writes a beacon `login` row, `path=/login/<role>`, role checked against an allowlist so the email in scope at that call site cannot reach the row. Transport is a shared **`web/beacon_helper.py`** (added to `vercel.json` `includeFiles`) — NOT a self-HTTP POST to `/api/beacon`. `record_login` never raises; a metrics write must never cost a sign-in. **The plan's claim that logins surface in `#/visitors` "for free" was wrong** — `visitor_overview.py` filters `event='pageview'` on all four queries. That filter STAYS (logins can't inflate view counts); a separate `logins` block + Sign-ins panel carries the read path.
-- **Phase 4 — #28 session merge (#38, `3c68d05`) — EXECUTED, #28 CLOSED.** `scripts/merge_cutover_sessions.py`, dry-run default. Ratified as-built: all 5 pairs merged, `started_at` back-dated to true conversation start, shells deleted after carrying NULL metadata. sessions 807→802, prompts 10710→10710, commits 2316→2316, no orphans, fk clean, re-run a no-op. Snapshot `~/.claude/prompt-history-backup-20260729T203101.db`. Local-only — Turso holds no `sessions`/`prompts`/`commits` tables.
-- **The load-bearing idea, reusable:** the merge script's candidate rule is not a time-gap heuristic. It requires **identity proof** — the earliest entry in the bound row's Claude transcript (`~/.claude/projects/*/<id>.jsonl`) within 5 min of the unbound row's `started_at`, two independent recordings of the same conversation start. It earned it: `719 → 731` passes every time test with a 5m21s gap but is refused at −3117s skew. Left alone, out of scope: row 734 (`frontend`) shares a `claude_session_id` with 730 (`musicforge`) from a `musicforge/frontend` cwd; six 0-prompt unbound twins on 2026-07-21.
-- **Recurring gotcha, now hit twice:** Turso returns `SUM()`/`COUNT()` aggregates as JSON **strings**. An explicit `int()` coalesce is load-bearing, not decorative — without it chart math concatenates instead of adding. Test-pinned in both new endpoints.
-- **Next:** grow `TARGETS`. Done 2026-07-30: #39 merged + sign-in smoke test PASSED (role-only row in Sign-ins panel); first health email arrived on schedule but reported a **false DOWN** — see the health entry below.
-
-### Public rollup backlog: 33 of 44 weeks PUBLISHED 2026-07-30 — the draft-to-artifact flow got its first real workout
-The flow shipped 2026-07-19 had never actually been used end to end. It works. Published: **showcase (1), prntd (8), musicforge (10), prompt-lab (14)** — all live on `/api/public_history` through `week_of 2026-07-27`, drift check clean, synced. **Still drafted-but-unpublished: selected-projects (4) and ibuild4you (6 of 7)** — files are committed (`11ee9af`), only the `--apply` is owed.
-- **The division of labour that made 44 weeks tractable:** the machine owns everything regex-able and *refuses to publish* on any of it — absolute `/Users/…` paths, emails, credential tokens, internal DB hosts, any line still starting with `>`, prose <15 words, prose ≥75% similar to the private source, project not on the allowlist. What's left for the human is the four things regexes structurally cannot see: **named people/orgs, identifiability-by-description, unreleased plans stated as fact, and commercially or personally sensitive detail.** Four questions per block, same four every time. That framing is what turned "review 44 weeks" from vibes into a checklist.
-- **Real leaks the private text contained**, each caught only by the semantic pass: `Matt/BySide` (a person AND a client company in one phrase, ibuild4you 2026-06-15); `Eric` in three musicforge weeks; `Nico` in prntd + prompt-lab weeks; dollar figures (`$49.70`, `$19.43`, `$1,000/day`, `$9.40`); prntd's unreleased fee structure (`$1 ops fee`, `$5 org floor`).
-- **Gap worth knowing: the path regex only matches `/Users/…`.** prompt-lab's 2026-04-27 private text carried `~/src/pianohouse`, which sails straight through. Tilde paths are a human-only catch.
-- **Deliberately skipped: ibuild4you 2026-05-18.** Its substance is cost forensics plus an internal unstick-script — nearly all money figures and internal ops, 0 commits. A public version would be padding. It reappears in every future draft until published; that's the designed behaviour, not a bug.
-- Where the cost story was the point, the shape survived without the number (the cents-vs-dollars misread became "roughly a hundred times what it actually was").
-
-### The nightly review email was never off — it 403'd for 60 nights. FIXED 2026-07-30 (#44 merged, `0683d62`)
-Nico asked "can I restart my weekly review emails, or why did we stop?" **Nothing had been stopped.** `com.promptlab.review` ran every night at 2:30am on mini, generated the review (real Sonnet spend, ~20k tokens/night), and was rejected by Resend: `REVIEW_FROM_EMAIL` was `reviews@send.prompt-labs.org`, a **subdomain never verified**. The apex `prompt-labs.org` *is* verified — which is exactly why the health email works from `health@prompt-labs.org`. Broke 2026-06-01, two days after the anomatom.com → prompt-labs.org migration; last good send 2026-05-31. Fixed by dropping `send.` from the address (`.env.tpl:11` + Nico's `.env.local`), verified with a real send.
-- **Why it hid for two months, and the lesson:** `send_email()` called `sys.exit(1)` on the 403 — one line *before* `save_review_snapshot()`. So `review_snapshots` froze at 2026-05-31 and every signal read as **"the job stopped running"** rather than **"the job is failing at its last step."** The misleading artifact was the *absence* of rows. Now: returns `None`, snapshot persists either way, non-zero exit moved to the end so launchd still records it.
-- **`--test-send`** exercises Resend alone with no Claude call. Verifying a from-address or key change went from a 4-minute Sonnet run to one second. Reach for it before ever running the bare command to test config.
-- **Diagnostic that worked:** the log (`send-review.log`, launchd-only — a manual run prints to the terminal instead, so it looks empty) had 60 identical 403s. Check the job's *log* before concluding from *table rows* that a job isn't running.
-- **#45 filed — ecosystem convention: alarm on artifact freshness, not job exit status.** Five incidents in one week shared this shape (this one; the health email's false DOWN; CI red 3 days with `deploy` showing *skipped* not failed; rock-art-fab's server tests silently skipping on missing deps; prntd's migration 0006 no-op'ing on prod; raconte's live finalize never running behind a fallback). Two mechanisms recur: **a fallback quietly covers the dead primary path**, and **absence is recorded as "nothing" rather than "failure."** Proposal: every recurring job declares a max artifact age; the daily health email (already in the inbox, already the ecosystem reporter) reports breaches. Bar for success — would it have caught this on night two? A `max(date)` on `review_snapshots` would have.
-- Cadence unchanged by request: one nightly job, Saturday switches to a weekly tone (`send-review.py`, `is_weekly = today.weekday() == 5`). There is no separate weekly job.
-
-### Header polish + login-flags fix SHIPPED 2026-07-30 (#41 `4eb0152`, #42 `92f6cd4`)
-Both merged and live; Nico's 6-step smoke passed 6/6 (header layout, nav row, logout→buttonless check, re-login).
-- **#41:** built/synced line directly under "Prompt Lab" at 0.61rem mono, green when today (Pacific) else grey, nav buttons together on their own row. Plus the real bug — after logout the Login screen was buttonless until reload, because the 401 body's `google_login`/`password_login` flags were fetched only in the mount effect. A shared `probeAuth()` now runs on **mount, logout, and mid-session expiry** (`web/index.html:795/808/863`); any path landing on the Login screen must go through it.
-- **#42:** the signed-in email sat at nav-button scale, reading as a control. Own `.header-user` class at 0.61rem/0.65 opacity — identity, not navigation.
-- **Deliberately NOT done: display names (nico/elijah).** With two accounts the beacon role already identifies the person — `/login/admin` is Nico, `/login/reader` is Elijah — so a name buys nothing the role doesn't already say, and costs the sign-in log's anonymity (#10 writes role only, allowlisted, so the in-scope email can't reach the row). **#43 filed for the trigger:** the day a second reader joins `READER_EMAILS`, role stops identifying anyone and the panel silently becomes uninformative. Fix then is a stable **opaque per-user id** (HMAC of email under a server salt, like `visitor_hash`) — never an email or a display name.
-
-### First health email: false DOWN found + fixed 2026-07-30 (#40 merged); PR #41 MERGED 2026-07-30
-The 8am email arrived on schedule but reported prompt-labs.org DOWN (401): `TARGETS` polled auth-gated `/api/info`, doomed to 401 anonymously. The site was fine. Fix (#40, `db71c63`, live-verified `{ok:true, db:true}`): new public `web/api/health.py` per `docs/health-convention.md` — shallow `{ok:true}`, deep `?db=1` 503s when Turso is unreachable — and `TARGETS` repointed at the deep URL. **Not just a URL swap:** the SPA catch-all serves `index.html` 200 for unknown paths, so pointing at a nonexistent path would have flipped to a permanent false UP; regression test pins the target. Nico upgraded the UptimeRobot prompt-labs.org monitor to the deep URL same day. Tomorrow's email should read 2/2 up with `db ok`.
-PR #41 merged 2026-07-30 (`4eb0152`) — see the header entry above.
-
-### System health reporting — first slice SHIPPED + LIVE 2026-07-29 (#34, PR #35 `683bcec`)
-Accepted garm's 2026-07-29 handoff proposal: prompt-lab owns ecosystem health **reporting**; immediate alerting stays on independent infra. Split matters because Garm consumers now fail closed (Garm outage = ecosystem lockout) and prompt-lab shares the Vercel+Turso+Resend stack — watcher would die with watched.
-- **Live:** `GET /api/health_report` + Vercel cron `0 15 * * *` (~8am Pacific, first send 2026-07-30). Polls `TARGETS` (garm deep health `?db=1` with db/howl-staleness detail + prompt-labs.org), emails via Resend. Footer: HMAC pause-for-a-week link (state in Turso `health_email_state`, cloud-direct no-sync like page_views; pause check **fails open** so Turso-down never blocks the report), copy-pasteable tune-up prompt, per-send joke (Haiku `claude-haiku-4-5-20251001`, canned fallback — email always sends). Cron auth = `CRON_SECRET` bearer; admin cookie works for manual runs; `?dry=1` previews without sending. 9 tests (83 total). Convention doc: `docs/health-convention.md` (`GET /api/health` → `{ok:true}`, optional deep variant non-2xx on dependency failure; garm is the reference).
-- Env (Production, verified applied before deploy): `CRON_SECRET` (1P `Prompt Lab Cron`), `RESEND_API_KEY` (1P `Resend`), `HEALTH_TO_EMAIL`. Prod-verified via Playwright: 401 unauth, 403 bad pause token, cron registered (`vercel crons ls`), garm target healthy.
-- **UptimeRobot is live** (Nico's account, alerts → nlovejoy@me.com): garm deep-health monitor + homepage monitors on 7 sites (prompt-labs, ibuild4you, byside, pianohouse, bakerylouise, musicforge, recountly). Homepage checks upgrade to `/api/health` URLs as apps adopt the convention. No CLI used; bulk CSV was one-shot, deleted.
-- **CI ruff pinned to 0.15.22** same PR — unpinned `pip install ruff` grabbed a new release 2026-07-29 (339 new-rule errors on a docs-only push), starving deploy. Local ruff passing while CI fails on a docs commit = version drift, check the pin first.
-- **Remaining #34:** `#/health` dashboard page (live-poll like Todos, later overlay UptimeRobot read-API uptime %s); grow TARGETS; denial count line once garm #7 exists (garm channel will post the shape). Verify first email arrives 2026-07-30 + pause link works.
-
-### Read-time public counts projection — SHIPPED + LIVE 2026-07-21 (`af0b387`)
-selected-projects wanted weekly `session_count`/`commit_count` for their public sparkline; they proposed a nightly writer into `public_weekly_rollups`. We took the goal, rejected the transport. `/api/public_history` now computes counts **at read time**: for a project opted in via the new `project_metadata.public_counts` flag, it overlays counts-only weekly rows (`public_summary: null`) projected from the private `weekly_rollups` table (mapping its `week_start` → the public `week_of`), for weeks with no published prose row. Published prose rows win their week. Same envelope — consumer already renders NULL-summary rows, zero change their side.
-- **Why this transport:** preserves the "no automated writer to public tables" invariant (the strongest guarantee in the system), no second copy to drift, always fresh, reads Turso's *merged* rollups. This is literally Tier 1 of the `/api/private_history` design (§ below) — one implementation serves both.
-- **`public_counts` is a REAL gate** (`web/api/project_metadata.py`), admin-set data-as-truth, distinct from the cosmetic `private` flag. Prose-safety is structural: the projection query selects numeric columns only (never `narrative`/`highlights`), pinned by a test. Opt-in check is best-effort so the public endpoint never 500s.
-- **Seeded 7 projects LIVE** via `scripts/seed_public_counts.py --apply` (dry-run default): ibuild4you, musicforge, prntd, prompt-lab, selected-projects, showcase, split-recording (counts-only — no prose published). Verified on prod: prompt-lab merges 11 published prose weeks + 11 projected counts-only weeks.
-- **`am-i-an-ai` dropped** from `docs/public-allowlist.txt` (now 6 keys; site removed lojong) AND its 3 public rows unpublished via `scripts/unpublish_public.py` — because public_history has no read-time allowlist, dropping the text file alone would have kept serving the rows. Drift check clean.
-- Live-status note posted to selected-projects handoff channel. `drafts/handoff-reply-public-counts-2026-07-20.md` is now historical.
-- **Deferred:** the top-level aggregate (`total_sessions`/`first`/`last`) still counts only *published* sessions — the counts split only fixed the weekly rollup array. Fixing the aggregate is the rest of `/api/private_history` Tier 1.
-
-### Public data was never stalled — there was no producer. Draft-to-artifact refresh SHIPPED 2026-07-19
-selected-projects reported (handoff) that weekly rollup publishing had "stalled repo-wide" — nothing published in ~6 weeks for any key, `split-recording`/`recountly` never published at all. **The symptom was real; the inferred mechanism was wrong, and that distinction is the useful part.** The private producer is healthy (`daily_summaries` current to the day, `weekly_rollups` through the last completed week). The *public* tables have no automated writer and never did: the only things that ever wrote them are the hardcoded one-shot `backfill_public_*.py` scripts whose rows are literal Python constants, and `sync_to_turso.py` only propagates rows that already exist locally. Every observed `week_of` is just when that project's backfill script was last hand-run. **Diagnostic lesson: a frozen public tier is the designed steady state here, not a broken job — check whether a producer exists before debugging why it stopped.**
-
-Root cause of the freeze: `/handoff`'s public-write steps were deleted 2026-06-13 (correctly — they fired for every repo incl. client work and auto-propagated to public Turso), but nothing replaced them, so refresh required remembering to hand-edit a one-shot script. **Fix shipped as the draft-to-artifact flow** CLAUDE.md already recommended:
-- `scripts/draft_public_refresh.py <project>` — read-only; diffs private `weekly_rollups` against published `public_weekly_rollups` (alias-folded), writes `drafts/public-<project>-<date>.md` with each unpublished week's private narrative **blockquoted** as source material plus an empty `PUBLIC` block. `--list` shows the per-project backlog; `--all` defeats the 8-week cap.
-- Human (or `/handoff` step 4.5) writes each `PUBLIC` block **from scratch**, reviews, commits.
-- `scripts/publish_public_draft.py <file> [--apply]` — dry-run default. **Refuses** any project absent from `docs/public-allowlist.txt`; blocks absolute paths, emails, credential-shaped tokens, internal DB hosts, unedited blockquotes, prose <15 words, and prose ≥75% similar to the private source (the "nobody actually rewrote it" check). Writes local only — `sync_to_turso.py` propagates.
-- `/handoff` step 4.5 surfaces the backlog and offers to draft, but is explicitly told **never to run the publish step** — the human review of the committed file *is* the privacy gate.
-- 21 tests in `scripts/test_public_draft.py`, wired into CI. Verified: leak/similarity/allowlist refusals all fire (correctly refused `bakerylouise-v1`), `--apply` writes correct rows against a throwaway DB, real DB untouched.
-
-**Backlog as of 2026-07-19** (`draft_public_refresh.py --list`): prompt-lab 12 weeks, musicforge 8, ibuild4you 6, prntd 6, selected-projects 2, showcase 1, am-i-an-ai 0. Nothing published yet — drafting + review is the user's call.
-
-Incidental finding: Turso holds 11 `prompt-lab` public rollups (newest `2026-05-25`) vs 10 locally (newest `2026-05-04`) — a stray Turso-only row, almost certainly a pre-2026-06-13 `/handoff` write. **Turso is not a strict sync-superset of local** for these tables (sync only upserts; it never deletes). Harmless but worth knowing before trusting a local-only count.
-
-Still open: `split-recording` and `recountly` have never published and aren't on the allowlist — publishing them is a manifest decision (consumer's MDX + `docs/public-allowlist.txt`), not a bug fix. Undecided.
-
-### selected-projects tiered disclosure — `/api/private_history` design agreed, NOT yet built (2026-07-19)
-selected-projects is adding tiered disclosure: anonymous visitors see the public showcase, signed-in collaborators see deeper per-project history. Authz comes from Garm (`garm.prompt-labs.org/gnipahellir`). **prompt-lab does NOT become a Garm consumer** — per `docs/garm-needs-assessment.md` it has two shared secrets and no per-user identity. selected-projects owns identity, asks Garm, and on `allowed` calls a new prompt-lab endpoint with a **shared service key**. prompt-lab trusts its caller and never learns the end user's email; PII surface stays zero.
-
-**The load-bearing fact for this design: Turso contains no `prompts`, `sessions`, or `commits` tables at all.** Raw prompt text, commit messages, hostnames, and local paths are physically unreachable from `web/`. That's the strongest guarantee in the system — preserve it by never adding a sync leg for them, not by filtering at read time (read-time allowlists were tried twice and deleted both times for drifting).
-
-Recommended payload, sent to the consumer 2026-07-19, awaiting their reply on sequencing:
-- **Tier 1, unconditional — real metrics.** The public endpoint's `total_sessions` / `first_activity_at` / `last_activity_at` are computed over *published* sessions, so they're materially wrong (musicforge reports 126 against a much larger truth, and every "inception" date is really the earliest hand-published session). Tier 1 = full all-time activity array, true first/last/totals, weekly cadence with counts, `category`/`status`. Counts and dates only — structurally incapable of leaking prose, and always fresh.
-- **Tier 2, opt-in per project — private weekly narratives** (`weekly_rollups.narrative`/`highlights`). Must be opt-in, not blanket: the synthesizer writes every project's narrative with the same code and no scrubbing step, so nothing in the schema separates safe from unsafe. Concrete evidence — musicforge's 2026-07-13 narrative reads like release notes; bakerylouise-v1's the same week names the client, her staffing plans, and characterizes her ability to give feedback. Gate on a `project_metadata` column, default off.
-- **Out:** all cost/$ figures, Anthropic workspace names (often literally client names), `claude_code_usage` actor/org fields, `page_views`, `review_snapshots`, and row-level `id`/`model`/`created_at` (ids are a global monotonic counter — they leak corpus size and cross-project ordering).
-- Contract: bearer auth on a shared secret, alias-folded project key, unknown/un-opted-in project → empty `200` with the same envelope, never 500/403.
-
-### Phase A (§2.3/§2.4 + #30) — PR #33 OPEN, tests green, AWAITING NICO MERGE (2026-07-22)
-Sub-agent built it per `docs/phase2-oauth-plan.md` steps 5-6: beacon.py drops hits when `BEACON_SALT` unset (no more `AUTH_SECRET` fallback, still opaque 204), #30 fixed (`google_login` flag in the 401 body gates the Google button — previews show password form only, closes #30 on merge), docs swept (`.env.tpl`, README, data-and-access, roadmap incl. its never-happened "flag for one deploy" claim corrected). https://github.com/nicolovejoy/prompt-lab/pull/33 — merge deploys to prod. **Manual env state:** `AUTH_READ_SECRET` deleted from Vercel (all envs; it only existed in Production) — preview reader login is dead as accepted. **Still owed: Preview + Development `BEACON_SALT`** — blocked mid-attempt because the `op` CLI lost its desktop-app integration (1Password app → Settings → Developer → "Integrate with 1Password CLI", then `op read "op://dev-secrets/prompt-lab-beacon-salt/credential" | vercel env add BEACON_SALT preview` and same for `development`; verify the op item path in the app first — it was never confirmed). Until set, previews/dev silently drop beacon hits once #33 deploys. Then Phase B: #31 KPI drill-downs + `#/activity` (parallel agents, TDD, spec in the issue); Phase C if room: #10 login beacon event.
-
-### Phase 2 §2.1+§2.2 Google OAuth — SHIPPED + LIVE-VERIFIED 2026-07-21 (PRs #29, #32); §2.3/§2.4 cleanup NEXT
-The keystone landed. Full spec + settled decisions in `docs/phase2-oauth-plan.md` (committed, kept current — read it before touching auth). Built TDD with sub-agents (tests red-first, 74 in `test_web_api.py`), live-verified end-to-end by Nico (Google sign-in, logout, prod probes).
-- **What's live:** prod is Google-exclusive (`ADMIN_EMAILS` → admin; **`READER_EMAILS` → reader, added same day for Elijah `elovejoy5@gmail.com` — full read access, no Ask/metadata**; admin wins on overlap; anything else → readable 403). Previews keep password login (401 body's `password_login` flag drives the form). Token payload `{exp, role, email}`; `verify_token` returns the dict and requires BOTH `role` and `email` **keys** (key-presence not truthiness — `email: null` password cookies verify, legacy `{exp,role}` cookies rejected; that key requirement is the load-bearing subtlety). Fail-open admin defaults removed server- AND client-side. SameSite=Lax. HMAC `state` (10 min, deliberately not browser-bound — single-admin trade-off, documented). Callback checks `aud` + `email_verified`, html-escapes error pages (reflected-XSS was found in review, test-pinned).
-- **Env done (Production):** `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` (1P item `Prompt Lab Google OAuth`), `ADMIN_EMAILS`, `READER_EMAILS`. New `vercel env add` trap discovered: the CLI's "Store as sensitive?" + Preview "Git branch?" prompts eat piped stdin — `--force -y` fixes the former, nothing fixes the latter (Preview adds hang; avoid piping Preview writes).
-- **§2.3+§2.4 remaining:** remove `beacon.py`'s `AUTH_SECRET` fallback, delete `AUTH_READ_SECRET` from Vercel (kills preview *reader* login — accepted), set Preview/Dev `BEACON_SALT`, docs sweep (`README.md:85`, `docs/data-and-access.md:37,42`, roadmap §2.1's stale line refs). `AUTH_SECRET` is demoted not retired: still the HMAC signing key everywhere + preview password.
-- **Known quirk, filed as #30:** preview deploys show the Google button but its redirect URI is pinned to prod — clicking it on a preview logs you into prod.
-
-### Next session plan (updated 2026-07-31, post-#45) — spec is `docs/plan-2026-08-01-uptime-dashboard.md`
-Written to fan out to sub-agents; read it before coding. **Open, in order:** (1) **Phase 1** uptime archive — `uptime_daily` in Turso (cloud-direct, **no sync leg**, same class as `page_views`), pulled from v2 `getMonitors` on the health cron's **send path only** (never `?dry=1` — readers reach that), plus `web/api/uptime_overview.py`; (2) **Phase 2** uptime % / sparklines / response-time trend on `#/health` — parallel-safe with Phase 1, JSON contract fixed in the plan; (3) **Phase 3** `/api/health` for byside, bakerylouise-v1, selected-projects, musicforge, prntd — five independent PRs, ibuild4you is the reference impl; (4) **Phase 4** un-gate recountly's `/api/health` (currently 401 — pointing a monitor at it now would false-DOWN forever, bug #40); (5) **Phase 5** grow `TARGETS` and add a test asserting it agrees with `HTTP_MONITORS`. **DONE 2026-07-31 (same evening the plan was written):** phases 1+2 shipped and deployed (#46, #47), byside + selected-projects `/api/health` landed and both monitors repointed, `UPTIMEROBOT_API_KEY` is in Vercel Production, and the two drafted public refreshes are published live. Remaining: Phase 3's other three repos (bakerylouise-v1, musicforge, prntd — **via handoff asks, not PRs from here**), Phase 4 recountly un-gate, Phase 5 `TARGETS`, and garm #7's denial line (`GARM_REPORTING_KEY` shipped). **Watch the GitHub Actions budget:** cycle resets 2026-08-01; `deploy` `needs: test`, so a starved run shows as *skipped*, not failed. Deferred: #14 (own session), #27 Garm rollout, private_history Tier 1, UptimeRobot paid plan / real HEARTBEAT monitors.
-
-### Previous session plan (2026-07-30, post-header/review-email) — items 1-3 now DONE
-`docs/plan-2026-07-30-build.md` is fully executed (see the block at the top of Next Steps) — Phase 2 OAuth was already closed out by `c0401c4`. The 2026-07-30 session merged #41/#42 (header, smoke-passed) and #44, and root-caused the dead review email. **Open, in order:** (1) confirm the 2026-07-31 ~8am health email reads 2/2 up with `db ok` + test the pause-a-week link; (2) confirm the 2:30am review email actually lands now that the from-address is fixed — first unattended send is the night of 2026-07-30→31; (3) **#45** ecosystem heartbeat-freshness alarming — the convention Nico asked for, and the thing that would have caught the review email on night two; (4) publish the two drafted-but-unpublished public refreshes — `drafts/public-selected-projects-2026-07-30.md` (4 weeks) and `drafts/public-ibuild4you-2026-07-30.md` (6 weeks), review done, only `--apply` + `sync_to_turso.py` owed; (5) #34 leftovers: grow `TARGETS`, garm #7 denial line (garm shipped `GARM_REPORTING_KEY` for it), UptimeRobot uptime-% overlay on `#/health`. **Watch the GitHub Actions budget:** 1,803 / 2,000 min used as of 2026-07-29 with the cycle resetting 2026-08-01 — the `deploy` job `needs: test`, so a starved run shows as *skipped*, not failed, and no prod deploy goes out silently (the exact 3-day-blind failure mode from 2026-07-09). Deferred deliberately: #14 (own session), #27 Garm rollout, private_history Tier 1 (awaiting selected-projects), public rollup backlog (human-gated — 6 projects, 44 weeks).
-
-### Fake `agent-*` projects on dashboard — FIXED 2026-07-19 (`eb5353f`)
-Sessions running inside Claude Code agent worktrees (`<repo>/.claude/worktrees/agent-<hash>`) were logged by `log-prompt.sh` under the worktree basename, creating 8 fake projects that the synthesizer summarized (real Sonnet spend) and synced to the dashboard. Hook now resolves worktree cwds to the repo and skips `<task-notification>` blocks (harness output that passed the length/`<command-` filters). Leaked rows purged from mini local, Turso, and laptop local via new idempotent `scripts/cleanup_agent_worktree_rows.py` (dry-run default, `--apply`; matches `^agent-[0-9a-f]{15,}$` only). Both machines ran `install.sh`. Verified via sandboxed-HOME hook runs (worktree→repo, notification skipped, normal cwd unchanged).
-
-### /resync 2026-07-18 — #12 and #24 closed, #27 filed
-CI has been green since 2026-07-09 (issue #12 was stale) — closed. Garm (#24) is shipped and live in production (`garm.prompt-labs.org`, ibuild4you consuming with verified dual-write) — closed, rollout continuation tracked in **#27**. Also confirmed via `/readup`: still open — Vercel `preview`/`development` envs hold the dead `ANTHROPIC_API_KEY` (prod is fixed); beacon salt decouple (§2.0) not yet started; Phase 2 OAuth is slated for next session on mini per the 2026-07-16 laptop session's decision.
-
-### Ask feature 500s — FIXED 2026-07-14 (no key was minted)
-Nico reported `/api/ask` returning 500 (surfaced on `#/todos`, but Ask is used dashboard-wide). Root-caused via `vercel logs prompt-labs.org --status-code 500 --json`: Vercel's `ANTHROPIC_API_KEY` got `401 Unauthorized` from `https://api.anthropic.com/v1/messages` — a credential problem, not a model/code one (`claude-sonnet-4-6`/`claude-opus-4-6`/`4-7` in `claude_api.py` are all still active). Todos' by-type classification still looked fine because its cache covers existing issues and hadn't needed a fresh API call.
-
-**The first diagnosis was half wrong, and the correction is the useful part.** It concluded the key was dead and unrecoverable (Anthropic reveals a value only once, at creation) and that a new key had to be minted. In fact:
-- **`prompt-lab-key-1` was alive the whole time** — verified by authenticating it against `/v1/messages` (HTTP 200). Single-reveal applies to the *console*, not to a value already saved in 1Password at creation. It's stored at `op://dev-secrets/prompt-lab-key-1/credential` and is what `.env.tpl:5` references.
-- That's why the nightly synthesizer and review emails never broke — only the cloud dashboard did. **A healthy local pipeline is proof the key is fine and only the cloud copy is stale.**
-- Vercel held a **different, older** key: its `ANTHROPIC_API_KEY` var was created 109 days ago vs. the op item's ~30. The age gap was the tell that these were two keys, not one dead one.
-
-Fix was to copy the good value into Vercel: `op read "op://dev-secrets/prompt-lab-key-1/credential" | vercel env add ANTHROPIC_API_KEY <env> --force -y`, **one command per environment**, then `vercel --prod`. Verified working on prod 2026-07-14 (`/api/ask` → HTTP 200, was 500/401). **Production is done; `preview` + `development` still hold the dead key** — preview matters (Ask 401s on PR preview deploys), development only affects `vercel dev`.
-
-**Two traps, both hit for real getting there — see `docs/roadmap-2026-07.md` §0.1:** (1) **Never pipe through `tr -d '\n'`.** `vercel env add` takes no value argument — it opens an interactive `? Value?` prompt and reads one line from stdin, so the newline is the *submit*, not part of the value. Stripping it makes the CLI read all 108 chars then block forever on an Enter that never comes, writing nothing and exiting without error. Symptom: `? Value?` + asterisks and **no `Overrode`/`Added` line**. (2) **Don't wrap it in a `for` loop** — the first prompt seizes the TTY and eats the rest of the loop's stdin, so iterations 2+ silently write nothing. **Always verify with `vercel env ls`:** a good write reads seconds old, and a partial write shows as a split (`Production | 45s ago` vs `Development, Preview | 109d ago`). Env vars apply at deploy time, so a redeploy is required either way.
-
-**Next credential scare: check the secret store for a working value, and compare var ages, BEFORE concluding anything is unrecoverable.** The op record is `prompt-lab-key-1`; don't create a second one (Vercel has its own env store and never reads `.env.tpl`). Don't use `ANTHROPIC_ADMIN_KEY-4-prompt-lab` or `admin-cost-tracking-2026-05` (the item `.env.tpl:6` actually references for `ANTHROPIC_ADMIN_KEY`) — both are Admin-API-only, invalid for `/v1/messages`. Known consequence: local and prod now share one key, so revoking it kills both; mint a Vercel-only key if that isolation is ever wanted.
-
-### Phased roadmap — `docs/roadmap-2026-07.md` — START HERE (its STATE OF PLAY block is the live status)
-Phase 0 unblock → Phase 1 #23 metadata → Phase 2 Google login (the keystone) → Phase 3 #10 → Phase 4 Garm rollout (#27, was #24) → Phase 5 #14 tokens. Each phase has pass/fail criteria.
-
-**Status 2026-07-14: Phase 0 essentially done** (Ask fixed + verified on prod; recountly deployed, Git-linked, beacon firing) **and Phase 1 shipped** (#23, PR #26). Remaining Phase 0 scraps: beacon fan-out for prntd + musicforge, verify Preview's Anthropic key (#12 closed 2026-07-18, CI green).
-
-**Next: §2.0 — decouple the beacon salt.** `AUTH_SECRET` is overloaded three ways — admin password (`login.py:22`), HMAC token-signing key (`auth_helper.py:16`), and **the beacon's visitor-hash salt** (`beacon.py:73`). Retiring it without first splitting out `BEACON_SALT` silently rotates every visitor hash and breaks `#/visitors` continuity at the seam. Small, safe, independently correct — do it first even if Phase 2 then stalls.
-
-**Phase 2's design question is SETTLED (2026-07-14): hand-roll OAuth in Python, zero new deps.** The "no `package.json` → no Auth.js → must convert to Next.js" chain is a false constraint. Because this is a confidential client doing its own server-side code exchange, the `id_token` arrives directly from Google over TLS — so **no JWT signature verification, no JWKS fetch, no crypto dependency** is needed (Google's docs sanction exactly this). It's ~150 lines of `urllib` in a 12th handler. Rejected: Next.js conversion (rewrites everything, unrelated), mixed Node+Python runtime (cookie-format interop = option A's work plus a second runtime), third-party auth (same interop, plus vendor + bill, for a one-person admin). Full reasoning in the roadmap's Phase 2 DECISION block. The real work is the `AUTH_SECRET` overload above and `SameSite=Strict` (breaks the OAuth callback → must become `Lax`).
-
-**2026-07-16: Nico decided to do Phase 2 (§2.0 + §2.1 OAuth) on the mini, next session.** Effort estimate discussed: small-to-medium, ~3-4hrs end to end (§2.0 beacon-salt decouple ~15min, §2.1 OAuth flow ~1-2hrs, §2.2-2.4 mechanical) — the design fight is already settled, so this is spec-execution, not open-ended design. Sonnet is the right model tier for it (Opus not needed unless the `AUTH_SECRET` overload or `SameSite` landmine causes a non-obvious break). Machine choice doesn't matter technically (Vercel/Turso are cloud-side, both machines' harnesses verified identical) — picked mini because that's where Nico will be next. Also this session: first-ever `/resync --light` on the laptop (marker never existed there before) came back clean, no CLAUDE.md drift; 7 stale-but-merged remote branches (PRs #13, #15-#20) deleted from origin.
-
-### Turso staleness warning recalibrated (SHIPPED 2026-07-18)
-byside reported (handoff, 2026-07-17, now archived) the SessionStart Turso warning firing on a ~1-day-old *successful* sync. Root cause was ordering, not just threshold: the synchronous hook composes the warning BEFORE the async `turso-sync-maybe.sh` runs, so any >24h idle gap warned moments before the sync caught up. Fixed in `32b78b6`: warn only when the stamp is ≥48h old AND the newest `~/.claude/.turso-last-sync.log` line isn't an `ok` (i.e. retries are actually failing), quoting the failing line. Hook logic verified against 4 stamp/log scenarios via a sandboxed-HOME run. Laptop installed; mini caught up 2026-07-19 (`install.sh` run during the agent-worktree fix session — work.zsh badge/`--name` and readup step-9 fallback delivered with it).
-
-### Feature-request batch 2026-07-13 → issues #21–#24 (all four SHIPPED; #24 closed 2026-07-18, follow-up #27)
-Nico's checklist (screenshot) triaged into a 4-step sequence, all filed:
-- **#21 + #22 — mobile chart passes (SHIPPED 2026-07-13, phone-verified).** PR #25, per `docs/plan-mobile-charts.md`: both `#/visitors` and `#/costs` charts scroll horizontally within their own panel opening at the recent end (mirrors #19's heatmap fix), floating hover tooltip gated to `hover: hover` pointers with a tap-to-select breakdown panel replacing it on touch, four two-column legend grids collapse under 600px via `.two-col`, costs legend gets per-project spend-share bars. Live phone test passed same day. Follow-up noted, not filed: `CostChart` (project detail) and the home activity chart have the same hover-only/two-col pattern.
-- **#23 — project metadata layer (SHIPPED 2026-07-14).** Turso-native `project_metadata` table: `category` (Music/Art/Collabs/Tools/Other — display-only, NOT the sharing unit) + `private` (cosmetic hide-toggle + muted treatment) + `status` (active/dormant), admin-editable from the project page. **The plan's premise was wrong and the survey corrected it:** `sync_to_turso.py` never wrote the `projects` table and Turso had no `projects` table at all, so the feared "sync clobbers a cloud-set value" bug could not happen — the real gap was the inverse (project metadata never reached the cloud). `status`/`category` already existed in local SQLite (`store/sqlite_store.py:159-167`); only `private` was new. So this shipped as *create-in-Turso*, not *stop-clobbering*, following the `issue_categories`/`page_views` precedent: cloud-direct, no local copy, **no sync leg** — `sync_to_turso.py` must never learn to write it (that's what makes drift structurally impossible). Pieces: `scripts/create_project_metadata.py` (idempotent DDL), `web/api/project_metadata.py` (GET reader / POST admin-only, alias-folded, partial updates never reset a sibling field), metadata folded into `/api/overview`, editor + badges + private hide-toggle in `web/index.html`, 8 tests. Explicit status now overrides activity-derived dormancy in the picker and the KPI tile (un-annotated projects behave exactly as before) — this closes the status-toggle item stalled since 2026-05-28. Also fixed while verifying: the home activity chart legend still showed hidden private projects' names, defeating the toggle. `private` is **cosmetic only** — it is not the public-data gate and does not gate the API; see `docs/data-and-access.md`.
-- **#24 — Garm (CLOSED 2026-07-18, SHIPPED, follow-up #27): per-repo per-user access control, ecosystem-wide.** Live in production at `garm.prompt-labs.org` (repo `~/src/garm`, Next.js API-only + Neon Postgres + Drizzle, `/gnipahellir` authz endpoint mapping `(email, project) → role`). ibuild4you is the first live consumer: 32/32 real grants seeded, dual-write verified working both directions 2026-07-17 (grant on membership add, revoke-recompute on removal). Howl denial-digest email shipped and verified (Resend sending domain confirmed 2026-07-16); consumer API keys scope per-project (2026-07-17). Design/build history (needs-assessment, ibuild4you-owns-build-out decision, bespoke-v1-not-OSS-authz-engine rationale, passcode retirement) preserved in `docs/garm-needs-assessment.md` and `~/src/garm/docs/build-plan.md` — not repeated here. **Remaining work tracked in #27:** finish ibuild4you's passcode-retirement cutover (PR D), onboard byside next, evaluate musicforge/recountly/selected-projects case by case, bakerylouise stays out of scope (Sanity's own role system), and decide whether prompt-lab itself becomes a Garm consumer once Phase 2's OAuth migration lands.
-
-### Mobile readability pass: fonts, contrast, light/dark toggle (SHIPPED 2026-07-09, LIVE-VERIFIED 2026-07-10)
-Nico's ask: cloud dashboard text too small/low-contrast on mobile ("old eyes"). Four PRs, in order, each responding to live feedback on the previous one — landed in the same session that also did the CI break-glass fix above:
-
-- **#15 — font-size bump.** No design-token system existed (146 ad-hoc `font-size` declarations, 24 distinct `rem` values in `web/index.html`) — filed **issue #14** to fix that properly later. For the immediate ask, did a uniform proportional scale (~1.36x, computed to take the smallest existing text, 0.55rem/8.8px, up to a 12px floor) across all 146 sites, preserving relative hierarchy.
-- **#16 — light/dark toggle + first contrast pass.** Added a manual theme toggle (sun/moon button in the header), persisted via `localStorage` + `data-theme` attribute (applied synchronously pre-paint to avoid flash), overriding the `prefers-color-scheme` media query in either direction. Also fixed dark-mode `--text-secondary` (`#777` on `#111` ≈ 4.2:1, below WCAG AA) → `#9e9e9e` (~7:1) — that var is used by ~98 of ~120 colored-text declarations in the file, so it was the dominant factor in "hard to read."
-- **#17 — round 2, after Nico still couldn't see the toggle or find text clear enough.** Found two real bugs, not just insufficient contrast: (1) `.header-meta` (the "built `<time>`" / "synced `<time>`" indicator — Pacific time, to the minute, which **already existed** and is the thing Nico remembered from other tools) was unconditionally `display:none` below 600px viewport, i.e. invisible on every phone; (2) `header`/`.header-right` had no `flex-wrap`, so 6 buttons at the new larger font sizes could get squeezed/pushed off-screen on a narrow viewport instead of wrapping — the likely reason the toggle itself wasn't visible. Fixed both. Also pushed contrast further (dark secondary → `#d0d0d0` ≈ 12.2:1, light secondary → `#404040` ≈ 9.9:1) and added a light-blue accent (existing `--accent-light` token, confirmed WCAG-clear for large text in both themes) to "big" text specifically — KPI tile numbers, page H1s, the four big total callouts, project-detail page name — so prominence comes from color/hue rather than pure brightness.
-
-**Verification:** this session's sandbox network policy blocks `esm.sh` (the CDN `web/index.html` loads Preact/HTM from at runtime), so none of the four PRs could be visually rendered/screenshotted in-session — all verified mechanically instead (contrast ratios computed against the WCAG relative-luminance formula, CSS var resolution confirmed via forced `localStorage` + `getComputedStyle`, no JS console/page errors). **Nico confirmed live on his phone 2026-07-10: "it all looks really good"** — a general confirmation, not itemized per-theme; light mode specifically was never separately called out as checked, just not flagged as a problem either. Live testing caught one real bug the mechanical checks couldn't: the project-page activity heatmap opened scrolled to its oldest (blank) end instead of today — `.heatmap`'s `overflow-x: auto` container defaults `scrollLeft` to 0 on load. Fixed same day as **#19**: a `useRef` + `useEffect` scrolls it to `scrollWidth` (the recent end) once the grid renders.
-
-**Scope note:** Nico also asked for the build-time indicator "in all my projects really" — out of scope this session (GitHub access was scoped to `nicolovejoy/prompt-lab` only); would need repos added explicitly to pick up.
-
-### CI break-glass: `/readup` now checks CI health (SHIPPED 2026-07-09)
-Traced from a CDCI ask: the `tests` workflow (`.github/workflows/test.yml`) had been red on `main` for 3 days (since `5f5f531`, the Todos by-type feature) — 12 ruff lint errors (`E741` ambiguous var in `scripts/classify_issues.py`, `E701`/`E702` one-line if/else/semicolon statements in `scripts/test_web_api.py`) failed the `test` job, which cascaded into skipping every downstream test step **and** the `deploy` job (which `needs: test`) on every push. No prod deploys went out for 3 days and nothing surfaced it — `deploy` shows as *skipped*, not *failed*, so it reads as normal in a quick glance at Actions. Fixed the 12 lint errors (renamed the ambiguous var, split the one-liners). **Root-cause fix:** `/readup` (`workflow/commands/readup.md` step 8) now checks `gh run list` for the default branch (and current branch if different) on every session start — silent if green/no-CI, otherwise surfaces a ⚠️ leading the summary naming the workflow, how long it's been red, and whether a dependent job (like `deploy`) is being silently starved as a result. Never blocks session start (skips silently on any `gh` error). Not yet applied to the SessionStart hook (that would make it automatic/unconditional rather than a `/readup`-time check) — could move it there later if `/readup` alone doesn't catch breakage fast enough in practice.
-
-### Cross-site visitor visibility — core SHIPPED, fan-out ON HOLD (issue #9, 2026-07-05)
-Traced a 2026-06-14 ibuild4you ask ("visibility to who uses this app and all my cloudflare hosted domains") that never got filed — filed as **#9** public-site traffic + **#10** auth-gated tool usage (tied to the OAuth-migration item below).
-
-**Decision reversed after verifying pricing: option A (Vercel Web Analytics + Drains) is dead, built option B (first-party beacon → Turso).** Verified 2026-07-05: Drains are Pro/Enterprise-only ($0.50/GB on top of $20/mo Pro), AND Hobby Web Analytics has no read API at all — 1-month retention, 50k-events/mo cap shared across ALL projects, viewable only in per-project Vercel dashboards. So option A couldn't feed a unified dashboard on Hobby regardless of export. Beacon (B) is also better long-term: hosting-neutral (covers all ~14 domains identically, not just the Vercel subset), writes cloud-direct to Turso so the cost-pipeline drift class can't recur, we own retention, and #10's login events ride the same endpoint.
-
-**Core shipped + live-verified on prod (this session, Fable):**
-- `web/api/beacon.py` — public `POST /api/beacon` collector. Anonymous by construction: no cookies, raw IP never stored, `visitor_hash` = truncated `sha256(AUTH_SECRET|UTC-date|ip|UA)` (rotates daily). Hardened: `site` from `Origin` header (never client-supplied), bot-UA + localhost-origin drop, 2 KB body cap, opaque 204 on every path. `event` allowlist currently `{pageview}` (add `login` for #10). Growth policy: `docs/measurement-policy.md` (measurement minimalism — one purposeful event at a time, never a stable identifier).
-- `web/beacon.js` — one-line snippet (`<script defer src="https://prompt-labs.org/beacon.js">`), sendBeacon, skips `navigator.webdriver`.
-- `page_views` Turso table (`scripts/create_page_views.py`, idempotent) — **cloud-direct, no local-SQLite copy, no sync leg** (deliberate). Classified in `docs/data-and-access.md` as the one exception to the sync flow.
-- `web/api/visitor_overview.py` + `#/visitors` page (top-nav "Visitors") — auth-gated, mirrors `#/costs`: stacked daily chart, by-site / top-pages / referrers / countries. `site` is a hostname, no alias folding.
-- 10 new tests in `scripts/test_web_api.py` (25/25 green). Live prod verified: beacon.js 200, clean hit → 204 → row landed in Turso with correct Origin-derived site + Vercel geo header, overview 401 without auth. prompt-labs.org now self-instrumented.
-
-**Step 2 fan-out — 6 repos MERGED 2026-07-07** (Nico said go). One beacon PR per repo (Sonnet sub-agents, `<Script src="https://prompt-labs.org/beacon.js" strategy="afterInteractive"/>` beside the existing `<Analytics/>` in each Next root layout), all squash-merged to main → Vercel redeploys the beacon live:
-- byside #88 (by-side.net) · ibuild4you #118 (ibuild4you.com) · recountly #13 (recountly.org) · invitekit #77 · selected-projects #6 (pianohouseproject.org; beacon is its only tracker, no Vercel Analytics; handoff note posted) · bakerylouise-v1 #27 (bakerylouise.com — the client-site question was resolved: Nico OK'd instrumenting it).
-
-**Verify wave DONE 2026-07-07** (real-browser Playwright loads → Turso `page_views`). The cross-origin browser sendBeacon is now PROVEN end-to-end (previously only curl-tested). **Firing live (event landed, correct Origin-derived site):** prompt-labs.org, by-side.net, ibuild4you.com, pianohouseproject.org, bakerylouise.com, freevite.vercel.app — plus **recountly.org as of 2026-07-14** (see the resolved anomaly below).
-
-**Actual `page_views` inventory, queried 2026-07-15** (the ground truth; beats any prose list here): bakerylouise.com 53 · prompt-labs.org 47 · ibuild4you.com 29 · by-side.net 15 · preview.ibuild4you.com 10 · pianohouseproject.org 6 · **free-vite.com 3** · offer-builder.ibuild4you.com 3 · freevite.vercel.app 2 · recountly.org 1. **`free-vite.com` is unexplained** — the note below says invitekit has no custom domain and fires only as `freevite.vercel.app`, but something served our beacon from `free-vite.com` on 2026-07-10/11. Probably invitekit gained a custom domain nobody recorded; confirm before trusting the "no real traffic" claim below.
-
-**Anomaly 1 — recountly.org beacon: RESOLVED 2026-07-14.** Live and confirmed end-to-end (real headed browser → 204 → Turso row, `ts 2026-07-15T00:18:42Z`, `site=recountly.org`). The beacon code was never the problem — it was correctly placed at `src/app/layout.tsx:42` the whole time. **The recountly Vercel project simply had no Git integration, and never had one:** `GET /v9/projects/<id>` returned `link: NULL`, and the project had **zero preview deployments across its entire 43-day history**. Every deploy it ever had was a hand-run `vercel --prod`. Nothing broke on Jun 27; the workflow had moved to GitHub PRs, and on an unlinked project merging a PR deploys nothing — so the 17-day "gap" was just time since someone last ran the command by hand. Now linked: main auto-deploys and PRs get previews, both halves verified.
-
-**Load-bearing detail:** that row is the **only** `recountly.org` row that has ever existed — the beacon had never fired once before this deploy. Anything upstream reading beacon data for recountly was reading **a hole, not a zero**. Don't interpret a missing site in `#/visitors` as "no traffic."
-
-**Three diagnostics retired by this — they produce false conclusions, don't reuse them:**
-1. **`gh api repos/:owner/:repo/hooks` is not evidence about Vercel linkage — it's no evidence at all.** Vercel connects via a **GitHub App**, which creates no repo-level webhooks, so this returns empty whether or not the project is linked (it still returns empty now that recountly IS connected and auto-deploying). Check `link` on `GET /v9/projects/<id>` instead.
-2. **`_vercel/insights` is a stale marker for "is Vercel Analytics present."** `@vercel/analytics` 2.0.1 serves through a randomized anti-adblock path (recountly's is `/7bd029f5969d4043/script.js`, which contains `vercel/insights` internally and POSTs to `/<hash>/view`). Grepping served HTML for `_vercel/insights` reads as a false negative on any current site.
-3. **`githubCommitSha`/`githubCommitRef` on a deployment do NOT imply a git trigger.** The CLI stamps local checkout metadata onto manual deploys, which is exactly what makes an unlinked project look linked. The real tell is `target`: **every deploy production, zero previews ever.** A *removed* webhook would leave previews behind from before it broke; *never linked* leaves none, ever. Distinguish those by checking the project's whole history, not just the recent window.
-2. **freevite.app is NOT ours — do not instrument it.** It's almost certainly Matt Lewis's `mplewis/freevite` (same name/concept, a Vite SPA). `nicolovejoy/invitekit` is Nico's *own from-scratch* reimplementation (Next.js + Firebase, `isFork: false`, first commit 2026-04-11), deployed to `freevite.vercel.app` — that's where the beacon is live and firing (records site=`freevite.vercel.app`; no custom domain, so ~no real traffic — the beacon there is harmless but low-value). Earlier note mistakenly implied putting the beacon on freevite.app; that would be instrumenting someone else's site — DON'T. invitekit's beacon is done and correct; nothing more to do unless invitekit gets a real custom domain.
-
-**Still held:** **prntd** + **musicforge** had dirty trees at fan-out time (do when clean; musicforge is Vite `frontend/src/main.tsx`, different injection). **Local cleanup:** sub-agents left byside/recountly/invitekit/selected-projects on the deleted `add-visitor-beacon` branch — `git checkout main && git pull` in each before local work. Cloudflare-proxied musicforge.app + recordings.pianohouseproject.org and unclear domains (eaglerockventures, robotorchestra, ruhuman) still covered identically once instrumented.
-
-**Two trackers now live across the ecosystem — inventory (verified 2026-07-05):**
-- **Our beacon** (`beacon.js` → `/api/beacon` → Turso `page_views` → `#/visitors`): **prompt-lab ONLY** (relative `/beacon.js` in `web/index.html`). No other repo has it — the fan-out is still on hold. So `#/visitors` shows only prompt-labs.org; early "N views" there = Nico's own dashboard loads.
-- **Vercel Web Analytics** (feeds Vercel's per-project Analytics tab, NOT our `#/visitors`): a parallel Opus session added it to **7 repos** — prompt-lab (`ad557d5`, the `_vercel/insights` script tag; the rest use the `@vercel/analytics` React pkg), plus byside, prntd, ibuild4you, recountly, bakerylouise-v1, invitekit (all 2026-07-05 ~20:53–20:58), and musicforge (since 2026-06-22). View per-project at vercel.com → project → Analytics.
-
-**Implication:** the ecosystem is now Vercel-instrumented (per-project, fragmented — the exact thing #9 wanted to unify) but on the Hobby data source we concluded can't feed a unified dashboard (no read API, 30-day retention, 50k/mo cap **shared across all 7**). The single cross-site view still only comes from the **beacon fan-out** (on hold). When unblocked, beacon is one line per repo — same layout file the `@vercel/analytics` component went into. **Decisions pending:** (1) keep both trackers or drop one once the beacon covers a site (double-tracking + muddies the first-party story); (2) watch the shared 50k/mo Vercel cap now that 7 projects report into it.
-
-### Home redesign → Pulse + Todos by-type (SHIPPED 2026-07-05)
-Pitched 3 home concepts (Command Center / Briefing / Pulse) via 3 parallel design agents → Artifact. Nico picked **Pulse** (metrics-first). Built: KPI tile row (active projects, 7d sessions/prompts/commits, 30d spend, 30d views — spend/views tiles link out) + a 30-day cross-project stacked activity chart (from `activity_by_project`), over the retained daily-summary stream ("Recent activity"). Pure frontend — reuses `/api/overview` + `cost_overview` + `visitor_overview`. Also added the **Todos by-type view** (see the Todos entry below). Both live, bundle verified clean (0 console errors). Considered-and-rejected: a triage band (built + removed same day — see redesign note below).
-
-### Playwright orphan-browser reaper (SHIPPED 2026-07-05, issue #8)
-Stray "Chrome for Testing" instances (diagnosed in a musicforge session) get reaped by `workflow/bin/reap-playwright.sh`: kills any `ms-playwright` process whose PPID is 1 (orphans reparented to launchd) — the PPID-1 guard is what makes it safe; a bare `pkill -f ms-playwright` would kill live sessions' browsers. Runs as an **async global SessionStart hook** (`~/.claude/bin/reap-playwright.sh`, timeout 10); no launchd interval job for now — add one only if strays accumulate during non-Claude stretches. install.sh's bin loop distributes it and its printed settings stanza includes the hook line; BULLETIN.md 2026-07-05 entry carries the behavioral half (`browser_close` when done with `mcp__playwright__*`, don't SIGKILL `playwright test`). Verified with a fake orphan (PPID 1 → reaped) and a live-parent process (survived). Mini wired. **Laptop:** SessionStart hook entry added to its `~/.claude/settings.json` 2026-07-05 (reap-playwright.sh already installed in `~/.claude/bin/`); takes effect next launch. Remaining laptop follow-up: `git pull && ./workflow/install.sh` to keep the distributed copy current.
-
-### `work` iTerm2 launcher — now repo-synced (SHIPPED 2026-07-05)
-Ported the per-project launcher from mini's unversioned `~/src/utils/work.zsh` into the repo's shared shell channel: `workflow/shell/work.zsh`, distributed by `install.sh` (copy → `~/.claude/shell/work.zsh` + idempotent `source` line in `~/.zshrc`, mirroring the `gc-shell.zsh` block). `work [name]` opens an iTerm2 window (menu / arg / `<TAB>` completion over `~/src`) with a top Claude pane + two bottom shells, all cd'd into the project; tab color is a deterministic name→HSV hash (no palette to sync). Two deltas from mini's copy: **80/20 split** (`bottom_rows = WORK_ROWS/5`; knob is the `/5`) and **bigger window** (`WORK_COLS/ROWS` 160×50 → 200×55, iTerm clamps to screen). Verified working on laptop (`907d6eb`, pushed). **2026-07-18 additions (`54dcf1e`, laptop-verified):** the top pane now gets an iTerm **badge** (project-name watermark via `iterm_badge`; programs in the pane can't overwrite it) and launches **`claude --name '<project>'`** so the tab/window title reads `· <project>` from launch. Key finding behind it: the terminal title IS Claude Code's session name — generic "Claude Code" just means the session is un-named yet (auto-topic or `/rename` fills it); nothing in `/readup` or the SessionStart hook renames sessions, and the mini's `— ~/src/<proj>` tab suffix is machine-local iTerm config (Shell Integration + "Path" title component), not the repo. The `gc-shell.zsh` precmd only titles plain zsh panes. **Known nit:** `_work_color` collides prompt-lab & byside → same blue (inherent to mini's hash; unchanged). **Mini follow-up:** `git pull && ./workflow/install.sh` to pick up work.zsh (same step also still owed for issue #7's `~/.claude/bin/handoff.sh` allow rule + wrapper install per the note below).
-
-### Cross-repo handoff → standalone synced git repo (SHIPPED 2026-06-29)
-Issue #7 done. Cross-repo coordination moved from unversioned, machine-local `~/src/.handoff/*.md` into the **standalone private repo `nicolovejoy/handoff`** (cloned to `~/src/.handoff`, synced across mini+laptop). Writes go through `workflow/bin/handoff.sh` (`append`→top of `## Active` / `sync` / `pull`; mkdir mutex w/ stale recovery, portable TERM→KILL timeout, exit 0/3/4/5) → installed to `~/.claude/bin/`. SessionStart hook does a 3s best-effort pull then injects the manifest-matched (`repos:` front-matter) channel's `## Active` section. `/handoff` step 6 (post + sync) and `/readup` step 7 (flush unpushed/offline) wired; allow rule `Bash(~/.claude/bin/handoff.sh *)` in install.sh + both machines' settings.json. Pointer stanzas in prompt-lab + selected-projects + prntd CLAUDE.md. Harness (`workflow/handoff-sim/`) re-pointed at the shipped wrapper: 26/26. **Known property:** same-file concurrent appends conflict under rebase — wrapper surfaces (rc=3) + preserves, never drops; mitigation is one-file-per-entry if it ever hurts. Design: `docs/handoff-repo-plan.md`.
-
-### Costs overview page + cost-sync drift fix (SHIPPED 2026-06-25)
-Issue #6 done. **Costs page** at `#/costs` (top-nav "Costs" link): new `web/api/cost_overview.py` (alias-folded, all projects, no `project` filter), stacked-by-project daily chart with a **zero-filled calendar axis** (30/90/365d windows), sortable per-project legend, per-model breakdown, API-spend-only caveat note. **Root-cause fix (the important part):** the dashboard was showing stale/partial cost data because the nightly `com.promptlab.api-costs` LaunchAgent ran `pull_api_costs.py` (writes **local SQLite only**) but nothing synced to Turso, which the dashboard reads — local was ~a month ahead. Coupled pull+sync in new `workflow/run-cost-pull.sh` (`pull` then `sync_to_turso.py --days 7`); plist points at it (reloaded on mini, the nightly machine). Backfilled Turso via a one-off full sync — orphan `__unmapped__` rows overwrote in place via the `UNIQUE(date,workspace_id,description)` key (project not in the key). Documented in `docs/cost-tracking.md`. **Watch:** new Anthropic workspaces (e.g. koma-launch) land in `__unmapped__` until added to `scripts/seed_project_workspaces.py`.
-
-### Todos page — cross-project open GitHub issues (SHIPPED 2026-06-25)
-Top-nav "Todos" link → `#/todos`. `web/api/todos.py` does one authenticated GitHub Search call (`is:open is:issue user:<GITHUB_USER>`, default nicolovejoy) for every open issue across **owned** repos, groups by repo (folded through the project alias map), renders per-repo. **Live-read — no table, no sync, always fresh.**
-
-**By-type view (added 2026-07-05):** a `by project | by type` toggle. "By type" classifies every issue into a fixed work-type taxonomy (`bug / feature / infra / ux / content / research`, else `other`) via **one batched Claude call**, cached in the Turso `issue_categories` table keyed `(repo, number)` — a given issue is classified once and reused until its title changes, so steady-state cost ≈ $0 (only genuinely new issues ever hit the LLM). The endpoint serves `/api/todos?categorize=1`: reads the cache, and (admin only, `ANTHROPIC_API_KEY` present) classifies any stragglers, capped at `LIVE_CLASSIFY_CAP=40`/request with a `pending` count the frontend polls down. Taxonomy lives in `web/classify_helper.py` (`classify_batch`, mirrored in `index.html`'s `CAT_META`). **Pre-warm / periodic refresh:** `scripts/classify_issues.py` (uses `gh` CLI, no token handling; `--all` forces reclassify) — run once after deploy to fill the cache so live requests never do a big first batch; it also creates the `issue_categories` table. Readers see cached categories only (no spend). `↻ reclassify` button forces a full re-run (admin). Why LLM not labels: only 54% of issues carry labels and they mix type/platform/priority — too inconsistent to group by (checked 2026-07-05). Prominent total + project count; each repo is a **collapsed-by-default accordion** with Expand/Collapse-all. **Scope defaults to dashboard-tracked projects** (computed from `overview.all_projects` ∪ `by_project`; the endpoint folds repo→canonical so they match) with a **`Show all repos (+N)`** toggle that reveals untracked owned repos (tagged with an `untracked` chip). **Search box** filters issues by title / label / `#number` / repo across the shown scope and force-expands matching repos. Needs `GITHUB_TOKEN` (read-only fine-grained PAT, Issues+Metadata) in Vercel env (Prod+Preview) + `.env.tpl` (`op://dev-secrets/prompt-lab-github-pat`); optional `GITHUB_USER`. **Caveats:** only repos you own (org/other-owned repos' issues won't appear); the PAT expiry silently 401s the page when it lapses — regenerate longer-lived if it breaks.
-
-### Dashboard redesign Phase 1 + perf (SHIPPED 2026-06-24)
-Per `docs/dashboard-redesign-plan.md`. **Home → cross-project activity stream** (recency-sorted feed of daily summaries, expandable; replaced the project-card grid; dormant projects now a chip list behind the toggle). **Project pages → Now / Trajectory / Cost / History** sections. **Machine-voice markers** (`↳ from claude`, italic+muted) on state summaries, daily-summary bodies, rollup narratives. **Top-nav project picker** (Vercel-style, Active/Dormant sections). **Cost states**: loading + explicit no-spend empty state (notes that Claude Code subscription work isn't attributed per project). Deleted 4 dead endpoints (`intentions/projects/rollups/summaries.py`). **Perf** (separate commit): localStorage stale-while-revalidate for `/api/overview` (instant paint + ↻ refresh spinner), in-session memo for project/cost (instant back-nav), prefetch of the top project — all pure-frontend, no backend change. **Next:** costs-overview page is issue #6 (API-spend-only by necessity). (Phase 2 "triage band" — the admin-only "went quiet" / "cost spike" attention band — was built then **removed 2026-07-05**: with work split across two machines, "went quiet" fired for ~every project since it only saw one DB's prompts, so it was noise dressed as signal. Don't rebuild it without a cross-machine activity source. Removed cleanly in `web/index.html`; recover from git if wanted.)
-
-### Intentions fully removed (REMOVED 2026-06-24; deprecated 2026-06-23)
-First froze *generation* (2026-06-23); then removed the feature entirely (2026-06-24) after Nico manually purged the rows — the data was noise (bloated past its 3-8/project target: musicforge 180 "active", ibuild4you 97) and nothing rendered it after the dashboard redesign. **Gone now, not reversible:** the `intentions` table (dropped on both local SQLite and Turso), all store methods (`get_intentions`/`upsert_intention`/`get_projects_needing_intentions_refresh` + the `_dedupe_intentions` helper), `web/api/intentions.py`, the `synthesizer.py --intentions` flag + `synthesize_intentions()`, the intentions sync in `sync_to_turso.py`, the `/roadmap` + `gc-read.sh` intentions subcommands, the mobile PWA's IntentionsTab, and the orphaned `themes.intention_ids` column. Tests updated (test_web_api dropped the intentions/rollups/summaries endpoint sections; test_alias_layer dropped the `_dedupe_intentions` tests); all green. If goal-tracking ever returns, build it fresh — the old completion/abandon logic never fired.
-
-### prompt-labs.org de-indexed from search (SHIPPED 2026-06-22)
-Policy A (DE-INDEX) for the auth-gated dashboard: added `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet` on `/(.*)` in `web/vercel.json` + `<meta name="robots">` in `web/index.html`; `robots.txt` already `Disallow: /`. Verified live (header + robots.txt + served meta). Not Next.js so no `app/robots.ts` layer. Doesn't touch `/api/public_history` (server-to-server, not browsed).
-
-### Public-data drift guard — now wired in (SHIPPED standalone 2026-06-13; wiring SHIPPED 2026-07-12; purge still pending)
-`scripts/check_public_allowlist.py` audits both stores' public_* tables against `docs/public-allowlist.txt` (mirror of the consumer's 7-key historyKey manifest), alias-aware, report-only (`--fix` prints unpublish commands, never runs them). Built after an earlier session reconciled the public tables to the manifest (removed `/handoff` writes, purged byside + 12 strays — see RESOLVED note below).
-
-**Wiring shipped 2026-07-12:** (1) `sync_to_turso.py` now runs the audit as a non-fatal post-sync step (`check_public_allowlist_drift()`) — subprocesses the script, prints its output, never affects the sync's own exit code even on drift. (2) `/readup` step 9 (prompt-lab-repo only) runs the same script and, on drift, leads the session summary with a ⚠️ block naming the offending project(s) and the `unpublish_public.py <project> --apply` fix — standalone alone relies on remembering, which already failed once. Fixed a real bug found while wiring this in: the script crashed with an unhandled `sqlite3.OperationalError` on an unmigrated local DB (missing `local.migrate()` before querying) — would have made the "non-fatal" guarantee false in exactly the situation (a stale local DB) where the check matters most. Verified end-to-end in-session: clean run, a manually-inserted drift row correctly caught and reported, cleanup confirmed clean again.
-
-**4 Turso-only strays purged 2026-07-13** (`audio-journal`, `bakerylouise_v1`, `invitekit`, `recountly` — 8 rows total in `public_session_summaries`, none local, none in weekly_rollups). `scripts/check_public_allowlist.py` now reports clean: 7 distinct projects in public tables, matching the 7-key allowlist exactly. When the manifest changes, update `docs/public-allowlist.txt` + its date.
-
-### Shared-conventions sync across all repos (SHIPPED 2026-06-13)
-`workflow/claude-md-shared.md` is the single source of truth for Nico's cross-repo output rules (clickable URLs, numbered questions, self-contained smoke-test instructions, no marker before copy-paste command blocks). `workflow/bin/sync-claude-md.sh` materializes it into a target `CLAUDE.md` between `<!-- SHARED-CONVENTIONS:BEGIN/END -->` markers — `--apply` splices only inside the markers (bespoke content untouched; creates CLAUDE.md if absent), `--check` reports `in sync`/`missing`/`drift`/`absent` via a content-hash stamp in the BEGIN marker. **Design decision: compile-to-committed-text, NOT CLAUDE.md `@import`** — verified (via claude-code-guide) that `@import` is a Claude Code *harness* feature only; cloud/headless/third-party readers see the literal `@path`, and `~/`-anchored imports break in cloud. Committed plain text is the only thing that reaches every environment. `install.sh` distributes the source to `~/.claude/claude-md-shared.md` + the script to `~/.claude/bin/`; `/readup` step 6 runs `--check` and warns on drift but **never auto-writes** (materializing into a checked-in file stays the user's explicit call). Rolled out to 30 repos (the 5 without a CLAUDE.md skipped); both machines updated. **Edit→propagate loop:** edit `claude-md-shared.md` → `./workflow/install.sh` → re-run `--apply` per repo. Caveats: (1) only binds in envs that read each repo's committed CLAUDE.md, so a repo never re-synced stays stale; (2) notemaxxing's lint-staged may have reformatted its block at commit → could show cosmetic `drift`; (3) 6 repos committed onto feature branches (block reaches their main on merge); (4) of the 30, only prompt-lab is pushed — rest are local commits awaiting per-repo push.
-
-### Public-data surface simplified (SHIPPED 2026-06-03)
-Removed the `PUBLIC_PROJECTS` read-time allowlist from `web/api/public_history.py` (PR #4, deployed). It was a third, drifting copy of "what's public" alongside the public_* table rows and the consumer's manifest. New model: the endpoint serves whatever exists in `public_session_summaries` / `public_weekly_rollups`, which are **safe-by-construction** (written only by `scripts/backfill_public_*.py` with scrubbed text). The single source of truth for *which* projects are public is now the **selected-projects MDX manifest** (`content/projects/*.mdx`). Added `scripts/unpublish_public.py <project> [--apply]` — alias-aware, dry-run-by-default tool that deletes a project's public rows from **both** local SQLite and Turso (sync only upserts, so deletes must hit Turso directly; byside had 4 local but 17 Turso rows). Unpublished byside end-to-end. Also fixed selected-projects' dead `anomatom.com` → `prompt-labs.org` API fallback in `lib/history.ts` (merged to its main). Consequence: every project with scrubbed rows is now URL-reachable (incl. client projects — all verified de-identified); use `unpublish_public.py` to pull any one. Note: `docs/selected-projects-api-migration.md` now describes the allowlist as the intended single gate — superseded/stale.
-
-### Vibe-coding lessons doc + public page (SHIPPED 2026-06-06)
-`docs/vibe-coding-lessons.md` — a 14-lesson field guide on working with Claude, extracted from real `key_decisions`/prompt history. Public GitHub links only on actually-public repos (verified prntd/ibuild4you/prompt-lab PUBLIC; byside/musicforge private → prose-only, unlinked). **Issue #3 CLOSED:** shipped as a public page at PianoHouseProject.org `/vibe-coding-lessons` (selected-projects repo, not prompt-labs.org). Lives there as `content/vibe-coding-lessons.mdx` + `app/vibe-coding-lessons/page.tsx`, top-nav "lessons". Key correction: the page first **overclaimed Nico's authorship** (machine-written prose in human-voice type, backwards from tenet #1) — rewrote with an honest machine-voice `<MachineNote>` (Claude wrote the lessons by mining Nico's real prompts; [real] prompts are his words) and cut it 60%. Added a Nico-voiced caveat to tenet #1 that clean who's-speaking separation may be unachievable. **Open follow-up: selected-projects #4** — gate the page behind auth with a teaser (deferred, needs the magic-link auth work on main). Note: shipped via isolated PRs off main (#2 create, #3 rewrite) after a two-agent collision where a concurrent selected-projects session committed a duplicate onto its local feature branch — logged in `~/src/.handoff/selected-projects-prompt-lab.md`.
-
-### /handoff public-write steps removed — invariant now clean (RESOLVED 2026-06-13)
-Chose option (a): deleted the "public session summary" + "public weekly rollup" steps from `/handoff` (`workflow/commands/handoff.md`). `public_session_summaries` / `public_weekly_rollups` are now written ONLY by the hand-reviewed, git-committed `scripts/backfill_public_*.py` one-shots — never by `/handoff`, the synthesizer, or sync (`sync_to_turso.py` only *propagates* existing local rows to Turso). Key finding that settled it: the "safe-by-construction" property is **not** "human-authored" (the backfill text is Claude-authored too — see `backfill_public_promptlab.py` docstring); it's "**reviewed, git-committed literal, published by a deliberate per-project one-shot**." `/handoff`'s live DB writes had neither the review gate nor the per-project opt-in, fired for every repo incl. client work, and auto-propagated to public Turso on next sync. They were also effectively dead (blocked every run by the auto-approver), and the backfill scripts are hardcoded one-shots (not incremental), so public data was never auto-fresh anyway — removing the steps lost nothing that worked. If fresh public data is wanted later, the right path is the draft-to-artifact hybrid (have `/handoff` draft scrubbed text into a reviewable backfill artifact rather than the DB), not live writes.
-
-### Domain migration → prompt-labs.org (SHIPPED 2026-05-29)
-Cloud dashboard now lives at **https://prompt-labs.org** (Cloudflare registrar, Vercel-hosted). Replaced anomatom.com, which was dropped from the project (404, no redirect). Vercel project renamed `ground-control` → `prompt-lab` (project ID unchanged: `prj_g6Bd1VG93LUDdKwg5V4d1EaoE4FV`, so GitHub Actions secret needed no change). DB `projects.site_url` updated + synced to Turso. Verified live: 200 + auth-gated API (401). The app is domain-portable (no hardcoded domain in `web/` runtime, host-relative cookies), so any future move is a Vercel-dashboard task, not a code change. Note: prompt-labs**.com** is a $2k squatter — not ours; we own the **.org**.
-
-### Local dashboard retired (SHIPPED 2026-05-29)
-The Flask `dashboard/` (port 5111) was removed — ~3mo stale, none of the cost/alias/public_history work landed there. Cloud `web/` is the single UI. Fallout fixed same session: `python-dotenv` lived only in the deleted `dashboard/requirements.txt`, breaking CI; restored via a new root `requirements.txt` (CI + install.sh point at it). `mobile/` PWA left untouched.
-
-### Status toggle (scoped 2026-05-28 — SHIPPED 2026-07-14 as part of #23)
-Done: the cloud project page has a status `<select>` writing to Turso `project_metadata` via the admin-gated `POST /api/project_metadata`. See the #23 entry above. The old plan's step (2) ("move status ownership to Turso so `sync_to_turso.py` stops clobbering a cloud-set value") was based on a bug that never existed — sync never wrote `projects`. Local `projects.status` and cloud `project_metadata.status` are now independent by design: local serves the local pipeline, cloud serves the dashboard, neither syncs to the other.
-
-### Todos rewire (opened 2026-05-28)
-`todos.py` scanner is now unwired — its only consumer was the retired local dashboard, and `web/` has no todo handling. Rewire into the cloud app when todos return to the UI.
-
-### offer-builder → byside rename (SHIPPED 2026-05-30)
-prompt-lab side of byside's GH #13 done end-to-end. Added alias `offer-builder → byside` (`scripts/alias.py`), synced to Turso, set `projects.github_url` → `nicolovejoy/byside`, and regenerated the project snapshot so the dashboard GitHub link is correct. Key finding: `web/` **never reads the `projects` table** — the home list comes from `/api/overview`, which is already alias-aware (`_resolve()`), so the dashboard groups under canonical `byside` with no code change. (`web/api/projects.py` was dead UI code; it has since been deleted — don't go looking for it.) The rename stays non-destructive: rows keep logging as `offer-builder` (dir unchanged), folded at read time. Byside's `/changelog` was still pointing at dead `anomatom.com` — flagged to that agent (now resolved on their side).
-
-### Auth and sharing
-- Consider contextual Ask/Reviews on project pages (inline, not nav bar)
-- Migrate to Google login (OAuth) and track logins per user; admin = just me
-- **selected-projects → `/api/public_history` migration: complete, manual cleanup done 2026-06-05** (prompt-lab `73c7de9` + `c53c04c`, selected-projects `c895eb6`). All three owed cleanups landed this session: (1) visual-verified PianoHouseProject.org `/projects/musicforge` Evolution section via Playwright — live, current data, machine-voice marker present; (2) deleted `HISTORY_TURSO_DATABASE_URL` + `HISTORY_TURSO_AUTH_TOKEN` from selected-projects Vercel (Preview + Production), kept plain `TURSO_*` (pianohouse's own DB) — this removed the actual exposed copy of the ground-control token; (3) **rotated** the ground-control Turso token on web's Vercel (Production/Preview/Development) and verified the new token connects (`SELECT 1` → 200). `docs/selected-projects-api-migration.md` is historical.
-  - **Old token invalidated — issue #5 CLOSED 2026-06-06.** Chose the *isolate* path over a group-wide rotation: created a new Turso group `promptlab` and migrated the DB into it (dump via `turso db shell ground-control ".dump"` → `turso db create promptlab --group promptlab --from-dump`; note `--from-dump` silently no-ops, had to `turso db shell promptlab < dump.sql` to actually load). Verified all 13 tables row-for-row, repointed web's Vercel env (`TURSO_DATABASE_URL` → `libsql://promptlab-nicolovejoy.aws-us-west-2.turso.io`, `TURSO_AUTH_TOKEN` → new) + both machines' repo `.env.local` (op item **`Turso`** url+token fields updated; the separate `prompt-lab-turso-token` op item is redundant), then **destroyed `ground-control`** — which neutralizes the old per-DB token (its target DB is gone). `pianohouse` + `prntd` stay in `default`, untouched. The new `promptlab` group has its own signing key, so prompt-lab data is now cryptographically isolated from any future `default`-group token. **Gotchas found:** (1) a stale repo `.env` on the laptop loaded *before* `.env.local` (load_env is first-wins) and pinned the old URL — `rm .env` fixed it; (2) `~/.claude/synthesizer.env` is the **legacy** creds source and is effectively dead — `load_env` (claude_api.py:18) reads `REPO_DIR/.env.local` first by *absolute* path so it always wins even under launchd; mini is the only machine that runs the nightly LaunchAgents (`com.promptlab.{synthesizer,review,report}`). Follow-up DONE 2026-06-06: key-diff confirmed `.env.local` is a strict superset of `synthesizer.env` (all 7 keys present, plus `ANTHROPIC_ADMIN_KEY`), so `synthesizer.env` was dropped from `load_env`'s list (claude_api.py) + purged from README/error-messages/cost-tracking docs. The hook still *blocks* `synthesizer.env` (defense-in-depth) and `.gitignore` still lists it. Laptop's copy deleted; mini's pending a manual `rm ~/.claude/synthesizer.env`.
-
-### Responsible AI use paradigm (started 2026-05-17)
-- "Machine voice" visual convention shipped on PianoHouseProject.org (`73cea5b` + `7475d88`): italic + muted + `↳ from claude` mono uppercase marker for any AI-authored text, including the Evolution rollups on each project page and a `<MachineNote>` MDX component for one-off blocks. First `/tenets` page in the nav documents the principle.
-- Open: grow the `/tenets` list past tenet #1; consider applying the same convention to the cloud dashboard (prompt-labs.org) state summaries / weekly rollup text.
-
-### Dashboard polish
-- Review project detail layout on mobile (sidebar stacking) — note: sidebar dropped 2026-05-19 in favor of single-column; mobile audit still useful.
-- Add ability to set/toggle project status (active/dormant) from detail page
-- Project page UX cleanup (2026-05-19): collapsed text to teasers, dropped duplicate sidebar, capped timeline at 8 with Show More, added axes to CostChart, replaced "Site" link with hostname + self-link suppression. Cost drill-down (2026-05-20): `#/project/<name>/cost` opens a sortable detail table with filters; CostChart got a per-bar hover tooltip showing date + per-model breakdown. Next: figure out a coherent overall hierarchy — currently a header + heatmap + cost + timeline + intentions stack, no clear "above the fold" frame.
-
-### Slash commands (current state, 2026-05-24)
-
-Now installed: `/pulse` (session status), `/roadmap` (project digest), `/bulletin` (cross-project conventions), `/resync` (verify CLAUDE.md + open issues against actual code via parallel Explore agents, two modes: deep + `--light`). All read through `~/.claude/bin/gc-read.sh` wrappers so they bypass the simple_expansion permission gate.
-
-The SessionStart hook (`workflow/hooks/session-start.sh`) auto-injects date + last-session summary + recent commits + bulletin headlines on every Claude launch under `~/src/*`. As of 2026-05-24 it also emits a **weekly nudge** listing custom commands not invoked in 30+ days (rate-limited via `~/.claude/state/commands-nudge.touch`). /readup now only does the things the hook deliberately skips: register session row, `git fetch --quiet && git status -sb`, full CLAUDE.md read, lazy unsummarized-day backfill, and auto-`/resync --light` when the per-project marker is >48h old AND >3 commits have landed.
-
-Known nuance: prompt-history's slash-command counts under-report bare invocations because `log-prompt.sh` skips prompts starting with `<command-`. Rows that DO match (e.g., `/handoff` in "commit, push, /handoff") are conversational references, not invocations. Doesn't affect the nudge (which uses whitelist + 30-day cutoff) but limits any "trending command" analysis.
-
-**Still to do:**
-- Track session duration (ended_at − started_at) and surface in /review.
-
-### /handoff trimming (in-progress design discussion, 2026-05-13)
-
-Discussed five potential cuts. Decisions so far:
-- **Point 1 — SHIPPED** (commit `342ceae`): dropped Turso sync from /handoff; moved to async SessionStart hook at `~/.claude/bin/turso-sync-maybe.sh` (per-machine, max once per 8h, was 24h). Synchronous hook warns when stale >24h (3 missed cycles). Cuts ~10s + a failure mode from every /handoff.
-- **Point 2 — RESOLVED**: synthesizer schema-drift crash fixed in `242d343` (2026-05-13); schema verified healthy on both machines. The original idea — drop weekly rollup from /handoff once the nightly is proven stable — is now an optional cleanup, not a blocker.
-- **Point 3 — SHIPPED** (this session): /handoff no longer upserts the GitHub URL. Moved to one-time `scripts/backfill_project_urls.py`; already populated all 15 projects under ~/src.
-- **Point 4 — pending discussion**: batch the ~5 remaining `python3 -c "..."` invocations in /handoff into a single helper script. Worth doing only AFTER Point 2 lands.
-- **Point 5 — pending discussion**: a Stop hook that captures commits + sets `ended_at` on session rows even when /handoff is skipped. Worth it only if you actually have many abandoned sessions.
-
-### Cross-machine sync
-
-SHIPPED (this session): bin scripts moved into the repo under `workflow/bin/` and `workflow/install.sh` extended to install them to `~/.claude/bin/`. The manual-step block at the end of install.sh now prints the full settings.json additions (allow rules + SessionStart hook entries).
-
-Status by machine:
-- **Laptop**: 8h Turso sync cadence; `~/.claude/settings.json` has gc-write/gc-read allows + SessionStart hooks. Operating from the new state.
-- **Mini**: synced 2026-05-15 — pulled, install.sh ran, settings.json patched with allows + SessionStart hooks. Restart needed before hooks take effect.
-
-**Synced shell config (2026-05-31):** `workflow/shell/gc-shell.zsh` holds machine-agnostic zsh bits (currently an iTerm2 precmd hook that puts the cwd in the tab/window title, updating on every `cd`). `install.sh` copies it to `~/.claude/shell/` and idempotently appends a `source` line to `~/.zshrc` — chosen over syncing the whole `.zshrc` so machine-specific config (nvm, paths) isn't clobbered. **Mini follow-up:** `git pull` + run `install.sh` to pick it up (the mini already has a near-identical inline precmd; the sourced one will override it harmlessly).
-
-### Synthesizer cost reduction (shipped 2026-05-17)
-
-Three-phase migration shipped this session in response to ~$100/2-week Opus spend on the nightly LaunchAgent:
-
-- **Phase 1** (`598401c`): `OPUS` → `SONNET` across all unattended API call sites (`synthesizer.py`, `send-review.py`, `generate-report.py`). ~5x reduction.
-- **Phase 2** (`8bea382`): `/handoff` step §3.5 refreshes intentions inline (`model='claude-code'`, free under subscription). Nightly `synthesize_intentions` now uses `get_projects_needing_intentions_refresh(today)` as a safety net (active project + no intention touched yesterday/today).
-- **Phase 3** (`9ab9c25`): `/readup` step §4 backfills up to 5 recent unsummarized days inline. If >5 stale, skips with a note and lets the nightly catch them.
-- **Bug-prevention** (`48802e6`): `scripts/test_imports.py` Phase 3 instantiates concrete stores so abstract-method drift breaks the test instead of silently breaking `/handoff`; `handoff.md` got a top-of-file guard telling Claude to stop on Python tracebacks.
-
-### Backfill and maintenance
-- Verify nightly synthesizer actually runs on both machines (pre-req for point 2 of /handoff trimming). On the laptop in particular — LaunchAgents pause when the lid is closed.
-- Migrate other projects' `.env` files to 1Password `.env.tpl` pattern.
-- The schema-drift fixes shipped in `242d343` (`projects` table + `token_count`/`hostname` ALTER) are tested only via `scripts/test_imports.py` (compile check) + `scripts/test_alias_layer.py` (in-memory store). No dedicated regression test that exercises the drift scenario specifically — Task #9 from this session, deferred.
-
-### CI/CD follow-ups
-- Stale-alias URL UX: `/project/frontend` now renders musicforge data but the URL/title still say "frontend". Consider redirecting `/project/<alias>` → `/project/<canonical>` at the SPA route layer.
-- Decide whether to keep the GitHub Actions deploy path forever or eventually switch to Vercel's native git integration (simpler but loses test-gates-deploy semantics). Native is fine if you trust your tests; current setup is more conservative.
-
-### Browser automation
-- Playwright MCP installed at user scope (`claude mcp add playwright -s user`). Available after next Claude restart. Scope convention is in `BULLETIN.md` — production read-only, localhost + preview URLs full access.
-
-### Cost tracking (issue #2 — CLOSED 2026-05-24)
-
-End-to-end live since 2026-05-19; hardened + drill-down 2026-05-20; all 5 workspace mappings seeded 2026-05-24. Architecture, operational checklist, and gotchas in `docs/cost-tracking.md`.
-
-Open follow-ups:
-- **Watch ibuild4you spend** — ~$9-10/day for the last week (2026-05-14 to 2026-05-23, ~$113 total). Verify it's intentional usage on `#/project/ibuild4you/cost`; at this pace it'd be ~$300/mo.
-- Claude Code Analytics returns 0 actors for the org (external — waiting on Anthropic to flow subscription auth through to org level; no code change needed)
-- Manual PRICING refresh cadence in `claude_api.py` (no automation yet)
-- Anomaly detection (originally a follow-up in #2) — not implemented. Open a new issue if/when needed.
+Shipped work is in git and in the code. What follows is only what isn't:
+open work, traps that cost real time, and decisions not worth re-litigating.
+The full chronological log lives in `docs/history.md`.
+
+### Open
+
+**⚠️ The uptime archive wrote on 2026-08-01 and not on 2026-08-02.** Unresolved.
+`uptime_daily` held 9 rows for Aug 1 (one per monitor — the pull works end to end)
+and nothing for Aug 2, checked at 20:20 UTC against a cron due at 15:00 UTC.
+Ruled out, don't re-derive: the production pull reproduces locally against the same
+key; `health_email_state` is empty so emails aren't paused (and the pull runs ahead
+of the pause check anyway); nothing was deployed between the two days. **Vercel log
+retention is ~1 hour**, so the cron's own logs are gone by the time anyone looks —
+post-hoc forensics is not available here, which is exactly why artifact checks carry
+the weight. **The question that decides it: did the health email arrive that
+morning?** Yes → cron ran, pull failed in prod only. No → cron never fired.
+
+- **Phase 3 of the uptime plan** — `/api/health` for `musicforge` and `prntd` (asked
+  via handoff, awaiting reply) and `bakerylouise-v1` (**has no handoff channel** —
+  one must be created, or the work done in a session started in that repo).
+  ibuild4you's `app/api/health/route.ts` is the reference impl.
+- **Phase 5** — grow `TARGETS` in `web/api/health_report.py` (still only garm +
+  prompt-labs.org, against 9 in `HTTP_MONITORS`) and add the test asserting every
+  deep-health `TARGETS` URL also appears in `HTTP_MONITORS`. They are two
+  declarations of overlapping intent and will drift.
+- **Delete the recountly monitor in the UptimeRobot UI.** Dropped from
+  `HTTP_MONITORS` 2026-08-02; `scripts/uptimerobot.py` never deletes, so the monitor
+  itself is still live and will false-alarm when the deployment comes down.
+- **garm #7 denial-count line** in the health email (`GARM_REPORTING_KEY` shipped on
+  garm's side; the garm handoff channel will post the shape).
+- **`#/health` has never been visually verified** — both themes were checked by
+  computed contrast, not by eye. https://prompt-labs.org/#/health
+- **Beacon fan-out: `prntd` + `musicforge`** never got the snippet (dirty trees at
+  fan-out time). `page_views` has zero rows ever for either. musicforge is Vite
+  (`frontend/src/main.tsx`), a different injection than the Next.js root layouts.
+- **`/api/private_history` Tier 1** — design agreed with selected-projects, not
+  built; awaiting their sequencing. The public endpoint's `total_sessions` /
+  `first_activity_at` / `last_activity_at` are computed over *published* sessions and
+  are therefore materially wrong. Design in `docs/history.md`.
+- **Public rollups:** only ibuild4you `2026-05-18` remains unpublished, and that is a
+  deliberate skip (cost forensics + internal ops; nothing left after scrubbing). It
+  reappears in every future draft by design.
+- **#48 time localization, soup to nuts** (filed 2026-08-02, slated for a Fable
+  session). UTC, naive-local and Pacific are mixed across the pipeline with nothing
+  declaring which clock owns a value: the synthesizer and review email write dates in
+  mini-local Pacific, `health_report.py` grades their freshness in UTC, and the "8am"
+  cron is `0 15 * * *` — 8am Pacific in summer, **7am in winter**. Decide the policy
+  before fixing instances.
+- Open issues: **#14** design tokens (own session), **#27** Garm rollout, **#43**
+  sign-ins panel (trigger-gated: fires the day a second reader joins
+  `READER_EMAILS`), **#9** beacon fan-out, **#34** health leftovers, **#45** the
+  freshness convention.
+- Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
+
+### The failure shape this repo keeps hitting
+
+Eight incidents now share one shape: **a job keeps running while its output stops,
+and the absence is recorded as "nothing" rather than "failure."** The review email
+403'd for 60 nights while `review_snapshots` simply froze, reading as "the job
+stopped" instead of "the job fails at its last step." The bi-monthly report was dead
+4 months because its plist did `source <deleted-file> && python …` and `&&`
+short-circuited. CI was red 3 days with `deploy` showing *skipped*, not failed.
+
+Two mechanisms recur: **a fallback quietly covers the dead primary path**, and
+**absence is recorded as nothing.** The countermeasure, shipped as #45: every
+recurring job declares a max artifact age, checked with `max(date)` over a table that
+already syncs to Turso, reported in the daily health email (`HEARTBEATS` in
+`web/api/health_report.py`).
+
+Three rules that fall out of it, each earned:
+- **Alarm on the artifact, never on the job's exit status or a synthetic ping.** A
+  ping is a side-channel claim that the job ran and can succeed while the artifact is
+  missing — precisely how the review email looked healthy for sixty nights.
+- **A failed check reports "could not check", never "fresh."** Deliberately *not* the
+  fails-open pattern the pause lookup uses in the same module: a Turso outage must not
+  block an email, but freshness failing open would rebuild the exact bug. An empty
+  table is *stale* ("never produced"), not fresh.
+- **Check the job's log before concluding anything from table rows.** The dead review
+  email had 60 identical 403s in `send-review.log`. That log only exists under launchd
+  — a manual run prints to the terminal instead, so the file looks empty.
+
+Known hole, don't mistake it for closed: the `uptime archive` heartbeat is written and
+graded by the *same* request, so it catches "cron alive, pull broken" and cannot catch
+"cron dead." That case degrades to "no email arrived," the weakest signal in the
+system. Closing it needs a check on infrastructure that fails independently of
+Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what sent
+#45 down the artifact route in the first place.
+
+### Invariants — the things that must not be broken
+
+- **Turso holds no `prompts`, `sessions`, or `commits` tables at all.** Raw prompt
+  text, commit messages, hostnames and local paths are physically unreachable from
+  `web/`. That is the strongest guarantee in the system. Preserve it by never adding a
+  sync leg — not by filtering at read time. Read-time allowlists were tried twice and
+  deleted both times for drifting.
+- **Cloud-direct tables have no leg in `sync_to_turso.py` and must never gain one:**
+  `page_views`, `health_email_state`, `project_metadata`, `issue_categories`,
+  `uptime_daily`. That absence is what makes drift structurally impossible.
+- **Nothing automated writes the `public_*` tables.** They are written only by the
+  reviewed, git-committed draft-to-artifact flow (`scripts/draft_public_refresh.py` →
+  human review → `scripts/publish_public_draft.py`). Never by `/handoff`, the
+  synthesizer, or raw sync. The invariant is "never write un-scrubbed text into the
+  public tables."
+- **The uptime archive is never backfilled.** UptimeRobot exposes rolling ratios, not
+  per-day history, so a gap is missing data — render it grey, never 0%. An invented
+  past would be worse than a short one.
+- **Cross-repo work goes through `~/src/.handoff`, never a PR from here.** The repo
+  boundary is the ownership boundary and each repo's agent owns its conventions. The
+  practical tell: agents working in a sibling repo run from a cold permission slate, so
+  a wall of permission prompts mid-task is the convention signalling it's being
+  bypassed, not a config annoyance to route around.
+
+### Traps that cost real time
+
+- **Turso returns `SUM()`/`COUNT()` aggregates as JSON strings.** An explicit `int()`
+  coalesce is load-bearing — without it chart math concatenates instead of adding.
+- **UptimeRobot v2's `custom_uptime_ratio` is a string** (`"100.000-99.980-99.990"`,
+  1d-7d-30d). Split and float, or every downstream average is text.
+- **The SPA catch-all serves `index.html` with a 200 for unknown paths.** A health
+  target pointed at a nonexistent path becomes a permanent false UP. Health targets
+  must also be unauthenticated — the first health email false-DOWNed prompt-labs.org
+  by polling auth-gated `/api/info`.
+- **`vercel env add` takes no value argument** — it opens an interactive prompt and
+  reads one line from stdin, so the trailing newline is the *submit*. Never pipe
+  through `tr -d '\n'` (it blocks forever, writes nothing, exits without error) and
+  never wrap it in a `for` loop (the first prompt seizes the TTY). Always verify with
+  `vercel env ls`: a good write reads seconds old.
+- **`op inject` substitutes `op://` references inside `#` comments** — a commented
+  reference is still live, and one unresolvable ref aborts the whole file. And
+  `op inject -i .env.tpl -o .env.local` is **not** a working workflow here: the
+  template is the union of local + cloud secrets, so regenerating locally tries to
+  materialize cloud-only values. Append single variables instead.
+- **The public-draft path regex only matches `/Users/…`.** Tilde paths (`~/src/…`)
+  sail straight through — a human-only catch.
+- **Reading `/api/public_history`: the envelope key is `rollups`, not
+  `weekly_rollups`.** A probe using the wrong key reports 0 rows on a healthy endpoint.
+- **A missing site in `#/visitors` is a hole, not a zero.** recountly showed zero rows
+  for weeks because the beacon had never once fired, not because there was no traffic.
+- **prntd's domain is `.org`, not `.com`.** pianohouse must be monitored at **www**,
+  not the apex — the apex 307s, and a monitor leaning on redirect-following is one
+  setting away from a false DOWN.
+- **Vercel log retention is ~1 hour.** Post-hoc forensics on a daily cron is not
+  available.
+- **CI ruff is pinned to `0.15.22` — don't unpin.** An unpinned `pip install ruff`
+  grabbed a new release and produced 339 new-rule errors on a docs-only push. Local
+  ruff passing while CI fails on a docs commit = version drift; check the pin first.
+- **`deploy` has `needs: test`**, so a starved or failing test run shows as *skipped*,
+  not failed, and no prod deploy goes out silently.
+- **Three Vercel diagnostics that produce false conclusions — don't reuse them:**
+  `gh api repos/:owner/:repo/hooks` is no evidence about Vercel linkage (Vercel
+  connects via a GitHub App, which creates no repo-level webhooks — check `link` on
+  `GET /v9/projects/<id>`); grepping served HTML for `_vercel/insights` false-negatives
+  on any current site (`@vercel/analytics` 2.x uses a randomized anti-adblock path);
+  and `githubCommitSha`/`githubCommitRef` on a deployment do **not** imply a git
+  trigger (the CLI stamps local checkout metadata onto manual deploys). The real tell
+  for "never linked" is zero preview deployments across the project's whole history.
+
+### Testing
+
+Tests are standalone runners, **not pytest** — `python -m pytest` fails at collection.
+Run each directly:
+
+```bash
+for f in scripts/test_*.py; do .venv/bin/python "$f"; done
+```
+
+208 tests as of 2026-08-02 (136 in `test_web_api.py`, plus alias-layer 22,
+cost-pipeline 22, public-draft 21, heartbeat 7, imports, session-identity).
+`_health_mod(up=, hb=, ur=)` stubs the health endpoint; its Turso stub dispatches on
+the SQL because the pause lookup, the freshness lookups and the uptime upsert share
+`turso_query` and must not be conflated — pause fails open, freshness fails loud, and
+the archive write must be separately observable.
+
+### Settled — don't re-litigate
+
+- **UptimeRobot is the sensor AND the pager; prompt-lab samples nothing and pages for
+  nothing.** 5-min polling on independent infra, free tier, 3-month retention. Ratified
+  in garm's 2026-07-29 handoff: prompt-lab shares the Vercel+Turso+Resend stack, so a
+  watcher built on it would die with the watched. No Pi, no launchd sampler.
+  API facts, probed live (the published docs are thin and partly wrong): **v3
+  provisions but has no history endpoints** (`/logs`, `/response-times`, `/uptimes` all
+  404); **v2 legacy is the only source of history** and works on free; `HEARTBEAT` type
+  needs a paid plan (403 `009-005` at every interval and grace value); free tier is 50
+  monitors, 5-min interval, 10 req/min, 3-month retention.
+- **OAuth is hand-rolled in Python, zero new deps.** Because this is a confidential
+  client doing its own server-side code exchange, the `id_token` arrives from Google
+  over TLS — no JWT signature verification, no JWKS fetch, no crypto dependency.
+  Rejected: Next.js conversion, mixed Node+Python runtime, third-party auth. Spec in
+  `docs/phase2-oauth-plan.md` — read it before touching auth. `verify_token` requires
+  both `role` and `email` **keys** (key-presence, not truthiness) — that subtlety is
+  load-bearing.
+- **No display names in the sign-ins panel.** With two accounts the beacon role already
+  identifies the person, and a name would cost the log's anonymity. #43 tracks the
+  trigger: when a second reader joins, the fix is a stable **opaque per-user id** (HMAC
+  of email under a server salt, like `visitor_hash`) — never an email or a name.
+- **First-party beacon over Vercel Analytics.** Drains are Pro-only and Hobby Analytics
+  has no read API, so it could never feed a unified dashboard. The beacon is also
+  hosting-neutral and writes cloud-direct.
+- **The public tier's curation is the consumer's job** — the `selected-projects` MDX
+  manifest is the single source of truth for which projects appear publicly.
+  `docs/public-allowlist.txt` mirrors it and gates *writes*, not reads.
+- **The public-draft division of labour:** the machine refuses to publish on anything
+  regex-able (absolute paths, emails, credential tokens, internal DB hosts, unedited
+  blockquotes, prose <15 words, prose ≥75% similar to the private source). The human
+  owns the four things regexes structurally cannot see: **named people/orgs,
+  identifiability-by-description, unreleased plans stated as fact, and commercially or
+  personally sensitive detail.**
+- **`private` on `project_metadata` is cosmetic only** — a hide-toggle, not the
+  public-data gate, and it does not gate any API. `public_counts` is the real gate.
+- **Machine-voice convention:** any AI-authored text renders italic + muted with a
+  `↳ from claude` marker.
 
 <!-- SHARED-CONVENTIONS:BEGIN v=d5e16e653242 — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->
 ## Shared conventions

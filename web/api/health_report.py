@@ -80,6 +80,17 @@ HEARTBEATS = [
     ("cost pull + sync", "SELECT max(date) AS d FROM api_costs", 3),
     ("bi-monthly report", "SELECT max(date) AS d FROM review_snapshots "
                           "WHERE review_type = 'monthly_report'", 20),
+    # Added 2026-08-02 after the archive wrote on Aug 1 and not Aug 2, and
+    # nothing said so for two days. READ THE LIMIT BEFORE TRUSTING THIS ONE:
+    # unlike every entry above, the watcher is not outside the watched job —
+    # this same request writes uptime_daily and then reports on it. So it
+    # catches "cron alive, pull broken" and CANNOT catch "cron dead", which
+    # degrades to "no email arrived" — the weakest signal in the system and the
+    # one that hid the review email for sixty nights. Closing that properly
+    # needs a check on infrastructure that fails independently of Vercel's
+    # scheduler; UptimeRobot's HEARTBEAT type is paid-only, which is what sent
+    # #45 down the artifact-freshness route in the first place.
+    ("uptime archive", "SELECT max(date) AS d FROM uptime_daily", 2),
 ]
 
 # --- uptime archive ---------------------------------------------------------
@@ -518,6 +529,11 @@ class handler(BaseHTTPRequestHandler):
             # what #/health reads), so writing there would let a reader trigger
             # a write. Ahead of the pause check on purpose — pausing the EMAIL
             # for a week must not punch a week-long hole in the archive.
+            #
+            # Deliberately AFTER _check_heartbeats above: the "uptime archive"
+            # heartbeat must report the archive as it stood when this run began.
+            # Move the write earlier and it would refresh the very row it is
+            # about to grade, reporting fresh on every run forever.
             uptime_rows = _archive_uptime()
 
             if paused:

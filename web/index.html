@@ -3101,6 +3101,19 @@
           </div>`);
       }
 
+      // The endpoint distinguishes "archive unreadable" from "archive empty"
+      // and this must too. Both arrive as zero rows, and letting the failure
+      // fall through to the empty state below would rebuild the #45 bug one
+      // layer up from where it was fixed.
+      if (data?.unavailable) {
+        return section(html`
+          <div class="cost-placeholder">
+            <strong>Archive unreadable</strong> — the query against
+            <code>uptime_daily</code> failed, so this is not "no data yet". The
+            live targets above are unaffected; they're polled directly.
+          </div>`);
+      }
+
       const monitors = Array.isArray(data?.monitors) ? data.monitors : [];
       const effDays = Number(data?.days) > 0 ? Number(data.days) : days;
       const dates = [];

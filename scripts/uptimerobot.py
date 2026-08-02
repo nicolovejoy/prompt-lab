@@ -65,12 +65,10 @@ HTTP_MONITORS = [
     # No /api/health yet — homepage checks until each app adopts the convention.
     ("bakerylouise", "https://bakerylouise.com/"),
     ("musicforge", "https://musicforge.app/"),
-    # RETIRED 2026-07-31 — recountly became Raconte, a native iOS app. The site
-    # still answers, so the monitor is still green and left declared here; the
-    # day the deployment comes down it starts false-alarming. Delete this line
-    # AND the monitor in the UptimeRobot UI then (this script never deletes).
-    # An iOS app has no URL to poll, so nothing inherits the slot.
-    ("recountly", "https://recountly.org/"),
+    # recountly was dropped 2026-08-02: it became Raconte, a native iOS app, so
+    # there is nothing left to poll and the monitor would have false-alarmed the
+    # day the deployment came down. This script never deletes — the monitor
+    # itself must be removed by hand in the UptimeRobot UI.
     # Was entirely unmonitored until 2026-07-31. Note .org, not .com.
     ("prntd", "https://prntd.org/"),
 ]
