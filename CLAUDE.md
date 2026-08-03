@@ -100,13 +100,12 @@ remains the backstop for "cron alive, pull broken" at a 2-day threshold.
 - **Beacon fan-out: `prntd` + `musicforge`** never got the snippet (dirty trees at
   fan-out time). `page_views` has zero rows ever for either. musicforge is Vite
   (`frontend/src/main.tsx`), a different injection than the Next.js root layouts.
-- **`/api/private_history` Tier 1** — unblocked 2026-08-02: selected-projects said
-  ship it standalone (no Garm dependency, no Tier 2 sequencing) and posted the exact
-  request shape in the handoff channel — public envelope keys with corrected values,
-  plus all-time `total_commits` and weekly `activity[]`; skip `category`/`status`.
-  Totals must come from `daily_summaries` (Turso has no raw tables — invariant).
-  bakerylouise historyKey settled as `bakerylouise` (alias from `bakerylouise-v1`);
-  allowlist grew to 8 keys (`bakerylouise`, `songscribe` added).
+- **`/api/private_history` Tier 1 — SHIPPED 2026-08-02**, deployed and verified live
+  end-to-end (auth'd smoke test passed). `SERVICE_HISTORY_KEY` in Vercel Production,
+  value at `op://dev-secrets/prompt-lab-service-history-key/password`. Ball is in
+  selected-projects' court to wire `lib/history.ts`. Tier 2 (narrative behind Garm)
+  remains unbuilt by agreement. historyKey settled as `bakerylouise` (alias from
+  `bakerylouise-v1`); allowlist is 8 keys (`bakerylouise`, `songscribe` added).
 - **Public rollups:** only ibuild4you `2026-05-18` remains unpublished, and that is a
   deliberate skip (cost forensics + internal ops; nothing left after scrubbing). It
   reappears in every future draft by design.
@@ -116,7 +115,10 @@ remains the backstop for "cron alive, pull broken" at a 2-day threshold.
   mini-local Pacific, `health_report.py` grades their freshness in UTC, and the "8am"
   cron is `0 15 * * *` — 8am Pacific in summer, **7am in winter**. Decide the policy
   before fixing instances. The handoff commit-capture instance is patched
-  (`--since="<started_at>Z"` in `workflow/commands/handoff.md`, 2026-08-02).
+  (`--since="<started_at>Z"` in `workflow/commands/handoff.md`, 2026-08-02), and two
+  more landed on the issue the same evening: `today-counts` reads 0 prompts/sessions
+  after 5pm PDT, and `prompts` (local-naive) vs `sessions` (UTC-naive) disagree on
+  which clock their timestamps are on.
 - Open issues: **#14** design tokens (own session), **#27** Garm rollout, **#43**
   sign-ins panel (trigger-gated: fires the day a second reader joins
   `READER_EMAILS`), **#9** beacon fan-out, **#34** health leftovers, **#45** the
