@@ -151,6 +151,23 @@ remains the backstop for "cron alive, pull broken" at a 2-day threshold.
   2026-08-02 at Nico's ask — he wants to read it at a computer, not a phone).
 - Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
 
+**Mobile pass, 2026-08-02.** Four things, all from the same phone session:
+`DateAxis` replaced six copy-pasted axes (tick count from measured width, labels
+absolutely positioned inside a clipped box, plus a dot under each labelled
+column so the label maps to a bar without counting); the home chart's tap now
+navigates to a real `#/day/<date>` page rather than opening a panel that lands
+off-screen when pinch-zoomed — **any overlay positions against the layout
+viewport, so a "fixed" sheet fails under zoom exactly like the panel did**, which
+is why this is a route and not a modal; `/api/day` backs it so a cold-opened link
+to any date works; the nav collapses behind one button below 640px (both markups
+always render, CSS picks — no viewport state in JS to desync on rotate); and 7d
+joined the window toggles. Home offers 7|30 only, because it reads `overview`,
+which is capped at 30 days and stays lean on purpose.
+
+Not done: the other five charts still use below-chart readout panels, which have
+the same under-zoom problem on a phone. They're metric-specific (cost breakdowns,
+visitor counts), so they aren't simply the day page — decide per chart.
+
 ### The failure shape this repo keeps hitting
 
 Eight incidents now share one shape: **a job keeps running while its output stops,
@@ -263,7 +280,7 @@ Run each directly:
 for f in scripts/test_*.py; do .venv/bin/python "$f"; done
 ```
 
-226 tests as of 2026-08-02 (154 in `test_web_api.py`, plus alias-layer 22,
+232 tests as of 2026-08-02 (160 in `test_web_api.py`, plus alias-layer 22,
 cost-pipeline 22, public-draft 21, heartbeat 7, imports, session-identity).
 `_health_mod(up=, hb=, ur=)` stubs the health endpoint; its Turso stub dispatches on
 the SQL because the pause lookup, the freshness lookups and the uptime upsert share

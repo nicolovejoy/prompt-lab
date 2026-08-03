@@ -3067,6 +3067,127 @@ def _():
     assert got == [n for n, _, _ in mod.TARGETS], got
 
 
+# === day.py — the #/day/<date> detail page ===
+
+
+def _day_mod(rows, authed=True, boom=False):
+    mod = load_endpoint("web/api/day.py", "endpoint_day")
+    seen = []
+
+    def fake_turso(sql, args=None):
+        seen.append((sql, args or []))
+        if boom:
+            raise OSError("turso unreachable")
+        if "project_aliases" in sql:
+            return [{"alias": "pianohouse", "canonical": "selected-projects"}]
+        return rows
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: authed)
+
+    def restore():
+        restore_a()
+        restore_q()
+    return mod, seen, restore
+
+
+@test("day: 401 when not authenticated, before any query runs")
+def _():
+    mod, seen, restore = _day_mod([], authed=False)
+    try:
+        h = invoke(mod, "/api/day?date=2026-08-02")
+        assert h.status_code == 401, h.status_code
+        assert not seen, "queried on behalf of an anonymous caller"
+    finally:
+        restore()
+
+
+@test("day: a malformed date is a 400, not an empty day")
+def _():
+    # A typo'd URL must say what's wrong. Silently returning an empty day would
+    # read as "nothing happened then", which is a different and wrong claim.
+    for bad in ["", "2026-8-2", "august 2", "2026-08-02'; DROP TABLE x--"]:
+        mod, seen, restore = _day_mod([])
+        try:
+            h = invoke(mod, "/api/day?date=" + bad.replace(" ", "%20"))
+            assert h.status_code == 400, f"{bad!r} → {h.status_code}"
+            assert not seen, f"{bad!r} reached the database"
+        finally:
+            restore()
+
+
+@test("day: a quiet day is 200 with zeros, never a 404")
+def _():
+    mod, _, restore = _day_mod([])
+    try:
+        h = invoke(mod, "/api/day?date=2026-03-01")
+        assert h.status_code == 200, h.status_code
+        assert h.body == {"date": "2026-03-01",
+                          "totals": {"prompts": 0, "sessions": 0, "commits": 0},
+                          "projects": []}, h.body
+    finally:
+        restore()
+
+
+@test("day: folds aliases, re-sums counts, and coerces Turso's strings")
+def _():
+    # Turso returns COALESCE/SUM results as strings; without int() the totals
+    # concatenate instead of adding. Same trap as the chart math.
+    rows = [
+        {"project": "pianohouse", "summary": "short", "key_decisions": None,
+         "prompts": "3", "sessions": "1", "commits": "0"},
+        {"project": "selected-projects", "summary": "a much longer telling",
+         "key_decisions": '["shipped the axis"]',
+         "prompts": "4", "sessions": "1", "commits": "2"},
+        {"project": "garm", "summary": "", "key_decisions": None,
+         "prompts": 1, "sessions": 0, "commits": 0},
+    ]
+    mod, _, restore = _day_mod(rows)
+    try:
+        h = invoke(mod, "/api/day?date=2026-08-02")
+        assert h.status_code == 200, h.status_code
+        by = {p["project"]: p for p in h.body["projects"]}
+        assert set(by) == {"selected-projects", "garm"}, list(by)
+        sp = by["selected-projects"]
+        assert sp["prompts"] == 7 and sp["sessions"] == 2 and sp["commits"] == 2, sp
+        # The longer prose wins outright — gluing two tellings of the same day
+        # together reads as a contradiction.
+        assert sp["summary"] == "a much longer telling", sp["summary"]
+        assert sp["key_decisions"] == ["shipped the axis"], sp["key_decisions"]
+        assert h.body["totals"] == {"prompts": 8, "sessions": 2, "commits": 2}, h.body["totals"]
+        # Busiest first, so the page opens on what the day was actually about.
+        assert [p["project"] for p in h.body["projects"]] == ["selected-projects", "garm"]
+    finally:
+        restore()
+
+
+@test("day: selects no prose column Turso doesn't already hold")
+def _():
+    # Structural echo of the private_history guarantee: Turso has no prompts /
+    # sessions / commits tables at all, so this can only ever read counts and
+    # already-written summary prose. Pin the table it reads.
+    mod, seen, restore = _day_mod([])
+    try:
+        invoke(mod, "/api/day?date=2026-08-02")
+        day_sql = [s for s, _ in seen if "daily_summaries" in s]
+        assert day_sql, "no daily_summaries query emitted"
+        for s, _ in seen:
+            for banned in ("FROM prompts", "FROM sessions", "FROM commits"):
+                assert banned not in s, f"{banned} in {s}"
+    finally:
+        restore()
+
+
+@test("day: an unreadable Turso is a 503, not an empty day")
+def _():
+    mod, _, restore = _day_mod([], boom=True)
+    try:
+        h = invoke(mod, "/api/day?date=2026-08-02")
+        assert h.status_code == 503, h.status_code
+        assert "error" in h.body, h.body
+    finally:
+        restore()
+
+
 # === clocks: UTC at rest, Pacific on display (#48) ===
 #
 # These are drift guards, not behaviour tests. Every instance of #48 was a date

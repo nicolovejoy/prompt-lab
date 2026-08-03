@@ -134,6 +134,34 @@
     /* flex-wrap so this row drops to its own line under a narrow viewport instead of
        clipping/squeezing buttons off-screen — this is what was hiding the theme toggle. */
     .header-right { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+
+    /* Nav on a phone. The flat row wrapped onto two or three lines and pushed
+       the page content down before you'd read a word of it — six destinations,
+       a theme toggle, an email and a log-out button don't fit 390px. Below
+       640px they collapse behind one button and drop down as a list. Kept as a
+       plain CSS swap (both markups always render, one is display:none) so
+       there's no viewport-width state in JS to get out of sync on rotate. */
+    .nav-toggle { display: none; }
+    .nav-drop { display: none; }
+    @media (max-width: 640px) {
+      .header-right > .nav-wide { display: none; }
+      .nav-toggle {
+        display: inline-flex; align-items: center; gap: 7px;
+        font-size: 1.02rem; font-family: inherit; cursor: pointer;
+        padding: 6px 12px; border-radius: 6px;
+        border: 1px solid var(--border); background: transparent; color: var(--text);
+      }
+      .nav-drop.open {
+        display: flex; flex-direction: column; gap: 2px;
+        width: 100%; margin-top: 8px; padding: 6px;
+        background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      }
+      .nav-drop .header-btn {
+        width: 100%; text-align: left; padding: 11px 12px; font-size: 1.05rem;
+      }
+      .nav-drop .nav-sep { height: 1px; background: var(--border); margin: 4px 2px; }
+      .nav-drop .header-user { padding: 4px 12px; }
+    }
     .header-meta {
       font-size: 1.02rem; color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace;
     }
@@ -514,6 +542,11 @@
         const m = parts[1] && decodeURIComponent(parts[1]);
         return { view: 'activity', metric: ACTIVITY_METRICS.includes(m) ? m : 'sessions' };
       }
+      // #/day/<YYYY-MM-DD>. A malformed date falls through to home rather than
+      // rendering a page that queries for nonsense.
+      if (parts[0] === 'day' && /^\d{4}-\d{2}-\d{2}$/.test(parts[1] || '')) {
+        return { view: 'day', date: parts[1] };
+      }
       if (parts[0] === 'visitors') return { view: 'visitors' };
       if (parts[0] === 'todos') return { view: 'todos' };
       if (parts[0] === 'health') return { view: 'health' };
@@ -719,7 +752,21 @@
     }
 
     // ---- Header ----
+    // One list, rendered twice — the wide row and the phone drop-down. Two
+    // hand-maintained copies is how a destination goes missing from one of them.
+    const NAV = [
+      ['activity', 'Activity', '#/activity'],
+      ['todos',    'Todos',    '#/todos'],
+      ['costs',    'Costs',    '#/costs'],
+      ['visitors', 'Visitors', '#/visitors'],
+      ['health',   'Health',   '#/health'],
+    ];
+
     function Header({ route, info, role, email, onLogout, onAsk, active, dormant, refreshing, theme, onToggleTheme }) {
+      const [menu, setMenu] = useState(false);
+      // Any navigation closes it — otherwise the panel stays open over the page
+      // you just asked for, which reads as the tap not having worked.
+      useEffect(() => { setMenu(false); }, [route.view, route.project]);
       const freshness = info?.data_freshness ? timeAgo(info.data_freshness) : null;
       // build_time arrives as ISO 8601 UTC; show it in Pacific time
       // (PDT/PST handled automatically by the Intl API).
@@ -754,18 +801,42 @@
             </div>
           `}
           <div class="header-right">
-            <button class="header-btn ${route.view === 'activity' ? 'active' : ''}" onClick=${() => navigate('#/activity')}>Activity</button>
-            <button class="header-btn ${route.view === 'todos' ? 'active' : ''}" onClick=${() => navigate('#/todos')}>Todos</button>
-            <button class="header-btn ${route.view === 'costs' ? 'active' : ''}" onClick=${() => navigate('#/costs')}>Costs</button>
-            <button class="header-btn ${route.view === 'visitors' ? 'active' : ''}" onClick=${() => navigate('#/visitors')}>Visitors</button>
-            <button class="header-btn ${route.view === 'health' ? 'active' : ''}" onClick=${() => navigate('#/health')}>Health</button>
-            ${onAsk && html`<button class="header-btn" onClick=${onAsk} title="Ask (/)">Ask</button>`}
-            <button class="header-btn" onClick=${onToggleTheme}
-                    title=${theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
-              ${theme === 'light' ? '☾' : '☀'}
+            <div class="nav-wide" style="display:contents">
+              ${NAV.map(([view, label, hash]) => html`
+                <button class="header-btn ${route.view === view ? 'active' : ''}"
+                        onClick=${() => navigate(hash)}>${label}</button>`)}
+              ${onAsk && html`<button class="header-btn" onClick=${onAsk} title="Ask (/)">Ask</button>`}
+              <button class="header-btn" onClick=${onToggleTheme}
+                      title=${theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
+                ${theme === 'light' ? '☾' : '☀'}
+              </button>
+              ${email && html`<span class="header-user" title=${email}>${email}</span>`}
+              <button class="header-btn" onClick=${onLogout}>Log out</button>
+            </div>
+
+            <button class="nav-toggle" aria-expanded=${menu} aria-label="Menu"
+                    onClick=${() => setMenu(m => !m)}>
+              <span style="display:inline-flex; flex-direction:column; gap:3px">
+                <span style="width:16px; height:2px; background:currentColor; border-radius:1px"></span>
+                <span style="width:16px; height:2px; background:currentColor; border-radius:1px"></span>
+                <span style="width:16px; height:2px; background:currentColor; border-radius:1px"></span>
+              </span>
+              ${menu ? 'Close' : 'Menu'}
             </button>
-            ${email && html`<span class="header-user" title=${email}>${email}</span>`}
-            <button class="header-btn" onClick=${onLogout}>Log out</button>
+
+            <div class="nav-drop ${menu ? 'open' : ''}">
+              ${NAV.map(([view, label, hash]) => html`
+                <button class="header-btn ${route.view === view ? 'active' : ''}"
+                        onClick=${() => { setMenu(false); navigate(hash); }}>${label}</button>`)}
+              ${onAsk && html`
+                <button class="header-btn" onClick=${() => { setMenu(false); onAsk(); }}>Ask</button>`}
+              <div class="nav-sep"></div>
+              <button class="header-btn" onClick=${onToggleTheme}>
+                ${theme === 'light' ? '☾  Dark mode' : '☀  Light mode'}
+              </button>
+              ${email && html`<span class="header-user">${email}</span>`}
+              <button class="header-btn" onClick=${onLogout}>Log out</button>
+            </div>
           </div>
         </header>
       `;
@@ -935,6 +1006,7 @@
           `}
           ${route.view === 'costs' && html`<${CostsOverview} />`}
           ${route.view === 'activity' && html`<${ActivityOverview} metric=${route.metric} />`}
+          ${route.view === 'day' && html`<${DayView} date=${route.date} />`}
           ${route.view === 'visitors' && html`<${VisitorsOverview} />`}
           ${route.view === 'todos' && html`<${TodosView} overview=${overview} />`}
           ${route.view === 'health' && html`<${HealthView} onUnauthorized=${() => setAuthed(false)} />`}
@@ -1146,11 +1218,11 @@
     // legend entry would defeat that.
     function CrossProjectActivity({ overview, hide }) {
       const [hovered, setHovered] = useState(null);
-      // Tap-to-select, same as the other five charts (see CAN_HOVER below for
-      // why a floating tooltip can't work on touch). This chart was the only
-      // one that never got it, so on a phone tapping a bar did nothing at all
-      // and there was no way to tell which day a column belonged to.
-      const [selected, setSelected] = useState(null);
+      // 7 | 30 only: this chart reads the `overview` payload, which is capped at
+      // 30 days and deliberately kept lean because it's what paints the home
+      // page. Longer windows are what #/activity is for, and the tile above
+      // already links there — better than quietly widening overview's response.
+      const [days, setDays] = useState(30);
       const all = overview.activity_by_project || {};
       const act = hide?.size
         ? Object.fromEntries(Object.entries(all).filter(([p]) => !hide.has(p)))
@@ -1174,7 +1246,7 @@
           (byDateProject[d.date] ||= {})[p] = (byDateProject[d.date]?.[p] || 0) + (d.prompts || 0);
 
       const dates = [];
-      for (let i = 29; i >= 0; i--)
+      for (let i = days - 1; i >= 0; i--)
         dates.push(labDay(i));
       const dayTotal = d => Object.values(byDateProject[d] || {}).reduce((s, v) => s + v, 0);
       const peak = Math.max(...dates.map(dayTotal), 1);
@@ -1186,18 +1258,27 @@
           <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px">
             <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.93rem;
                         letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary)">
-              Activity · last 30 days
+              Activity · last ${days} days
             </div>
-            <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.85rem; color:var(--text-secondary)">
-              prompts per day, stacked by project
+            <div style="display:flex; gap:4px">
+              ${[7, 30].map(d => html`
+                <button onClick=${() => setDays(d)}
+                  style="font-size:0.92rem; padding:3px 9px; border-radius:4px;
+                         cursor:pointer; font-family:inherit; border:1px solid var(--border);
+                         background:${days === d ? 'var(--accent)' : 'transparent'};
+                         color:${days === d ? '#fff' : 'var(--text-secondary)'}">${d}d</button>`)}
             </div>
+          </div>
+          <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.85rem;
+                      color:var(--text-secondary); margin:-8px 0 10px">
+            prompts per day, stacked by project · tap a bar for that day
           </div>
           <div style="display:flex; gap:2px; align-items:stretch; height:${CHART_H}px;
                       border-bottom:1px solid var(--border)">
             ${dates.map((d, i) => {
               const total = dayTotal(d);
               const barH = total > 0 ? Math.max(1, Math.round((total / peak) * (CHART_H - 4))) : 0;
-              const isH = hovered === i || selected === i;
+              const isH = hovered === i;
               const edge = n > 1 ? i / (n - 1) : 0.5;
               const anchor = edge < 0.15 ? 'left:0' : edge > 0.85 ? 'right:0' : 'left:50%; transform:translateX(-50%)';
               const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
@@ -1206,7 +1287,7 @@
                             cursor:${total > 0 ? 'pointer' : 'default'}"
                      onMouseEnter=${() => setHovered(i)}
                      onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
-                     onClick=${() => total > 0 && setSelected(s => s === i ? null : i)}>
+                     onClick=${() => total > 0 && navigate('#/day/' + d)}>
                   <div style="position:absolute; left:0; right:0; bottom:0; height:${barH}px;
                               display:flex; flex-direction:column-reverse; border-radius:2px 2px 0 0;
                               overflow:hidden; opacity:${isH ? 1 : 0.85}; transition:opacity 0.1s">
@@ -1231,29 +1312,6 @@
             })}
           </div>
           <${DateAxis} dates=${dates} style="margin-top:4px; margin-bottom:12px" />
-
-          ${selected != null && dayTotal(dates[selected]) > 0 && (() => {
-            const d = dates[selected];
-            const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
-            return html`
-              <div style="margin-bottom:14px; padding:12px 14px;
-                          background:var(--bg-elevated, var(--bg));
-                          border:1px solid var(--border); border-radius:6px">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
-                  <div style="font-weight:600">${fmtShortDate(d)} · ${dayTotal(d)} prompts</div>
-                  <button onClick=${() => setSelected(null)}
-                    style="background:none; border:none; color:var(--text-secondary);
-                           font-size:1.2rem; line-height:1; cursor:pointer; font-family:inherit">×</button>
-                </div>
-                ${segs.map(([pr, v]) => html`
-                  <div style="display:flex; align-items:center; gap:6px; padding:3px 0">
-                    <span style="width:8px; height:8px; border-radius:2px; flex:none;
-                                 background:${segColor(pr)}; display:inline-block"></span>
-                    <span style="color:var(--text)">${pr}</span>
-                    <span style="margin-left:auto; font-variant-numeric:tabular-nums">${v}</span>
-                  </div>`)}
-              </div>`;
-          })()}
 
           <div style="display:flex; flex-wrap:wrap; gap:10px 16px">
             ${ranked.slice(0, COST_PALETTE.length).map(([p]) => html`
@@ -1805,10 +1863,10 @@
       }, []);
 
       const n = dates.length;
-      const base = `position:relative; height:${AXIS_H}px; overflow:hidden;
-                    font-size:0.75rem; color:var(--text-secondary);
-                    font-family:'SF Mono',ui-monospace,monospace; ${style}`;
-      if (!n) return html`<div ref=${ref} style=${base}></div>`;
+      const labels = `position:relative; height:${AXIS_H}px; overflow:hidden;
+                      font-size:0.75rem; color:var(--text-secondary);
+                      font-family:'SF Mono',ui-monospace,monospace`;
+      if (!n) return html`<div ref=${ref} style=${style}></div>`;
 
       // w is 0 until the first measurement lands; show the two edges rather
       // than nothing, so the axis doesn't flash empty on first paint.
@@ -1816,8 +1874,20 @@
       const idxs = [...new Set(
         Array.from({ length: k }, (_, i) => Math.round((i * (n - 1)) / (k - 1))))];
 
+      // A label sits near its column, not over it — the end labels especially,
+      // which pin to the edges. So each labelled column gets a dot at its true
+      // centre, and the eye has something to draw the line with. Without it you
+      // are counting bars to work out which day "Jul 17" means.
+      const dot = i => html`
+        <span style="position:absolute; top:0; left:${((i + 0.5) / n) * 100}%;
+                     transform:translateX(-50%); width:3px; height:3px;
+                     border-radius:50%; background:var(--text-secondary);
+                     opacity:0.75"></span>`;
+
       return html`
-        <div ref=${ref} style=${base}>
+        <div ref=${ref} style=${style}>
+          <div style="position:relative; height:5px">${idxs.map(dot)}</div>
+          <div style=${labels}>
           ${idxs.map(i => {
             // The end labels pin to the edges — a centered transform would push
             // half of each outside the clip, which is where they'd be lost.
@@ -1827,6 +1897,7 @@
             return html`<span style="position:absolute; top:0; ${pos};
                                      white-space:nowrap">${fmt(dates[i])}</span>`;
           })}
+          </div>
         </div>`;
     }
 
@@ -1859,7 +1930,7 @@
 
       const windowPicker = html`
         <div style="display: flex; gap: 4px">
-          ${[30, 90, 365].map(d => html`
+          ${[7, 30, 90, 365].map(d => html`
             <button onClick=${() => setDays(d)}
               style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
                      cursor: pointer; font-family: inherit;
@@ -2119,7 +2190,7 @@
 
       const windowPicker = html`
         <div style="display: flex; gap: 4px">
-          ${[30, 90, 365].map(d => html`
+          ${[7, 30, 90, 365].map(d => html`
             <button onClick=${() => setDays(d)}
               style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
                      cursor: pointer; font-family: inherit;
@@ -2390,6 +2461,100 @@
     // ---- Visitors Overview (all sites, page views over time) ----
     const visitorOverviewMemo = new Map();  // window(days) -> payload
 
+    // ---- Day detail (#/day/<YYYY-MM-DD>) ----
+    // Where a tap on a home-chart bar lands. A page rather than an overlay on
+    // purpose: overlays position against the layout viewport, so on a
+    // pinch-zoomed phone a "fixed" panel can render off-screen — which is
+    // exactly how the below-chart readout this replaced failed. A navigation
+    // needs no positioning, behaves identically on phone and web off one code
+    // path, and gives a day a URL worth sending to yourself.
+    function DayView({ date }) {
+      const [data, setData] = useState(null);
+      const [err, setErr] = useState(null);
+
+      useEffect(() => {
+        let alive = true;
+        setData(null); setErr(null);
+        api('/api/day?date=' + encodeURIComponent(date))
+          .then(d => { if (alive) setData(d); })
+          .catch(e => { if (alive) setErr(e.message || 'could not load'); });
+        return () => { alive = false; };
+      }, [date]);
+
+      const long = (() => {
+        const [y, m, d] = date.split('-').map(Number);
+        // Constructed in UTC and formatted in UTC: `date` is already a lab
+        // calendar day (#48), so re-interpreting it in any zone would shift it.
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: 'UTC', weekday: 'long', month: 'long',
+          day: 'numeric', year: 'numeric',
+        }).format(new Date(Date.UTC(y, m - 1, d)));
+      })();
+
+      const stat = (label, n) => html`
+        <div style="flex:1; min-width:96px; padding:12px 14px; background:var(--card);
+                    border:1px solid var(--border); border-radius:var(--radius)">
+          <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.72rem;
+                      letter-spacing:0.12em; text-transform:uppercase;
+                      color:var(--text-secondary)">${label}</div>
+          <div style="font-size:1.9rem; font-weight:700; color:var(--accent-light);
+                      font-variant-numeric:tabular-nums">${n}</div>
+        </div>`;
+
+      return html`
+        <div>
+          <div style="margin-bottom:6px">
+            <a onClick=${() => history.back()}
+               style="cursor:pointer; color:var(--text-secondary); font-size:0.95rem;
+                      text-decoration:none">← back</a>
+          </div>
+          <h1 style="margin:0 0 4px; font-size:1.7rem; color:var(--accent-light)">${long}</h1>
+          <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.8rem;
+                      color:var(--text-secondary); margin-bottom:18px">${date}</div>
+
+          ${err && html`
+            <div class="card" style="color:var(--red, #c62828)">could not load this day — ${err}</div>`}
+          ${!data && !err && html`<${SkeletonList} />`}
+
+          ${data && html`
+            <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px">
+              ${stat('prompts', data.totals.prompts)}
+              ${stat('sessions', data.totals.sessions)}
+              ${stat('commits', data.totals.commits)}
+            </div>
+
+            ${!data.projects.length && html`
+              <div class="card" style="color:var(--text-secondary)">
+                Nothing recorded for this day.
+              </div>`}
+
+            ${data.projects.map(p => html`
+              <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:baseline;
+                            gap:12px; margin-bottom:${p.summary ? '8px' : '0'}">
+                  <a href=${'#/project/' + encodeURIComponent(p.project)}
+                     style="font-weight:600; color:var(--accent-light); text-decoration:none">
+                    ${p.project}</a>
+                  <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.82rem;
+                              color:var(--text-secondary); white-space:nowrap;
+                              font-variant-numeric:tabular-nums">
+                    ${p.prompts}p · ${p.sessions}s · ${p.commits}c
+                  </div>
+                </div>
+                ${p.summary && html`
+                  <div style="font-size:0.98rem; line-height:1.5">
+                    <${MachineText}>${p.summary}<//>
+                  </div>`}
+                ${p.key_decisions.length > 0 && html`
+                  <ul style="margin:8px 0 0; padding-left:18px; color:var(--text-secondary);
+                             font-size:0.95rem; line-height:1.5">
+                    ${p.key_decisions.map(k => html`<li>${k}</li>`)}
+                  </ul>`}
+              </div>`)}
+          `}
+        </div>`;
+    }
+
     function VisitorsOverview() {
       const [days, setDays] = useState(30);
       const [data, setData] = useState(() => visitorOverviewMemo.get(30) || null);
@@ -2418,7 +2583,7 @@
 
       const windowPicker = html`
         <div style="display: flex; gap: 4px">
-          ${[30, 90, 365].map(d => html`
+          ${[7, 30, 90, 365].map(d => html`
             <button onClick=${() => setDays(d)}
               style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
                      cursor: pointer; font-family: inherit;
@@ -3135,7 +3300,7 @@
 
       const windowPicker = html`
         <div style="display: flex; gap: 4px">
-          ${[30, 90, 365].map(d => html`
+          ${[7, 30, 90, 365].map(d => html`
             <button onClick=${() => setDays(d)}
               style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
                      cursor: pointer; font-family: inherit;
