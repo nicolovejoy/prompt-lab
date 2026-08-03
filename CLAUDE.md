@@ -164,9 +164,16 @@ always render, CSS picks — no viewport state in JS to desync on rotate); and 7
 joined the window toggles. Home offers 7|30 only, because it reads `overview`,
 which is capped at 30 days and stays lean on purpose.
 
-Not done: the other five charts still use below-chart readout panels, which have
-the same under-zoom problem on a phone. They're metric-specific (cost breakdowns,
-visitor counts), so they aren't simply the day page — decide per chart.
+Round two, same evening, all three from one phone screenshot. **The wide nav and
+the hamburger both rendered at once** because `display:contents` was set INLINE on
+the wrapper — an inline style outranks every selector, so the media query could
+never hide it. Moved to CSS. **Every chart now navigates to the day page** and all
+four below-chart panels are gone; `/api/day` grew spend/visitors/uptime sections
+so nothing was lost with them. **Today's column is drawn as a dashed outline and
+the day page carries a "Today, so far" banner** — counts come from
+`daily_summaries`, written at `/handoff` time, so a live session isn't in them and
+a short solid bar read as "a quiet day" instead of "not tallied yet." That is this
+repo's recurring failure shape rendered as a chart.
 
 ### The failure shape this repo keeps hitting
 
@@ -280,7 +287,7 @@ Run each directly:
 for f in scripts/test_*.py; do .venv/bin/python "$f"; done
 ```
 
-232 tests as of 2026-08-02 (160 in `test_web_api.py`, plus alias-layer 22,
+234 tests as of 2026-08-02 (162 in `test_web_api.py`, plus alias-layer 22,
 cost-pipeline 22, public-draft 21, heartbeat 7, imports, session-identity).
 `_health_mod(up=, hb=, ur=)` stubs the health endpoint; its Turso stub dispatches on
 the SQL because the pause lookup, the freshness lookups and the uptime upsert share

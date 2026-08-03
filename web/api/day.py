@@ -13,10 +13,15 @@ That last part is why this endpoint exists rather than the page reading the
 window, so a cold-opened link to a day in March would render empty. A day page
 whose URL only works if you arrived from the chart is not really a page.
 
-Reads `daily_summaries` only — Turso has no raw `prompts`/`sessions`/`commits`
-tables at all, by design (see CLAUDE.md invariants), so no prompt text, commit
-message, hostname or local path is reachable from here. Counts and the already
--written summary prose are the whole surface.
+Reads `daily_summaries`, `api_costs`, `page_views` and `uptime_daily` — Turso
+has no raw `prompts`/`sessions`/`commits` tables at all, by design (see CLAUDE.md
+invariants), so no prompt text, commit message, hostname or local path is
+reachable from here. Counts, spend and already-written summary prose are the
+whole surface.
+
+Everything past the summaries read is best-effort: one unavailable table degrades
+to a missing section, not a dead page. The summaries read is deliberately not —
+a day page with no day in it is not a page, so that one 503s.
 
 Alias folding matches every other reader: two rows under an old and a new
 project name collapse into one canonical entry with their counts re-summed.
@@ -31,6 +36,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from auth_helper import is_authenticated
+from day_helper import lab_today
 from turso_helper import turso_query
 
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -111,7 +117,72 @@ class handler(BaseHTTPRequestHandler):
         totals = {m: sum(p[m] for p in projects)
                   for m in ("prompts", "sessions", "commits")}
 
-        self._json({"date": date, "totals": totals, "projects": projects})
+        self._json({
+            "date": date,
+            "totals": totals,
+            "projects": projects,
+            "spend": self._spend(date, a2c),
+            "visitors": self._visitors(date),
+            "uptime": self._uptime(date),
+            # Today's row is written by /handoff or the nightly synthesizer, so
+            # until one runs it under-reports — and a chart can't tell a quiet
+            # day from an unsummarized one. Say which this is rather than let a
+            # partial number read as a final one.
+            "provisional": date == lab_today().isoformat(),
+        })
+
+    # Each of these is best-effort: a day page must still render if one table is
+    # unavailable. The main daily_summaries read above is NOT — that one 503s,
+    # because a day page with no day in it is not a page.
+    def _soft(self, sql, args):
+        try:
+            return turso_query(sql, args)
+        except Exception as e:
+            print(f"day: {sql.split()[3] if len(sql.split()) > 3 else '?'} "
+                  f"unreadable: {e}"[:200])
+            return None
+
+    def _spend(self, date, a2c):
+        rows = self._soft(
+            "SELECT project, SUM(cost_reported_usd) AS usd FROM api_costs "
+            "WHERE date = ? GROUP BY project", [date])
+        if rows is None:
+            return None
+        by = {}
+        for r in rows:
+            p = a2c.get(r["project"], r["project"]) or "unattributed"
+            by[p] = by.get(p, 0.0) + float(r.get("usd") or 0)
+        return {
+            "total_usd": round(sum(by.values()), 4),
+            "by_project": [{"project": p, "usd": round(v, 4)}
+                           for p, v in sorted(by.items(), key=lambda kv: -kv[1])],
+        }
+
+    def _visitors(self, date):
+        # ts is a UTC instant; the lab day is Pacific (#48). SQLite has no tz
+        # database, so the shift is explicit — and it is -7 only during PDT,
+        # which is why this is a range on the raw ts rather than a date() call
+        # that would silently be wrong for half the year.
+        rows = self._soft(
+            "SELECT site, COUNT(*) AS views FROM page_views "
+            "WHERE event = 'pageview' AND ts >= datetime(?, '+7 hours') "
+            "AND ts < datetime(?, '+1 day', '+7 hours') GROUP BY site",
+            [date, date])
+        if rows is None:
+            return None
+        by = sorted(({"site": r["site"] or "?", "views": int(r.get("views") or 0)}
+                     for r in rows), key=lambda s: -s["views"])
+        return {"views": sum(s["views"] for s in by), "by_site": by}
+
+    def _uptime(self, date):
+        rows = self._soft(
+            "SELECT monitor, uptime_1d, status FROM uptime_daily WHERE date = ? "
+            "ORDER BY monitor", [date])
+        if rows is None:
+            return None
+        return [{"monitor": r["monitor"],
+                 "uptime_1d": None if r.get("uptime_1d") is None else float(r["uptime_1d"]),
+                 "status": r.get("status")} for r in rows]
 
     def _json(self, payload, status=200):
         self.send_response(status)

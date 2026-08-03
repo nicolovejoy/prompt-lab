@@ -3080,7 +3080,12 @@ def _day_mod(rows, authed=True, boom=False):
             raise OSError("turso unreachable")
         if "project_aliases" in sql:
             return [{"alias": "pianohouse", "canonical": "selected-projects"}]
-        return rows
+        # Dispatch on the SQL, same reason the health stub does: this endpoint
+        # reads four tables through one turso_query, and feeding summary rows to
+        # the page_views read would silently pass while proving nothing.
+        if "daily_summaries" in sql:
+            return rows
+        return []
     restore_q = patch_turso_query(mod, fake_turso)
     restore_a = patch(mod, is_authenticated=lambda _: authed)
 
@@ -3121,9 +3126,9 @@ def _():
     try:
         h = invoke(mod, "/api/day?date=2026-03-01")
         assert h.status_code == 200, h.status_code
-        assert h.body == {"date": "2026-03-01",
-                          "totals": {"prompts": 0, "sessions": 0, "commits": 0},
-                          "projects": []}, h.body
+        assert h.body["totals"] == {"prompts": 0, "sessions": 0, "commits": 0}, h.body
+        assert h.body["projects"] == [], h.body
+        assert h.body["provisional"] is False, "a past date is not provisional"
     finally:
         restore()
 
@@ -3175,6 +3180,49 @@ def _():
                 assert banned not in s, f"{banned} in {s}"
     finally:
         restore()
+
+
+@test("day: today is flagged provisional — an unsummarized day isn't a quiet one")
+def _():
+    # Counts come from daily_summaries, written at /handoff time, so a live
+    # session is missing from them. Rendering that as a final number is this
+    # repo's recurring failure shape: partial output presented as complete.
+    from day_helper import lab_today as _lt
+    mod, _, restore = _day_mod([])
+    try:
+        h = invoke(mod, "/api/day?date=" + _lt().isoformat())
+        assert h.body["provisional"] is True, h.body
+    finally:
+        restore()
+
+
+@test("day: one unreadable side table degrades to a missing section, not a 503")
+def _():
+    # The summaries read 503s (a day page with no day in it is not a page); the
+    # spend/visitors/uptime reads must not, or a cost-table blip takes the page
+    # down with it.
+    mod = load_endpoint("web/api/day.py", "endpoint_day_soft")
+
+    def fake_turso(sql, args=None):
+        if "api_costs" in sql:
+            raise OSError("turso unreachable")
+        if "project_aliases" in sql:
+            return []
+        if "daily_summaries" in sql:
+            return [{"project": "garm", "summary": "", "key_decisions": None,
+                     "prompts": 2, "sessions": 1, "commits": 0}]
+        return []
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+    try:
+        h = invoke(mod, "/api/day?date=2026-08-02")
+        assert h.status_code == 200, f"{h.status_code}: {h.body}"
+        assert h.body["spend"] is None, "a failed read must be null, not 0"
+        assert h.body["totals"]["prompts"] == 2, h.body
+        assert h.body["visitors"] == {"views": 0, "by_site": []}, h.body["visitors"]
+    finally:
+        restore_a()
+        restore_q()
 
 
 @test("day: an unreadable Turso is a 503, not an empty day")
