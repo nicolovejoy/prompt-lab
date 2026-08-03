@@ -3126,6 +3126,28 @@ def _():
         restore()
 
 
+@test("uptime pull: the row count reaches the email body, loud when zero")
+def _():
+    # The Aug 2 gap: uptime_rows lived only in the JSON response, which nothing
+    # reads, so a totally failed pull looked identical to a good one in the
+    # inbox. The count must land in the body — and 0 must be unmissable.
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
+        _, html, text = sent[0]
+        assert "2 monitors archived" in text, text
+        assert "2 monitors archived" in html, html
+
+        mod, sent = _health_mod(ur="error")
+        invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
+        _, html, text = sent[0]
+        assert "uptime archive: 0 rows written" in text, text
+        assert "uptime archive: 0 rows written" in html, html
+    finally:
+        restore()
+
+
 @test("uptime pull: the archive still fills while emails are paused")
 def _():
     # Pausing the EMAIL for a week must not punch a week-long hole in the
@@ -3270,6 +3292,216 @@ def _():
     assert h.status_code == 200, f"got {h.status_code}: {h.body}"
     assert h.body["monitors"] == [], h.body
     assert h.body.get("unavailable") is True, h.body
+
+
+# === private_history.py ===
+
+PRIVHIST_KEY = "test-service-key"
+
+
+def _privhist(fake_turso, name, key=PRIVHIST_KEY):
+    """Load private_history with a stubbed Turso and the service key set."""
+    mod = load_endpoint("web/api/private_history.py", name)
+    restore_turso = patch_turso_query(mod, fake_turso)
+    saved = os.environ.get("SERVICE_HISTORY_KEY")
+    if key is None:
+        os.environ.pop("SERVICE_HISTORY_KEY", None)
+    else:
+        os.environ["SERVICE_HISTORY_KEY"] = key
+
+    def restore():
+        restore_turso()
+        if saved is None:
+            os.environ.pop("SERVICE_HISTORY_KEY", None)
+        else:
+            os.environ["SERVICE_HISTORY_KEY"] = saved
+    return mod, restore
+
+
+def _privhist_rows(sql, args=None):
+    """Turso stub: aggregates come back as STRINGS, as the real one does."""
+    if "project_aliases" in sql:
+        return []
+    if "FROM daily_summaries" in sql and "GROUP BY" in sql:
+        return [
+            {"week_of": "2026-07-20", "session_count": "3",
+             "commit_count": "0", "prompt_count": "40"},
+            {"week_of": "2026-07-27", "session_count": "9",
+             "commit_count": "21", "prompt_count": "140"},
+        ]
+    if "FROM daily_summaries" in sql:
+        return [{"first_at": "2025-03-11", "last_at": "2026-08-01",
+                 "sessions": "412", "commits": "1180", "prompts": "9001"}]
+    if "FROM weekly_rollups" in sql:
+        return [{"week_start": "2026-07-27", "session_count": "9",
+                 "commit_count": "21"}]
+    return []
+
+
+@test("private_history: 401 without a bearer key")
+def _():
+    mod, restore = _privhist(_privhist_rows, "endpoint_privhist_401")
+    try:
+        h = invoke(mod, "/api/private_history?project=musicforge")
+        assert h.status_code == 401, f"got {h.status_code}: {h.body}"
+        assert h.body.get("error") == "unauthorized"
+    finally:
+        restore()
+
+
+@test("private_history: 401 with the wrong bearer key")
+def _():
+    mod, restore = _privhist(_privhist_rows, "endpoint_privhist_401b")
+    try:
+        h = invoke(mod, "/api/private_history?project=musicforge",
+                   headers={"authorization": "Bearer nope"})
+        assert h.status_code == 401, f"got {h.status_code}: {h.body}"
+    finally:
+        restore()
+
+
+@test("private_history: 503 when no service key is configured (never fails open)")
+def _():
+    mod, restore = _privhist(_privhist_rows, "endpoint_privhist_503", key=None)
+    try:
+        h = invoke(mod, "/api/private_history?project=musicforge",
+                   headers={"authorization": "Bearer anything"})
+        assert h.status_code == 503, f"got {h.status_code}: {h.body}"
+        assert "activity" not in h.body, h.body
+    finally:
+        restore()
+
+
+@test("private_history: 400 when project missing")
+def _():
+    mod, restore = _privhist(_privhist_rows, "endpoint_privhist_400")
+    try:
+        h = invoke(mod, "/api/private_history",
+                   headers={"authorization": f"Bearer {PRIVHIST_KEY}"})
+        assert h.status_code == 400, f"got {h.status_code}: {h.body}"
+    finally:
+        restore()
+
+
+@test("private_history: 200 full envelope with the key")
+def _():
+    mod, restore = _privhist(_privhist_rows, "endpoint_privhist_200")
+    try:
+        h = invoke(mod, "/api/private_history?project=musicforge",
+                   headers={"authorization": f"Bearer {PRIVHIST_KEY}"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        b = h.body
+        assert b["project"] == "musicforge", b
+        assert b["first_activity_at"] == "2025-03-11", b
+        assert b["last_activity_at"] == "2026-08-01", b
+        # Turso's string aggregates must arrive as real ints.
+        assert b["total_sessions"] == 412 and isinstance(b["total_sessions"], int), b
+        assert b["total_commits"] == 1180 and isinstance(b["total_commits"], int), b
+        # activity is oldest → newest, ints throughout.
+        assert [r["week_of"] for r in b["activity"]] == \
+            ["2026-07-20", "2026-07-27"], b["activity"]
+        assert b["activity"][1] == {
+            "week_of": "2026-07-27", "session_count": 9,
+            "commit_count": 21, "prompt_count": 140}, b["activity"]
+        # Tier 1: rollups carry counts only, sessions is empty.
+        assert b["rollups"] == [{"week_of": "2026-07-27", "public_summary": None,
+                                "session_count": 9, "commit_count": 21}], b
+        assert b["sessions"] == [], b
+    finally:
+        restore()
+
+
+@test("private_history: unknown project → empty 200 envelope")
+def _():
+    def empty(sql, args=None):
+        return []
+    mod, restore = _privhist(empty, "endpoint_privhist_unknown")
+    try:
+        h = invoke(mod, "/api/private_history?project=nope",
+                   headers={"authorization": f"Bearer {PRIVHIST_KEY}"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        b = h.body
+        assert b["activity"] == [] and b["rollups"] == [] and b["sessions"] == [], b
+        assert b["first_activity_at"] is None and b["last_activity_at"] is None, b
+        assert b["total_sessions"] == 0 and b["total_commits"] == 0, b
+    finally:
+        restore()
+
+
+@test("private_history: NULL/absent counts render as 0, never null")
+def _():
+    def nulls(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "FROM daily_summaries" in sql and "GROUP BY" in sql:
+            return [{"week_of": "2026-07-27", "session_count": None,
+                     "commit_count": None, "prompt_count": None}]
+        if "FROM daily_summaries" in sql:
+            return [{"first_at": None, "last_at": None, "sessions": None,
+                     "commits": None, "prompts": None}]
+        if "FROM weekly_rollups" in sql:
+            return [{"week_start": "2026-07-27", "session_count": None,
+                     "commit_count": None}]
+        return []
+    mod, restore = _privhist(nulls, "endpoint_privhist_zeros")
+    try:
+        h = invoke(mod, "/api/private_history?project=musicforge",
+                   headers={"authorization": f"Bearer {PRIVHIST_KEY}"})
+        b = h.body
+        assert b["total_sessions"] == 0 and b["total_commits"] == 0, b
+        assert b["activity"][0] == {"week_of": "2026-07-27", "session_count": 0,
+                                    "commit_count": 0, "prompt_count": 0}, b
+        assert b["rollups"][0]["session_count"] == 0, b
+        assert b["rollups"][0]["commit_count"] == 0, b
+    finally:
+        restore()
+
+
+@test("private_history: alias folding expands the WHERE clause")
+def _():
+    seen = []
+
+    def aliased(sql, args=None):
+        if "canonical FROM project_aliases" in sql and "alias = ?" in sql:
+            return [{"canonical": "selected-projects"}]
+        if "alias FROM project_aliases" in sql:
+            return [{"alias": "pianohouse"}]
+        seen.append((sql, list(args or [])))
+        return _privhist_rows(sql, args)
+
+    mod, restore = _privhist(aliased, "endpoint_privhist_alias")
+    try:
+        h = invoke(mod, "/api/private_history?project=pianohouse",
+                   headers={"authorization": f"Bearer {PRIVHIST_KEY}"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert seen, "no data queries ran"
+        for sql, args in seen:
+            assert "IN (?,?)" in sql, sql
+            assert args[:2] == ["selected-projects", "pianohouse"], args
+        # The echoed key stays what the consumer asked for.
+        assert h.body["project"] == "pianohouse", h.body
+    finally:
+        restore()
+
+
+@test("private_history: queries select no prose columns (Tier 1 structural guarantee)")
+def _():
+    seen = []
+
+    def spy(sql, args=None):
+        seen.append(sql)
+        return _privhist_rows(sql, args)
+
+    mod, restore = _privhist(spy, "endpoint_privhist_noprose")
+    try:
+        invoke(mod, "/api/private_history?project=musicforge",
+               headers={"authorization": f"Bearer {PRIVHIST_KEY}"})
+        for sql in seen:
+            low = sql.lower()
+            for banned in ("narrative", "highlights", "summary", "key_decisions"):
+                assert banned not in low, f"{banned} in {sql}"
+    finally:
+        restore()
 
 
 # === Main ===

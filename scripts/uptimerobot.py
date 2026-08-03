@@ -62,15 +62,18 @@ HTTP_MONITORS = [
     # www, not the apex: the apex 307s to www (domain canonical), and a monitor
     # that depends on redirect-following is one setting away from a false DOWN.
     ("pianohouse", "https://www.pianohouseproject.org/api/health?db=1"),
-    # No /api/health yet — homepage checks until each app adopts the convention.
-    ("bakerylouise", "https://bakerylouise.com/"),
-    ("musicforge", "https://musicforge.app/"),
+    # Shallow on purpose: pages are ISR-cached, so a Sanity blip isn't a site
+    # outage and a deep variant would false-alarm (their 2026-08-02 handoff).
+    ("bakerylouise", "https://bakerylouise.com/api/health"),
+    # www.musicforge.org, not musicforge.app: the health rewrite to the Fly
+    # backend only exists on the .org deployment (.app 404s on the path).
+    ("musicforge", "https://www.musicforge.org/api/health?db=1"),
     # recountly was dropped 2026-08-02: it became Raconte, a native iOS app, so
     # there is nothing left to poll and the monitor would have false-alarmed the
     # day the deployment came down. This script never deletes — the monitor
     # itself must be removed by hand in the UptimeRobot UI.
     # Was entirely unmonitored until 2026-07-31. Note .org, not .com.
-    ("prntd", "https://prntd.org/"),
+    ("prntd", "https://prntd.org/api/health?db=1"),
 ]
 
 # --- Desired heartbeat monitors --------------------------------------------

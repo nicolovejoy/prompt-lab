@@ -77,17 +77,18 @@ is indistinguishable from a good one in the inbox. Aug 1 wrote 9 rows and nothin
 deployed between the two days, so the key was live and this was transient —
 plausibly the 8-second `FETCH_TIMEOUT` on the v2 call.
 
-**The fix that actually belongs here, not yet built:** put the row count in the
-email body — `9 monitors archived` normally, a loud `uptime archive: 0 rows written`
-when the pull failed. The send path already knows the answer and throws it away.
-That is same-morning and thresholdless. The `uptime archive` heartbeat added in
-`b179cc1` is the backstop, not the answer — at a 2-day threshold it would have
-reported this on Aug 3, and by design stays quiet through a single transient miss.
+**Fixed 2026-08-02:** the row count now lands in the email body — `9 monitors
+archived` normally, a loud red `uptime archive: 0 rows written` when the pull
+failed (`_compose` takes `uptime_rows`; dry runs pass None and show nothing).
+Same-morning and thresholdless. The `uptime archive` heartbeat from `b179cc1`
+remains the backstop for "cron alive, pull broken" at a 2-day threshold.
 
-- **Phase 3 of the uptime plan** — `/api/health` for `musicforge` and `prntd` (asked
-  via handoff, awaiting reply) and `bakerylouise-v1` (**has no handoff channel** —
-  one must be created, or the work done in a session started in that repo).
-  ibuild4you's `app/api/health/route.ts` is the reference impl.
+- **Phase 3 of the uptime plan — COMPLETE 2026-08-02.** musicforge, bakerylouise and
+  prntd all shipped `/api/health` and every monitor is repointed off its homepage
+  (musicforge's lives only on `www.musicforge.org` — the `.app` domain 404s the path;
+  bakerylouise skips the deep Sanity variant on purpose, ISR-cached; prntd is deep
+  `?db=1`). raconte is settled: no backend ever, slot closed, the recountly.org
+  monitor stays until they post teardown notice.
 - **Phase 5** — grow `TARGETS` in `web/api/health_report.py` (still only garm +
   prompt-labs.org, against 9 in `HTTP_MONITORS`) and add the test asserting every
   deep-health `TARGETS` URL also appears in `HTTP_MONITORS`. They are two
@@ -99,10 +100,13 @@ reported this on Aug 3, and by design stays quiet through a single transient mis
 - **Beacon fan-out: `prntd` + `musicforge`** never got the snippet (dirty trees at
   fan-out time). `page_views` has zero rows ever for either. musicforge is Vite
   (`frontend/src/main.tsx`), a different injection than the Next.js root layouts.
-- **`/api/private_history` Tier 1** — design agreed with selected-projects, not
-  built; awaiting their sequencing. The public endpoint's `total_sessions` /
-  `first_activity_at` / `last_activity_at` are computed over *published* sessions and
-  are therefore materially wrong. Design in `docs/history.md`.
+- **`/api/private_history` Tier 1** — unblocked 2026-08-02: selected-projects said
+  ship it standalone (no Garm dependency, no Tier 2 sequencing) and posted the exact
+  request shape in the handoff channel — public envelope keys with corrected values,
+  plus all-time `total_commits` and weekly `activity[]`; skip `category`/`status`.
+  Totals must come from `daily_summaries` (Turso has no raw tables — invariant).
+  bakerylouise historyKey settled as `bakerylouise` (alias from `bakerylouise-v1`);
+  allowlist grew to 8 keys (`bakerylouise`, `songscribe` added).
 - **Public rollups:** only ibuild4you `2026-05-18` remains unpublished, and that is a
   deliberate skip (cost forensics + internal ops; nothing left after scrubbing). It
   reappears in every future draft by design.
@@ -111,7 +115,8 @@ reported this on Aug 3, and by design stays quiet through a single transient mis
   declaring which clock owns a value: the synthesizer and review email write dates in
   mini-local Pacific, `health_report.py` grades their freshness in UTC, and the "8am"
   cron is `0 15 * * *` — 8am Pacific in summer, **7am in winter**. Decide the policy
-  before fixing instances.
+  before fixing instances. The handoff commit-capture instance is patched
+  (`--since="<started_at>Z"` in `workflow/commands/handoff.md`, 2026-08-02).
 - Open issues: **#14** design tokens (own session), **#27** Garm rollout, **#43**
   sign-ins panel (trigger-gated: fires the day a second reader joins
   `READER_EMAILS`), **#9** beacon fan-out, **#34** health leftovers, **#45** the

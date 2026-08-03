@@ -15,9 +15,11 @@
 # Last synced from manifest: 2026-07-20 (dropped am-i-an-ai — the site removed
 # lojong; its public rows were unpublished via scripts/unpublish_public.py)
 
+bakerylouise
 ibuild4you
 musicforge
 prntd
 prompt-lab
 selected-projects
 showcase
+songscribe
