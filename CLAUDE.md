@@ -147,7 +147,8 @@ remains the backstop for "cron alive, pull broken" at a 2-day threshold.
 - Open issues: **#14** design tokens (own session), **#27** Garm rollout, **#43**
   sign-ins panel (trigger-gated: fires the day a second reader joins
   `READER_EMAILS`), **#9** beacon fan-out, **#34** health leftovers, **#45** the
-  freshness convention, **#49** copy review across every dashboard page (filed
+  freshness convention, **#50** preload + locally cache per-day aggregates (the
+  day page fetches cold and feels sluggish on a phone), **#49** copy review across every dashboard page (filed
   2026-08-02 at Nico's ask — he wants to read it at a computer, not a phone).
 - Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
 
@@ -174,6 +175,14 @@ the day page carries a "Today, so far" banner** — counts come from
 `daily_summaries`, written at `/handoff` time, so a live session isn't in them and
 a short solid bar read as "a quiet day" instead of "not tallied yet." That is this
 repo's recurring failure shape rendered as a chart.
+
+Round three: the nav is two tiers. PRIMARY is the five views; everything else —
+Ask (an action, not a destination), About, theme, email, log out, build stamp —
+sits behind **More**, because mixing them put "Log out" the same distance from a
+thumb as "Costs". One declaration renders both navs. The header's built/synced
+sub-line is gone; that detail lives on the new `#/about` page and as a terse
+stamp at the foot of the More panel. **Not yet verified by eye** — shipped after
+Nico signed off for the night.
 
 ### The failure shape this repo keeps hitting
 
