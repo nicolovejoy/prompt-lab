@@ -1146,6 +1146,11 @@
     // legend entry would defeat that.
     function CrossProjectActivity({ overview, hide }) {
       const [hovered, setHovered] = useState(null);
+      // Tap-to-select, same as the other five charts (see CAN_HOVER below for
+      // why a floating tooltip can't work on touch). This chart was the only
+      // one that never got it, so on a phone tapping a bar did nothing at all
+      // and there was no way to tell which day a column belonged to.
+      const [selected, setSelected] = useState(null);
       const all = overview.activity_by_project || {};
       const act = hide?.size
         ? Object.fromEntries(Object.entries(all).filter(([p]) => !hide.has(p)))
@@ -1174,9 +1179,6 @@
       const dayTotal = d => Object.values(byDateProject[d] || {}).reduce((s, v) => s + v, 0);
       const peak = Math.max(...dates.map(dayTotal), 1);
       const CHART_H = 120, n = dates.length;
-      const tickIdxs = new Set();
-      const k = Math.min(6, n);
-      for (let i = 0; i < k; i++) tickIdxs.add(Math.round((i * (n - 1)) / (k - 1)));
 
       return html`
         <div style="margin-bottom:26px; padding:16px; background:var(--card);
@@ -1195,21 +1197,23 @@
             ${dates.map((d, i) => {
               const total = dayTotal(d);
               const barH = total > 0 ? Math.max(1, Math.round((total / peak) * (CHART_H - 4))) : 0;
-              const isH = hovered === i;
+              const isH = hovered === i || selected === i;
               const edge = n > 1 ? i / (n - 1) : 0.5;
               const anchor = edge < 0.15 ? 'left:0' : edge > 0.85 ? 'right:0' : 'left:50%; transform:translateX(-50%)';
               const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
               return html`
-                <div style="flex:1; min-width:3px; height:100%; position:relative; cursor:default"
+                <div style="flex:1; min-width:3px; height:100%; position:relative;
+                            cursor:${total > 0 ? 'pointer' : 'default'}"
                      onMouseEnter=${() => setHovered(i)}
-                     onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}>
+                     onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
+                     onClick=${() => total > 0 && setSelected(s => s === i ? null : i)}>
                   <div style="position:absolute; left:0; right:0; bottom:0; height:${barH}px;
                               display:flex; flex-direction:column-reverse; border-radius:2px 2px 0 0;
                               overflow:hidden; opacity:${isH ? 1 : 0.85}; transition:opacity 0.1s">
                     ${segs.map(([p, v]) => html`
                       <div style="height:${(v / total) * 100}%; background:${segColor(p)}"></div>`)}
                   </div>
-                  ${isH && total > 0 && html`
+                  ${CAN_HOVER && isH && total > 0 && html`
                     <div style="position:absolute; bottom:100%; z-index:5; margin-bottom:4px; ${anchor};
                                 background:var(--bg); border:1px solid var(--border); border-radius:6px;
                                 padding:8px 10px; white-space:nowrap; box-shadow:0 4px 16px rgba(0,0,0,0.4);
@@ -1226,12 +1230,31 @@
                 </div>`;
             })}
           </div>
-          <div style="display:flex; gap:2px; margin-top:4px; margin-bottom:12px">
-            ${dates.map((d, i) => html`
-              <div style="flex:1; min-width:3px; text-align:center; font-size:0.75rem;
-                          color:var(--text-secondary); font-family:'SF Mono',ui-monospace,monospace;
-                          white-space:nowrap">${tickIdxs.has(i) ? fmtShortDate(d) : ''}</div>`)}
-          </div>
+          <${DateAxis} dates=${dates} style="margin-top:4px; margin-bottom:12px" />
+
+          ${selected != null && dayTotal(dates[selected]) > 0 && (() => {
+            const d = dates[selected];
+            const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
+            return html`
+              <div style="margin-bottom:14px; padding:12px 14px;
+                          background:var(--bg-elevated, var(--bg));
+                          border:1px solid var(--border); border-radius:6px">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+                  <div style="font-weight:600">${fmtShortDate(d)} · ${dayTotal(d)} prompts</div>
+                  <button onClick=${() => setSelected(null)}
+                    style="background:none; border:none; color:var(--text-secondary);
+                           font-size:1.2rem; line-height:1; cursor:pointer; font-family:inherit">×</button>
+                </div>
+                ${segs.map(([pr, v]) => html`
+                  <div style="display:flex; align-items:center; gap:6px; padding:3px 0">
+                    <span style="width:8px; height:8px; border-radius:2px; flex:none;
+                                 background:${segColor(pr)}; display:inline-block"></span>
+                    <span style="color:var(--text)">${pr}</span>
+                    <span style="margin-left:auto; font-variant-numeric:tabular-nums">${v}</span>
+                  </div>`)}
+              </div>`;
+          })()}
+
           <div style="display:flex; flex-wrap:wrap; gap:10px 16px">
             ${ranked.slice(0, COST_PALETTE.length).map(([p]) => html`
               <a href=${'#/project/' + encodeURIComponent(p)}
@@ -1749,6 +1772,64 @@
       return months[parseInt(m, 10) - 1] + ' ' + parseInt(d, 10);
     }
 
+    // ---- Shared date axis --------------------------------------------------
+    // Six charts each carried their own copy of this: a flex row with one cell
+    // per day, a hardcoded 6 ticks, and `white-space: nowrap` labels. At 30 days
+    // on a 390px phone each cell is ~11px while a label needs ~50px, so labels
+    // printed over each other ("Jul 17" landing inside "Jul 22") — and because
+    // the overflowing text still counts toward an ancestor's scroll width, the
+    // whole dashboard slid sideways and cut off its own headings.
+    //
+    // Two rules fix it for good, and both are why this is one component now:
+    // the tick count is derived from the MEASURED width rather than a constant,
+    // and the labels are absolutely positioned inside a clipped box, so no
+    // label can ever contribute to the page's scroll width at any size.
+    const TICK_PX = 64;   // room one "Jul 17" needs at 0.75rem mono, with air
+    const AXIS_H = 18;
+
+    function DateAxis({ dates, fmt = fmtShortDate, style = '' }) {
+      const ref = useRef(null);
+      const [w, setW] = useState(0);
+      useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const measure = () => setW(el.clientWidth);
+        measure();
+        if (typeof ResizeObserver === 'undefined') {
+          window.addEventListener('resize', measure);
+          return () => window.removeEventListener('resize', measure);
+        }
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => ro.disconnect();
+      }, []);
+
+      const n = dates.length;
+      const base = `position:relative; height:${AXIS_H}px; overflow:hidden;
+                    font-size:0.75rem; color:var(--text-secondary);
+                    font-family:'SF Mono',ui-monospace,monospace; ${style}`;
+      if (!n) return html`<div ref=${ref} style=${base}></div>`;
+
+      // w is 0 until the first measurement lands; show the two edges rather
+      // than nothing, so the axis doesn't flash empty on first paint.
+      const k = Math.max(2, Math.min(6, w ? Math.floor(w / TICK_PX) : 2, n));
+      const idxs = [...new Set(
+        Array.from({ length: k }, (_, i) => Math.round((i * (n - 1)) / (k - 1))))];
+
+      return html`
+        <div ref=${ref} style=${base}>
+          ${idxs.map(i => {
+            // The end labels pin to the edges — a centered transform would push
+            // half of each outside the clip, which is where they'd be lost.
+            const pos = i === 0 ? 'left:0'
+              : i === n - 1 ? 'right:0'
+              : `left:${((i + 0.5) / n) * 100}%; transform:translateX(-50%)`;
+            return html`<span style="position:absolute; top:0; ${pos};
+                                     white-space:nowrap">${fmt(dates[i])}</span>`;
+          })}
+        </div>`;
+    }
+
     function CostsOverview() {
       const [days, setDays] = useState(30);
       const [data, setData] = useState(() => costOverviewMemo.get(30) || null);
@@ -1839,8 +1920,6 @@
       const peak = Math.max(...Object.values(byDate), 0.0001);
       const CHART_H = 140;
       const n = dates.length;
-      const tickIdxs = new Set();
-      if (n > 0) { const k = Math.min(6, n); for (let i = 0; i < k; i++) tickIdxs.add(Math.round((i * (n - 1)) / (k - 1))); }
 
       // Legend rows (sortable).
       const legend = [...ranked];
@@ -1915,14 +1994,7 @@
                         </div>`;
                     })}
                   </div>
-                  <div style="display: flex; gap: 2px; margin-top: 4px">
-                    ${dates.map((d, i) => html`
-                      <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.75rem;
-                                  color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
-                                  overflow: visible; white-space: nowrap">
-                        ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
-                      </div>`)}
-                  </div>
+                  <${DateAxis} dates=${dates} style="margin-top: 4px" />
                 </div>
               </div>
             </div>
@@ -2145,8 +2217,6 @@
       const peak = Math.max(...Object.values(byDate), 1);
       const CHART_H = 140;
       const n = dates.length;
-      const tickIdxs = new Set();
-      if (n > 0) { const k = Math.min(6, n); for (let i = 0; i < k; i++) tickIdxs.add(Math.round((i * (n - 1)) / (k - 1))); }
 
       // Table rows: every project the window saw, sortable. 7d/30d are fixed
       // windows (not the chart window) so the columns mean the same thing at
@@ -2226,14 +2296,7 @@
                         </div>`;
                     })}
                   </div>
-                  <div style="display: flex; gap: 2px; margin-top: 4px">
-                    ${dates.map((d, i) => html`
-                      <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.75rem;
-                                  color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
-                                  overflow: visible; white-space: nowrap">
-                        ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
-                      </div>`)}
-                  </div>
+                  <${DateAxis} dates=${dates} style="margin-top: 4px" />
                 </div>
               </div>
             </div>
@@ -2496,8 +2559,6 @@
       const peak = Math.max(...Object.values(byDate), 1);
       const CHART_H = 140;
       const n = dates.length;
-      const tickIdxs = new Set();
-      if (n > 0) { const k = Math.min(6, n); for (let i = 0; i < k; i++) tickIdxs.add(Math.round((i * (n - 1)) / (k - 1))); }
 
       const paths = (data.paths || []).slice(0, 15);
       const referrers = (data.referrers || []).slice(0, 10);
@@ -2565,14 +2626,7 @@
                         </div>`;
                     })}
                   </div>
-                  <div style="display: flex; gap: 2px; margin-top: 4px">
-                    ${dates.map((d, i) => html`
-                      <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.75rem;
-                                  color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
-                                  overflow: visible; white-space: nowrap">
-                        ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
-                      </div>`)}
-                  </div>
+                  <${DateAxis} dates=${dates} style="margin-top: 4px" />
                 </div>
               </div>
             </div>
@@ -2968,8 +3022,6 @@
 
       const STRIP_H = 22, MS_H = 54;
       const peakMs = Math.max(...Object.values(byDate).map(v => v.ms), 1);
-      const tickIdxs = new Set();
-      if (n > 0) { const k = Math.min(6, n); for (let i = 0; i < k; i++) tickIdxs.add(Math.round((i * (n - 1)) / (k - 1))); }
 
       const detail = (d) => {
         const v = byDate[d];
@@ -3038,14 +3090,7 @@
                     </div>`;
                 })}
               </div>
-              <div style="display: flex; gap: 2px; margin-top: 4px">
-                ${dates.map((d, i) => html`
-                  <div style="flex: 1; min-width: 3px; text-align: center; font-size: 0.75rem;
-                              color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace;
-                              overflow: visible; white-space: nowrap">
-                    ${tickIdxs.has(i) ? fmtShortDate(d) : ''}
-                  </div>`)}
-              </div>
+              <${DateAxis} dates=${dates} style="margin-top: 4px" />
             </div>
           </div>
         </div>
@@ -3308,15 +3353,7 @@
       const models = Object.entries(byModel).sort((a, b) => b[1] - a[1]);
 
       const CHART_H = 100;
-      // Pick ~5 sparse X-tick indices so labels don't overlap on 30 bars.
-      const tickIdxs = new Set();
       const n = dates.length;
-      if (n > 0) {
-        const k = Math.min(5, n);
-        for (let i = 0; i < k; i++) {
-          tickIdxs.add(Math.round((i * (n - 1)) / (k - 1)));
-        }
-      }
       const fmtShort = (iso) => {
         const [, m, d] = iso.split('-');
         const months = ['Jan','Feb','Mar','Apr','May','Jun',
@@ -3415,16 +3452,7 @@
                   `;
                 })}
               </div>
-              <div style="display: flex; gap: 2px; margin-top: 4px;
-                          font-size: 0.82rem; color: var(--text-secondary);
-                          font-family: 'SF Mono', ui-monospace, monospace">
-                ${dates.map((d, i) => html`
-                  <div style="flex: 1; min-width: 4px; text-align: center;
-                              white-space: nowrap; overflow: visible">
-                    ${tickIdxs.has(i) ? fmtShort(d) : ''}
-                  </div>
-                `)}
-              </div>
+              <${DateAxis} dates=${dates} fmt=${fmtShort} style="margin-top: 4px" />
             </div>
           </div>
           ${models.length > 0 && html`

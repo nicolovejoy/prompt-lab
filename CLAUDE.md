@@ -147,7 +147,8 @@ remains the backstop for "cron alive, pull broken" at a 2-day threshold.
 - Open issues: **#14** design tokens (own session), **#27** Garm rollout, **#43**
   sign-ins panel (trigger-gated: fires the day a second reader joins
   `READER_EMAILS`), **#9** beacon fan-out, **#34** health leftovers, **#45** the
-  freshness convention.
+  freshness convention, **#49** copy review across every dashboard page (filed
+  2026-08-02 at Nico's ask — he wants to read it at a computer, not a phone).
 - Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
 
 ### The failure shape this repo keeps hitting
