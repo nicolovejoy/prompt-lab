@@ -89,10 +89,16 @@ remains the backstop for "cron alive, pull broken" at a 2-day threshold.
   bakerylouise skips the deep Sanity variant on purpose, ISR-cached; prntd is deep
   `?db=1`). raconte is settled: no backend ever, slot closed, the recountly.org
   monitor stays until they post teardown notice.
-- **Phase 5** — grow `TARGETS` in `web/api/health_report.py` (still only garm +
-  prompt-labs.org, against 9 in `HTTP_MONITORS`) and add the test asserting every
-  deep-health `TARGETS` URL also appears in `HTTP_MONITORS`. They are two
-  declarations of overlapping intent and will drift.
+- **Phase 5 — COMPLETE 2026-08-02.** `TARGETS` now carries all 8 HTTP monitors, and
+  a test pins `TARGETS` ⊆ `HTTP_MONITORS` (subset, not equality — paging may
+  legitimately cover more than the daily email). Two things fell out of the growth:
+  the deep parser knew only `db`/`howl` and rendered ibuild4you, byside and
+  pianohouse note-less, since those return the convention's other shape, a
+  `checks[]` array — it now summarizes `n/m checks ok` and names only the failures;
+  and the poll fans out over a thread pool (`_check_targets`), because sequential
+  polling is ~8s at eight targets and `#/health` pays it on every load. 1.6s
+  measured. Four older tests that pinned the literal 2-target set now derive from
+  `TARGETS`.
 - **garm #7 denial-count line** in the health email (`GARM_REPORTING_KEY` shipped on
   garm's side; the garm handoff channel will post the shape).
 - **`#/health` has never been visually verified** — both themes were checked by
@@ -237,7 +243,7 @@ Run each directly:
 for f in scripts/test_*.py; do .venv/bin/python "$f"; done
 ```
 
-208 tests as of 2026-08-02 (136 in `test_web_api.py`, plus alias-layer 22,
+222 tests as of 2026-08-02 (150 in `test_web_api.py`, plus alias-layer 22,
 cost-pipeline 22, public-draft 21, heartbeat 7, imports, session-identity).
 `_health_mod(up=, hb=, ur=)` stubs the health endpoint; its Turso stub dispatches on
 the SQL because the pause lookup, the freshness lookups and the uptime upsert share

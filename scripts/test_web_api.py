@@ -2578,7 +2578,8 @@ def _():
                           "uptime_rows": 2}, h.body
         assert len(sent) == 1
         subject, html, text = sent[0]
-        assert "2/2 up" in subject, subject
+        n = len(mod.TARGETS)  # derived, not pinned — TARGETS grows
+        assert f"{n}/{n} up" in subject, subject
         assert "a test joke" in text and "a test joke" in html
         assert "action=pause&token=" in text, "pause link missing"
         assert "Tune the daily health email" in text, "tune-up prompt missing"
@@ -2594,7 +2595,7 @@ def _():
         h = invoke(mod, "/api/health_report",
                    {"authorization": "Bearer cron-secret"})
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
-        assert h.body["down"] == ["garm", "prompt-labs.org"], h.body
+        assert h.body["down"] == [n for n, _, _ in mod.TARGETS], h.body
         assert "DOWN" in sent[0][0], sent[0][0]
     finally:
         restore()
@@ -2643,7 +2644,8 @@ def _():
                    {"authorization": "Bearer cron-secret"})
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         assert h.body["would_send"] is True, h.body
-        assert [t["name"] for t in h.body["targets"]] == ["garm", "prompt-labs.org"]
+        assert ([t["name"] for t in h.body["targets"]]
+                == [n for n, _, _ in mod.TARGETS]), h.body["targets"]
         assert not sent
     finally:
         restore()
@@ -2663,7 +2665,8 @@ def _():
         mod, sent = _health_mod()
         h = invoke(mod, "/api/health_report?dry=1", _health_cookie("reader"))
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
-        assert [t["name"] for t in h.body["targets"]] == ["garm", "prompt-labs.org"]
+        assert ([t["name"] for t in h.body["targets"]]
+                == [n for n, _, _ in mod.TARGETS]), h.body["targets"]
         assert "paused_until" in h.body and "would_send" in h.body, h.body
         assert not sent, "reader dry run sent an email"
     finally:
@@ -2979,6 +2982,84 @@ def _():
     assert url == "https://prompt-labs.org/api/health?db=1", url
     assert deep is True
     assert "/api/info" not in url
+
+
+@test("health_report: every TARGETS url is also an UptimeRobot HTTP monitor")
+def _():
+    # TARGETS (daily trend email) and HTTP_MONITORS (5-minute paging) are two
+    # declarations of the same intent and drifted for a month — 2 vs 8 — until
+    # phase 5. The layers differ, the URL set should not: a target polled daily
+    # but never paged is a gap, and a URL typo'd in one file alone is invisible
+    # otherwise. HTTP_MONITORS may legitimately hold MORE (something worth
+    # paging on but not worth a daily line), so this is a subset check.
+    mod = load_endpoint("web/api/health_report.py", "health_report_drift_test")
+    ur = load_endpoint("scripts/uptimerobot.py", "uptimerobot_drift_test")
+    monitored = {url for _, url in ur.HTTP_MONITORS}
+    missing = [(n, u) for n, u, _ in mod.TARGETS if u not in monitored]
+    assert not missing, (
+        f"TARGETS urls absent from HTTP_MONITORS: {missing} — add them to "
+        f"scripts/uptimerobot.py (and run `uptimerobot.py sync --apply`)")
+
+
+@test("health_report: deep flag matches the url's ?db=1")
+def _():
+    # The convention is mechanical on purpose: ?db=1 asks the app to touch its
+    # dependencies, so there is a body worth parsing. A deep flag that drifts
+    # off its URL means either a wasted parse or silently discarded detail.
+    mod = load_endpoint("web/api/health_report.py", "health_report_deepflag_test")
+    for name, url, deep in mod.TARGETS:
+        if "db=1" in url:
+            assert deep is True, f"{name}: ?db=1 url but deep={deep}"
+
+
+@test("health_report: deep parser summarizes a checks[] body, naming failures")
+def _():
+    # ibuild4you, byside and pianohouse return checks[] rather than a db bool;
+    # before phase 5 the parser knew only db/howl and rendered them note-less.
+    mod = load_endpoint("web/api/health_report.py", "health_report_checks_test")
+
+    class FakeResp:
+        status = 200
+
+        def __init__(self, payload):
+            self._b = json.dumps(payload).encode()
+
+        def read(self, n=None):
+            return self._b
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def poll(payload):
+        mod.urllib.request.urlopen = lambda req, timeout=None: FakeResp(payload)
+        return mod._check_target("t", "https://x/api/health?db=1", deep=True)
+
+    r = poll({"ok": True, "checks": [{"name": "db", "ok": True},
+                                     {"name": "cache", "ok": True}]})
+    assert r["ok"] is True
+    assert r["note"] == "2/2 checks ok", r["note"]
+
+    r = poll({"ok": False, "checks": [{"name": "db", "ok": True},
+                                      {"name": "sanity", "ok": False}]})
+    assert r["note"] == "1/2 checks ok — sanity DOWN", r["note"]
+
+    # The db-bool shape must keep working unchanged.
+    r = poll({"ok": True, "db": True})
+    assert r["note"] == "db ok", r["note"]
+
+
+@test("health_report: _check_targets returns results in TARGETS order")
+def _():
+    # The poll fans out across threads; the email and the #/health page both
+    # read positionally, so order must survive.
+    mod = load_endpoint("web/api/health_report.py", "health_report_order_test")
+    mod._check_target = lambda name, url, deep=False: {
+        "name": name, "ok": True, "status": 200, "note": "", "ms": 1}
+    got = [r["name"] for r in mod._check_targets()]
+    assert got == [n for n, _, _ in mod.TARGETS], got
 
 
 # === uptime archive (Phase 1, docs/plan-2026-08-01-uptime-dashboard.md) ===

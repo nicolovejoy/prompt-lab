@@ -39,6 +39,7 @@ import os
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from html import escape
 from http.server import BaseHTTPRequestHandler
@@ -48,10 +49,27 @@ from auth_helper import _sign, _unsign, get_role
 from turso_helper import turso_query
 
 # (name, url, deep) — deep targets return JSON dependency detail and non-2xx
-# on failure. Grow this list as apps adopt docs/health-convention.md.
+# on failure.
+#
+# This list and HTTP_MONITORS in scripts/uptimerobot.py are two declarations of
+# one intent: the set of URLs worth watching. They serve different layers —
+# UptimeRobot pages at 5-minute resolution, this reports a daily trend — but a
+# URL in one and not the other is drift, not a decision. test_web_api.py pins
+# that every url here also appears there; add to both or neither.
+#
+# `deep` mirrors the URL: `?db=1` asks the app to touch its dependencies, so
+# there is a body worth parsing. bakerylouise and ibuild4you are shallow by
+# their own repos' call (ISR-cached pages, and a plain path that already
+# reports per-dependency detail).
 TARGETS = [
     ("garm", "https://garm.prompt-labs.org/api/health?db=1", True),
     ("prompt-labs.org", "https://prompt-labs.org/api/health?db=1", True),
+    ("ibuild4you", "https://ibuild4you.com/api/health", True),
+    ("byside", "https://by-side.net/api/health?db=1", True),
+    ("pianohouse", "https://www.pianohouseproject.org/api/health?db=1", True),
+    ("bakerylouise", "https://bakerylouise.com/api/health", False),
+    ("musicforge", "https://www.musicforge.org/api/health?db=1", True),
+    ("prntd", "https://prntd.org/api/health?db=1", True),
 ]
 
 # (label, sql, max_age_days) — artifact freshness, issue #45.
@@ -194,11 +212,34 @@ def _check_target(name, url, deep=False):
             if "ageSeconds" in howl:
                 state = "STALE" if howl.get("stale") else "ok"
                 bits.append(f"howl cron {state} ({howl['ageSeconds'] / 3600:.1f}h ago)")
+            # The other shape the convention produces: a checks[] array of named
+            # dependencies (ibuild4you, byside, pianohouse). Name only the failures
+            # — a target with nine green checks would otherwise bury the one red
+            # one under an unreadable line. Silence here means all passed.
+            checks = data.get("checks")
+            if isinstance(checks, list) and checks:
+                bad = [c.get("name", "?") for c in checks
+                       if isinstance(c, dict) and not c.get("ok")]
+                bits.append(f"{len(checks) - len(bad)}/{len(checks)} checks ok"
+                            + (f" — {', '.join(bad)} DOWN" if bad else ""))
             note = ", ".join(bits)
         except Exception:
             note = "unparseable health body"
     return {"name": name, "ok": 200 <= (status or 0) < 300, "status": status,
             "note": note, "ms": int((time.time() - t0) * 1000)}
+
+
+def _check_targets():
+    """Poll every target concurrently, in TARGETS order.
+
+    Sequential polling cost the sum of the round trips, which was fine at two
+    targets and is ~8s at eight — and `#/health` pays it on every page load,
+    since a remembered "up" is a stale claim and the page is deliberately
+    uncached. `_check_target` never raises and does nothing but wait on a
+    socket, so a thread pool is the whole fix; `map` preserves order.
+    """
+    with ThreadPoolExecutor(max_workers=len(TARGETS)) as pool:
+        return list(pool.map(lambda t: _check_target(*t), TARGETS))
 
 
 def _check_heartbeats():
@@ -533,7 +574,7 @@ class handler(BaseHTTPRequestHandler):
             paused_until = _get_paused_until()
             paused = bool(paused_until and paused_until > _utc())
 
-            results = [_check_target(n, u, d) for n, u, d in TARGETS]
+            results = _check_targets()
             heartbeats = _check_heartbeats()
 
             if dry:
