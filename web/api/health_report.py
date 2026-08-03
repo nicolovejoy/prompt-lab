@@ -387,7 +387,7 @@ TUNE_PROMPT = (
 )
 
 
-def _compose(results, joke, pause_url, heartbeats=None):
+def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None):
     """Return (subject, text, html)."""
     heartbeats = heartbeats or []
     up = [r for r in results if r["ok"]]
@@ -425,6 +425,13 @@ def _compose(results, joke, pause_url, heartbeats=None):
                 lines.append(f"  {h['name']}: {h['note']}"
                              + (f" (last {h['last']})" if h["last"] else ""))
 
+    # The archive result must reach the inbox: the JSON response is unread and
+    # Vercel logs evaporate in ~an hour, so a 0-row pull is otherwise invisible.
+    if uptime_rows is not None:
+        lines.append("")
+        lines.append(f"{uptime_rows} monitors archived" if uptime_rows
+                     else "uptime archive: 0 rows written")
+
     text = "\n".join(lines) + (
         "\n\n--\n"
         f"Pause these emails for a week: {pause_url}\n\n"
@@ -456,10 +463,20 @@ def _compose(results, joke, pause_url, heartbeats=None):
                    f"{len(stale)} stale, {len(unknown)} unchecked</p>"
                    f"<ul style='margin-top:0'>{items}</ul>")
 
+    if uptime_rows is None:
+        archive_html = ""
+    elif uptime_rows:
+        archive_html = (f"<p style='color:#666'>{uptime_rows} monitors "
+                        "archived</p>")
+    else:
+        archive_html = ("<p style='color:#c62828'><b>uptime archive: "
+                        "0 rows written</b></p>")
+
     html = (
         "<div style='font-family:-apple-system,sans-serif;font-size:15px;color:#222'>"
         f"<table style='border-collapse:collapse'>{rows}</table>"
         f"{hb_html}"
+        f"{archive_html}"
         f"<p><a href='{escape(pause_url, quote=True)}'>Pause these emails for a week</a></p>"
         "<p style='color:#666'>To tune this email, tell the prompt-lab agent:<br>"
         f"<code>{escape(TUNE_PROMPT)}</code></p>"
@@ -543,7 +560,8 @@ class handler(BaseHTTPRequestHandler):
 
             pause_url = ("https://prompt-labs.org/api/health_report"
                          f"?action=pause&token={_make_pause_token()}")
-            subject, text, html = _compose(results, _joke(), pause_url, heartbeats)
+            subject, text, html = _compose(results, _joke(), pause_url,
+                                           heartbeats, uptime_rows)
             _send_email(subject, html, text)
             self._json({"sent": True,
                         "down": [r["name"] for r in results if not r["ok"]],

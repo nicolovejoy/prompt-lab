@@ -24,9 +24,9 @@ If there are uncommitted changes, list the changed files and ask the user whethe
 
 ## 2. Do in parallel
 
-- **Capture commits** since session start:
+- **Capture commits** since session start (the `Z` suffix is load-bearing: `started_at` is stored UTC, and without it `git log` reads the timestamp as local time and silently finds zero commits — issue #48):
   ```bash
-  git log --oneline --since="<started_at>" --format="%H|%s"
+  git log --oneline --since="<started_at>Z" --format="%H|%s"
   ```
   Insert each: `INSERT OR IGNORE INTO commits (hash, message, session_id) VALUES (...);`
 
