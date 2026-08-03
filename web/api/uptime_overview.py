@@ -18,11 +18,12 @@ Query params:
 """
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from auth_helper import is_authenticated
+from day_helper import lab_window
 from turso_helper import turso_query
 
 DEFAULT_DAYS = 30
@@ -64,7 +65,9 @@ class handler(BaseHTTPRequestHandler):
 
         params = parse_qs(urlparse(self.path).query)
         days = _parse_days(params.get("days", [None])[0])
-        since = (datetime.now(timezone.utc).date() - timedelta(days=days - 1)).isoformat()
+        # Lab-day window (#48): uptime_daily.date is written on the lab's
+        # clock by the 8am cron, so a UTC edge drops or adds a column.
+        since = lab_window(days)
 
         unavailable = False
         try:

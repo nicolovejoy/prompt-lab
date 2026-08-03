@@ -10,6 +10,46 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-08-02 — Dates: UTC at rest, Pacific on display
+
+Scope: every project that stores a timestamp or draws a date axis
+
+**Timestamps are stored in UTC. A calendar day shown to a human is
+`America/Los_Angeles`.** Those are different layers and the bug is always
+conflating them.
+
+How it surfaced: the Prompt Lab dashboard drew an `Aug 3` bar at 5:30pm on
+Aug 2. Not a label bug — three different clocks disagreed and nothing in the
+codebase declared which one owned a value:
+
+- the raw tables were UTC (SQLite `datetime('now')` is UTC, which is easy to
+  forget), so 13 prompts typed on Aug 2 afternoon were genuinely stamped Aug 3;
+- the summary writers used naive `datetime.now()` — mini-local Pacific;
+- every frontend axis was built with `new Date(…).toISOString().slice(0,10)`,
+  which is **UTC**.
+
+The rules that fall out:
+
+- **Store UTC. Never store local time.** It reads fine and cannot be migrated
+  across a DST boundary without loss — there is no offset that is correct for
+  a whole table.
+- **`toISOString().slice(0, 10)` is not a local date.** This is the single
+  most common instance: it looks like "today" and is UTC, so every chart axis,
+  zero-filled date range and "is this fresh" check rolls over at 5pm Pacific in
+  summer. Use `Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' })`
+  — `en-CA` yields `YYYY-MM-DD`, so it drops into the same string comparisons.
+- **A bare `date(col)` in SQL over UTC-stamped rows buckets in UTC.** Pass the
+  zone explicitly at the grouping site.
+- **Say which clock owns a value**, in a comment or a name, wherever a date
+  crosses a layer boundary. Every instance of this bug was invisible because
+  both sides looked like a plain `YYYY-MM-DD` string.
+
+Cron schedules are a related trap: Vercel crons are UTC-only, so `0 15 * * *`
+is 8am Pacific in summer and **7am in winter**. If a job's hour matters, say so
+where it's declared.
+
+---
+
 ## 2026-07-28 — Secrets: .env.tpl of op:// references, piped straight to the platform
 
 Scope: all projects with deployed secrets

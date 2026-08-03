@@ -1,4 +1,24 @@
-"""SQLite backend for Ground Control knowledge store."""
+"""SQLite backend for Ground Control knowledge store.
+
+Clocks (#48) — UTC at rest, Pacific on display:
+
+`prompts.timestamp`, `sessions.started_at` and `commits.timestamp` are written
+by SQLite's `datetime('now')`, which is **UTC**. `daily_summaries.date` and
+`weekly_rollups.week_start` are already calendar *day* strings on the lab's
+clock. The two look identical — both `YYYY-MM-DD`-ish — and conflating them is
+the whole of #48: a prompt typed at 5:30pm Pacific on Aug 2 has a UTC timestamp
+of Aug 3, so a bare `date(...)` over it filed a day's work under tomorrow and the
+today-counts read zero every evening.
+
+So: bucketing a *timestamp* into a day always passes `'localtime'`, and a
+column that is already a day never does. The `datetime('now', '-N days')`
+comparisons are deliberately left in UTC — those are rolling windows of
+instants, not calendar days, and UTC-vs-UTC is correct there.
+
+`'localtime'` rather than a pinned zone because SQLite carries no timezone
+database; it resolves through the OS, which gets DST right, and both writer
+machines run Pacific.
+"""
 
 from __future__ import annotations
 
@@ -549,13 +569,13 @@ class SqliteKnowledgeStore(KnowledgeStore):
     def get_unsummarized_days(self, target_date=None):
         date_filter, params = "", []
         if target_date:
-            date_filter = "AND date(p.timestamp) = ?"
+            date_filter = "AND date(p.timestamp, 'localtime') = ?"
             params.append(target_date)
         # Canonicalize project on both sides of the EXCEPT so prompts under an
         # alias don't generate duplicate summaries that already exist under the
         # canonical name.
         rows = self._conn.execute(f"""
-            SELECT COALESCE(cp.canonical, p.project) AS project, date(p.timestamp) AS day
+            SELECT COALESCE(cp.canonical, p.project) AS project, date(p.timestamp, 'localtime') AS day
             FROM prompts p
             LEFT JOIN project_aliases cp ON cp.alias = p.project
             WHERE p.project IS NOT NULL {date_filter}
@@ -573,27 +593,27 @@ class SqliteKnowledgeStore(KnowledgeStore):
         ph = ",".join("?" * len(names))
         prompts = [dict(r) for r in self._conn.execute(f"""
             SELECT id, prompt, outcome, utility, tags, context, hostname
-            FROM prompts WHERE project IN ({ph}) AND date(timestamp) = ?
+            FROM prompts WHERE project IN ({ph}) AND date(timestamp, 'localtime') = ?
             ORDER BY timestamp
         """, (*names, date)).fetchall()]
 
         sessions = [dict(r) for r in self._conn.execute(f"""
             SELECT id, started_at, ended_at, summary, utility, hostname
-            FROM sessions WHERE project IN ({ph}) AND date(started_at) = ?
+            FROM sessions WHERE project IN ({ph}) AND date(started_at, 'localtime') = ?
             ORDER BY started_at
         """, (*names, date)).fetchall()]
 
         commits_from_prompts = self._conn.execute(f"""
             SELECT c.hash, c.message, c.timestamp
             FROM commits c JOIN prompts p ON c.prompt_id = p.id
-            WHERE p.project IN ({ph}) AND date(c.timestamp) = ?
+            WHERE p.project IN ({ph}) AND date(c.timestamp, 'localtime') = ?
             ORDER BY c.timestamp
         """, (*names, date)).fetchall()
 
         commits_from_sessions = self._conn.execute(f"""
             SELECT c.hash, c.message, c.timestamp
             FROM commits c JOIN sessions s ON c.session_id = s.id
-            WHERE s.project IN ({ph}) AND date(c.timestamp) = ?
+            WHERE s.project IN ({ph}) AND date(c.timestamp, 'localtime') = ?
             ORDER BY c.timestamp
         """, (*names, date)).fetchall()
 
@@ -617,7 +637,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
             clauses.append("started_at >= datetime('now', printf('-%d days', ?))")
             params.append(since_days)
         sql = f"""
-            SELECT project, date(started_at) as date, summary, started_at, hostname
+            SELECT project, date(started_at, 'localtime') as date, summary, started_at, hostname
             FROM sessions WHERE {' AND '.join(clauses)}
             ORDER BY started_at DESC
         """
@@ -637,7 +657,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
         project_rows = self._conn.execute("""
             SELECT project, COUNT(*) as prompts,
-                   COUNT(DISTINCT date(timestamp)) as active_days
+                   COUNT(DISTINCT date(timestamp, 'localtime')) as active_days
             FROM prompts
             WHERE timestamp >= datetime('now', printf('-%d days', ?))
             GROUP BY project ORDER BY prompts DESC

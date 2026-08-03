@@ -571,14 +571,41 @@
     function lsGet(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } }
     function lsSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* quota — skip */ } }
 
+    // #48 — UTC at rest, Pacific on display.
+    //
+    // `toISOString()` is UTC. Using it to name a calendar day is the bug this
+    // dashboard shipped with everywhere: after 5pm Pacific it returns tomorrow,
+    // so the activity chart grew an `Aug 3` column on the afternoon of Aug 2 and
+    // every "today" count read zero. The stored data is Pacific-day-stamped at
+    // the source, so the zone is pinned rather than taken from the browser — a
+    // dashboard opened from another timezone must still read Pacific days or its
+    // axis stops matching its own numbers.
+    //
+    // `en-CA` formats as YYYY-MM-DD, so results still string-compare against a
+    // `date` column and sort lexicographically. Every date bucket, axis tick and
+    // window edge below comes from here.
+    const LAB_TZ = 'America/Los_Angeles';
+    const _labFmt = new Intl.DateTimeFormat('en-CA', { timeZone: LAB_TZ });
+    const labDayOf = (d) => _labFmt.format(d);
+    const labDay = (daysAgo = 0) => labDayOf(new Date(Date.now() - daysAgo * 86400_000));
+
+    // `YYYY-MM-DDTHH:MM` on the lab's clock — for stamps a human reads back.
+    // (Ask history keeps its last 20 in localStorage; entries written before
+    // this fix carry a UTC stamp and age out on their own.)
+    const _labStampFmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: LAB_TZ, hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+    });
+    const labStamp = (d = new Date()) => _labStampFmt.format(d).replace(', ', 'T');
+
     // 'fresh' (green) when the timestamp is today in Pacific, else 'stale'
     // (grey) — the header's built/synced line colors by this.
     function freshClass(dateStr) {
       if (!dateStr) return 'stale';
       try {
         const then = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
-        const day = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(d);
-        return day(then) === day(new Date()) ? 'fresh' : 'stale';
+        return labDayOf(then) === labDay() ? 'fresh' : 'stale';
       } catch { return 'stale'; }
     }
 
@@ -964,7 +991,7 @@
       }
       const out = [];
       for (let i = days - 1; i >= 0; i--) {
-        const ds = new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10);
+        const ds = labDay(i);
         out.push({ date: ds, n: byDate[ds] || 0 });
       }
       return out;
@@ -994,7 +1021,7 @@
       for (const r of (cost30 || [])) spendByDate[r.date] = (spendByDate[r.date] || 0) + (Number(r.cost_usd) || 0);
       const spendSeries = [];
       for (let i = 29; i >= 0; i--) {
-        const ds = new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10);
+        const ds = labDay(i);
         spendSeries.push(spendByDate[ds] || 0);
       }
 
@@ -1003,7 +1030,7 @@
       for (const r of (views30 || [])) viewsByDate[r.date] = (viewsByDate[r.date] || 0) + (Number(r.views) || 0);
       const viewsSeries = [];
       for (let i = 29; i >= 0; i--) {
-        const ds = new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10);
+        const ds = labDay(i);
         viewsSeries.push(viewsByDate[ds] || 0);
       }
 
@@ -1143,7 +1170,7 @@
 
       const dates = [];
       for (let i = 29; i >= 0; i--)
-        dates.push(new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10));
+        dates.push(labDay(i));
       const dayTotal = d => Object.values(byDateProject[d] || {}).reduce((s, v) => s + v, 0);
       const peak = Math.max(...dates.map(dayTotal), 1);
       const CHART_H = 120, n = dates.length;
@@ -1230,7 +1257,7 @@
       const [views30, setViews30] = useState(() => visitorOverviewMemo.get(30)?.daily || null);
 
       useEffect(() => {
-        const since = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+        const since = labDay(30);
         api('/api/cost_overview?since=' + since)
           .then(d => { costOverviewMemo.set(30, d); setCost30(d.rows || []); })
           .catch(() => setCost30([]));
@@ -1380,7 +1407,7 @@
 
       let week = [];
       for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
-        const ds = d.toISOString().slice(0, 10);
+        const ds = labDayOf(d);
         const count = byDate[ds] || 0;
         const level = count === 0 ? 0 : count <= 3 ? 1 : count <= 8 ? 2 : count <= 15 ? 3 : 4;
         week.push({ date: ds, level });
@@ -1735,8 +1762,7 @@
         const cached = costOverviewMemo.get(days);
         if (cached) { setData(cached); setLoading(false); }
         else { setData(null); setLoading(true); }
-        const since = new Date(Date.now() - days * 86400_000)
-          .toISOString().slice(0, 10);
+        const since = labDay(days);
         let alive = true;
         api('/api/cost_overview?since=' + since)
           .then(d => { costOverviewMemo.set(days, d); if (alive) { setData(d); setLoading(false); } })
@@ -1808,7 +1834,7 @@
       // bars instead of two giant ones.
       const dates = [];
       for (let i = days - 1; i >= 0; i--) {
-        dates.push(new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10));
+        dates.push(labDay(i));
       }
       const peak = Math.max(...Object.values(byDate), 0.0001);
       const CHART_H = 140;
@@ -2067,7 +2093,7 @@
       // Aggregate the selected metric.
       const byProject = {}, byDate = {}, byDateProject = {};
       const totals = { sessions: 0, prompts: 0, commits: 0 };
-      const day = (i) => new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10);
+      const day = (i) => labDay(i);
       const cut7 = day(6), cut30 = day(29);
       const per7 = {}, per30 = {};
       for (const r of rows) {
@@ -2313,8 +2339,7 @@
         const cached = visitorOverviewMemo.get(days);
         if (cached) { setData(cached); setLoading(false); }
         else { setData(null); setLoading(true); }
-        const since = new Date(Date.now() - days * 86400_000)
-          .toISOString().slice(0, 10);
+        const since = labDay(days);
         let alive = true;
         api('/api/visitor_overview?since=' + since)
           .then(d => { visitorOverviewMemo.set(days, d); if (alive) { setData(d); setLoading(false); } })
@@ -2466,7 +2491,7 @@
 
       const dates = [];
       for (let i = days - 1; i >= 0; i--) {
-        dates.push(new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10));
+        dates.push(labDay(i));
       }
       const peak = Math.max(...Object.values(byDate), 1);
       const CHART_H = 140;
@@ -2865,7 +2890,7 @@
       return Number.isFinite(n) && n > 0 ? Math.round(n).toLocaleString('en-US') + 'ms' : '—';
     }
     function isoDaysAgo(i) {
-      return new Date(Date.now() - i * 86400_000).toISOString().slice(0, 10);
+      return labDay(i);
     }
 
     // One card per monitor: rolling ratios, a per-day uptime strip, and the
@@ -3243,8 +3268,7 @@
         if (cached) { setData(cached); setLoading(false); }
         else { setData(null); setLoading(true); }
         // 30-day window. Backend grouping returns one row per (date, model).
-        const since = new Date(Date.now() - 30 * 86400_000)
-          .toISOString().slice(0, 10);
+        const since = labDay(30);
         let alive = true;
         api('/api/cost_timeline?project=' + encodeURIComponent(project)
             + '&since=' + since)
@@ -3427,8 +3451,7 @@
 
       useEffect(() => {
         setLoading(true); setData(null);
-        const since = new Date(Date.now() - days * 86400_000)
-          .toISOString().slice(0, 10);
+        const since = labDay(days);
         api('/api/cost_timeline?detail=1&project=' + encodeURIComponent(project)
             + '&since=' + since)
           .then(d => { setData(d); setLoading(false); })
@@ -3834,7 +3857,7 @@
       };
       const saveToHistory = (q, a) => {
         const h = getHistory();
-        h.unshift({ q, a, date: new Date().toISOString().slice(0, 16), project: project || 'all' });
+        h.unshift({ q, a, date: labStamp(), project: project || 'all' });
         if (h.length > 20) h.length = 20; // keep last 20
         localStorage.setItem(historyKey, JSON.stringify(h));
       };

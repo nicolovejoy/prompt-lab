@@ -115,16 +115,35 @@ remains the backstop for "cron alive, pull broken" at a 2-day threshold.
 - **Public rollups:** only ibuild4you `2026-05-18` remains unpublished, and that is a
   deliberate skip (cost forensics + internal ops; nothing left after scrubbing). It
   reappears in every future draft by design.
-- **#48 time localization, soup to nuts** (filed 2026-08-02, slated for a Fable
-  session). UTC, naive-local and Pacific are mixed across the pipeline with nothing
-  declaring which clock owns a value: the synthesizer and review email write dates in
-  mini-local Pacific, `health_report.py` grades their freshness in UTC, and the "8am"
-  cron is `0 15 * * *` — 8am Pacific in summer, **7am in winter**. Decide the policy
-  before fixing instances. The handoff commit-capture instance is patched
-  (`--since="<started_at>Z"` in `workflow/commands/handoff.md`, 2026-08-02), and two
-  more landed on the issue the same evening: `today-counts` reads 0 prompts/sessions
-  after 5pm PDT, and `prompts` (local-naive) vs `sessions` (UTC-naive) disagree on
-  which clock their timestamps are on.
+- **#48 time localization — POLICY SET AND INSTANCES FIXED 2026-08-02.** The policy,
+  now in the shared-conventions block so every repo carries it: **timestamps are UTC
+  at rest, calendar days are `America/Los_Angeles` on display.** Storage in local
+  time was rejected — it cannot be migrated across a DST boundary without loss — and
+  UTC-on-display was rejected because it makes Nico's day roll over at 5pm.
+
+  What was actually wrong was subtler than the issue described: the raw tier is
+  **UTC**, not local, because SQLite's `datetime('now')` is UTC. So three clocks
+  disagreed — UTC raw rows, Pacific summary writers, UTC frontend axes — and the
+  dashboard drew an `Aug 3` column at 5:30pm on Aug 2 with 13 real prompts in it.
+
+  Fixed: `web/day_helper.py` (`lab_today`/`lab_days_ago`/`lab_window`, in
+  `includeFiles`, `tzdata` pinned in `web/requirements.txt` so a missing tzdb can't
+  silently degrade to UTC); `labDay`/`labDayOf`/`labStamp` in `web/index.html`
+  replacing all 14 `toISOString().slice(0,10)` axis builders plus the Ask-history
+  stamp; lab-day windows in `activity_timeline`, `overview`, `uptime_overview`; the
+  heartbeat freshness grader and the uptime-archive date key in `health_report`; 8
+  `date(<ts>)` → `date(<ts>, 'localtime')` bucketings in `store/sqlite_store.py`; and
+  `today-counts` in `workflow/bin/gc-read.sh`, which now reads 14/4/5 for an evening
+  that used to read 0/0/0. **`daily_summaries.date` deliberately did NOT get
+  `'localtime'`** — it is already a calendar day, and shifting it would be the same
+  bug pointed the other way. Four existing tests derived their own expectations in
+  UTC and so passed by day and failed by night; they now go through `lab_today()`.
+  Four `clocks:` drift guards were added — two are greps over the source, because
+  the failure is invisible to a test that computes its own date.
+
+  Still open on #48: the "8am" cron is `0 15 * * *`, which is 8am Pacific in summer
+  and **7am in winter** — Vercel crons are UTC-only, so this is a choice to make
+  (accept the winter hour, or split the schedule), not a bug to fix.
 - Open issues: **#14** design tokens (own session), **#27** Garm rollout, **#43**
   sign-ins panel (trigger-gated: fires the day a second reader joins
   `READER_EMAILS`), **#9** beacon fan-out, **#34** health leftovers, **#45** the
@@ -243,7 +262,7 @@ Run each directly:
 for f in scripts/test_*.py; do .venv/bin/python "$f"; done
 ```
 
-222 tests as of 2026-08-02 (150 in `test_web_api.py`, plus alias-layer 22,
+226 tests as of 2026-08-02 (154 in `test_web_api.py`, plus alias-layer 22,
 cost-pipeline 22, public-draft 21, heartbeat 7, imports, session-identity).
 `_health_mod(up=, hb=, ur=)` stubs the health endpoint; its Turso stub dispatches on
 the SQL because the pause lookup, the freshness lookups and the uptime upsert share
@@ -289,7 +308,7 @@ the archive write must be separately observable.
 - **Machine-voice convention:** any AI-authored text renders italic + muted with a
   `↳ from claude` marker.
 
-<!-- SHARED-CONVENTIONS:BEGIN v=d5e16e653242 — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->
+<!-- SHARED-CONVENTIONS:BEGIN v=e5fb79b2ef4d — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->
 ## Shared conventions
 
 <!-- These are Nico's cross-repo output rules. They're materialized into each repo's
@@ -301,6 +320,8 @@ of truth: prompt-lab/workflow/claude-md-shared.md — edit there and re-sync, ne
 - **Number your questions.** Any time you ask Nico more than one question, present them as a numbered list (1., 2., 3.) so he can answer by number with no ambiguity. A single standalone question needs no number.
 
 - **Self-contained smoke-test instructions.** When you ask Nico to manually test or verify an app or website, assume zero carried-over context — he should never scroll back or recall a URL/path/credential from earlier. Always include: the exact URL (full `https://…` or `http://localhost:…`, restated even if mentioned above), the precise steps in order, and what a pass vs. fail looks like. Repetition here is a feature, not clutter.
+
+- **UTC at rest, Pacific on display.** Timestamps are stored in UTC, always. A *calendar day* shown to a human is `America/Los_Angeles` — Nico's day, and the clock the work actually happened on. The two rules that follow are the ones that get broken: never form a date bucket with `new Date(…).toISOString().slice(0,10)` (that is UTC, so every chart axis and "today" silently rolls over at 5pm Pacific — it put a phantom tomorrow bar on the Prompt Lab dashboard), and never bucket UTC-stamped rows with a bare `date(col)` in SQL. Use `Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' })` in JS and an explicit zone in SQL/Python. Storage in local time is also wrong — it can't be migrated across a DST boundary without loss.
 
 - **No marker before a copy-paste command block.** Nico's terminal renders markdown bullets (`-`, `*`, `•`) as `●`, which breaks paste into zsh. The line directly above a fenced command block must be a plain-text label ending in a colon — never a bullet, dash, asterisk, or number. For loud copy targets, lead the label with `📋` + bold `COPY THE BELOW`, then a colon, then the block.
 <!-- SHARED-CONVENTIONS:END -->

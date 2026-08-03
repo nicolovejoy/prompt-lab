@@ -296,6 +296,10 @@ def generate_project_snapshots(store):
         print("No projects with recent activity.")
         return
 
+    # Naive datetime.now() is the LAB DAY here, deliberately (#48): this runs
+    # on the mini under launchd, the mini is Pacific, and `date` on the row
+    # it writes is a calendar day a human reads. Do not "fix" this to UTC —
+    # that is the direction the bug came from.
     today = datetime.now().strftime("%Y-%m-%d")
     print(f"Generating snapshots for {len(projects)} project(s).")
 

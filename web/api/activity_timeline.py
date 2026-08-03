@@ -20,11 +20,11 @@ Query params:
 """
 
 import json
-from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from auth_helper import is_authenticated
+from day_helper import lab_window
 from turso_helper import turso_query
 
 DEFAULT_DAYS = 30
@@ -61,8 +61,10 @@ class handler(BaseHTTPRequestHandler):
         params = parse_qs(urlparse(self.path).query)
         days = _parse_days(params.get("days", [None])[0])
 
-        # Inclusive of today, so an N-day window reaches back N-1 days.
-        since = (datetime.now(timezone.utc).date() - timedelta(days=days - 1)).isoformat()
+        # Inclusive of today on the LAB's clock, not UTC (#48): `date` here is a
+        # Pacific calendar day, so a UTC window opens a day early after 5pm PDT
+        # and the chart grows an empty column for a day that hasn't happened.
+        since = lab_window(days)
 
         sql = (
             "SELECT date, project, "

@@ -1,41 +1,68 @@
 {
   "functions": {
     "api/**/*.py": {
-      "includeFiles": "{auth_helper.py,turso_helper.py,classify_helper.py,beacon_helper.py}"
+      "includeFiles": "{auth_helper.py,turso_helper.py,classify_helper.py,beacon_helper.py,day_helper.py}"
     }
   },
   "crons": [
-    { "path": "/api/health_report", "schedule": "0 15 * * *" }
+    {
+      "path": "/api/health_report",
+      "schedule": "0 15 * * *"
+    }
   ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/robots.txt", "destination": "/robots.txt" },
-    { "source": "/beacon.js", "destination": "/beacon.js" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/robots.txt"
+    },
+    {
+      "source": "/beacon.js",
+      "destination": "/beacon.js"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
   "headers": [
     {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-store" }
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
       ]
     },
     {
       "source": "/beacon.js",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600, stale-while-revalidate=86400"
+        }
       ]
     },
     {
       "source": "/api/public_history",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600, stale-while-revalidate=86400"
+        }
       ]
     },
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive, nosnippet" }
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive, nosnippet"
+        }
       ]
     }
   ]

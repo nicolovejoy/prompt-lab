@@ -17,13 +17,15 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "web"))
 sys.path.insert(0, str(ROOT / "web" / "api"))
+
+from day_helper import lab_today  # noqa: E402  (needs the web/ path above)
 
 
 def load_endpoint(rel_path: str, name: str):
@@ -725,7 +727,10 @@ def _():
         assert calls, "no daily_summaries query emitted"
         sql, args = calls[0]
         assert "date >= ?" in sql, f"sql: {sql}"
-        today = _dt.datetime.now(_dt.timezone.utc).date()
+        # Lab day, not UTC (#48) — deriving the expectation in UTC made this
+        # test pass by day and fail after 5pm Pacific, which is exactly the
+        # bug it is meant to guard.
+        today = lab_today()
         expected = (today - _dt.timedelta(days=89)).isoformat()
         assert args and args[0] == expected, f"expected {expected}, args: {args}"
         assert h.body.get("days") == 90, f"got {h.body.get('days')}"
@@ -2513,7 +2518,7 @@ def _health_mod(up=True, hb="fresh", ur="ok"):
         return {"name": name, "ok": up, "status": 200 if up else 503,
                 "note": "db ok" if deep else "", "ms": 42}
 
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = lab_today().isoformat()  # #48: the archive files under the lab day
 
     def fake_turso(sql, args=None):
         # Match the write on INSERT, not on the table name: the "uptime archive"
@@ -3062,6 +3067,82 @@ def _():
     assert got == [n for n, _, _ in mod.TARGETS], got
 
 
+# === clocks: UTC at rest, Pacific on display (#48) ===
+#
+# These are drift guards, not behaviour tests. Every instance of #48 was a date
+# that LOOKED right — a plain YYYY-MM-DD string with nothing saying which clock
+# produced it — and each one only misbehaved for the seven hours a day when UTC
+# and Pacific disagree. A test that computes its own expectation is no help
+# (four in this file did exactly that and passed by day, failed by night), so
+# these read the source instead.
+
+
+@test("clocks: the lab day is Pacific, and rolls at Pacific midnight")
+def _():
+    from datetime import datetime as _dtc
+    from datetime import timezone as _tzc
+
+    import day_helper
+    # 00:30 UTC on Aug 3 is still Aug 2 in the lab — the exact window that put a
+    # phantom tomorrow column on the activity chart. Also proves the zone
+    # actually resolved: a missing tzdb would silently degrade this to UTC.
+    aug3_utc = _dtc(2026, 8, 3, 0, 30, tzinfo=_tzc.utc)
+    assert aug3_utc.astimezone(day_helper.LAB_TZ).date().isoformat() == "2026-08-02"
+    # And a summer afternoon is unambiguous in both.
+    noon_utc = _dtc(2026, 8, 2, 19, 0, tzinfo=_tzc.utc)
+    assert noon_utc.astimezone(day_helper.LAB_TZ).date().isoformat() == "2026-08-02"
+    # lab_window is inclusive of today, so N reaches back N-1.
+    assert day_helper.lab_window(1) == day_helper.lab_today().isoformat()
+
+
+@test("clocks: no frontend date bucket is built from toISOString()")
+def _():
+    # `new Date(…).toISOString().slice(0, 10)` is UTC. It reads as "today" and
+    # is not, which is how every axis in this dashboard ended up a day ahead
+    # after 5pm Pacific. labDay()/labDayOf() exist so this never comes back.
+    src = (ROOT / "web" / "index.html").read_text()
+    offenders = [ln.strip() for ln in src.splitlines()
+                 if "toISOString()" in ln and ".slice(0," in ln
+                 and not ln.strip().startswith("//")]
+    assert not offenders, (
+        "toISOString() used to form a date/stamp — use labDay()/labDayOf()/"
+        f"labStamp() instead: {offenders}")
+
+
+@test("clocks: no web/api endpoint derives a calendar day from UTC")
+def _():
+    # UTC stays correct for *instants* (generated_at, build time, token expiry).
+    # It is calendar DAYS that must come from day_helper — so the pattern banned
+    # here is specifically `.date()` off a now(), not now() itself.
+    import re as _re
+    bad = []
+    for path in sorted((ROOT / "web" / "api").glob("*.py")):
+        for i, ln in enumerate(path.read_text().splitlines(), 1):
+            if ln.lstrip().startswith("#"):
+                continue
+            if _re.search(r"datetime\.now\([^)]*\)\.date\(\)", ln) or \
+               _re.search(r"datetime\.now\(\)\.strftime", ln):
+                bad.append(f"{path.name}:{i}: {ln.strip()}")
+    assert not bad, ("calendar day derived from a raw now() — import from "
+                     f"day_helper instead: {bad}")
+
+
+@test("clocks: raw UTC timestamps are bucketed with 'localtime', day columns are not")
+def _():
+    # sqlite_store mixes two column families that look identical: UTC instants
+    # (prompts.timestamp, sessions.started_at, commits.timestamp) and calendar
+    # days (daily_summaries.date). date() on the first without 'localtime'
+    # files an evening's work under tomorrow; 'localtime' on the second would
+    # shift a date that was never UTC to begin with.
+    import re as _re
+    src = (ROOT / "store" / "sqlite_store.py").read_text()
+    naked = _re.findall(r"date\((\w+\.)?(timestamp|started_at)\)", src)
+    assert not naked, f"timestamp bucketed in UTC (add 'localtime'): {naked}"
+    assert "date(ds.date, 'weekday 1', '-7 days')" in src, (
+        "daily_summaries.date is already a calendar day — it must NOT gain "
+        "'localtime'; this pins that it hasn't")
+
+
 # === uptime archive (Phase 1, docs/plan-2026-08-01-uptime-dashboard.md) ===
 
 def _uptime_ddl():
@@ -3151,7 +3232,7 @@ def _():
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         writes = mod._uptime_writes
         assert len(writes) == 2, f"expected one row per monitor: {writes}"
-        today = datetime.now(timezone.utc).date().isoformat()
+        today = lab_today().isoformat()
         assert [w[0] for w in writes] == [today, today], writes
         assert [w[1] for w in writes] == ["garm-monitor", "prompt-labs"], writes
         assert h.body["uptime_rows"] == 2, h.body
@@ -3358,7 +3439,7 @@ def _():
     captured, h = _uptime_ov([], path="/api/uptime_overview?days=90")
     assert h.body["days"] == 90, h.body
     since = captured[0][1][0]
-    expected = (datetime.now(timezone.utc).date() - timedelta(days=89)).isoformat()
+    expected = (lab_today() - timedelta(days=89)).isoformat()
     assert since == expected, f"{since} != {expected}"
     _, h2 = _uptime_ov([], path="/api/uptime_overview?days=banana")
     assert h2.body["days"] == 30, h2.body

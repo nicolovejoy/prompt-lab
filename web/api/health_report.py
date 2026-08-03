@@ -40,12 +40,13 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlsplit
 
 from auth_helper import _sign, _unsign, get_role
+from day_helper import lab_today
 from turso_helper import turso_query
 
 # (name, url, deep) — deep targets return JSON dependency detail and non-2xx
@@ -256,7 +257,11 @@ def _check_heartbeats():
     to kill. A freshness check that goes quiet when it can't see is worse than
     no check, since it manufactures confidence.
     """
-    today = datetime.now(timezone.utc).date()
+    # Lab day, not UTC (#48): every artifact graded here has its `date` written
+    # by a job on the mini's Pacific clock, so a UTC `today` reports each one a
+    # day older than it is for the seven hours after 5pm PDT — enough to fire a
+    # 2-day threshold on a perfectly healthy pipeline.
+    today = lab_today()
     out = []
     for name, sql, max_age in HEARTBEATS:
         entry = {"name": name, "max_age_days": max_age, "last": None,
@@ -380,7 +385,11 @@ def _archive_uptime():
         print(f"health_report: uptime pull failed: {e}"[:300])
         return 0
 
-    date = _utc()[:10]
+    # Lab day (#48). At the 15:00 UTC cron this is the same string UTC gives,
+    # so no existing row shifts and the never-backfill invariant is untouched —
+    # but a manual run after 5pm Pacific used to file under tomorrow, which the
+    # chart then rendered as a gap in today.
+    date = lab_today().isoformat()
     written = 0
     for m in monitors:
         row = _uptime_row(m, date)

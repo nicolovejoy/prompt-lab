@@ -1,10 +1,10 @@
 """GET /api/overview — week stats, project cards, activity."""
 
 import json
-from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler
 
 from auth_helper import is_authenticated
+from day_helper import lab_days_ago
 from turso_helper import turso_query
 
 
@@ -69,8 +69,10 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "temporarily unavailable", "detail": str(e)}).encode())
 
     def _handle(self):
-        week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-        month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        # Lab days (#48). These were naive datetime.now() — UTC on Vercel, so
+        # both windows slid a day forward every evening Pacific.
+        week_ago = lab_days_ago(7)
+        month_ago = lab_days_ago(30)
 
         # Load aliases
         alias_to_canonical, canonical_to_aliases = _load_alias_map()

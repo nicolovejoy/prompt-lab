@@ -52,8 +52,14 @@ case "$CMD" in
     fi
     ;;
   today-counts)
-    # today's prompt/session/commit counts for this project
-    sqlite3 "$DB" "SELECT COUNT(*) as prompts FROM prompts WHERE project='$PROJECT' AND date(timestamp) = date('now'); SELECT COUNT(*) as sessions FROM sessions WHERE project='$PROJECT' AND date(started_at) = date('now'); SELECT COUNT(DISTINCT c.hash) as commits FROM commits c JOIN sessions s ON c.session_id = s.id WHERE s.project='$PROJECT' AND date(c.timestamp) = date('now');"
+    # today's prompt/session/commit counts for this project.
+    #
+    # 'localtime' on BOTH sides (#48). These columns are written by
+    # datetime('now'), which is UTC, and this asks "what did I do today" — a
+    # human's question about a local day. Bucketing in UTC made it report 0
+    # prompts and 0 sessions every evening after 5pm Pacific, which /handoff
+    # then wrote into the session summary as a day with no work in it.
+    sqlite3 "$DB" "SELECT COUNT(*) as prompts FROM prompts WHERE project='$PROJECT' AND date(timestamp,'localtime') = date('now','localtime'); SELECT COUNT(*) as sessions FROM sessions WHERE project='$PROJECT' AND date(started_at,'localtime') = date('now','localtime'); SELECT COUNT(DISTINCT c.hash) as commits FROM commits c JOIN sessions s ON c.session_id = s.id WHERE s.project='$PROJECT' AND date(c.timestamp,'localtime') = date('now','localtime');"
     ;;
   unsummarized-context)
     # Recent unsummarized days for current project, with raw data for inline /readup synthesis.
