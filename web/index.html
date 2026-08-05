@@ -148,8 +148,13 @@
     .nav-wide { display: contents; }
     .nav-toggle { display: none; }
     .nav-drop { display: none; }
+    /* The theme icon renders twice — once inside .nav-wide, once beside the
+       hamburger — and CSS picks, same as the two navs. Exactly one is ever
+       visible, so it stays one tap at every width. */
+    .theme-narrow { display: none; }
     @media (max-width: 640px) {
       .nav-wide { display: none; }
+      .theme-narrow { display: inline-flex; }
       .nav-toggle {
         display: inline-flex; align-items: center; gap: 7px;
         font-size: 1.02rem; font-family: inherit; cursor: pointer;
@@ -164,7 +169,6 @@
       .nav-drop .header-btn {
         width: 100%; text-align: left; padding: 11px 12px; font-size: 1.05rem;
       }
-      .nav-drop .nav-sep { height: 1px; background: var(--border); margin: 4px 2px; }
       .nav-drop .header-user { padding: 4px 12px; }
       .nav-more { display: contents; }   /* phone: inline, no second surface */
     }
@@ -177,12 +181,23 @@
       box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
     }
     .nav-more .header-btn { width: 100%; text-align: left; padding: 8px 10px; }
+    .nav-sep { height: 1px; background: var(--border); margin: 5px 2px; }
+    /* Now the first row in the panel, so the padding leads rather than trails. */
     .nav-build {
-      padding: 6px 10px 2px; font-size: 0.7rem;
+      padding: 3px 10px 5px; font-size: 0.7rem; white-space: nowrap;
       font-family: "SF Mono", ui-monospace, monospace;
+    }
+    .nav-build-label {
+      text-transform: uppercase; letter-spacing: 0.07em;
+      opacity: 0.7; margin-right: 5px;
     }
     .nav-build.fresh { color: var(--green); }
     .nav-build.stale { color: #6e6e6e; }
+    /* Icon-only: square, centred, and sized so the glyph matches the adjacent
+       word-buttons' optical weight rather than their font-size. */
+    .theme-btn {
+      font-size: 1.15rem; line-height: 1; padding: 5px 9px;
+    }
     header { position: relative; }
     .header-meta {
       font-size: 1.02rem; color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace;
@@ -790,12 +805,27 @@
       ['health',   'Health',   '#/health'],
     ];
 
-    function Header({ route, info, role, email, onLogout, onAsk, active, dormant, refreshing, theme, onToggleTheme }) {
+    function Header({ route, info, role, email, onLogout, active, dormant, refreshing, theme, onToggleTheme }) {
       const [menu, setMenu] = useState(false);
       const [more, setMore] = useState(false);
       // Any navigation closes it — otherwise the panel stays open over the page
       // you just asked for, which reads as the tap not having worked.
       useEffect(() => { setMenu(false); setMore(false); }, [route.view, route.project]);
+      // Clicking anywhere outside the nav closes it too. Listen on the capture
+      // phase of pointerdown, not click: a click inside the page can re-render
+      // its target out of the DOM before the event bubbles, and contains() then
+      // reports false on a detached node — closing the panel on its own buttons.
+      const navRef = useRef(null);
+      useEffect(() => {
+        if (!menu && !more) return;
+        const onDown = (e) => {
+          if (navRef.current && !navRef.current.contains(e.target)) {
+            setMenu(false); setMore(false);
+          }
+        };
+        document.addEventListener('pointerdown', onDown, true);
+        return () => document.removeEventListener('pointerdown', onDown, true);
+      }, [menu, more]);
       const freshness = info?.data_freshness ? timeAgo(info.data_freshness) : null;
       // build_time arrives as ISO 8601 UTC; show it in Pacific time
       // (PDT/PST handled automatically by the Intl API).
@@ -817,19 +847,32 @@
       // it's an action, not a destination — and everything below it is
       // housekeeping you touch once a week or once ever. Built once and
       // rendered in both navs so the two can't drift.
+      // Chrome at the top (what this build is), destinations in the middle,
+      // identity and the way out at the bottom. Two rules do the grouping \u2014
+      // without them six unrelated rows read as one undifferentiated list.
       const secondary = html`
         <${Fragment}>
-          ${onAsk && html`<button class="header-btn" onClick=${onAsk}>Ask</button>`}
+          ${buildTime && html`
+            <div class="nav-build ${freshClass(info.build_time)}">
+              <span class="nav-build-label">Built</span> ${buildTime}
+            </div>`}
+          <div class="nav-sep"></div>
           <button class="header-btn ${route.view === 'about' ? 'active' : ''}"
                   onClick=${() => navigate('#/about')}>About</button>
-          <button class="header-btn" onClick=${onToggleTheme}>
-            ${theme === 'light' ? '\u263E  Dark mode' : '\u2600  Light mode'}
-          </button>
+          <div class="nav-sep"></div>
           ${email && html`<span class="header-user">${email}</span>`}
           <button class="header-btn" onClick=${onLogout}>Log out</button>
-          ${buildTime && html`
-            <div class="nav-build ${freshClass(info.build_time)}">${buildTime}</div>`}
         <//>`;
+
+      // Theme lives in the primary row, not behind More: it is one tap instead
+      // of two, and an icon alone can't have the "is that the mode I'm in or
+      // the mode I'd get?" ambiguity that a worded label does.
+      const themeBtn = html`
+        <button class="header-btn theme-btn" onClick=${onToggleTheme}
+                title=${theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+                aria-label=${theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
+          ${theme === 'light' ? '\u263E' : '\u2600'}
+        </button>`;
 
       return html`
         <header>
@@ -841,16 +884,19 @@
             `}
             ${refreshing && html`<span class="header-meta refreshing" title="Refreshing…">↻</span>`}
           </div>
-          <div class="header-right">
+          <div class="header-right" ref=${navRef}>
             <div class="nav-wide">
               ${NAV.map(([view, label, hash]) => html`
                 <button class="header-btn ${route.view === view ? 'active' : ''}"
                         onClick=${() => navigate(hash)}>${label}</button>`)}
+              ${themeBtn}
               <button class="header-btn ${more ? 'active' : ''}"
                       onClick=${() => setMore(m => !m)}>More ${more ? '\u25B4' : '\u25BE'}</button>
               ${more && html`<div class="nav-more">${secondary}</div>`}
             </div>
 
+            <!-- Phone: theme sits beside the hamburger, still one tap. -->
+            <span class="theme-narrow">${themeBtn}</span>
             <button class="nav-toggle" aria-expanded=${menu} aria-label="Menu"
                     onClick=${() => setMenu(m => !m)}>
               <span style="display:inline-flex; flex-direction:column; gap:3px">
@@ -1018,7 +1064,6 @@
         <div class="container">
           <${Header} route=${route} info=${info} role=${role} email=${email} onLogout=${logout}
             active=${active} dormant=${dormant} refreshing=${refreshing}
-            onAsk=${role === 'admin' ? () => setAskOpen(true) : null}
             theme=${theme} onToggleTheme=${toggleTheme} />
 
           ${loading && !overview && html`<${SkeletonList} />`}
@@ -1041,7 +1086,8 @@
           ${route.view === 'costs' && html`<${CostsOverview} />`}
           ${route.view === 'activity' && html`<${ActivityOverview} metric=${route.metric} />`}
           ${route.view === 'day' && html`<${DayView} date=${route.date} />`}
-          ${route.view === 'about' && html`<${AboutView} info=${info} />`}
+          ${route.view === 'about' && html`<${AboutView} info=${info}
+            onAsk=${role === 'admin' ? () => setAskOpen(true) : null} />`}
           ${route.view === 'visitors' && html`<${VisitorsOverview} />`}
           ${route.view === 'todos' && html`<${TodosView} overview=${overview} />`}
           ${route.view === 'health' && html`<${HealthView} onUnauthorized=${() => setAuthed(false)} />`}
@@ -2464,7 +2510,10 @@
     const visitorOverviewMemo = new Map();  // window(days) -> payload
 
     // ---- About (#/about) ----
-    function AboutView({ info }) {
+    // Ask was mothballed out of the nav 2026-08-05 — it was the only action in a
+    // panel of destinations and settings, and went unused. Endpoint and modal are
+    // untouched; this page and the "/" shortcut are how you reach it now.
+    function AboutView({ info, onAsk }) {
       const row = (label, value, cls) => html`
         <div style="display:flex; gap:12px; padding:6px 0; border-bottom:1px solid var(--border)">
           <span style="color:var(--text-secondary)">${label}</span>
@@ -2506,6 +2555,19 @@
             Counts for the current day are provisional — they land when a session is
             summarized, so work still in progress isn't included yet.
           </p>
+
+          ${onAsk && html`
+            <div style="margin-top:22px; padding-top:18px; border-top:1px solid var(--border)">
+              <button class="header-btn" onClick=${onAsk}
+                      style="padding:8px 14px; border:1px solid var(--border); color:var(--accent-light)">
+                Ask a question
+              </button>
+              <p style="line-height:1.55; color:var(--text-secondary); margin:8px 0 0; font-size:0.9rem">
+                Put a question to the store in plain language. Press
+                <span style="font-family:'SF Mono',ui-monospace,monospace">/</span> from any page
+                to open it.
+              </p>
+            </div>`}
 
           <div style="margin-top:22px">
             <a href="https://github.com/nicolovejoy/prompt-lab" target="_blank" rel="noopener"
