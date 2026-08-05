@@ -63,6 +63,26 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**The week-grouping SQL files every Monday under the previous week — FOUND
+2026-08-05, NOT FIXED.** `date(<d>, 'weekday 1', '-7 days')` is the shared
+week_start expression, and SQLite's `weekday 1` returns *today* when today is
+already a Monday — so Mon 2026-08-03 maps to week_start 2026-07-27 instead of
+2026-08-03. Verified directly: Tue–Sun in that week all map to `2026-08-03`,
+Monday alone maps a week early. **Four call sites plus a test that pins the
+buggy string:** `store/sqlite_store.py:460`, `store/turso_store.py:461`,
+`web/api/private_history.py:41` (`WEEK_EXPR`), `workflow/bin/gc-read.sh:93`,
+and `scripts/test_web_api.py:3310`. It skews weekly rollups and the week
+grouping behind `/api/private_history` and `/api/public_history`.
+
+Second, related bug in the same line of `gc-read.sh`: the "completed weeks"
+filter is `date < date('now','weekday 1')`, which on any day *except* Monday
+resolves to **next** Monday and so admits the current, in-progress week. That is
+why `/handoff` offered a rollup for the half-finished week of 2026-08-03 —
+**deliberately not written**, because the `LEFT JOIN weekly_rollups` means a
+week that already has a rollup is never revisited, so writing one now would
+freeze a 3-day week permanently. Any fix needs to re-group existing rows, not
+just correct the expression.
+
 **Copy review (#49) is IN PROGRESS — batch 1 of ~4 DONE 2026-08-05.**
 The review runs page by page at a computer, 3-5 items at a time. Nico answers by
 number and often stops mid-batch, so **track which items were actually answered,
@@ -120,6 +140,21 @@ Cleanup applied: **8 aliases** folded duplicates into their canonical project
 `private=1`, does not delete, and `--unhide <name> --apply` reverses it. Real
 but dormant projects (`mars-rover-example`, `roll-your-own`, `djembe`, …) were
 left alone; that's what the Dormant section is for.
+
+**Follow-ups the cleanup surfaced, all unconfirmed and needing Nico's memory of
+which directory he was actually in** — the names alone aren't evidence:
+`koma_art`/`koma-launch` look like the same underscore/dash pair fixed
+elsewhere; `freevite` (167 prompts, dormant) may be `invitekit` under an older
+directory name, since invitekit deploys to `freevite.vercel.app`; and `spike`
+(4 prompts) has the same shape as the hidden artifacts.
+
+**`ACTIVE · N` counts hidden projects.** `activeCount` is `activeList.length`
+with no `private` filter (`web/index.html:1165-1167`), and it also feeds the
+`active projects` KPI tile (`:1191`), so the home screen read `37` when 16 were
+shown and 21 were hidden junk. Chips honor the toggle; the counts don't. The fix
+is one filter, but the semantics are a real choice: excluding private is
+obviously right while `private` holds only artifacts, and wrong the day a
+genuine project is marked private. Alternative is `37 · 16 shown`. Undecided.
 
 **Don't reach for a read-time exclusion list** — read-time allowlists were tried
 twice in this repo and deleted both times for drifting; `private` on the row is
