@@ -34,7 +34,7 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 - `/ask` queries the knowledge store with natural language
 - `workflow/` — slash commands (`commands/`), hooks, and `statusline-command.sh` (copy to `~/.claude/`)
 - **Data & access model: see `docs/data-and-access.md`** — the single coherent description of the three storage tiers (raw/private, processed/private, public), how public vs private is differentiated, the two-tier cloud auth, and how secrets grant access. Read it first when reasoning about what's stored where or who can see it.
-- `web/api/public_history.py` — unauthenticated `GET /api/public_history?project=<name>` for portfolio About pages. No read-time allowlist: it serves whatever rows exist in `public_session_summaries` / `public_weekly_rollups`, which are safe-by-construction (written only by the reviewed, git-committed draft-to-artifact flow — `scripts/draft_public_refresh.py` → human review → `scripts/publish_public_draft.py`, plus the original `scripts/backfill_public_*.py` one-shots — never by `/handoff`, the synthesizer, or raw sync). Allowlist is now the 6-key set (`ibuild4you, musicforge, prntd, prompt-lab, selected-projects, showcase`) — `am-i-an-ai` dropped 2026-07-21 (site removed lojong, rows unpublished); the table `project` column is the consumer's historyKey, NOT the display slug. The invariant to preserve is "never write un-scrubbed text into the public_* tables." Curation of *which* projects appear publicly is the consumer's job — the `selected-projects` MDX manifest (`content/projects/*.mdx`) is the single source of truth for the public site. Unknown project → empty `200`. **Read-time counts projection (2026-07-21):** for a project with `project_metadata.public_counts=1`, the endpoint additionally overlays counts-only weekly rows projected from the private `weekly_rollups` (numeric columns only — no prose can leak) on weeks lacking a published prose row. Opt in via `scripts/seed_public_counts.py`.
+- `web/api/public_history.py` — unauthenticated `GET /api/public_history?project=<name>` for portfolio About pages. No read-time allowlist: it serves whatever rows exist in `public_session_summaries` / `public_weekly_rollups`, which are safe-by-construction (written only by the reviewed, git-committed draft-to-artifact flow — `scripts/draft_public_refresh.py` → human review → `scripts/publish_public_draft.py`, plus the original `scripts/backfill_public_*.py` one-shots — never by `/handoff`, the synthesizer, or raw sync). The allowlist (`docs/public-allowlist.txt`) is an 8-key **write-time publish gate**, not a read gate — `publish_public_draft.py` refuses to publish an off-list project, and `check_public_allowlist.py` audits published rows against it. Current keys: `bakerylouise, ibuild4you, musicforge, prntd, prompt-lab, selected-projects, showcase, songscribe` (`am-i-an-ai` dropped 2026-07-21 when the site removed lojong and its rows were unpublished). The table `project` column is the consumer's historyKey, NOT the display slug. The invariant to preserve is "never write un-scrubbed text into the public_* tables." Curation of *which* projects appear publicly is the consumer's job — the `selected-projects` MDX manifest (`content/projects/*.mdx`) is the single source of truth for the public site. Unknown project → empty `200`. **Read-time counts projection (2026-07-21):** for a project with `project_metadata.public_counts=1`, the endpoint additionally overlays counts-only weekly rows projected from the private `weekly_rollups` (numeric columns only — no prose can leak) on weeks lacking a published prose row. Opt in via `scripts/seed_public_counts.py`.
 - `project_aliases` table + `scripts/alias.py` CLI — project renames are non-destructive: aliases stay in the table, rows keep their original `project` value, and every read expands `WHERE project = ?` into `WHERE project IN (canonical, …aliases)` via `store.expand_project()` / `web.turso_helper.resolve_project_names()`. Run `python scripts/alias.py add <old> <new>` to alias; run `python sync_to_turso.py` to propagate to the cloud dashboard. Design rationale in `docs/alias-layer-plan.md`.
 
 ## Machine label
@@ -111,7 +111,10 @@ remains the backstop for "cron alive, pull broken" at a 2-day threshold.
   value at `op://dev-secrets/prompt-lab-service-history-key/password`. Ball is in
   selected-projects' court to wire `lib/history.ts`. Tier 2 (narrative behind Garm)
   remains unbuilt by agreement. historyKey settled as `bakerylouise` (alias from
-  `bakerylouise-v1`); allowlist is 8 keys (`bakerylouise`, `songscribe` added).
+  `bakerylouise-v1`). **This endpoint has no allowlist of its own** — it accepts any
+  project and is gated solely by the service key, so don't go looking for one. The
+  8-key allowlist is the *public* tier's write gate (see the `public_history` bullet
+  above); `bakerylouise` and `songscribe` were added to it alongside this work.
 - **Public rollups:** only ibuild4you `2026-05-18` remains unpublished, and that is a
   deliberate skip (cost forensics + internal ops; nothing left after scrubbing). It
   reappears in every future draft by design.
@@ -127,8 +130,8 @@ remains the backstop for "cron alive, pull broken" at a 2-day threshold.
   dashboard drew an `Aug 3` column at 5:30pm on Aug 2 with 13 real prompts in it.
 
   Fixed: `web/day_helper.py` (`lab_today`/`lab_days_ago`/`lab_window`, in
-  `includeFiles`, `tzdata` pinned in `web/requirements.txt` so a missing tzdb can't
-  silently degrade to UTC); `labDay`/`labDayOf`/`labStamp` in `web/index.html`
+  `includeFiles`, `tzdata` declared in `web/requirements.txt` — unpinned, but present
+  so a missing tzdb can't silently degrade the lambda to UTC); `labDay`/`labDayOf`/`labStamp` in `web/index.html`
   replacing all 14 `toISOString().slice(0,10)` axis builders plus the Ask-history
   stamp; lab-day windows in `activity_timeline`, `overview`, `uptime_overview`; the
   heartbeat freshness grader and the uptime-archive date key in `health_report`; 8
@@ -296,8 +299,9 @@ Run each directly:
 for f in scripts/test_*.py; do .venv/bin/python "$f"; done
 ```
 
-234 tests as of 2026-08-02 (162 in `test_web_api.py`, plus alias-layer 22,
-cost-pipeline 22, public-draft 21, heartbeat 7, imports, session-identity).
+~243 tests across 7 files as of 2026-08-04 (162 in `test_web_api.py`, plus alias-layer
+22, cost-pipeline 22, public-draft 21, session-identity 9, heartbeat 7, and
+`test_imports.py`, which is an import smoke script with no test cases).
 `_health_mod(up=, hb=, ur=)` stubs the health endpoint; its Turso stub dispatches on
 the SQL because the pause lookup, the freshness lookups and the uptime upsert share
 `turso_query` and must not be conflated — pause fails open, freshness fails loud, and
