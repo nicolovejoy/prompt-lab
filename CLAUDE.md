@@ -63,7 +63,7 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**Copy review (#49) is IN PROGRESS — batch 1 of ~4 is PARTLY done, 2026-08-05.**
+**Copy review (#49) is IN PROGRESS — batch 1 of ~4 DONE 2026-08-05.**
 The review runs page by page at a computer, 3-5 items at a time. Nico answers by
 number and often stops mid-batch, so **track which items were actually answered,
 not which batch was sent** — the first pass through this lost two items by
@@ -75,13 +75,9 @@ leading instead of a bare timestamp trailing, theme promoted to the primary row
 as an icon, Log out last, close-on-outside-click. All five smoke-test items on
 the rework then passed live on prod in both themes.
 
-**Still unanswered from batch 1 — do these first:**
-- **KPI tile labels on the home screen.** Does each state both what is counted
-  and over what window, and do the tiles express their windows consistently
-  (`7d` on one vs `last 7 days` on another)?
-- **The "Today, so far" banner and the dashed today column.** Does it read as a
-  normal provisional state rather than an error, without requiring the reader to
-  know what `/handoff` is?
+The two items the first pass dropped — the KPI tile labels (do they state what
+is counted and over what window, consistently?) and the "Today, so far" banner
+— were reviewed 2026-08-05 and **both passed**, so batch 1 is closed.
 
 **Ask is mothballed, not deleted** — it was the only *action* in a panel of
 destinations and settings and went unused; `web/api/ask.py` and the modal are
@@ -96,6 +92,30 @@ page), batch 3 (Costs, Visitors, Todos), batch 4 (Health, About, project pages).
 *Note: no usage data exists for Ask and none can be recovered — its history is
 `localStorage`-only and its spend is indistinguishable from the Todos
 classifier's, since both draw on the same key.*
+
+**The project list is 80 names and most aren't projects — UNDECIDED, raised
+2026-08-05.** There is no plan on record for this; the *mechanism* was built
+(`project_metadata.private`, #23, 2026-07-14) and then never applied to
+anything — all 7 rows in `project_metadata` are `private=0`. Three groups:
+- **Duplicates of a real project**, fixable with aliases (non-destructive, and
+  it merges the counts rather than discarding them): `recountly`→`raconte` (one
+  project — the web app became a native iOS app, `docs/history.md:39`),
+  `skitrack` + `skitrack-ntzb-poc`→`person-tracking`, `bakerylouise_v1`→
+  `bakerylouise-v1`, `audio_journal`→`audio-journal`, `invitekit-prep`→
+  `invitekit`, `byside-research`→`byside`.
+- **~22 directory artifacts that were never projects**: `src`, `web`, `backup`,
+  `tmp`, `tmp_lotus_land_poker`, `public`, `projects`, `utils`,
+  `infrastructure`, `Include`, `TeX`, `Wrappers`, `.claude`, `nico`,
+  `bootstrap`, `reports`, `mockups`, `pi`, `clicks`, `rebase-b1`, two
+  `agent-<hash>` worktrees.
+- **Real but dormant** (`mars-rover-example`, `roll-your-own`, `djembe`, …) —
+  leave alone, that's what the Dormant section is for.
+
+**Root cause:** `log-prompt.sh:28` derives the project name from the cwd
+basename, so any session started anywhere mints a project. Cleaning up without
+guarding that just defers the same mess. **Don't reach for a read-time exclusion
+list** — read-time allowlists were tried twice in this repo and deleted both
+times for drifting; `private` on the row is the equivalent that can't drift.
 
 **The uptime archive wrote on 2026-08-01 and not on 2026-08-02 — DIAGNOSED
 2026-08-02.** `uptime_daily` held 9 rows for Aug 1 and none for Aug 2. **The Aug 2
