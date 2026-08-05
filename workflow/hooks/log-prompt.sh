@@ -32,7 +32,31 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 case "$CWD" in
     */.claude/worktrees/*) CWD="${CWD%%/.claude/worktrees/*}" ;;
 esac
-PROJECT=$(basename "$CWD" 2>/dev/null)
+
+# The project is the REPO, not the directory. Taking the cwd basename minted a
+# project for every directory ever worked in — `src`, `web`, `public`, `utils`,
+# `mockups` are all just subdirectories of real repos, and they accounted for
+# most of an 80-name project list. --git-common-dir (not --show-toplevel)
+# because a linked worktree's toplevel is the worktree; the common dir is
+# always the main repo's .git, so worktrees attribute correctly even when they
+# don't live under the .claude/ path stripped above.
+#
+# Exit code 128 specifically means "not a git repository" — those go to one
+# `scratch` bucket instead of minting a name per directory. Any OTHER failure
+# (git missing, or the Xcode license prompt that broke every git call on this
+# laptop on 2026-08-05) MUST fall back to the old basename behavior: a broken
+# git must never silently relabel real project work as scratch.
+REPO_NAME=""
+if command -v git >/dev/null 2>&1 && [ -n "$CWD" ]; then
+    GIT_COMMON=$(git -C "$CWD" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+    GIT_RC=$?
+    if [ "$GIT_RC" -eq 0 ] && [ -n "$GIT_COMMON" ]; then
+        REPO_NAME=$(basename "$(dirname "$GIT_COMMON")")
+    elif [ "$GIT_RC" -eq 128 ]; then
+        REPO_NAME="scratch"
+    fi
+fi
+PROJECT="${REPO_NAME:-$(basename "$CWD" 2>/dev/null)}"
 if [ -z "$PROJECT" ]; then
     PROJECT="unknown"
 fi

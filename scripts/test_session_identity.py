@@ -66,7 +66,7 @@ def check(label: str, got, want) -> None:
 
 
 class Env:
-    """Temp HOME + DB + a cwd whose basename is the project name."""
+    """Temp HOME + DB + a cwd inside a git repo whose name is the project."""
 
     def __init__(self, tmp: Path, *, with_column: bool = True):
         self.home = tmp / "home"
@@ -74,6 +74,11 @@ class Env:
         (self.home / ".claude" / "state").mkdir(parents=True)
         self.cwd = tmp / "src" / PROJECT
         self.cwd.mkdir(parents=True)
+        # `git init`, not just a directory: the hook derives the project from the
+        # cwd's REPO, so a bare directory now buckets to `scratch`. A fixture that
+        # isn't a repo would be testing a path no real project takes.
+        subprocess.run(["git", "init", "-q"], cwd=str(self.cwd), check=True,
+                       capture_output=True)
         self.transcripts = self.home / ".claude" / "projects" / "slug"
         self.transcripts.mkdir(parents=True)
         self.db = self.home / ".claude" / "prompt-history.db"
@@ -105,15 +110,18 @@ class Env:
         return p
 
     def submit(self, prompt: str, *, session_uuid: str | None = None,
-               include_session_id: bool = True, transcript: bool = True) -> None:
-        payload = {"prompt": prompt, "cwd": str(self.cwd)}
+               include_session_id: bool = True, transcript: bool = True,
+               cwd: Path | None = None) -> None:
+        # cwd overrides the repo root, for the project-resolution cases.
+        where = cwd or self.cwd
+        payload = {"prompt": prompt, "cwd": str(where)}
         if session_uuid:
             if transcript:
                 payload["transcript_path"] = str(self.transcript(session_uuid))
             if include_session_id:
                 payload["session_id"] = session_uuid
         subprocess.run([str(HOOK)], input=json.dumps(payload), text=True,
-                       env=self.env, cwd=str(self.cwd),
+                       env=self.env, cwd=str(where),
                        capture_output=True, check=True)
 
     def q(self, sql: str, params: tuple = ()):
@@ -287,6 +295,43 @@ def test_summary_does_not_end(tmp: Path) -> None:
           e.gc(GC_WRITE, "end-session", "abc").startswith("<exit 2"), True)
 
 
+def test_project_is_the_repo(tmp: Path) -> None:
+    """The project is the repo, not the directory.
+
+    Taking the cwd basename minted a project for every directory ever worked in
+    — `web`, `src`, `public` are subdirectories of real repos, and they made up
+    most of an 80-name project list. Non-repo work goes to one `scratch` bucket
+    rather than a name per directory.
+    """
+    print("\n10. project name resolves to the git repo, not the cwd basename")
+    e = Env(tmp)
+
+    sub = e.cwd / "web" / "api"
+    sub.mkdir(parents=True)
+    e.submit("a prompt submitted from deep inside a subdirectory", cwd=sub)
+    check("subdirectory attributes to the repo",
+          e.q("SELECT project FROM prompts ORDER BY id DESC LIMIT 1")[0][0], PROJECT)
+
+    loose = tmp / "not-a-repo" / "backup"
+    loose.mkdir(parents=True)
+    e.submit("a prompt submitted from a directory that is not a repo", cwd=loose)
+    check("non-repo work buckets to scratch",
+          e.q("SELECT project FROM prompts ORDER BY id DESC LIMIT 1")[0][0], "scratch")
+
+    # A linked worktree's toplevel is the worktree itself, so --show-toplevel
+    # would name it `agent-<hash>`. --git-common-dir points at the main repo.
+    wt = tmp / "wt-agent-deadbeef"
+    subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "init"],
+                   cwd=str(e.cwd), check=True, capture_output=True,
+                   env={**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"})
+    subprocess.run(["git", "worktree", "add", "-q", str(wt), "-b", "wt"],
+                   cwd=str(e.cwd), check=True, capture_output=True)
+    e.submit("a prompt submitted from inside a linked git worktree", cwd=wt)
+    check("worktree attributes to the main repo",
+          e.q("SELECT project FROM prompts ORDER BY id DESC LIMIT 1")[0][0], PROJECT)
+
+
 def main() -> int:
     # The hook is bash and shells out; skip rather than fail red if the runner
     # lacks a dependency. A skip is honest; a red CI for an env reason is noise.
@@ -305,6 +350,7 @@ def main() -> int:
         test_missing_column_self_heals,
         test_gc_read_contract,
         test_summary_does_not_end,
+        test_project_is_the_repo,
     ]
     for t in tests:
         with tempfile.TemporaryDirectory() as d:

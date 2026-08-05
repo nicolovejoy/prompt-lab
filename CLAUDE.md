@@ -93,29 +93,42 @@ page), batch 3 (Costs, Visitors, Todos), batch 4 (Health, About, project pages).
 `localStorage`-only and its spend is indistinguishable from the Todos
 classifier's, since both draw on the same key.*
 
-**The project list is 80 names and most aren't projects — UNDECIDED, raised
-2026-08-05.** There is no plan on record for this; the *mechanism* was built
-(`project_metadata.private`, #23, 2026-07-14) and then never applied to
-anything — all 7 rows in `project_metadata` are `private=0`. Three groups:
-- **Duplicates of a real project**, fixable with aliases (non-destructive, and
-  it merges the counts rather than discarding them): `recountly`→`raconte` (one
-  project — the web app became a native iOS app, `docs/history.md:39`),
-  `skitrack` + `skitrack-ntzb-poc`→`person-tracking`, `bakerylouise_v1`→
-  `bakerylouise-v1`, `audio_journal`→`audio-journal`, `invitekit-prep`→
-  `invitekit`, `byside-research`→`byside`.
-- **~22 directory artifacts that were never projects**: `src`, `web`, `backup`,
-  `tmp`, `tmp_lotus_land_poker`, `public`, `projects`, `utils`,
-  `infrastructure`, `Include`, `TeX`, `Wrappers`, `.claude`, `nico`,
-  `bootstrap`, `reports`, `mockups`, `pi`, `clicks`, `rebase-b1`, two
-  `agent-<hash>` worktrees.
-- **Real but dormant** (`mars-rover-example`, `roll-your-own`, `djembe`, …) —
-  leave alone, that's what the Dormant section is for.
+**The 80-name project list — CLEANED UP 2026-08-05.** Most names weren't
+projects. **Root cause, now fixed:** `log-prompt.sh` derived the project from
+the cwd *basename*, so every directory ever worked in minted one — `web`, `src`,
+`public`, `utils`, `mockups` are subdirectories of real repos. It now resolves
+the cwd to its **repo** via `git rev-parse --git-common-dir` (not
+`--show-toplevel`: a linked worktree's toplevel is the worktree, which is how
+two `agent-<hash>` projects appeared; the common dir is always the main repo).
 
-**Root cause:** `log-prompt.sh:28` derives the project name from the cwd
-basename, so any session started anywhere mints a project. Cleaning up without
-guarding that just defers the same mess. **Don't reach for a read-time exclusion
-list** — read-time allowlists were tried twice in this repo and deleted both
-times for drifting; `private` on the row is the equivalent that can't drift.
+Three deliberate properties of that hook change:
+- **Only exit code 128 ("not a git repository") buckets to `scratch`.** Any
+  other git failure falls back to the old basename behavior. This is not
+  paranoia — the Xcode license prompt broke every git call on the laptop earlier
+  that same day, and a broken git must never silently relabel real project work.
+- `scratch` is pre-hidden, so the one bucket never surfaces in the picker.
+- Three cases are pinned in `test_session_identity.py` (#10): subdirectory →
+  repo, non-repo → `scratch`, worktree → main repo. The fixture had to become a
+  real `git init` repo, since a bare directory now takes the scratch path.
+
+Cleanup applied: **8 aliases** folded duplicates into their canonical project
+(`recountly`→`raconte` — one project, the web app became a native iOS app,
+`docs/history.md:39`; `skitrack` + `skitrack-ntzb-poc`→`person-tracking`;
+`bakerylouise_v1` + `bakerylouise-v1`→`bakerylouise`; `audio_journal`→
+`audio-journal`; `invitekit-prep`→`invitekit`; `byside-research`→`byside`).
+**23 artifacts hidden** via `scripts/hide_scratch_projects.py` — sets
+`private=1`, does not delete, and `--unhide <name> --apply` reverses it. Real
+but dormant projects (`mars-rover-example`, `roll-your-own`, `djembe`, …) were
+left alone; that's what the Dormant section is for.
+
+**Don't reach for a read-time exclusion list** — read-time allowlists were tried
+twice in this repo and deleted both times for drifting; `private` on the row is
+the equivalent that can't drift. Two gotchas hit while doing this: `alias.py`
+takes two arguments and **zsh does not word-split unquoted variables**, so a
+`for pair in "a b"` loop silently wrote the whole pair into the alias column;
+and a full `sync_to_turso.py` runs past 120s, so the alias rows were written
+straight to Turso (safe — `project_aliases` is upsert-only, unlike
+`project_metadata`, which is cloud-direct and must never gain a sync leg).
 
 **The uptime archive wrote on 2026-08-01 and not on 2026-08-02 — DIAGNOSED
 2026-08-02.** `uptime_daily` held 9 rows for Aug 1 and none for Aug 2. **The Aug 2
