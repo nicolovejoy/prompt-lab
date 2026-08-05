@@ -63,22 +63,23 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**Copy review (#49) is IN PROGRESS — batch 1 of ~4 done 2026-08-05, and the
-panel it produced is UNVERIFIED BY EYE.** The review runs page by page at a
-computer, 3-5 items at a time. Batch 1 was the frame every view inherits:
-primary nav labels passed; the More panel failed and was rebuilt in `5b53f01`
-(labeled `BUILT` stamp leading instead of a bare timestamp trailing, theme
-promoted to the primary row as an icon, Log out last, close-on-outside-click).
+**Copy review (#49) is IN PROGRESS — batch 1 of ~4 done and LIVE-VERIFIED
+2026-08-05.** The review runs page by page at a computer, 3-5 items at a time.
+Batch 1 was the frame every view inherits: primary nav labels passed; the More
+panel failed and was rebuilt in `5b53f01` (labeled `BUILT` stamp leading instead
+of a bare timestamp trailing, theme promoted to the primary row as an icon, Log
+out last, close-on-outside-click). All five smoke-test items passed on prod in
+both themes.
 **Ask is mothballed, not deleted** — it was the only *action* in a panel of
 destinations and settings and went unused; `web/api/ask.py` and the modal are
 untouched, reachable from `#/about` and the `/` shortcut. Deleting it would not
 even drop the `ANTHROPIC_API_KEY` dependency, which the Todos classifier holds.
 
-Two things to pick up next session: **look at the panel** (https://prompt-labs.org,
-More ▾, both themes), and settle a question the rework raised — with Ask gone,
-`More` guards a single destination plus your identity, so a plain `About` button
-in the primary row may be simpler than the panel. Then batches 2-4: Activity +
-day page, Costs + Visitors + Todos, Health + About + project pages.
+One open question the rework raised, still unsettled: with Ask gone, `More`
+guards a single destination plus your identity, so a plain `About` button in the
+primary row may be simpler than the panel. Next up is batch 2 — Activity + the
+day page — then batch 3 (Costs, Visitors, Todos) and batch 4 (Health, About,
+project pages).
 
 *Note: no usage data exists for Ask and none can be recovered — its history is
 `localStorage`-only and its spend is indistinguishable from the Todos
@@ -124,7 +125,8 @@ remains the backstop for "cron alive, pull broken" at a 2-day threshold.
   garm's side; the garm handoff channel will post the shape).
 - **`#/health` has never been visually verified** — both themes were checked by
   computed contrast, not by eye. https://prompt-labs.org/#/health The same is true
-  of the two-tier nav, `#/about`, and now the reworked More panel. **This sandbox
+  of the two-tier nav and `#/about` (the More panel was verified 2026-08-05, the
+  rest of that Aug 3 work was not). **This sandbox
   cannot render the app at all** — `index.html` pulls Preact from `esm.sh` at
   runtime and the network policy blocks it, so every frontend change here is
   verified by `node --check` over the extracted module plus class-usage greps, and
