@@ -10,6 +10,51 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-08-06 — Xcode: two red suites that aren't real failures
+
+Scope: every Xcode project — raconte, MusicForge, anything using XcodeGen
+
+Both of these present as a **failing test suite with no failing test**, which is
+the worst possible disguise: the natural response is to go debug code that was
+never broken. Each cost about an hour in raconte on 2026-08-05.
+
+**1. A generated `.xcodeproj` goes stale on every checkout, not just on
+`project.yml` edits.** Where the project file is gitignored and produced by
+`xcodegen generate`, switching to a branch that lacks a file the current project
+references fails as a bare `** TEST FAILED **` naming no test. The real error is
+buried far above:
+
+```
+error: Build input files cannot be found: '…/FrameClockSink.swift'
+```
+
+It cost a whole 15-run flake experiment that reported 15/15 "failures" — every
+one a stale project, measuring nothing. **Run `xcodegen generate` after every
+branch switch**, and treat a failure naming no test as a build error until you've
+grepped for `error:` in the log.
+
+**2. Never pipe `xcodebuild` through `head` (or any early-closing pipe).** The
+closed pipe kills xcodebuild mid-run and leaves its simulator runner wedged,
+which corrupts the simulator's accessibility service. The damage then lands on
+*unrelated* UI tests, as timeouts rather than assertion failures:
+
+```
+Failed to get list of active applications: Timed out while fetching attributes
+'XC_kAXXCAttributeFocusedApplications'
+```
+
+**The tell is timing, not the message**: an untouched test that normally takes
+41 s took 441 s in the poisoned run. If a UI suite fails and the durations look
+absurd, suspect the simulator, not the diff. Recover with `xcrun simctl shutdown
+all` then `erase`. Same applies after any interrupted UI run — shut the
+simulators down before re-running, and let a boot finish before launching tests
+(an immediate re-run after `shutdown all` fails with "Timed out trying to boot
+simulator after waiting 60.00s").
+
+Use `> file.log 2>&1` and grep the file. Never `| head`.
+
+---
+
 ## 2026-08-02 — Dates: UTC at rest, Pacific on display
 
 Scope: every project that stores a timestamp or draws a date axis
