@@ -3307,9 +3307,41 @@ def _():
     src = (ROOT / "store" / "sqlite_store.py").read_text()
     naked = _re.findall(r"date\((\w+\.)?(timestamp|started_at)\)", src)
     assert not naked, f"timestamp bucketed in UTC (add 'localtime'): {naked}"
-    assert "date(ds.date, 'weekday 1', '-7 days')" in src, (
+    assert "date(ds.date, 'weekday 0', '-6 days')" in src, (
         "daily_summaries.date is already a calendar day — it must NOT gain "
-        "'localtime'; this pins that it hasn't")
+        "'localtime', and the week bucket must stay 'weekday 0','-6 days' "
+        "(the containing week's Monday); this pins both")
+
+
+@test("clocks: a Monday's week_start is itself — 'weekday 1','-7 days' must not return")
+def _():
+    # SQLite's 'weekday N' means next-or-SAME day, so 'weekday 1','-7 days'
+    # mapped a Monday to the PREVIOUS Monday and filed every Monday under the
+    # prior week (found 2026-08-05). 'weekday 0','-6 days' — next-or-same
+    # Sunday, minus 6 — is Monday-of-week for all seven weekdays. Run it for
+    # real: Mon 2026-08-03 through Sun 2026-08-09 must all bucket to 08-03.
+    import sqlite3 as _sq
+    con = _sq.connect(":memory:")
+    for i in range(7):
+        d = f"2026-08-{3 + i:02d}"
+        got = con.execute(
+            "SELECT date(?, 'weekday 0', '-6 days')", (d,)).fetchone()[0]
+        assert got == "2026-08-03", f"{d} bucketed to {got}"
+    # And the buggy expression must not creep back into any of its four homes.
+    # Comment lines are exempt — they are exactly where the trap is explained.
+    homes = [ROOT / "store" / "sqlite_store.py",
+             ROOT / "store" / "turso_store.py",
+             ROOT / "web" / "api" / "private_history.py",
+             ROOT / "workflow" / "bin" / "gc-read.sh"]
+    stale = [p.name for p in homes
+             if any("'weekday 1'" in ln for ln in p.read_text().splitlines()
+                    if not ln.lstrip().startswith(("#", "--")))]
+    assert not stale, f"'weekday 1' week bucketing is back in: {stale}"
+    # gc-read's completed-weeks filter shares the trap: date('now','weekday 1')
+    # is NEXT Monday except on Mondays, which admitted the in-progress week.
+    sh = (ROOT / "workflow" / "bin" / "gc-read.sh").read_text()
+    assert "date < date('now', 'weekday 0', '-6 days')" in sh, (
+        "completed-weeks filter must cut at the CURRENT week's Monday")
 
 
 # === uptime archive (Phase 1, docs/plan-2026-08-01-uptime-dashboard.md) ===

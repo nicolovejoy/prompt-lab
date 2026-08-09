@@ -35,10 +35,12 @@ from turso_helper import resolve_project_names, turso_query
 SERVICE_KEY_ENV = "SERVICE_HISTORY_KEY"
 
 # The repo's week bucketing, copied verbatim from
-# store/sqlite_store.py:get_project_weeks so that activity[].week_of lines up
-# with the week_start values already stored in weekly_rollups. Do not "correct"
-# it here in isolation — the two must agree.
-WEEK_EXPR = "date(date, 'weekday 1', '-7 days')"
+# store/sqlite_store.py:get_weeks_without_rollups so that activity[].week_of
+# lines up with the week_start values already stored in weekly_rollups. Do not
+# "correct" it here in isolation — the two must agree. ('weekday 0','-6 days'
+# = the containing week's Monday; 'weekday N' is next-or-SAME, which is why
+# 'weekday 1','-7 days' filed Mondays a week back.)
+WEEK_EXPR = "date(date, 'weekday 0', '-6 days')"
 
 
 def _int_or(value, default=0):

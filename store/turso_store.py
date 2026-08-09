@@ -454,11 +454,14 @@ class TursoKnowledgeStore(KnowledgeStore):
     def get_weeks_without_rollups(self):
         # Canonicalize project on both sides so aliased rows don't generate
         # duplicate rollups that already exist under the canonical name.
-        today = datetime.now().strftime("%Y-%m-%d")
+        # Cut at the current week's Monday, not today: a rollup written for
+        # the in-progress week is never revisited, freezing a partial week.
+        now = datetime.now()
+        monday = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
         result = self._execute("""
             SELECT ds.project, ds.week_start FROM (
                 SELECT COALESCE(cd.canonical, daily_summaries.project) AS project,
-                       date(date, 'weekday 1', '-7 days') as week_start
+                       date(date, 'weekday 0', '-6 days') as week_start
                 FROM daily_summaries
                 LEFT JOIN project_aliases cd ON cd.alias = daily_summaries.project
                 WHERE date < ?
@@ -472,7 +475,7 @@ class TursoKnowledgeStore(KnowledgeStore):
             ) wr
                 ON wr.project = ds.project AND wr.week_start = ds.week_start
             WHERE wr.project IS NULL
-        """, [today])
+        """, [monday])
         return [(r["project"], r["week_start"]) for r in self._rows_to_dicts(result)]
 
     # ---- Review snapshots ----
