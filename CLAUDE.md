@@ -63,6 +63,26 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**Mini → headless (closet) migration — switch (TP-Link TL-SG116, unmanaged)
+arrives Mon 2026-08-11; a new MacBook Pro becomes the primary machine.** Full
+audit 2026-08-08 (see memory `project_mini_headless.md`). Two blockers before
+the display is unplugged: **FileVault is ON with no auto-login** (any
+reboot/power blip strands the machine at pre-boot unlock — no SSH, no launchd
+jobs, until a keyboard+display walk-over; decide: disable FileVault or accept
+that), and **Remote Login (SSH) is OFF** (Screen Sharing is on). Before the
+move: DHCP-reserve en0 MAC `d0:11:e5:b5:74:41`. All six custom LaunchAgents
+(4× promptlab nightly, rockart backup, SPAN bath detector) stay on the mini —
+note they're **user** agents, so they need a logged-in session. mDNS must
+survive the move (bath detector → `phrpi.local`, Time Machine → Time Capsule);
+the unmanaged switch keeps one subnet, so it does. Open question the move
+sharpens: the nightly review/synthesizer read the **mini's local** prompt DB,
+and new prompts will increasingly land on the MBP.
+
+**Uncommitted from 2026-08-08 (mini):** `/readup` grew a step 4 — other-agent
+awareness (`git worktree list` + `ListAgents` for cloud sessions), installed to
+`~/.claude/commands/` — plus a stale-comment cleanup in `web/index.html`.
+Review and commit next session.
+
 **The week-grouping SQL files every Monday under the previous week — FOUND
 2026-08-05, NOT FIXED.** `date(<d>, 'weekday 1', '-7 days')` is the shared
 week_start expression, and SQLite's `weekday 1` returns *today* when today is
@@ -82,6 +102,12 @@ why `/handoff` offered a rollup for the half-finished week of 2026-08-03 —
 week that already has a rollup is never revisited, so writing one now would
 freeze a 3-day week permanently. Any fix needs to re-group existing rows, not
 just correct the expression.
+
+Fix in flight 2026-08-08: a sub-agent is producing branch
+`fix/monday-week-grouping` in a linked worktree — expression fix at all five
+sites, a Monday regression test, and a dry-run-default
+`scripts/regroup_weekly_rollups.py`. Review before merge; anywhere Monday prose
+was folded into the wrong week's rollup stays a human-judgment call.
 
 **Copy review (#49) is IN PROGRESS — batch 1 of ~4 DONE 2026-08-05.**
 The review runs page by page at a computer, 3-5 items at a time. Nico answers by
@@ -261,7 +287,11 @@ remains the backstop for "cron alive, pull broken" at a 2-day threshold.
   `READER_EMAILS`), **#9** beacon fan-out, **#34** health leftovers, **#45** the
   freshness convention, **#50** preload + locally cache per-day aggregates (the
   day page fetches cold and feels sluggish on a phone), **#49** copy review across every dashboard page (filed
-  2026-08-02 at Nico's ask — he wants to read it at a computer, not a phone).
+  2026-08-02 at Nico's ask — he wants to read it at a computer, not a phone),
+  **#51** unmapped costs, **#52** exclude test-agent traffic from `page_views`
+  (both filed 2026-08-08 off Nico's backlog list; same list also settled: Ask's
+  per-user history is parked with Ask itself, and the selected-projects commit
+  counts wait on *their* repo wiring `lib/history.ts`).
 - Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
 
 **Mobile pass, 2026-08-02.** Four things, all from the same phone session:
