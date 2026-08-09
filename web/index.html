@@ -843,10 +843,8 @@
         } catch { buildTime = info.build_time; }
       }
 
-      // The second tier. Ask sits here rather than with the five views because
-      // it's an action, not a destination — and everything below it is
-      // housekeeping you touch once a week or once ever. Built once and
-      // rendered in both navs so the two can't drift.
+      // The second tier: housekeeping you touch once a week or once ever.
+      // Built once and rendered in both navs so the two can't drift.
       // Chrome at the top (what this build is), destinations in the middle,
       // identity and the way out at the bottom. Two rules do the grouping \u2014
       // without them six unrelated rows read as one undifferentiated list.
