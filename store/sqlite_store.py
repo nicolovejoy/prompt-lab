@@ -454,10 +454,17 @@ class SqliteKnowledgeStore(KnowledgeStore):
         Canonicalizes project on both sides so aliased rows don't generate
         duplicate weekly rollups that already exist under the canonical name.
         """
-        today = datetime.now().strftime("%Y-%m-%d")
+        # Cut at the current week's Monday, not today: a rollup written for the
+        # in-progress week is never revisited (the EXCEPT), so it would freeze
+        # a partial week permanently.
+        now = datetime.now()
+        monday = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
         rows = self._conn.execute("""
             SELECT COALESCE(cd.canonical, ds.project) AS project,
-                   date(ds.date, 'weekday 1', '-7 days') as week_start
+                   -- 'weekday N' is next-or-SAME day, so 'weekday 1','-7 days'
+                   -- sent Mondays a week back; next-or-same Sunday minus 6 is
+                   -- the containing week's Monday for all seven weekdays.
+                   date(ds.date, 'weekday 0', '-6 days') as week_start
             FROM daily_summaries ds
             LEFT JOIN project_aliases cd ON cd.alias = ds.project
             WHERE ds.date < ?
@@ -467,7 +474,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
             SELECT COALESCE(cw.canonical, wr.project), wr.week_start
             FROM weekly_rollups wr
             LEFT JOIN project_aliases cw ON cw.alias = wr.project
-        """, (today,)).fetchall()
+        """, (monday,)).fetchall()
         return [(r["project"], r["week_start"]) for r in rows]
 
     def get_daily_summaries_for_week(self, project, week_start):

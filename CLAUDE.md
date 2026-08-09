@@ -78,36 +78,37 @@ the unmanaged switch keeps one subnet, so it does. Open question the move
 sharpens: the nightly review/synthesizer read the **mini's local** prompt DB,
 and new prompts will increasingly land on the MBP.
 
-**Uncommitted from 2026-08-08 (mini):** `/readup` grew a step 4 — other-agent
-awareness (`git worktree list` + `ListAgents` for cloud sessions), installed to
-`~/.claude/commands/` — plus a stale-comment cleanup in `web/index.html`.
-Review and commit next session.
+**The week-grouping SQL filed every Monday under the previous week —
+EXPRESSION FIXED 2026-08-08; data repair is drafted, not applied.** The trap,
+keep it: SQLite's `weekday N` means next-or-**SAME** day, so
+`date(<d>,'weekday 1','-7 days')` returned the *previous* Monday when `<d>`
+was already a Monday. The correct bucket is `date(<d>,'weekday 0','-6 days')`
+— next-or-same **Sunday**, minus 6 — verified for all seven weekdays. Fixed at
+all four homes (`store/sqlite_store.py`, `store/turso_store.py`,
+`web/api/private_history.py` `WEEK_EXPR`, `workflow/bin/gc-read.sh`); a
+`clocks:` test now runs the expression for a full Mon–Sun week and greps
+`'weekday 1'` out of all four files.
 
-**The week-grouping SQL files every Monday under the previous week — FOUND
-2026-08-05, NOT FIXED.** `date(<d>, 'weekday 1', '-7 days')` is the shared
-week_start expression, and SQLite's `weekday 1` returns *today* when today is
-already a Monday — so Mon 2026-08-03 maps to week_start 2026-07-27 instead of
-2026-08-03. Verified directly: Tue–Sun in that week all map to `2026-08-03`,
-Monday alone maps a week early. **Four call sites plus a test that pins the
-buggy string:** `store/sqlite_store.py:460`, `store/turso_store.py:461`,
-`web/api/private_history.py:41` (`WEEK_EXPR`), `workflow/bin/gc-read.sh:93`,
-and `scripts/test_web_api.py:3310`. It skews weekly rollups and the week
-grouping behind `/api/private_history` and `/api/public_history`.
+The second bug was broader than gc-read.sh: its completed-weeks filter
+`date < date('now','weekday 1')` resolved to NEXT Monday on Tue–Sun (fixed to
+`'weekday 0','-6 days'`), but the stores' `get_weeks_without_rollups` had **no
+completed-week guard at all** (`date < today`), so the synthesizer wrote
+mid-week rollups constantly and the never-revisit join froze them. Both stores
+now cut at the current week's Monday.
 
-Second, related bug in the same line of `gc-read.sh`: the "completed weeks"
-filter is `date < date('now','weekday 1')`, which on any day *except* Monday
-resolves to **next** Monday and so admits the current, in-progress week. That is
-why `/handoff` offered a rollup for the half-finished week of 2026-08-03 —
-**deliberately not written**, because the `LEFT JOIN weekly_rollups` means a
-week that already has a rollup is never revisited, so writing one now would
-freeze a 3-day week permanently. Any fix needs to re-group existing rows, not
-just correct the expression.
-
-Fix in flight 2026-08-08: a sub-agent is producing branch
-`fix/monday-week-grouping` in a linked worktree — expression fix at all five
-sites, a Monday regression test, and a dry-run-default
-`scripts/regroup_weekly_rollups.py`. Review before merge; anywhere Monday prose
-was folded into the wrong week's rollup stays a human-judgment call.
+Stored damage — audited read-only by `scripts/regroup_weekly_rollups.py`
+(dry-run by default, `--apply` fixes only unambiguous non-Monday week keys;
+Turso via `GROUND_CONTROL_STORE=turso`, and it mirrors local anyway):
+**0 mis-keyed rows** (the buggy expression still emitted Mondays), so nothing
+mechanical to apply. What it found instead, all needing human judgment because
+rollup prose can't be regenerated mechanically: 23 rollups with the next
+Monday folded into their prose/counts (14 of those Mondays also counted in
+their own week = double-counted); 21 Monday-only weeks with summaries but no
+rollup (the fixed pipeline will now generate these on its own); and 182
+project-weeks whose frozen rollup is missing later-in-week summaries — the
+in-progress-week admission was systemic, not an edge case. The script prints
+the exact DELETE for the frozen set if regenerate-over-existing-prose is ever
+wanted.
 
 **Copy review (#49) is IN PROGRESS — batch 1 of ~4 DONE 2026-08-05.**
 The review runs page by page at a computer, 3-5 items at a time. Nico answers by
