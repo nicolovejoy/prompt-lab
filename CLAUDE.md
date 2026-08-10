@@ -87,8 +87,15 @@ uptime line, and it cannot be done with the current monitor** — the deep check
 reaches Fly *through* the Vercel rewrite, so a Vercel outage and a Fly outage
 render identically. Needs the direct Fly hostname and a decision on whether the
 frontend line stays deep; both asked in the handoff channel, nothing built.
-Also unverified by eye: no alert has actually been *received* yet — worth a
-deliberate live test rather than waiting for the next real outage. And the 4
+**Delivery verified end-to-end 2026-08-09**, not merely sent: a throwaway
+monitor pointed at a real 404 went DOWN (incident `cause 404` at 02:00:09Z)
+and the mail landed in Nico's inbox. Two deliberate choices worth keeping if
+this is ever repeated — **test on a disposable monitor, never by flipping a
+real one to a failing URL**, because that writes a fake outage into that
+service's true uptime ratio and the archive is never backfilled; and pick the
+404 target carefully, since `https://prompt-labs.org/api/<anything>` returns
+**200** from the SPA catch-all (bug #40, re-confirmed live) and would have
+produced a false UP. `garm.prompt-labs.org` returns a real 404. And the 4
 HEARTBEAT creates still fail on every `--apply` (3× 403 paid-plan, 1× 400
 `gracePeriod must not be greater than 86400` — a real declaration bug in the
 bi-monthly report's 5-day grace, harmless only because the plan blocks it
