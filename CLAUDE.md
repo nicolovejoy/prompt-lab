@@ -109,29 +109,42 @@ migration to absorb, not two. Design was started as a brainstorm and **parked
 mid-questioning**; nothing is decided beyond that. Full audit 2026-08-08 lives
 in memory `project_mini_headless.md` — **on the mini, and memory does not sync
 between machines**, so it is unreadable from the laptop; re-read it there or
-redo the audit. Two blockers before
-the display is unplugged: **FileVault is ON with no auto-login** (any
-reboot/power blip strands the machine at pre-boot unlock — no SSH, no launchd
-jobs, until a keyboard+display walk-over; decide: disable FileVault or accept
-that), and **Remote Login (SSH) is OFF** (Screen Sharing is on). Before the
-move: DHCP-reserve en0 MAC `d0:11:e5:b5:74:41`. All six custom LaunchAgents
-(4× promptlab nightly, rockart backup, SPAN bath detector) stay on the mini —
-note they're **user** agents, so they need a logged-in session. mDNS must
-survive the move (bath detector → `phrpi.local`, Time Machine → Time Capsule);
-the unmanaged switch keeps one subnet, so it does.
+redo the audit. **Both boot blockers cleared 2026-08-10 on the mini:**
+Remote Login is ON (port 22 verified listening) and FileVault is OFF.
+Still pending: enable auto-login (System Settings → Users & Groups, greyed out
+until FileVault reported Off) and the proof — one reboot with the display
+attached that lands on the desktop with no password and answers
+`ssh nico@<mini>` from the laptop. Before the move: DHCP-reserve en0 MAC
+`d0:11:e5:b5:74:41`. All six custom LaunchAgents (4× promptlab nightly,
+rockart backup, SPAN bath detector) stay on the mini — note they're **user**
+agents, so they need a logged-in session. mDNS must survive the move (bath
+detector → `phrpi.local`, Time Machine → Time Capsule); the unmanaged switch
+keeps one subnet, so it does.
 
-**The central design question, and it is not any of the checklist items above:
-the nightly review/synthesizer read the mini's *local* prompt DB, but prompts
-now land on the laptop.** Whichever machine keeps the DB, the other one's work
-goes unsynthesized — so "which machine owns the prompt DB, and where do the
-nightly jobs run" has to be answered before the mini is unplugged, not after.
+Added to the list 2026-08-10, deliberately scoped small: **disconnect Dropbox
+from the mini and delete local files it doesn't need** — but only after
+confirming each has a copy in iCloud/Dropbox (Nico believes everything
+important is in one of those, possibly a third place; verifying that fully is
+its own project, not this one). The mini also ends up wired to both Raspberry
+Pis (one runs Home Assistant) — parked thought: that adjacency may help
+developing the Pi tools later.
 
-Practical note earned 2026-08-09: **SSH being off already costs real time.**
-The mini was powered on and on the network, and its 2026-08-08 audit still
-could not be read from the laptop, because the only copy is a memory file on
-that disk and Screen Sharing needs a human at a screen. Turning on Remote
-Login is the cheapest single unblock and does not depend on any of the
-design decisions.
+**DB ownership: DECIDED 2026-08-10 — Option B, federated.** Raw stays
+machine-local per the invariant; each machine synthesizes its own prompts and
+pushes processed rows to Turso; the merge happens there; the always-on mini
+keeps the reader jobs (review email, report, cost pull) because the laptop
+being off must mean off. Nico ruled out running nightly work on the laptop
+explicitly. The build-out this implies, none of it done yet:
+- Laptop gets its own `com.promptlab.synthesizer` + turso-sync LaunchAgents
+  (its `/handoff` already covers most days inline).
+- `send-review.py:174-176` reads `get_raw_sessions()` — raw-tier, local-only —
+  so the mini's review email misses laptop session detail. Refactor it to
+  processed tables only, read via `GROUND_CONTROL_STORE=turso` (the Turso
+  store backend already implements the ABC).
+- `daily_summaries` is `UNIQUE(project, date)` + `INSERT OR REPLACE`
+  (`store/sqlite_store.py:328`): two machines touching one project the same
+  day = last sync clobbers the other's summary in Turso. Needs merge-on-upsert
+  or a machine column in the key before the federation is honest.
 
 **The week-grouping SQL filed every Monday under the previous week —
 EXPRESSION FIXED 2026-08-08; data repair is drafted, not applied.** The trap,
