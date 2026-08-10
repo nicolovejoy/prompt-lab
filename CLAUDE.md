@@ -147,7 +147,12 @@ explicitly. The build-out this implies, none of it done yet:
   or a machine column in the key before the federation is honest.
 
 **The week-grouping SQL filed every Monday under the previous week —
-EXPRESSION FIXED 2026-08-08; data repair is drafted, not applied.** The trap,
+EXPRESSION FIXED 2026-08-08; DATA REPAIR APPLIED 2026-08-10.** The 207
+audited-bad rollups (23 folded Mondays + 184 frozen partial rows) were deleted
+(backup: `~/.claude/prompt-history.db.bak-20260809`) and regenerated from the
+intact daily summaries by the fixed synthesizer, then full-synced to Turso —
+regenerated rows overwrite stale cloud copies via same-key upserts. Verify
+anytime with `scripts/regroup_weekly_rollups.py` (dry-run). The trap,
 keep it: SQLite's `weekday N` means next-or-**SAME** day, so
 `date(<d>,'weekday 1','-7 days')` returned the *previous* Monday when `<d>`
 was already a Monday. The correct bucket is `date(<d>,'weekday 0','-6 days')`
