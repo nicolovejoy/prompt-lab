@@ -460,6 +460,15 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
 
 ### Traps that cost real time
 
+- **`workflow/bin/*` and `workflow/commands/*` run from installed copies under
+  `~/.claude/`, not from the repo.** A fix committed to the repo is not live
+  until copied over (per machine!). Bit hard 2026-08-10: the Monday week-bug
+  fix landed in `workflow/bin/gc-read.sh` while the installed copy kept the
+  buggy SQL, and `/handoff`'s rollup check invented two phantom missing weeks
+  from Monday-dated summaries. After fixing anything under `workflow/`,
+  diff-sweep: `for f in workflow/bin/* ; do diff -q "$f" ~/.claude/bin/$(basename "$f"); done`
+  (and the same for commands) — on BOTH machines.
+
 - **Turso returns `SUM()`/`COUNT()` aggregates as JSON strings.** An explicit `int()`
   coalesce is load-bearing — without it chart math concatenates instead of adding.
 - **UptimeRobot v2's `custom_uptime_ratio` is a string** (`"100.000-99.980-99.990"`,
