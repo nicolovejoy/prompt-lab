@@ -63,9 +63,46 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**UptimeRobot alerted nobody for six weeks — FOUND AND FIXED 2026-08-09.**
+`scripts/uptimerobot.py` declared *what* to watch and never *who to tell*, so
+every monitor it created carried an empty `assignedAlertContacts`. **7 of 8
+notified nobody**; only garm had one, because garm's monitor was made by hand
+in the UI before the script existed. Caught because musicforge asked whether
+anything fired during their 2026-08-09 Fly outage: the monitor detected it
+exactly as designed (DOWN 17:35:14 PDT → UP 17:45:51, 637s, cause 333333) and
+sent no mail. The repo's recurring shape in a new place — the sensor worked,
+the output went nowhere, and eight green monitors read as health.
+
+Fixed: contacts declared by **email, not id** (the id is account state, the
+address is the intent; resolved against `/alert-contacts` at run time, a
+missing address is fatal), reconciled as a **union** so a hand-added contact
+survives, all 7 backfilled live, and `list` now prints
+`alerts=** NOBODY **` — the state was invisible because nothing rendered it.
+Two bugs fell out: the documented **10 req/min free-tier limit was never
+respected**, so the first `--apply` patched 2 of 7 and 429'd on the rest,
+reporting five real changes as failures (now 6.5s pacing + one 429 backoff).
+
+Still open from that thread: **musicforge asked for the Fly backend as its own
+uptime line, and it cannot be done with the current monitor** — the deep check
+reaches Fly *through* the Vercel rewrite, so a Vercel outage and a Fly outage
+render identically. Needs the direct Fly hostname and a decision on whether the
+frontend line stays deep; both asked in the handoff channel, nothing built.
+Also unverified by eye: no alert has actually been *received* yet — worth a
+deliberate live test rather than waiting for the next real outage. And the 4
+HEARTBEAT creates still fail on every `--apply` (3× 403 paid-plan, 1× 400
+`gracePeriod must not be greater than 86400` — a real declaration bug in the
+bi-monthly report's 5-day grace, harmless only because the plan blocks it
+first), so `--apply` always exits 1. Cosmetic, but it trains you to ignore the
+exit code.
+
 **Mini → headless (closet) migration — switch (TP-Link TL-SG116, unmanaged)
-arrives Mon 2026-08-11; a new MacBook Pro becomes the primary machine.** Full
-audit 2026-08-08 (see memory `project_mini_headless.md`). Two blockers before
+arrives Mon 2026-08-11.** **Settled 2026-08-09: the current laptop IS the new
+MacBook Pro and the new primary — no third machine is coming**, so this is one
+migration to absorb, not two. Design was started as a brainstorm and **parked
+mid-questioning**; nothing is decided beyond that. Full audit 2026-08-08 lives
+in memory `project_mini_headless.md` — **on the mini, and memory does not sync
+between machines**, so it is unreadable from the laptop; re-read it there or
+redo the audit. Two blockers before
 the display is unplugged: **FileVault is ON with no auto-login** (any
 reboot/power blip strands the machine at pre-boot unlock — no SSH, no launchd
 jobs, until a keyboard+display walk-over; decide: disable FileVault or accept
@@ -74,9 +111,20 @@ move: DHCP-reserve en0 MAC `d0:11:e5:b5:74:41`. All six custom LaunchAgents
 (4× promptlab nightly, rockart backup, SPAN bath detector) stay on the mini —
 note they're **user** agents, so they need a logged-in session. mDNS must
 survive the move (bath detector → `phrpi.local`, Time Machine → Time Capsule);
-the unmanaged switch keeps one subnet, so it does. Open question the move
-sharpens: the nightly review/synthesizer read the **mini's local** prompt DB,
-and new prompts will increasingly land on the MBP.
+the unmanaged switch keeps one subnet, so it does.
+
+**The central design question, and it is not any of the checklist items above:
+the nightly review/synthesizer read the mini's *local* prompt DB, but prompts
+now land on the laptop.** Whichever machine keeps the DB, the other one's work
+goes unsynthesized — so "which machine owns the prompt DB, and where do the
+nightly jobs run" has to be answered before the mini is unplugged, not after.
+
+Practical note earned 2026-08-09: **SSH being off already costs real time.**
+The mini was powered on and on the network, and its 2026-08-08 audit still
+could not be read from the laptop, because the only copy is a memory file on
+that disk and Screen Sharing needs a human at a screen. Turning on Remote
+Login is the cheapest single unblock and does not depend on any of the
+design decisions.
 
 **The week-grouping SQL filed every Monday under the previous week —
 EXPRESSION FIXED 2026-08-08; data repair is drafted, not applied.** The trap,
