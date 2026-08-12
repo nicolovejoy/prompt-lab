@@ -242,10 +242,14 @@ part that was always independently worth doing: the `.env.local` scp to the
 laptop (the laptop's copy is a stale Jun 6 fork), the DB snapshots (now backups
 rather than prerequisites), and auto-login + FileVault-off + Remote Login with a
 reboot-with-display proof — those are relocation requirements, not wipe ones.
-`mini-decommission/WIPE-CHECKLIST.md` was renamed to a relocation checklist by
-that repo's agent before the retraction reached it — reversible, left alone
-rather than churned back, but **do not read the rename as evidence the decision
-was made.**
+State over there, as of the end of 2026-08-12: `WIPE-CHECKLIST.md` is the
+authoritative file, carrying today's completed items and an explicit
+"OPEN QUESTION — Nico on the fence" banner; the no-wipe path lives beside it as
+untracked `DRAFT-move-to-closet.md` headed "PROPOSAL ONLY / NOT DECIDED".
+Nothing committed there. Both paths sit in front of him and **neither filename
+asserts a decision** — which is the right resting state for a question this
+open, and worth copying the next time two agents get ahead of a call that isn't
+theirs.
 
 **The counterargument, and it is the strong one — raised by the
 mini-decommission agent 2026-08-12.** "The wipe doesn't buy anything" is wrong:
