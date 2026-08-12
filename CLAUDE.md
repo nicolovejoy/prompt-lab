@@ -63,6 +63,85 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**The nightly review email says "no new work" on days full of work — TWO BUGS
+FOUND 2026-08-12, NEITHER FIXED.** Nico reported it; both were reproduced from
+stored artifacts and the job log, not inferred.
+
+*Bug A, the window.* `send-review.py:168-175` fires at **2:30am** and asks for
+**today**: `get_daily_summaries(since=today_str)` where `today_str` is the
+current date — at 2:30am that is structurally always empty, since a day's
+summary is written at the *end* of that day. The `daily_sessions` fallback
+(`get_raw_sessions(since_days=1)`) then fails two further ways: it filters
+`summary IS NOT NULL`, so a session counts only once it has been `/handoff`ed,
+and it selects on `started_at`, so a long session is invisible to the day it
+actually worked (raconte ran 2026-08-10 16:03 → 2026-08-11 22:51 UTC — 31
+hours — and never appears in an Aug 11 "today"). On 2026-08-12 both inputs were
+empty and the email said "No coding sessions were logged in the last 24 hours"
+on a day with 25 prompts across 4 projects. Same shape on 2026-08-05. Fix:
+"Today" must mean **yesterday's completed lab-day**, and sessions must be
+selected by **overlap** with that day, not by `started_at` in a rolling UTC
+window.
+
+*Bug B, delivery — the sixty-nights failure verbatim, in a new place.*
+`send-review.log` holds **33 Resend 403s**: `The send.prompt-labs.org domain is
+not verified`. The job composes the review, writes it to `review_snapshots`,
+logs `Send FAILED — persisting the review anyway`, and exits 0. So the artifact
+table fills up nightly while nothing is delivered — and **the #45 freshness
+heartbeat structurally cannot catch this, because the artifact is the thing
+that still gets written.** That is a real hole in the countermeasure, not just
+a bug: alarming on the artifact only works when the artifact is downstream of
+the step that fails. Fix the domain at https://resend.com/domains or move
+`FROM` to a verified sender, then decide whether a failed send should still
+write the snapshot — right now the row records *composition*, not *delivery*,
+and nothing distinguishes them.
+
+The consequence to hold onto: **the mail Nico actually reads is probably coming
+from the mini**, whose DB holds almost no recent work, so "no new work" is a
+true statement about the wrong machine. Unconfirmed — the mini agent has been
+asked whether its own Resend sends succeed (the 403 is account/domain state, so
+it should fail there too unless the mini's `FROM` differs). Also unexplained:
+**no `review_snapshots` rows at all for Aug 10 and Aug 11.**
+
+**The trajectory heatmap's month labels are on a different scale than the grid
+— DIAGNOSED 2026-08-12, NOT FIXED.** The data is fine; only the axis lies.
+`.heatmap-labels` (`web/index.html:298`) is `justify-content: space-between`,
+spreading 13 month labels across the **container's full width** (~1050px),
+while `.heatmap` (`:290`) is 53 fixed columns of 8px + 2px gap = **530px**,
+left-aligned and never stretched. The grid's right edge (today) therefore lands
+at ~50% of the label row — the 7th of 13 labels, **Feb**. Six months of
+continuous work read as "dead since March." The smoking gun: `:1586` computes
+`monthLabels.push({ idx: weeks.length, … })` and `:1600` renders
+`<span>${m.label}</span>`, throwing `idx` away — alignment was never
+implemented. Second defect, same cause: the label row sits *outside* the
+`overflow-x:auto` container, so on a phone it doesn't scroll with the grid.
+
+Agreed fix (Nico approved 2026-08-12, and **keep the coloring on prompt
+count**): wrap both rows in one scroll container with a `width:max-content`
+inner div, and give the label row the **same flex geometry as the grid** — one
+8px slot per week column, `gap:2px`, labelled slots carrying absolutely-
+positioned text plus a dot at the true column centre, the convention `DateAxis`
+(`:1936`) already established for the other six charts. Alignment becomes
+structural rather than a magic 10px pitch constant. Verification is the usual
+constraint: this sandbox cannot render the app, so `node --check` plus eyes on
+prod.
+
+**Prompt ratings: the mechanism exists and has never once been used.** The
+`prompts` table carries `utility`, `tags`, `notes`, `outcome`, `/handoff` is
+supposed to offer rating, and `/readup` surfaces utility-4+ prompts from past
+sessions. **0 of 1046 prompts on the laptop are rated.** So the whole
+high-utility-prompt loop is dead code paths over an empty column. Nico wants to
+mark the prompts that turned out to be good ones — he raised it 2026-08-12 —
+and the lesson from the zero is that **retrospective batch-rating at handoff
+time does not work**, because by then you cannot remember which prompt was the
+good one. Anything built here has to capture in the moment. Not designed; needs
+its own session.
+
+Worth checking while there: today-counts read **1 prompt for prompt-lab** on a
+day with at least six user turns in this repo, and mid-turn interjections were
+absent from the `prompts` table minutes after being sent. Possibly a lag,
+possibly `log-prompt.sh` only sees turn-initial prompts. Unverified, but it
+would mean the raw tier undercounts, which poisons everything downstream.
+
 **UptimeRobot alerted nobody for six weeks — FOUND AND FIXED 2026-08-09.**
 `scripts/uptimerobot.py` declared *what* to watch and never *who to tell*, so
 every monitor it created carried an empty `assignedAlertContacts`. **7 of 8
@@ -140,7 +219,14 @@ explicitly. The build-out this implies, none of it done yet:
 - `send-review.py:174-176` reads `get_raw_sessions()` — raw-tier, local-only —
   so the mini's review email misses laptop session detail. Refactor it to
   processed tables only, read via `GROUND_CONTROL_STORE=turso` (the Turso
-  store backend already implements the ABC).
+  store backend already implements the ABC). **2026-08-12 raises the priority
+  and the scope:** this is not merely "misses detail" — it is why the email
+  reads "no new work" on busy days, and the same two lines carry a second,
+  independent window bug (see the review-email entry at the top of Open). Both
+  get fixed together, and note that the four promptlab plists are currently
+  **loaded on the laptop too**, so until federation is deliberate rather than
+  accidental, two machines are composing nightly reviews from two different
+  DBs.
 - `daily_summaries` is `UNIQUE(project, date)` + `INSERT OR REPLACE`
   (`store/sqlite_store.py:328`): two machines touching one project the same
   day = last sync clobbers the other's summary in Turso. Needs merge-on-upsert
