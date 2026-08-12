@@ -225,10 +225,15 @@ its own project, not this one). The mini also ends up wired to both Raspberry
 Pis (one runs Home Assistant) — parked thought: that adjacency may help
 developing the Pi tools later.
 
-**The wipe is OFF — DECIDED 2026-08-12 by Nico.** The mini is being *relocated*,
-not rebuilt: it moves to the closet with its disk, its DB, its `.env.local` and
-all six LaunchAgents intact and running. The reason to keep, because it
-generalizes: the machine is going from attended to unattended, and a wipe
+**Calling off the wipe — PROPOSED 2026-08-12, NOT DECIDED. Nico is on the
+fence.** He raised it, asked whether I agreed, I did, and I then wrote it up as
+settled and relayed it to the mini-decommission agent as a decision. That was my
+error, not his position — recorded here because the same mistake is easy to
+repeat: *agreeing with an idea is not the same as the idea being chosen.* The
+proposal is to relocate the mini rather than rebuild it — it would move to the
+closet with its disk, its DB, its `.env.local` and all six LaunchAgents intact
+and running. The argument for it, which stands on its own merits either way: the
+machine is going from attended to unattended, and a wipe
 maximizes the number of unverified restore steps exactly when the feedback loop
 gets longest — an un-reinstalled plist or a missing env var on a headless box in
 a closet is invisible for days, which is this repo's entire failure catalogue.
@@ -237,11 +242,34 @@ part that was always independently worth doing: the `.env.local` scp to the
 laptop (the laptop's copy is a stale Jun 6 fork), the DB snapshots (now backups
 rather than prerequisites), and auto-login + FileVault-off + Remote Login with a
 reboot-with-display proof — those are relocation requirements, not wipe ones.
-`mini-decommission/WIPE-CHECKLIST.md` is being renamed to a move-to-closet
-checklist by that repo's agent; the repo name is now wrong too, but renaming it
-is Nico's call.
+`mini-decommission/WIPE-CHECKLIST.md` was renamed to a relocation checklist by
+that repo's agent before the retraction reached it — reversible, left alone
+rather than churned back, but **do not read the rename as evidence the decision
+was made.**
 
-**What runs where — the rule, settled 2026-08-12.** Not "nightly jobs go to the
+**The counterargument, and it is the strong one — raised by the
+mini-decommission agent 2026-08-12.** "The wipe doesn't buy anything" is wrong:
+**the wipe bought privacy, not reliability.** What the no-wipe path leaves in a
+closet, unattended and indefinitely, is a logged-in personal Apple ID with iCloud
+tokens, 66G of Messages history including `chat.db`, the login keychain with
+saved passwords and certs, the photo library, a Dropbox mirror and browser
+profiles. Unattended cuts both ways: it lengthens the feedback loop for breakage
+*and* it means nobody notices physical access. The threat model is "someone with
+hands on a box inside Nico's house," which he may well discount — but it should
+be discounted **explicitly**, not assumed away by a framing that only counted
+reliability. Their proposed middle path: relocate now, wipe never, then a
+separate headless *thinning* pass over SSH — sign out what isn't needed, delete
+the libraries already verified redundant (Messages-in-iCloud on, Mail all-IMAP,
+photos merged and exported). That preserves the one-variable-at-a-time property
+and is the shape to beat.
+
+One cost of that path specific to this repo, worth knowing before anyone likes
+it too much: their further idea of running the jobs from a *separate local
+account* would relocate or duplicate `~/.claude/prompt-history.db`, which is the
+raw private tier — a second copy of every raw prompt is a privacy regression in
+the opposite direction. Any account split has to move that DB, not copy it.
+
+**What runs where — PROPOSED 2026-08-12, NOT DECIDED.** Not "nightly jobs go to the
 mini." The split is **where the data is** vs **where the uptime is**:
 - *Local-data jobs* run on **every** machine, over its own DB, because raw
   prompts are machine-local by invariant and never leave. That is
