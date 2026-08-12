@@ -697,7 +697,7 @@ class TursoKnowledgeStore(KnowledgeStore):
     def get_day_data(self, project, date):
         raise NotImplementedError("Raw data not available in Turso — run pipeline locally")
 
-    def get_raw_sessions(self, *, project=None, since_days=None):
+    def get_raw_sessions(self, *, project=None, since_days=None, overlap_utc=None):
         raise NotImplementedError("Raw data not available in Turso — run pipeline locally")
 
     def get_period_stats(self, days):

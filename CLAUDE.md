@@ -63,61 +63,44 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**The nightly review email says "no new work" on days full of work — TWO BUGS
-FOUND 2026-08-12, NEITHER FIXED.** Nico reported it; both were reproduced from
-stored artifacts and the job log, not inferred.
+**The nightly review email says "no new work" on days full of work — BOTH BUGS
+FIXED 2026-08-12.** Full diagnosis in `docs/history.md` / git history
+(`877ea15`, `c332ac9`); what happened and what remains:
 
-*Bug A, the window.* `send-review.py:168-175` fires at **2:30am** and asks for
-**today**: `get_daily_summaries(since=today_str)` where `today_str` is the
-current date — at 2:30am that is structurally always empty, since a day's
-summary is written at the *end* of that day. The `daily_sessions` fallback
-(`get_raw_sessions(since_days=1)`) then fails two further ways: it filters
-`summary IS NOT NULL`, so a session counts only once it has been `/handoff`ed,
-and it selects on `started_at`, so a long session is invisible to the day it
-actually worked (raconte ran 2026-08-10 16:03 → 2026-08-11 22:51 UTC — 31
-hours — and never appears in an Aug 11 "today"). On 2026-08-12 both inputs were
-empty and the email said "No coding sessions were logged in the last 24 hours"
-on a day with 25 prompts across 4 projects. Same shape on 2026-08-05. Fix:
-"Today" must mean **yesterday's completed lab-day**, and sessions must be
-selected by **overlap** with that day, not by `started_at` in a rolling UTC
-window.
+*Bug A, the window — FIXED in code.* The job fires at 2:30am and asked for
+**today**, structurally empty at that hour, and picked sessions by `started_at`
+in a rolling UTC day, so raconte's 31-hour session never appeared on the day it
+worked. Now: `review_windows()` in `send-review.py` makes "Today" mean
+**yesterday's completed lab-day** (Pacific), and sessions are selected by
+**overlap** with that day's UTC bounds via `get_raw_sessions(overlap_utc=…)`
+(new kwarg, all three store homes) + `day_helper.lab_day_bounds_utc` (DST-
+correct). Pinned by `scripts/test_send_review.py` (5 tests, incl. the raconte
+case and a source grep that fails if the run-date query returns). Verified
+against the laptop DB: the exact failure day (Aug 11) now yields 4 sessions +
+7 summaries where the old code got 0/0. **Pulled on the mini same day** so
+tonight's 2:30am run uses it — the real proof is tomorrow morning's email
+naming Aug 12 work; check it.
 
-*Bug B, delivery — the sixty-nights failure verbatim, in a new place.*
-`send-review.log` holds **33 Resend 403s**: `The send.prompt-labs.org domain is
-not verified`. The job composes the review, writes it to `review_snapshots`,
-logs `Send FAILED — persisting the review anyway`, and exits 0. So the artifact
-table fills up nightly while nothing is delivered — and **the #45 freshness
-heartbeat structurally cannot catch this, because the artifact is the thing
-that still gets written.** That is a real hole in the countermeasure, not just
-a bug: alarming on the artifact only works when the artifact is downstream of
-the step that fails. Fix the domain at https://resend.com/domains or move
-`FROM` to a verified sender, then decide whether a failed send should still
-write the snapshot — right now the row records *composition*, not *delivery*,
-and nothing distinguishes them.
+*Bug B, delivery — RESOLVED by unloading, not by repairing the sender.* The
+laptop's 33 Resend 403s came from its stale Jun 6 `.env.local` using the
+unverified `send.` subdomain. Per Nico's call 2026-08-12: the laptop's three
+reader plists (`review`, `report`, `api-costs`) are **unloaded and parked in
+`~/Library/LaunchAgents/disabled-readers-20260812/`** (reverse: move back +
+`launchctl bootstrap gui/$UID/<plist>`), and the mini's current `.env.local`
+was scp'd over (laptop's old copy at `.env.local.bak-20260812`). The mini is
+now the only sender, which was the proposed split — accepted cost: nights the
+mini is down (e.g. wipe day) get no review email. Still open, low priority:
+a failed send still writes `review_snapshots` (the row records *composition*,
+not *delivery* — nothing distinguishes them), and the #45 heartbeat
+structurally can't see a last-step delivery failure because the artifact is
+upstream of it. Also never explained: the laptop wrote no `review_snapshots`
+rows for Aug 10-11 despite its job running — academic now the readers are
+unloaded, but if it recurs on the mini, dig.
 
-**Both halves confirmed by the mini 2026-08-12, and one guess was wrong.**
-Right: the mail Nico reads comes from the mini — its `send-review.log` shows an
-unbroken run of `Sent (id: …)` through this morning, so the 403 is laptop-only.
-Wrong: I guessed the mini's DB was stale and that "no new work" was a true
-statement about the wrong machine. **It is not stale** — the mini holds 11,240
-prompts (still accruing, max `2026-08-12 00:35`) and 983 daily summaries
-spanning `2026-01-25 → 2026-08-11`. So the received email is **Bug A, plainly**:
-the window is wrong on a machine with the data. A possible second contributor,
-worth checking when fixing: `get_raw_sessions` reads the *local* `sessions`
-table, and Nico's sessions now start on the laptop, so the mini's Today section
-may be starved of session rows independently of the clock.
-
-The 403's cause is a one-line divergence: the laptop's `.env.local` (dated
-**Jun 6**, an old copy) has `REVIEW_FROM_EMAIL=reviews@send.prompt-labs.org` —
-the unverified *subdomain* — while the mini uses `reviews@prompt-labs.org`, the
-verified root. **Do not simply fix the laptop's FROM.** The mini is the settled
-owner of the reader jobs and both machines currently have `com.promptlab.review`
-loaded, so repairing the laptop's sender turns one broken nightly email into two
-delivered ones. The real decision is whether the laptop's review plist should be
-unloaded — with the exception that the mini will be down at least one night
-during the headless rebuild, which is exactly when a working laptop sender is
-wanted. Also still unexplained: **no `review_snapshots` rows at all for Aug 10
-and Aug 11** on the laptop.
+Still open from this thread (tracked in the DB-ownership bullet below): the
+mini's email reads its **local** `sessions` table, so laptop session detail is
+missing from the Today section until `send-review.py` is refactored to
+processed tables via `GROUND_CONTROL_STORE=turso`.
 
 **The trajectory heatmap's month labels are on a different scale than the grid
 — DIAGNOSED 2026-08-12, NOT FIXED.** The data is fine; only the axis lies.
@@ -225,65 +208,39 @@ its own project, not this one). The mini also ends up wired to both Raspberry
 Pis (one runs Home Assistant) — parked thought: that adjacency may help
 developing the Pi tools later.
 
-**Calling off the wipe — PROPOSED 2026-08-12, NOT DECIDED. Nico is on the
-fence.** He raised it, asked whether I agreed, I did, and I then wrote it up as
-settled and relayed it to the mini-decommission agent as a decision. That was my
-error, not his position — recorded here because the same mistake is easy to
-repeat: *agreeing with an idea is not the same as the idea being chosen.* The
-proposal is to relocate the mini rather than rebuild it — it would move to the
-closet with its disk, its DB, its `.env.local` and all six LaunchAgents intact
-and running. The argument for it, which stands on its own merits either way: the
-machine is going from attended to unattended, and a wipe
-maximizes the number of unverified restore steps exactly when the feedback loop
-gets longest — an un-reinstalled plist or a missing env var on a headless box in
-a closet is invisible for days, which is this repo's entire failure catalogue.
-Change one variable, location, not two. What survives from the wipe prep is the
-part that was always independently worth doing: the `.env.local` scp to the
-laptop (the laptop's copy is a stale Jun 6 fork), the DB snapshots (now backups
-rather than prerequisites), and auto-login + FileVault-off + Remote Login with a
-reboot-with-display proof — those are relocation requirements, not wipe ones.
-State over there, as of the end of 2026-08-12: `WIPE-CHECKLIST.md` is the
-authoritative file, carrying today's completed items and an explicit
-"OPEN QUESTION — Nico on the fence" banner; the no-wipe path lives beside it as
-untracked `DRAFT-move-to-closet.md` headed "PROPOSAL ONLY / NOT DECIDED".
-Nothing committed there. Both paths sit in front of him and **neither filename
-asserts a decision** — which is the right resting state for a question this
-open, and worth copying the next time two agents get ahead of a call that isn't
-theirs.
+**The wipe is ON — DECIDED by Nico 2026-08-12, stated directly in the
+mini-decommission channel.** After a day on the fence (the relocate-don't-wipe
+proposal and the privacy counterargument are preserved in git history,
+`77dd316`/`d50c14b`/`55488f0`), the call is: **wipe the mini properly on a
+later day — not immediately — and keep using the mini for everything it
+currently does.** Until wipe day the mini and its jobs run untouched.
+Consequences agreed with the mini-decommission agent (their repo owns the
+checklist): expect one-plus night of review-email gap around the wipe itself;
+the final `prompt-history.db` re-snapshot happens immediately pre-erase; the
+rebuild restores plists + `.env.local` from `~/mini-staging/prompt-lab/` on
+the laptop. **Timing is not yet set — Nico discusses it with the
+mini-decommission agent tomorrow (2026-08-13).** Worth keeping from the
+debate: any future account split must *move* `~/.claude/prompt-history.db`,
+never copy it — a second copy of every raw prompt is a privacy regression.
+And the process lesson stands: *agreeing with an idea is not the same as the
+idea being chosen* — this entry records a decision only because Nico stated
+one.
 
-**The counterargument, and it is the strong one — raised by the
-mini-decommission agent 2026-08-12.** "The wipe doesn't buy anything" is wrong:
-**the wipe bought privacy, not reliability.** What the no-wipe path leaves in a
-closet, unattended and indefinitely, is a logged-in personal Apple ID with iCloud
-tokens, 66G of Messages history including `chat.db`, the login keychain with
-saved passwords and certs, the photo library, a Dropbox mirror and browser
-profiles. Unattended cuts both ways: it lengthens the feedback loop for breakage
-*and* it means nobody notices physical access. The threat model is "someone with
-hands on a box inside Nico's house," which he may well discount — but it should
-be discounted **explicitly**, not assumed away by a framing that only counted
-reliability. Their proposed middle path: relocate now, wipe never, then a
-separate headless *thinning* pass over SSH — sign out what isn't needed, delete
-the libraries already verified redundant (Messages-in-iCloud on, Mail all-IMAP,
-photos merged and exported). That preserves the one-variable-at-a-time property
-and is the shape to beat.
-
-One cost of that path specific to this repo, worth knowing before anyone likes
-it too much: their further idea of running the jobs from a *separate local
-account* would relocate or duplicate `~/.claude/prompt-history.db`, which is the
-raw private tier — a second copy of every raw prompt is a privacy regression in
-the opposite direction. Any account split has to move that DB, not copy it.
-
-**What runs where — PROPOSED 2026-08-12, NOT DECIDED.** Not "nightly jobs go to the
-mini." The split is **where the data is** vs **where the uptime is**:
+**What runs where — the readers-mini-only half is IN EFFECT as of 2026-08-12**
+(Nico approved the laptop unload, which is that half made real; the
+laptop-synthesizer federation build-out below is still open). Not "nightly
+jobs go to the mini." The split is **where the data is** vs **where the
+uptime is**:
 - *Local-data jobs* run on **every** machine, over its own DB, because raw
   prompts are machine-local by invariant and never leave. That is
   `com.promptlab.synthesizer`, plus the turso-sync leg. The laptop keeps its
   copy; this is not duplication, it's the federation working.
 - *Reader/output jobs* run on the **mini only**, because the laptop being closed
   must mean off. That is `com.promptlab.review`, `com.promptlab.report`,
-  `com.promptlab.api-costs`. **The laptop currently has all three loaded and they
-  must be unloaded** — otherwise repairing the laptop's Resend FROM produces two
-  review emails a night. Not yet done; Nico's call to trigger.
+  `com.promptlab.api-costs`. **Done 2026-08-12 (Nico triggered it):** all three
+  unloaded on the laptop and parked in
+  `~/Library/LaunchAgents/disabled-readers-20260812/`; only the synthesizer
+  remains loaded there.
 - Vercel crons (the 8am health email) are cloud-side and location-independent —
   out of scope for any of this, don't move them.
 

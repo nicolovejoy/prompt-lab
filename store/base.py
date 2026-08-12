@@ -298,7 +298,11 @@ class KnowledgeStore(ABC):
 
     @abstractmethod
     def get_raw_sessions(self, *, project: str | None = None,
-                          since_days: int | None = None) -> list[dict]: ...
+                          since_days: int | None = None,
+                          overlap_utc: tuple[str, str] | None = None) -> list[dict]:
+        """`overlap_utc` selects sessions whose [started_at, ended_at-or-now]
+        interval overlaps the half-open UTC window [start, end) — use
+        `day_helper.lab_day_bounds_utc` to derive it from a Pacific day."""
 
     @abstractmethod
     def get_period_stats(self, days: int) -> dict:

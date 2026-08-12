@@ -633,7 +633,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
         return {"prompts": prompts, "sessions": sessions, "commits": all_commits}
 
-    def get_raw_sessions(self, *, project=None, since_days=None):
+    def get_raw_sessions(self, *, project=None, since_days=None, overlap_utc=None):
         clauses = ["summary IS NOT NULL"]
         params = []
         if project:
@@ -643,6 +643,14 @@ class SqliteKnowledgeStore(KnowledgeStore):
         if since_days is not None:
             clauses.append("started_at >= datetime('now', printf('-%d days', ?))")
             params.append(since_days)
+        if overlap_utc is not None:
+            # Interval overlap with [start, end), not started_at-in-window: a
+            # session that started before the day but ran into it still worked
+            # that day, and an unfinished one (ended_at NULL) is treated as
+            # running now.
+            start_utc, end_utc = overlap_utc
+            clauses.append("started_at < ? AND COALESCE(ended_at, datetime('now')) >= ?")
+            params.extend([end_utc, start_utc])
         sql = f"""
             SELECT project, date(started_at, 'localtime') as date, summary, started_at, hostname
             FROM sessions WHERE {' AND '.join(clauses)}

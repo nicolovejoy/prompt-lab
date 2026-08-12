@@ -47,3 +47,17 @@ def lab_days_ago(days: int) -> str:
 def lab_window(days: int) -> str:
     """Low edge of an N-day window *inclusive of today* — so N reaches back N-1."""
     return lab_days_ago(days - 1)
+
+
+def lab_day_bounds_utc(day: str) -> tuple[str, str]:
+    """UTC bounds [start, end) of a Pacific calendar day, as sortable
+    `YYYY-MM-DD HH:MM:SS` strings — the format SQLite's `datetime('now')`
+    writes, so they compare lexicographically against raw-tier timestamps.
+    DST-correct because the arithmetic happens in LAB_TZ, not on a fixed
+    offset.
+    """
+    start = datetime.fromisoformat(day).replace(tzinfo=LAB_TZ)
+    end = start + timedelta(days=1)
+    fmt = "%Y-%m-%d %H:%M:%S"
+    return (start.astimezone(ZoneInfo("UTC")).strftime(fmt),
+            end.astimezone(ZoneInfo("UTC")).strftime(fmt))
