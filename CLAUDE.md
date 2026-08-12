@@ -225,6 +225,36 @@ its own project, not this one). The mini also ends up wired to both Raspberry
 Pis (one runs Home Assistant) — parked thought: that adjacency may help
 developing the Pi tools later.
 
+**The wipe is OFF — DECIDED 2026-08-12 by Nico.** The mini is being *relocated*,
+not rebuilt: it moves to the closet with its disk, its DB, its `.env.local` and
+all six LaunchAgents intact and running. The reason to keep, because it
+generalizes: the machine is going from attended to unattended, and a wipe
+maximizes the number of unverified restore steps exactly when the feedback loop
+gets longest — an un-reinstalled plist or a missing env var on a headless box in
+a closet is invisible for days, which is this repo's entire failure catalogue.
+Change one variable, location, not two. What survives from the wipe prep is the
+part that was always independently worth doing: the `.env.local` scp to the
+laptop (the laptop's copy is a stale Jun 6 fork), the DB snapshots (now backups
+rather than prerequisites), and auto-login + FileVault-off + Remote Login with a
+reboot-with-display proof — those are relocation requirements, not wipe ones.
+`mini-decommission/WIPE-CHECKLIST.md` is being renamed to a move-to-closet
+checklist by that repo's agent; the repo name is now wrong too, but renaming it
+is Nico's call.
+
+**What runs where — the rule, settled 2026-08-12.** Not "nightly jobs go to the
+mini." The split is **where the data is** vs **where the uptime is**:
+- *Local-data jobs* run on **every** machine, over its own DB, because raw
+  prompts are machine-local by invariant and never leave. That is
+  `com.promptlab.synthesizer`, plus the turso-sync leg. The laptop keeps its
+  copy; this is not duplication, it's the federation working.
+- *Reader/output jobs* run on the **mini only**, because the laptop being closed
+  must mean off. That is `com.promptlab.review`, `com.promptlab.report`,
+  `com.promptlab.api-costs`. **The laptop currently has all three loaded and they
+  must be unloaded** — otherwise repairing the laptop's Resend FROM produces two
+  review emails a night. Not yet done; Nico's call to trigger.
+- Vercel crons (the 8am health email) are cloud-side and location-independent —
+  out of scope for any of this, don't move them.
+
 **DB ownership: DECIDED 2026-08-10 — Option B, federated.** Raw stays
 machine-local per the invariant; each machine synthesizes its own prompts and
 pushes processed rows to Turso; the merge happens there; the always-on mini
