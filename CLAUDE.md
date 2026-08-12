@@ -95,12 +95,29 @@ the step that fails. Fix the domain at https://resend.com/domains or move
 write the snapshot — right now the row records *composition*, not *delivery*,
 and nothing distinguishes them.
 
-The consequence to hold onto: **the mail Nico actually reads is probably coming
-from the mini**, whose DB holds almost no recent work, so "no new work" is a
-true statement about the wrong machine. Unconfirmed — the mini agent has been
-asked whether its own Resend sends succeed (the 403 is account/domain state, so
-it should fail there too unless the mini's `FROM` differs). Also unexplained:
-**no `review_snapshots` rows at all for Aug 10 and Aug 11.**
+**Both halves confirmed by the mini 2026-08-12, and one guess was wrong.**
+Right: the mail Nico reads comes from the mini — its `send-review.log` shows an
+unbroken run of `Sent (id: …)` through this morning, so the 403 is laptop-only.
+Wrong: I guessed the mini's DB was stale and that "no new work" was a true
+statement about the wrong machine. **It is not stale** — the mini holds 11,240
+prompts (still accruing, max `2026-08-12 00:35`) and 983 daily summaries
+spanning `2026-01-25 → 2026-08-11`. So the received email is **Bug A, plainly**:
+the window is wrong on a machine with the data. A possible second contributor,
+worth checking when fixing: `get_raw_sessions` reads the *local* `sessions`
+table, and Nico's sessions now start on the laptop, so the mini's Today section
+may be starved of session rows independently of the clock.
+
+The 403's cause is a one-line divergence: the laptop's `.env.local` (dated
+**Jun 6**, an old copy) has `REVIEW_FROM_EMAIL=reviews@send.prompt-labs.org` —
+the unverified *subdomain* — while the mini uses `reviews@prompt-labs.org`, the
+verified root. **Do not simply fix the laptop's FROM.** The mini is the settled
+owner of the reader jobs and both machines currently have `com.promptlab.review`
+loaded, so repairing the laptop's sender turns one broken nightly email into two
+delivered ones. The real decision is whether the laptop's review plist should be
+unloaded — with the exception that the mini will be down at least one night
+during the headless rebuild, which is exactly when a working laptop sender is
+wanted. Also still unexplained: **no `review_snapshots` rows at all for Aug 10
+and Aug 11** on the laptop.
 
 **The trajectory heatmap's month labels are on a different scale than the grid
 — DIAGNOSED 2026-08-12, NOT FIXED.** The data is fine; only the axis lies.
