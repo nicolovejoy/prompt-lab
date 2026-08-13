@@ -254,7 +254,13 @@ copies carry fixes the mini never had) → restore + bootstrap the 4 plists
 (email arrives + `review_snapshots` row + heartbeats green). Sequencing
 deliberately requested: land the `send-review.py` → Turso refactor *before*
 the review plist is bootstrapped, so the reconstituted mini's first email
-already sees both machines' work. **Until reconstitution, prompt-lab is
+already sees both machines' work. **The full implementation plan is
+`docs/turso-readers-plan.md`** — 5 TDD tasks for an Opus session: explicit
+store backend, both readers onto processed tables, gate release, plus the
+same-day clobber fix via a per-machine parts table (Nico's "simple is
+better" call 2026-08-13 after weighing and rejecting mini-as-central-DB;
+capture stays local-first, Turso stays the merge point). Execute AFTER the
+mini reset, per Nico. **Until reconstitution, prompt-lab is
 laptop-only** and the readers run nowhere (see the what-runs-where entry
 below). Everything the mini held is staged on the laptop under
 `~/mini-staging/`: the final `prompt-history.db` (frozen 2026-08-13 07:20,
