@@ -246,7 +246,8 @@ RECONSTITUTING prompt-lab's services on the new mini is part of the plan**
 back). The **mini-decommission agent/repo owns the checklist**; prompt-lab
 owns its reconstitution spec, sent to them 2026-08-13: clone repo + venv →
 copy staged `.env.local` → **MOVE** (not copy, then delete staging) the
-frozen `prompt-history.db` back → restore the 44 memory dirs → install
+frozen `prompt-history.db` back → restore the 39 memory dirs (478 files;
+"44" in earlier notes counted project dirs without memory) → install
 `workflow/` from the **fresh clone, never from pre-wipe backups** (repo
 copies carry fixes the mini never had) → restore + bootstrap the 4 plists
 (check hardcoded paths first) → verify **by artifact** after first overnight
@@ -258,7 +259,7 @@ laptop-only** and the readers run nowhere (see the what-runs-where entry
 below). Everything the mini held is staged on the laptop under
 `~/mini-staging/`: the final `prompt-history.db` (frozen 2026-08-13 07:20,
 11,240 prompts, taken after the LaunchAgents were unloaded and drift-checked),
-all 44 claude-memory dirs, plists, job logs, zshrc/ssh config, SPAN env
+all 39 claude-memory dirs (478 files), plists, job logs, zshrc/ssh config, SPAN env
 files, and a 13-repo sweep of dirty/unpushed working trees (`repo-sweep/` —
 sorting those is open curation work, worst case notemaxxing with 24 unpushed
 commits). The relocate-don't-wipe debate is preserved in git
