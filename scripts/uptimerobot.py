@@ -77,6 +77,14 @@ HTTP_MONITORS = [
     # itself must be removed by hand in the UptimeRobot UI.
     # Was entirely unmonitored until 2026-07-31. Note .org, not .com.
     ("prntd", "https://prntd.org/api/health?db=1"),
+    # Shallow on purpose, for now: the app has no /api/health yet. The SPAN
+    # session is building one (checks[]: Influx last-point age for the ~30s
+    # collector, restic last-snapshot age for the 03:30 backup) — repoint here
+    # when it ships. Serves from Vercel today, and its data endpoints are
+    # unauthenticated by Nico's explicit choice (2026-08-13): public but
+    # unadvertised beats logging in to read his own power meter. Unknown /api/*
+    # paths return a real 404 (verified) — no SPA catch-all false-UP risk.
+    ("span", "https://span.pianohouseproject.org"),
 ]
 
 # --- Desired alert contacts -------------------------------------------------
