@@ -240,29 +240,39 @@ its own project, not this one). The mini also ends up wired to both Raspberry
 Pis (one runs Home Assistant) — parked thought: that adjacency may help
 developing the Pi tools later.
 
-**The wipe is ON — DECIDED by Nico 2026-08-12, stated directly in the
-mini-decommission channel.** After a day on the fence (the relocate-don't-wipe
-proposal and the privacy counterargument are preserved in git history,
-`77dd316`/`d50c14b`/`55488f0`), the call is: **wipe the mini properly on a
-later day — not immediately — and keep using the mini for everything it
-currently does.** Until wipe day the mini and its jobs run untouched.
-Consequences agreed with the mini-decommission agent (their repo owns the
-checklist): expect one-plus night of review-email gap around the wipe itself;
-the final `prompt-history.db` re-snapshot happens immediately pre-erase; the
-rebuild restores plists + `.env.local` from `~/mini-staging/prompt-lab/` on
-the laptop. **Timing is not yet set — Nico discusses it with the
-mini-decommission agent tomorrow (2026-08-13).** Worth keeping from the
-debate: any future account split must *move* `~/.claude/prompt-history.db`,
+**The wipe HAPPENED 2026-08-13 — and the mini is being RE-PURPOSED, not
+restored.** Nico's call, stated same day: the mini does NOT return to its old
+prompt-lab role; its new purpose is TBD and the **mini-decommission
+agent/repo owns that thread** — direct mini questions there. **Prompt-lab is
+laptop-only for now.** What that voids until re-purposing is decided: the
+rebuild-restores-plists plan (staging at `~/mini-staging/prompt-lab/` still
+holds everything if it's ever wanted), the readers-on-the-mini split (see the
+what-runs-where entry below), and every "always-on mini" assumption in this
+file. Everything the mini held is staged on the laptop under
+`~/mini-staging/`: the final `prompt-history.db` (frozen 2026-08-13 07:20,
+11,240 prompts, taken after the LaunchAgents were unloaded and drift-checked),
+all 44 claude-memory dirs, plists, job logs, zshrc/ssh config, SPAN env
+files, and a 13-repo sweep of dirty/unpushed working trees (`repo-sweep/` —
+sorting those is open curation work, worst case notemaxxing with 24 unpushed
+commits). The relocate-don't-wipe debate is preserved in git
+(`77dd316`/`d50c14b`/`55488f0`). Worth keeping from it: any future account split must *move* `~/.claude/prompt-history.db`,
 never copy it — a second copy of every raw prompt is a privacy regression.
 And the process lesson stands: *agreeing with an idea is not the same as the
 idea being chosen* — this entry records a decision only because Nico stated
 one.
 
-**What runs where — the readers-mini-only half is IN EFFECT as of 2026-08-12**
-(Nico approved the laptop unload, which is that half made real; the
-laptop-synthesizer federation build-out below is still open). Not "nightly
-jobs go to the mini." The split is **where the data is** vs **where the
-uptime is**:
+**What runs where — OVERTAKEN 2026-08-13: the reader jobs now run NOWHERE.**
+The mini is wiped and being re-purposed, so the readers-mini-only split below
+is history, kept for its reasoning. Current reality: the laptop runs only
+`com.promptlab.synthesizer`; review email, report, and api-costs are parked
+in `~/Library/LaunchAgents/disabled-readers-20260812/` with no machine to
+run them. **Expect the daily 8am health email's #45 heartbeats to go stale
+and say so — that is the system working, not a bug to chase.** The open
+choice for Nico: re-enable the laptop readers (accepting laptop-closed =
+no email), wait for whatever the re-purposed mini becomes, or move readers
+cloud-side — and whichever machine sends next, the `send-review.py` →
+processed-tables/Turso refactor is the prerequisite for an email that sees
+all machines' work. The original split, for the record:
 - *Local-data jobs* run on **every** machine, over its own DB, because raw
   prompts are machine-local by invariant and never leave. That is
   `com.promptlab.synthesizer`, plus the turso-sync leg. The laptop keeps its
