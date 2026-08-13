@@ -161,6 +161,20 @@ clone lacks `.secrets` and its ssh key isn't in the HA SSH add-on;
 re-provisioning is queued in the home-assistant repo (coordinate there,
 not with the decommission notes).
 
+Closet move DONE 2026-08-13 — both Pis wired, both deliberately dual-homed,
+all four interfaces DHCP-reserved. What's left, none of it prompt-lab's code
+and all of it filed in `~/src/.handoff` (new channels
+`home-assistant-prompt-lab.md` + `phrpi-lights-prompt-lab.md`):
+- **Rotate `automation-dev`** (order above; deleting first breaks lights).
+  The only item with a live security edge — plaintext copy in staging.
+- **Laptop SSH key into HA's add-on.** The highest-leverage one: today's HA
+  work ran on screenshots and inference while phrpi got measured in seconds.
+  Everything else about that box stays guesswork until this lands.
+- **Repoint hardcoded `192.168.5.34`** → `homeassistant.local` in
+  phrpi-lights and the home-assistant repo.
+- **`cloudflared`'s token out of argv** on phrpi (owner unclear — the
+  container's compose dir wasn't traced; not filed anywhere yet).
+
 **The nightly review email says "no new work" on days full of work — BOTH BUGS
 FIXED 2026-08-12.** Full diagnosis in `docs/history.md` / git history
 (`877ea15`, `c332ac9`); what happened and what remains:
