@@ -623,12 +623,387 @@ machines, new `review_snapshots` row, heartbeats green in the 8am email.
 
 ---
 
+### Task 5: Same-day clobber fix — per-machine parts, merged deterministically
+
+*Independent of the Task 4 gate release — the reconstitution does not wait on
+this task, but landing it in the same dark window means the mini returns to a
+federation with no known lying edge.*
+
+**Why:** `daily_summaries` is keyed `(project, date)` and synced with a blind
+upsert, so two machines working the same project the same day clobber each
+other in Turso — last sync wins (CLAUDE.md, DB-ownership entry). The fix
+keeps local schemas and every reader untouched: each machine pushes its rows
+into a new Turso-only parts table keyed `(project, date, machine)` (a pure,
+idempotent upsert), and the merged `daily_summaries` row is deterministically
+rebuilt from all parts. Readers keep reading `daily_summaries` exactly as
+today; on genuine collision days the merged summary carries `[machine]`
+prefixes and summed counts. `weekly_rollups` has the same clobber shape and
+is **deliberately deferred** — post-reconstitution the mini generates rollups
+only from its own (near-idle) summaries, so collisions there stay rare;
+adopt this same pattern if it ever bites.
+
+**Files:**
+- Modify: `store/turso_store.py` (DDL in `migrate()`, two new methods)
+- Modify: `sync_to_turso.py` (machine label, merge function, dedicated daily-summaries leg)
+- Create: `scripts/test_sync_clobber.py`
+
+**Interfaces:**
+- Produces: `machine_label() -> str` (env `GROUND_CONTROL_MACHINE`, else short
+  hostname lowercased); `merge_summary_parts(parts: list[dict]) -> dict`
+  (pure; input any order → identical output; keys `project, date, summary,
+  key_decisions (list), prompt_count, session_count, commit_count, model`);
+  `TursoKnowledgeStore.upsert_daily_summary_part(...)` and
+  `.get_daily_summary_parts(since: str, until: str) -> list[dict]`.
+- Consumes: `remote._execute_many` / `_rows_to_dicts` idioms
+  (`store/turso_store.py:82-101`), existing `upsert_daily_summary`.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `scripts/test_sync_clobber.py`:
+
+```python
+"""Tests for the same-day clobber fix (per-machine daily-summary parts).
+
+daily_summaries is keyed (project, date); before this fix, two machines
+syncing the same project-day clobbered each other in Turso — last sync wins.
+Now each machine upserts into daily_summaries_machine (keyed +machine) and
+the merged row is rebuilt deterministically from all parts.
+
+Run: .venv/bin/python scripts/test_sync_clobber.py
+No pytest. Prints PASS/FAIL per test, exits 1 if any fail.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import sync_to_turso  # noqa: E402
+
+_results: list[tuple[str, bool, str]] = []
+
+
+def test(name: str):
+    def deco(fn):
+        try:
+            fn()
+            _results.append((name, True, ""))
+        except AssertionError as e:
+            _results.append((name, False, str(e) or "assertion failed"))
+        except Exception as e:  # noqa: BLE001
+            _results.append((name, False, f"{type(e).__name__}: {e}"))
+        return fn
+
+    return deco
+
+
+@test("single-machine part passes through unmerged (the common case)")
+def _():
+    part = {"project": "raconte", "date": "2026-08-12", "machine": "laptop",
+            "summary": "Shipped the exporter.",
+            "key_decisions": '["ship it"]',
+            "prompt_count": 24, "session_count": 3, "commit_count": 2,
+            "model": "claude-code"}
+    m = sync_to_turso.merge_summary_parts([part])
+    assert m["summary"] == "Shipped the exporter.", m
+    assert "[laptop]" not in m["summary"], "no machine prefix when only one machine"
+    assert m["key_decisions"] == ["ship it"], "JSON-string key_decisions must decode"
+    assert m["prompt_count"] == 24 and m["model"] == "claude-code", m
+    assert "machine" not in m, "merged rows carry no machine column"
+
+
+@test("two machines merge deterministically: prefixed prose, summed counts")
+def _():
+    a = {"project": "prompt-lab", "date": "2026-08-12", "machine": "mini",
+         "summary": "Nightly jobs ran.", "key_decisions": ["keep jobs"],
+         "prompt_count": 3, "session_count": 1, "commit_count": 0,
+         "model": "claude-code"}
+    b = {"project": "prompt-lab", "date": "2026-08-12", "machine": "laptop",
+         "summary": "Fixed the review email.", "key_decisions": ["keep jobs", "fix window"],
+         "prompt_count": "12", "session_count": "2", "commit_count": "5",
+         "model": "claude-code"}  # string counts: Turso returns aggregates as strings
+    m1 = sync_to_turso.merge_summary_parts([a, b])
+    m2 = sync_to_turso.merge_summary_parts([b, a])
+    assert m1 == m2, "merge must be order-independent"
+    assert m1["summary"] == "[laptop] Fixed the review email.\n[mini] Nightly jobs ran.", m1["summary"]
+    assert m1["prompt_count"] == 15 and m1["session_count"] == 3 and m1["commit_count"] == 5, m1
+    assert m1["key_decisions"] == ["keep jobs", "fix window"], "dedup preserves first-seen order"
+    assert m1["model"] == "merged", m1
+
+
+@test("machine_label: env override wins, fallback is short lowercase hostname")
+def _():
+    import os
+    import socket
+    had = os.environ.get("GROUND_CONTROL_MACHINE")
+    os.environ["GROUND_CONTROL_MACHINE"] = "testbox"
+    try:
+        assert sync_to_turso.machine_label() == "testbox"
+    finally:
+        if had is None:
+            del os.environ["GROUND_CONTROL_MACHINE"]
+        else:
+            os.environ["GROUND_CONTROL_MACHINE"] = had
+    if os.environ.get("GROUND_CONTROL_MACHINE") is None:
+        expect = socket.gethostname().split(".")[0].lower()
+        assert sync_to_turso.machine_label() == expect
+
+
+@test("the daily leg goes through parts, not a blind whole-row upsert")
+def _():
+    src = (ROOT / "sync_to_turso.py").read_text()
+    assert "daily_summaries_machine" in src, "parts table never written"
+    assert "sync_daily_summaries(" in src, "dedicated daily leg missing"
+    assert "merge_summary_parts" in src, "merged rebuild missing"
+
+
+if __name__ == "__main__":
+    failed = 0
+    for name, ok, msg in _results:
+        print(f"{'PASS' if ok else 'FAIL'}: {name}" + (f" — {msg}" if msg else ""))
+        failed += 0 if ok else 1
+    print(f"\n{len(_results) - failed}/{len(_results)} passed")
+    sys.exit(1 if failed else 0)
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `.venv/bin/python scripts/test_sync_clobber.py`
+Expected: FAIL — `sync_to_turso` has no `merge_summary_parts` / `machine_label`
+
+- [ ] **Step 3: Add the parts table and accessors to `store/turso_store.py`**
+
+In `migrate()`, append to the DDL `self._pipeline([...])` list, directly
+after the existing `daily_summaries` entry (mirror its column types exactly
+as they appear there):
+
+```python
+            {"sql": """
+                CREATE TABLE IF NOT EXISTS daily_summaries_machine (
+                    project TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    machine TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    key_decisions TEXT,
+                    prompt_count INTEGER DEFAULT 0,
+                    session_count INTEGER DEFAULT 0,
+                    commit_count INTEGER DEFAULT 0,
+                    model TEXT,
+                    synced_at TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (project, date, machine)
+                )
+            """},
+```
+
+Add two methods next to `get_daily_summaries` (these are Turso-only helpers,
+deliberately NOT on the ABC — the local store is single-machine by
+construction and has no parts concept):
+
+```python
+    def upsert_daily_summary_part(self, *, project, date, machine, summary,
+                                   key_decisions, prompt_count, session_count,
+                                   commit_count, model):
+        """One machine's contribution to a project-day. Pure idempotent
+        upsert on (project, date, machine) — re-syncing is a no-op."""
+        self._execute(
+            "INSERT OR REPLACE INTO daily_summaries_machine "
+            "(project, date, machine, summary, key_decisions, prompt_count, "
+            " session_count, commit_count, model) VALUES (?,?,?,?,?,?,?,?,?)",
+            [project, date, machine, summary,
+             json.dumps(key_decisions or []), prompt_count, session_count,
+             commit_count, model])
+
+    def get_daily_summary_parts(self, *, since, until):
+        result = self._execute(
+            "SELECT project, date, machine, summary, key_decisions, "
+            "prompt_count, session_count, commit_count, model "
+            "FROM daily_summaries_machine WHERE date >= ? AND date <= ?",
+            [since, until])
+        return self._rows_to_dicts(result)
+```
+
+- [ ] **Step 4: Add label, merge, and the dedicated leg to `sync_to_turso.py`**
+
+Add near the top (after the imports; add `import socket`):
+
+```python
+def machine_label():
+    """Stable label naming this machine in merged summaries.
+
+    GROUND_CONTROL_MACHINE (set it in each machine's .env.local: `laptop`,
+    `mini`) wins; the fallback is the short hostname lowercased. The override
+    exists because hostnames change — the mini was renamed at its 2026-08
+    re-purposing — and a renamed machine must not fork its own history into
+    two part rows.
+    """
+    return os.environ.get("GROUND_CONTROL_MACHINE") or \
+        socket.gethostname().split(".")[0].lower()
+
+
+def merge_summary_parts(parts):
+    """Deterministically merge per-machine parts for one (project, date).
+
+    Pure function: the same set of parts in any order produces an identical
+    row. Counts are int()-coerced — Turso returns numbers as strings.
+    """
+    def kd(p):
+        v = p.get("key_decisions") or []
+        return json.loads(v) if isinstance(v, str) else v
+
+    parts = sorted(parts, key=lambda p: p["machine"])
+    if len(parts) == 1:
+        p = parts[0]
+        return {
+            "project": p["project"], "date": p["date"],
+            "summary": p["summary"], "key_decisions": kd(p),
+            "prompt_count": int(p.get("prompt_count") or 0),
+            "session_count": int(p.get("session_count") or 0),
+            "commit_count": int(p.get("commit_count") or 0),
+            "model": p.get("model") or "unknown",
+        }
+    decisions = []
+    for p in parts:
+        for d in kd(p):
+            if d not in decisions:
+                decisions.append(d)
+    return {
+        "project": parts[0]["project"], "date": parts[0]["date"],
+        "summary": "\n".join(f"[{p['machine']}] {p['summary']}" for p in parts),
+        "key_decisions": decisions,
+        "prompt_count": sum(int(p.get("prompt_count") or 0) for p in parts),
+        "session_count": sum(int(p.get("session_count") or 0) for p in parts),
+        "commit_count": sum(int(p.get("commit_count") or 0) for p in parts),
+        "model": "merged",
+    }
+
+
+def sync_daily_summaries(local, remote, since, dry_run):
+    """Push this machine's summaries as parts, then rebuild merged rows.
+
+    Replaces the blind whole-row upsert that let two machines clobber each
+    other on shared project-days. Parts go up first (idempotent on
+    project+date+machine), then every (project, date) pair with parts in the
+    synced window is rebuilt from ALL machines' parts — rebuilding a pair is
+    always safe because the merge is a pure function of its parts.
+    Historical days with no parts yet keep their existing merged rows; a full
+    sync (no --days) from each machine backfills parts for all history.
+    """
+    rows = local.get_daily_summaries(since=since)
+    if not rows:
+        print("  daily_summaries: 0 rows (skip)")
+        return 0
+    if dry_run:
+        print(f"  daily_summaries: {len(rows)} rows (dry run)")
+        return len(rows)
+
+    machine = machine_label()
+    buffer = []
+    orig_execute = remote._execute
+    remote._execute = lambda sql, args=None: buffer.append((sql, args or []))
+    try:
+        for row in rows:
+            kd = row["key_decisions"]
+            remote.upsert_daily_summary_part(
+                project=row["project"], date=row["date"], machine=machine,
+                summary=row["summary"],
+                key_decisions=json.loads(kd) if isinstance(kd, str) else (kd or []),
+                prompt_count=row.get("prompt_count", 0) or 0,
+                session_count=row.get("session_count", 0) or 0,
+                commit_count=row.get("commit_count", 0) or 0,
+                model=row.get("model", "unknown"))
+    finally:
+        remote._execute = orig_execute
+    for i in range(0, len(buffer), 100):
+        remote._execute_many(buffer[i:i + 100])
+    print(f"  daily_summaries: {len(rows)} parts synced as '{machine}'")
+
+    dates = sorted({r["date"] for r in rows})
+    parts = remote.get_daily_summary_parts(since=dates[0], until=dates[-1])
+    grouped = {}
+    for p in parts:
+        grouped.setdefault((p["project"], p["date"]), []).append(p)
+
+    buffer = []
+    remote._execute = lambda sql, args=None: buffer.append((sql, args or []))
+    try:
+        for pair_parts in grouped.values():
+            remote.upsert_daily_summary(**merge_summary_parts(pair_parts))
+    finally:
+        remote._execute = orig_execute
+    for i in range(0, len(buffer), 100):
+        remote._execute_many(buffer[i:i + 100])
+    print(f"  daily_summaries: {len(grouped)} merged rows rebuilt")
+    return len(rows)
+```
+
+In `main()`, replace the existing daily-summaries `sync_table(...)` call
+(the first sync leg) with:
+
+```python
+    # Daily summaries — per-machine parts + deterministic merge, NOT the
+    # generic blind upsert: two machines on one project-day must both survive.
+    total += sync_daily_summaries(local, remote, since, dry_run)
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `.venv/bin/python scripts/test_sync_clobber.py`
+Expected: all PASS (4/4)
+
+- [ ] **Step 6: Live verification**
+
+Add `GROUND_CONTROL_MACHINE=laptop` to the laptop's `.env.local` (append the
+single line; never regenerate the file via `op inject` — see CLAUDE.md
+traps). Then run a windowed sync and check the shape:
+
+Run: `.venv/bin/python sync_to_turso.py --days 3`
+Expected output includes `daily_summaries: N parts synced as 'laptop'` and
+`N merged rows rebuilt`. Then confirm no visible regression: the dashboard's
+recent days (https://prompt-labs.org) show the same counts as before the
+sync, and `scripts/check_public_allowlist.py` still exits 0 (it runs
+automatically at the end of the sync).
+
+A full-history backfill (`.venv/bin/python sync_to_turso.py`, no `--days`)
+runs past 120s — run it in the background or raise the timeout. Do it once
+from the laptop; the mini does the same once at reconstitution (with
+`GROUND_CONTROL_MACHINE=mini` in its `.env.local` — add that to the D2
+message in Task 4's gate release if this task lands first).
+
+- [ ] **Step 7: Ruff, docs, commit**
+
+Run: `.venv/bin/ruff check store/turso_store.py sync_to_turso.py scripts/test_sync_clobber.py`
+
+Update CLAUDE.md's DB-ownership entry: the `daily_summaries` clobber bullet
+becomes "FIXED <date>: per-machine parts table + deterministic merge at sync
+time; `weekly_rollups` still has the shape, deferred until it bites; machine
+labels come from `GROUND_CONTROL_MACHINE` in each `.env.local`."
+
+```bash
+git add store/turso_store.py sync_to_turso.py scripts/test_sync_clobber.py CLAUDE.md
+git commit -m "Two machines stop overwriting each other's days
+
+daily_summaries syncs as per-machine parts now, merged
+deterministically in Turso: prefixed prose, summed counts, and a
+re-sync that is a no-op instead of a coin flip over whose work
+survives. Local schemas and every reader untouched.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+git push
+```
+
+---
+
 ## Self-Review (completed at planning time)
 
 - **Spec coverage:** raw-read removal (Tasks 2, 3), merged-store reads (2, 3),
   stats replacement (3), lab-day windows (3; send-review already had them),
   unchanged write topology (2, 3 explicitly), plists untouched (in-script
-  backend, Task 1), gate release (4). Gaps: none known.
+  backend, Task 1), gate release (4), same-day clobber fix (5 — independent
+  of the gate; weekly_rollups deferral is explicit and reasoned). Gaps: none
+  known.
 - **Placeholder scan:** all code steps carry full code; the two "stays exactly
   as is" statements name the precise blocks and why.
 - **Type consistency:** `get_store("turso")` (Task 1 signature) used
