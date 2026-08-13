@@ -138,10 +138,22 @@ its SSH add-on). Then consider promoting this to a `docs/` file:
   untested. The closet's next outage tests it.
 Travelling with the inventory, **UNBLOCKED and pending Nico**: rotate the
 mini's HASS_TOKEN — it is LIVE (HA session tested it, 200) and a plaintext
-copy sits in `~/mini-staging/home/zshrc.mini`. Nico deletes the *mini's*
-long-lived token in the HA UI (profile → Security → long-lived access
-tokens) — NOT a blanket delete: phrpi-lights holds its own token that must
-survive. Known consumers of the dead token (mini pre-erase grep): the
+copy sits in `~/mini-staging/home/zshrc.mini`. **Corrected 2026-08-13: there
+is no separate "mini token" to delete.** The HA UI lists exactly ONE
+long-lived access token, named `automation-dev`, and it is shared — the mini
+used it and phrpi-lights uses it now. The earlier note claimed "phrpi-lights
+holds its own token that must survive" while the same paragraph listed
+`phrpi-lights/.env.tpl` as a consumer of the mini's token; only the second
+was right. So **deletion is off the table and this is a rotation**, in this
+order: create a new long-lived token in the HA UI → update phrpi-lights'
+`HASS_TOKEN` (`/home/nico/phrpi-lights` on phrpi, no laptop clone; the
+`lights` container needs a restart) → verify lights still writes its
+`input_text`s → only then delete `automation-dev`. Deleting first breaks the
+lights integration. Note also that the thing that made this urgent stands:
+a valid credential is sitting in plaintext under `~/mini-staging/`.
+Separately, the token card was nearly mistaken for the **Refresh tokens**
+card above it — those are login sessions (browser, iOS app), and deleting
+one revokes a session, not an API token. Known consumers of the dead token (mini pre-erase grep): the
 home-assistant repo (`deploy.py`, `tools/matter_diag.py`,
 `dashboard/ha_client.py`, tests), `phrpi-lights/.env.tpl`, and the mini's
 `.zshrc`. Separately, the mini was the HA *deploy machine* — the laptop
