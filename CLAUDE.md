@@ -240,15 +240,22 @@ its own project, not this one). The mini also ends up wired to both Raspberry
 Pis (one runs Home Assistant) — parked thought: that adjacency may help
 developing the Pi tools later.
 
-**The wipe HAPPENED 2026-08-13 — and the mini is being RE-PURPOSED, not
-restored.** Nico's call, stated same day: the mini does NOT return to its old
-prompt-lab role; its new purpose is TBD and the **mini-decommission
-agent/repo owns that thread** — direct mini questions there. **Prompt-lab is
-laptop-only for now.** What that voids until re-purposing is decided: the
-rebuild-restores-plists plan (staging at `~/mini-staging/prompt-lab/` still
-holds everything if it's ever wanted), the readers-on-the-mini split (see the
-what-runs-where entry below), and every "always-on mini" assumption in this
-file. Everything the mini held is staged on the laptop under
+**The wipe HAPPENED 2026-08-13 — the mini is being re-purposed, and
+RECONSTITUTING prompt-lab's services on the new mini is part of the plan**
+(Nico's direction, same day: the wipe plan isn't done until the services are
+back). The **mini-decommission agent/repo owns the checklist**; prompt-lab
+owns its reconstitution spec, sent to them 2026-08-13: clone repo + venv →
+copy staged `.env.local` → **MOVE** (not copy, then delete staging) the
+frozen `prompt-history.db` back → restore the 44 memory dirs → install
+`workflow/` from the **fresh clone, never from pre-wipe backups** (repo
+copies carry fixes the mini never had) → restore + bootstrap the 4 plists
+(check hardcoded paths first) → verify **by artifact** after first overnight
+(email arrives + `review_snapshots` row + heartbeats green). Sequencing
+deliberately requested: land the `send-review.py` → Turso refactor *before*
+the review plist is bootstrapped, so the reconstituted mini's first email
+already sees both machines' work. **Until reconstitution, prompt-lab is
+laptop-only** and the readers run nowhere (see the what-runs-where entry
+below). Everything the mini held is staged on the laptop under
 `~/mini-staging/`: the final `prompt-history.db` (frozen 2026-08-13 07:20,
 11,240 prompts, taken after the LaunchAgents were unloaded and drift-checked),
 all 44 claude-memory dirs, plists, job logs, zshrc/ssh config, SPAN env
