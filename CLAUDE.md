@@ -122,14 +122,20 @@ its SSH add-on). Then consider promoting this to a `docs/` file:
   repo's `deploy.py`, `tools/matter_diag.py`, `dashboard/ha_client.py` and
   tests. Both notified via handoff 2026-08-13; the target is
   `homeassistant.local`, not another literal.
-  Open and NOT touched: HA's Settings → System → Network → **Network adapter
-  panel detected wlan0 only**, which is what integrations bind for
-  zeroconf/SSDP/Matter discovery. Most likely stale rather than wrong — that
-  list is built at startup and HA has not restarted since the ethernet cable
-  went in — but until it re-detects, Matter discovery for the 22 dimmers may
-  be riding Wi-Fi next to an idle wire. Restart first and re-read the panel
-  before changing anything; forcing end0 by hand trades a visible outage for
-  a silent discovery failure if the wire ever drops.
+  RESOLVED same day, and the fix was a restart rather than a setting: HA's
+  Settings → System → Network → **Network adapter** panel — which is what
+  integrations bind for zeroconf/SSDP/Matter discovery — read `wlan0` only.
+  That was **stale, not wrong**. HA builds the adapter list at startup and
+  had not restarted since the cable went in. After a restart it reads
+  `end0 (192.168.5.14/22)` and nothing else, so Matter discovery for the 22
+  dimmers is on the wire; Autoconfigure stays checked and nothing was
+  hand-pinned. The habit worth keeping: **restart before believing that
+  panel.** Pinning end0 by hand was considered and rejected — it would trade
+  a visible outage for a silent discovery failure if the wire ever dropped,
+  since HA would stay reachable over Wi-Fi and look healthy.
+  One thing still unproven, cheap to note: a Core restart does not re-acquire
+  DHCP leases, so whether ethernet comes back after a real power cycle is
+  untested. The closet's next outage tests it.
 Travelling with the inventory, **UNBLOCKED and pending Nico**: rotate the
 mini's HASS_TOKEN — it is LIVE (HA session tested it, 200) and a plaintext
 copy sits in `~/mini-staging/home/zshrc.mini`. Nico deletes the *mini's*
