@@ -102,11 +102,34 @@ its SSH add-on). Then consider promoting this to a `docs/` file:
   The mini's old `com.span.bath-detector` LaunchAgent was ruled LEGACY
   2026-08-13 (detection moved to the Docker service; the plist was a
   potential double-writer and is excluded from the mini rebuild).
-- *homeassistant.local* = 192.168.5.34 (the "homeaspi" name in old notes is
-  STALE — the box is alive and independent of the mini): Home Assistant OS,
-  HA Core 2026.7.2; Matter server driving 22 Leviton dimmers + WiZ bulbs;
-  Advanced SSH & Web Terminal add-on; recorder at 10-day retention; all
-  lighting automations.
+- *homeassistant.local* (the "homeaspi" name in old notes is STALE — the box
+  is alive and independent of the mini): Home Assistant OS, HA Core 2026.7.2;
+  Matter server driving 22 Leviton dimmers + WiZ bulbs; Advanced SSH & Web
+  Terminal add-on; recorder at 10-day retention; all lighting automations.
+  **Also dual-homed, confirmed 2026-08-13** — and the single address in the
+  old notes was the *wrong one*: end0 `192.168.5.14` (ethernet) and wlan0
+  `192.168.5.34` (Wi-Fi) both serve :8123 (verified 200 from the laptop,
+  12ms vs 20ms), both DHCP-reserved in eero, and **`homeassistant.local`
+  resolves to `.5.14`** — so the hostname is already the wired path. Wi-Fi
+  stays up deliberately and matters more here than on phrpi: **the laptop
+  has no shell into this box at all** (its key isn't in the SSH add-on;
+  re-provisioning is queued in the home-assistant repo), so the radio is the
+  only out-of-band route to the machine running the house's lighting.
+  Consequence to fix, not to admire: **`.5.34` — the Wi-Fi address — is what
+  hardcoded consumers point at**, confirmed live for phrpi-lights
+  (`HA_URL=http://192.168.5.34:8123` in the `lights` container env, repo
+  `/home/nico/phrpi-lights`, **no laptop clone**). Also the home-assistant
+  repo's `deploy.py`, `tools/matter_diag.py`, `dashboard/ha_client.py` and
+  tests. Both notified via handoff 2026-08-13; the target is
+  `homeassistant.local`, not another literal.
+  Open and NOT touched: HA's Settings → System → Network → **Network adapter
+  panel detected wlan0 only**, which is what integrations bind for
+  zeroconf/SSDP/Matter discovery. Most likely stale rather than wrong — that
+  list is built at startup and HA has not restarted since the ethernet cable
+  went in — but until it re-detects, Matter discovery for the 22 dimmers may
+  be riding Wi-Fi next to an idle wire. Restart first and re-read the panel
+  before changing anything; forcing end0 by hand trades a visible outage for
+  a silent discovery failure if the wire ever drops.
 Travelling with the inventory, **UNBLOCKED and pending Nico**: rotate the
 mini's HASS_TOKEN — it is LIVE (HA session tested it, 200) and a plaintext
 copy sits in `~/mini-staging/home/zshrc.mini`. Nico deletes the *mini's*
