@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "web"))
 
-from day_helper import LAB_TZ, lab_today  # noqa: E402
+from day_helper import lab_today  # noqa: E402
 from store.sqlite_store import SqliteKnowledgeStore  # noqa: E402
 
 _results: list[tuple[str, bool, str]] = []
