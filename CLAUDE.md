@@ -63,6 +63,27 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**Per-Pi service inventory — NEW 2026-08-13, prompt-lab owns it** (Nico's
+request, relayed by the mini-decommission agent mid-wipe). No document
+anywhere lists what runs on each Pi; the decommission cross-checks had to
+reconstruct it piecemeal. Known so far, unverified beyond that day:
+- *phrpi* (up; laptop has direct key auth): `nudge.timer` +
+  `nudge-michael.timer` + board container (nudge repo); `bath-detector`
+  Docker service + InfluxDB (SPAN repo, `pi/docker-compose.yml`); presumably
+  phrpi-lights. Note the mini's old `com.span.bath-detector` LaunchAgent was
+  ruled LEGACY 2026-08-13 (detection moved to this Docker service; the plist
+  was a potential double-writer and is excluded from the mini rebuild).
+- *homeaspi*: does not resolve from the laptop (checked twice 2026-08-13),
+  absent from the mini's ssh config, contents unknown — possibly where Home
+  Assistant lives, possibly a dead box. The home-assistant session was asked
+  where HA actually runs; loop in with them.
+Travelling with the inventory: **rotate the HASS_TOKEN** from the mini's
+`.zshrc` (a plaintext copy survives at `~/mini-staging/home/zshrc.mini`) —
+blocked on locating the HA instance. A pre-erase grep of the mini's home dir
+for the token's consuming script (which would name the HA host) was requested
+minutes before the wipe; check the mini-decommission agent's notes for what
+it returned.
+
 **The nightly review email says "no new work" on days full of work — BOTH BUGS
 FIXED 2026-08-12.** Full diagnosis in `docs/history.md` / git history
 (`877ea15`, `c332ac9`); what happened and what remains:
