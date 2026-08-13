@@ -71,6 +71,10 @@ TARGETS = [
     ("bakerylouise", "https://bakerylouise.com/api/health", False),
     ("musicforge", "https://www.musicforge.org/api/health?db=1", True),
     ("prntd", "https://prntd.org/api/health?db=1", True),
+    # Two artifact checks behind one URL: collector freshness (Influx last
+    # point vs the ~30s poll) and backup freshness (restic snapshot's own
+    # timestamp). No ?db= param — the checks[] body carries the detail.
+    ("span", "https://span.pianohouseproject.org/api/health", True),
 ]
 
 # (label, sql, max_age_days) — artifact freshness, issue #45.
