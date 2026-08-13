@@ -174,3 +174,5 @@ If any branch (current or otherwise) is behind origin, end with a short ⚠️ b
 If step 8 found broken CI or step 9 found public-data drift, lead the summary with those ⚠️ blocks (drift first — it's a live privacy exposure, not just a build being red) — both are more urgent than a stale branch or a drifted CLAUDE.md.
 
 If the user passed arguments with this command, address those — don't suggest a separate task.
+
+If this session's work turns out to be executing a written plan (or the user hands you a multi-task todo), invoke `superpowers:subagent-driven-development` (if available) before starting implementation — per-task subagents keep the main context lean for the long sessions readup starts. This is a conditional pointer, not a step: sessions that are discussion, ops, or a single fix skip it entirely.
