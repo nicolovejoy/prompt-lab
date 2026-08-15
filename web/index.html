@@ -286,8 +286,27 @@
       letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 8px;
     }
 
-    /* Activity heatmap */
-    .heatmap { display: flex; gap: 2px; flex-wrap: nowrap; margin-bottom: 16px; overflow-x: auto; }
+    /* Activity heatmap.
+
+       The month labels used to be `justify-content: space-between` on a
+       full-width row while the grid was 53 fixed 8px columns (~530px),
+       left-aligned and never stretched. The two rows were therefore drawn to
+       different scales: the grid's right edge — today — landed under the 7th
+       of 13 labels, so six months of continuous work read as "dead since
+       March". The label row also sat outside the scroller, so on a phone it
+       didn't move with the grid.
+
+       Both rows now live in one scroll container inside a `width: max-content`
+       track, and the label row carries the SAME flex geometry as the grid: one
+       8px slot per week, 2px gap. Alignment is structural — there is no pitch
+       constant to keep in sync, because a label is positioned by occupying its
+       own week's slot. */
+    .heatmap-scroll { overflow-x: auto; margin-bottom: 16px; }
+    /* Horizontal padding keeps the first and last month labels, which overhang
+       their 8px slots, from being clipped. It applies to both rows at once, so
+       it cannot pull them out of register. */
+    .heatmap-track { width: max-content; padding: 0 16px; }
+    .heatmap { display: flex; gap: 2px; flex-wrap: nowrap; }
     .heatmap-month { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
     .heatmap-cell { width: 8px; height: 8px; border-radius: 2px; }
     .heatmap-cell-0 { background: var(--border); }
@@ -296,9 +315,22 @@
     .heatmap-cell-3 { background: var(--accent); opacity: 0.75; }
     .heatmap-cell-4 { background: var(--accent); opacity: 1; }
     .heatmap-labels {
-      display: flex; justify-content: space-between;
+      display: flex; gap: 2px; flex-wrap: nowrap;
       font-size: 0.82rem; color: var(--text-secondary);
       font-family: "SF Mono", ui-monospace, monospace; margin-bottom: 4px;
+    }
+    /* One slot per week column, same width and gap as .heatmap-cell. */
+    .heatmap-labelslot { width: 8px; flex-shrink: 0; position: relative; height: 20px; }
+    .heatmap-labeltext {
+      position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      white-space: nowrap;
+    }
+    /* Same convention as DateAxis: a dot at the column's true centre, so the
+       eye can draw the line from label to column without counting squares. */
+    .heatmap-labeldot {
+      position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
+      width: 3px; height: 3px; border-radius: 50%;
+      background: currentColor; opacity: 0.45;
     }
 
     /* Why the series steps up on 2026-08-14 — see .heatmap-note in the render. */
@@ -1606,19 +1638,37 @@
       }
       if (week.length) weeks.push(week);
 
+      // idx -> label. monthLabels carried an `idx` from the start and the
+      // renderer threw it away, which is why alignment was never right: the
+      // labels were spread edge-to-edge across a container the grid never
+      // filled. Now each label occupies the slot of the week it names.
+      const labelAt = {};
+      for (const m of monthLabels) labelAt[m.idx] = m.label;
+
       return html`
         <div>
-          <div class="heatmap-labels">
-            ${monthLabels.map(m => html`<span>${m.label}</span>`)}
-          </div>
-          <div class="heatmap" ref=${scrollRef} style="display: flex; gap: 2px">
-            ${weeks.map(w => html`
-              <div class="heatmap-month">
-                ${w.map(cell => html`
-                  <div class="heatmap-cell heatmap-cell-${cell.level}" title="${cell.date}: ${byDate[cell.date] || 0} prompts"></div>
+          <div class="heatmap-scroll" ref=${scrollRef}>
+            <div class="heatmap-track">
+              <div class="heatmap-labels">
+                ${weeks.map((_, i) => html`
+                  <div class="heatmap-labelslot">
+                    ${labelAt[i] ? html`
+                      <span class="heatmap-labeltext">${labelAt[i]}</span>
+                      <span class="heatmap-labeldot"></span>
+                    ` : null}
+                  </div>
                 `)}
               </div>
-            `)}
+              <div class="heatmap">
+                ${weeks.map(w => html`
+                  <div class="heatmap-month">
+                    ${w.map(cell => html`
+                      <div class="heatmap-cell heatmap-cell-${cell.level}" title="${cell.date}: ${byDate[cell.date] || 0} prompts"></div>
+                    `)}
+                  </div>
+                `)}
+              </div>
+            </div>
           </div>
           <div class="heatmap-note">
             Counts before ${CAPTURE_FIX_DAY} exclude prompts under 20

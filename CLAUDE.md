@@ -214,28 +214,36 @@ mini's email reads its **local** `sessions` table, so laptop session detail is
 missing from the Today section until `send-review.py` is refactored to
 processed tables via `GROUND_CONTROL_STORE=turso`.
 
-**The trajectory heatmap's month labels are on a different scale than the grid
-— DIAGNOSED 2026-08-12, NOT FIXED.** The data is fine; only the axis lies.
-`.heatmap-labels` (`web/index.html:298`) is `justify-content: space-between`,
+**The trajectory heatmap's month labels were on a different scale than the grid
+— FIXED 2026-08-14** (diagnosed 2026-08-12; Nico re-reported it from a
+musicforge screenshot, which is what got it built). The data was always fine;
+only the axis lied. `.heatmap-labels` was `justify-content: space-between`,
 spreading 13 month labels across the **container's full width** (~1050px),
-while `.heatmap` (`:290`) is 53 fixed columns of 8px + 2px gap = **530px**,
-left-aligned and never stretched. The grid's right edge (today) therefore lands
-at ~50% of the label row — the 7th of 13 labels, **Feb**. Six months of
-continuous work read as "dead since March." The smoking gun: `:1586` computes
-`monthLabels.push({ idx: weeks.length, … })` and `:1600` renders
+while `.heatmap` was 53 fixed columns of 8px + 2px gap = **530px**, left-aligned
+and never stretched. The grid's right edge (today) therefore landed at ~50% of
+the label row — the 7th of 13 labels, **Feb**. Six months of continuous work
+read as "dead since March." The smoking gun: the renderer computed
+`monthLabels.push({ idx: weeks.length, … })` and then rendered
 `<span>${m.label}</span>`, throwing `idx` away — alignment was never
-implemented. Second defect, same cause: the label row sits *outside* the
-`overflow-x:auto` container, so on a phone it doesn't scroll with the grid.
+implemented. Second defect, same cause: the label row sat *outside* the
+`overflow-x:auto` container, so on a phone it didn't scroll with the grid.
 
-Agreed fix (Nico approved 2026-08-12, and **keep the coloring on prompt
-count**): wrap both rows in one scroll container with a `width:max-content`
-inner div, and give the label row the **same flex geometry as the grid** — one
-8px slot per week column, `gap:2px`, labelled slots carrying absolutely-
-positioned text plus a dot at the true column centre, the convention `DateAxis`
-(`:1936`) already established for the other six charts. Alignment becomes
-structural rather than a magic 10px pitch constant. Verification is the usual
-constraint: this sandbox cannot render the app, so `node --check` plus eyes on
-prod.
+Fixed as agreed, and **the coloring stays on prompt count**: both rows now live
+inside one `.heatmap-scroll` container wrapping a `.heatmap-track`
+(`width:max-content`), and the label row carries the **same flex geometry as
+the grid** — one 8px `.heatmap-labelslot` per week column, `gap:2px`, labelled
+slots holding absolutely-positioned text plus a dot at the true column centre,
+the convention `DateAxis` already established for the other six charts. `idx`
+is finally read (`labelAt[i]`). Alignment is now **structural**: a label is
+positioned by occupying its own week's slot, so there is no pitch constant to
+keep in sync. `.heatmap-track` carries 16px of horizontal padding so the first
+and last labels, which overhang their 8px slots, aren't clipped — applied to
+both rows at once, so it can't pull them out of register.
+
+`ActivityHeatmap` has exactly one call site (the project page), so this covers
+every project at once. Verified by `node --check` over the extracted module
+plus a class-defined/class-used sweep; **this sandbox cannot render the app**,
+so the visual proof is prod.
 
 **Prompt ratings: ABANDONED 2026-08-14, don't revive it without a new idea.**
 The live `prompts` table carries `utility`, `tags`, `notes`, `outcome` and an
