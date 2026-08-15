@@ -137,6 +137,38 @@ def _():
         "daily sessions still selected by started_at in a rolling UTC day"
 
 
+@test("get_store honors an explicit backend argument over the env default")
+def _():
+    import os
+
+    from store import get_store
+
+    # turso: constructor only reads env, no connection made — safe to build
+    had_url = os.environ.get("TURSO_DATABASE_URL")
+    had_tok = os.environ.get("TURSO_AUTH_TOKEN")
+    os.environ["TURSO_DATABASE_URL"] = "libsql://test.invalid"
+    os.environ["TURSO_AUTH_TOKEN"] = "test-token"
+    try:
+        s = get_store("turso")
+        assert type(s).__name__ == "TursoKnowledgeStore", type(s).__name__
+    finally:
+        if had_url is None:
+            del os.environ["TURSO_DATABASE_URL"]
+        else:
+            os.environ["TURSO_DATABASE_URL"] = had_url
+        if had_tok is None:
+            del os.environ["TURSO_AUTH_TOKEN"]
+        else:
+            os.environ["TURSO_AUTH_TOKEN"] = had_tok
+
+    # unknown backend still raises, same as the env path
+    try:
+        get_store("nope")
+        raise AssertionError("unknown backend must raise ValueError")
+    except ValueError:
+        pass
+
+
 if __name__ == "__main__":
     failed = 0
     for name, ok, msg in _results:
