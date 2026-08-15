@@ -61,7 +61,18 @@ HTTP_MONITORS = [
     # Deep URLs, not the bare path: the shallow variant answers 200 while the
     # database behind it is down, which is the state the homepage check already
     # passed on. Adopted 2026-07-31 (byside PR #125, selected-projects PR #24).
-    ("byside", "https://by-side.net/api/health?db=1"),
+    #
+    # byside is the exception, shallow since 2026-08-14. Its database is Neon on
+    # the free tier, which autosuspends after 5 minutes idle — the same interval
+    # we poll at. So the deep check was measuring a condition it created: it
+    # proved a permanently-warm database answers, which was guaranteed, while
+    # saying nothing about the cold start a real first visitor actually hits.
+    # It also consumed 80 of byside's 100 monthly CU-hours by mid-August purely
+    # by never letting the compute sleep. A check that keeps a database awake to
+    # prove it is awake is not coverage, it is a bill.
+    # Deep coverage here needs a longer interval than the suspend window, not a
+    # deeper URL — revisit if byside ever moves off the free tier.
+    ("byside", "https://by-side.net/api/health"),
     # www, not the apex: the apex 307s to www (domain canonical), and a monitor
     # that depends on redirect-following is one setting away from a false DOWN.
     ("pianohouse", "https://www.pianohouseproject.org/api/health?db=1"),

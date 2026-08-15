@@ -66,7 +66,11 @@ TARGETS = [
     ("garm", "https://garm.prompt-labs.org/api/health?db=1", True),
     ("prompt-labs.org", "https://prompt-labs.org/api/health?db=1", True),
     ("ibuild4you", "https://ibuild4you.com/api/health", True),
-    ("byside", "https://by-side.net/api/health?db=1", True),
+    # Shallow since 2026-08-14: byside's Neon free tier autosuspends after 5
+    # minutes idle, and #/health re-polls every TARGET on each page load, so a
+    # deep check here kept the compute permanently awake on top of the 5-minute
+    # UptimeRobot poll. See scripts/uptimerobot.py for the full reasoning.
+    ("byside", "https://by-side.net/api/health", False),
     ("pianohouse", "https://www.pianohouseproject.org/api/health?db=1", True),
     ("bakerylouise", "https://bakerylouise.com/api/health", False),
     ("musicforge", "https://www.musicforge.org/api/health?db=1", True),
