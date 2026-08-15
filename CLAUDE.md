@@ -25,8 +25,8 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 - `store/` — backend-agnostic KnowledgeStore ABC + SQLite (default) and Turso implementations
 - `claude_api.py` — shared Claude API utilities, centralized env loading (.env, .env.local)
 - `synthesizer.py` — nightly: daily summaries, weekly rollups, project snapshots
-- `send-review.py` — nightly email via Resend, saves to review_snapshots
-- `generate-report.py` — bi-monthly markdown report, saves to review_snapshots
+- `send-review.py` — nightly email via Resend; reads processed tables from Turso (`get_store("turso")`); snapshot writes stay local and sync as before
+- `generate-report.py` — bi-monthly markdown report; reads processed tables from Turso (`get_store("turso")`); snapshot writes stay local and sync as before
 - `sync_to_turso.py` — pushes processed tables to Turso (no raw prompts)
 - `web/` — cloud dashboard (Preact+HTM + Vercel Python serverless), auth-protected, reads from Turso
 - `mobile/` — legacy local mobile PWA, reads from Turso directly
@@ -246,10 +246,10 @@ upstream of it. Also never explained: the laptop wrote no `review_snapshots`
 rows for Aug 10-11 despite its job running — academic now the readers are
 unloaded, but if it recurs on the mini, dig.
 
-Still open from this thread (tracked in the DB-ownership bullet below): the
-mini's email reads its **local** `sessions` table, so laptop session detail is
-missing from the Today section until `send-review.py` is refactored to
-processed tables via `GROUND_CONTROL_STORE=turso`.
+**Turso refactor DONE 2026-08-14** (tracked in the DB-ownership bullet below):
+`send-review.py` no longer reads its **local** `sessions` table, so laptop
+session detail reaches the Today section. `generate-report.py` was covered by
+the same change.
 
 **The trajectory heatmap's month labels were on a different scale than the grid
 — FIXED 2026-08-14** (diagnosed 2026-08-12; Nico re-reported it from a
@@ -467,9 +467,10 @@ run them. **Expect the daily 8am health email's #45 heartbeats to go stale
 and say so — that is the system working, not a bug to chase.** The open
 choice for Nico: re-enable the laptop readers (accepting laptop-closed =
 no email), wait for whatever the re-purposed mini becomes, or move readers
-cloud-side — and whichever machine sends next, the `send-review.py` →
-processed-tables/Turso refactor is the prerequisite for an email that sees
-all machines' work. The original split, for the record:
+cloud-side. **The prerequisite gate is met as of 2026-08-14** — the
+`send-review.py`/`generate-report.py` → Turso refactor is done, so whichever
+machine sends next, the email sees all machines' work. The original split,
+for the record:
 - *Local-data jobs* run on **every** machine, over its own DB, because raw
   prompts are machine-local by invariant and never leave. That is
   `com.promptlab.synthesizer`, plus the turso-sync leg. The laptop keeps its
@@ -488,29 +489,24 @@ machine-local per the invariant; each machine synthesizes its own prompts and
 pushes processed rows to Turso; the merge happens there; the always-on mini
 keeps the reader jobs (review email, report, cost pull) because the laptop
 being off must mean off. Nico ruled out running nightly work on the laptop
-explicitly. The build-out this implies, none of it done yet:
+explicitly. The build-out this implies:
 - Laptop gets its own `com.promptlab.synthesizer` + turso-sync LaunchAgents
   (its `/handoff` already covers most days inline).
-- `send-review.py:197,200` reads `get_raw_sessions()` — raw-tier, local-only —
-  so the mini's review email misses laptop session detail. Refactor it to
-  processed tables only, and only *then* read via `GROUND_CONTROL_STORE=turso`.
-  **The env var is the LAST step, not the first** (verified 2026-08-14): the
-  Turso backend implements the ABC by *raising* on every raw method
-  (`store/turso_store.py:700`), because Turso holds no `sessions` table by
-  invariant — so flipping the var today doesn't degrade the email, it kills the
-  job on line 197 before anything is composed. Same trap in
-  `generate-report.py:126`. **2026-08-12 raises the priority
-  and the scope:** this is not merely "misses detail" — it is why the email
-  reads "no new work" on busy days, and the same two lines carry a second,
-  independent window bug (see the review-email entry at the top of Open). Both
-  get fixed together, and note that the four promptlab plists are currently
-  **loaded on the laptop too**, so until federation is deliberate rather than
-  accidental, two machines are composing nightly reviews from two different
-  DBs.
-- `daily_summaries` is `UNIQUE(project, date)` + `INSERT OR REPLACE`
-  (`store/sqlite_store.py:328`): two machines touching one project the same
-  day = last sync clobbers the other's summary in Turso. Needs merge-on-upsert
-  or a machine column in the key before the federation is honest.
+- **FIXED 2026-08-14**: `send-review.py` and `generate-report.py` both used to
+  read `get_raw_sessions()` — raw-tier, local-only, so the mini's review email
+  missed laptop session detail and read "no new work" on busy days. Both now
+  call `get_store("turso")` directly and read only
+  `daily_summaries`/`weekly_rollups`, so the env-var-ordering trap
+  (`store/turso_store.py:700` raises on every raw method) no longer applies.
+  Note the four promptlab plists are still **loaded on the laptop too**, so
+  until federation is deliberate rather than accidental, two machines compose
+  nightly reviews from two different DBs — orthogonal to this fix.
+- `daily_summaries` clobber — **FIXED 2026-08-14**: per-machine parts table
+  (`daily_summaries_machine`) + deterministic merge at sync time
+  (`merge_summary_parts`/`sync_daily_summaries` in `sync_to_turso.py`);
+  `weekly_rollups` still has the same clobber shape, deferred until it bites;
+  machine labels come from `GROUND_CONTROL_MACHINE` in each `.env.local` (not
+  yet set on any real machine — that's a follow-up, not done by this commit).
 
 **The week-grouping SQL filed every Monday under the previous week —
 EXPRESSION FIXED 2026-08-08; DATA REPAIR APPLIED 2026-08-10.** The 207
