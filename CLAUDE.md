@@ -63,6 +63,32 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**Turso-readers refactor landed but not fully deployed — 2026-08-15,
+branch `worktree-turso-readers` pushed, PR not opened.** Code is done and
+reviewed clean (5 tasks + a final whole-branch review that caught and fixed
+a real Critical bug — `generate-report.py`'s `derive_stats` crashed on
+Turso's string-typed counts, now `int()`-coerced and pinned by a test).
+Full record: `.superpowers/sdd/turso-readers-plan/progress.md` on that
+branch. Four things still need Nico before this is actually running in
+production:
+1. Task 5's live sync verification (`sync_to_turso.py --days 3` against
+   real Turso) failed twice on a 1Password `authorization timeout` —
+   not a code problem (8/8 automated tests pass), just auth flakiness in
+   the sandbox. Retry from a terminal with 1Password unlocked:
+   `GROUND_CONTROL_MACHINE=laptop op run --env-file=.env.tpl -- .venv/bin/python sync_to_turso.py --days 3`
+2. The real laptop's `.env.local` (not the worktree) needs
+   `GROUND_CONTROL_MACHINE=laptop` appended so the actual nightly sync
+   carries a machine label — never done, deliberately, since it's outside
+   worktree scope.
+3. A real gap the final review found: nothing syncs local→Turso between
+   the 2:00am synthesizer write and the 2:30am review read, so the
+   freshest ("Today") window can still read empty even after this fix.
+   Needs a `workflow/`-level decision (wrap the review job to sync first,
+   or retime `com.promptlab.api-costs`) — out of scope for the plan/branch,
+   Nico's call.
+4. Gate-release message to the mini-decommission agent (never sent) —
+   should disclose #3 above, not just declare the gate met.
+
 **Two small follow-ups from 2026-08-14, neither urgent.**
 
 *byside's Neon bill.* The deep health poll was consuming 80 of byside's 100
@@ -822,6 +848,17 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
   bypassed, not a config annoyance to route around.
 
 ### Traps that cost real time
+
+- **`gc-read.sh`/`gc-write.sh` derive project via `basename($PWD)`, not the
+  git-common-dir fix `log-prompt.sh` got 2026-08-05.** Run either from a
+  worktree under `.claude/worktrees/<name>/` and `PROJECT` resolves to
+  `<name>`, not the real repo — `current-session`, `today-counts`, and
+  `weekly-rollup-check` all silently return nothing/zero even when the real
+  session (found under the correct project via the hook's own resolution)
+  has real prompts and commits. Hit during `/handoff` from a worktree
+  2026-08-15. Workaround: query `sessions`/`prompts`/`commits` directly by
+  id when this happens; the actual fix (mirror `log-prompt.sh`'s
+  `git rev-parse --git-common-dir` resolution in both scripts) is unstarted.
 
 - **`workflow/bin/*` and `workflow/commands/*` run from installed copies under
   `~/.claude/`, not from the repo.** A fix committed to the repo is not live
