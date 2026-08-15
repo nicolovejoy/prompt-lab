@@ -242,8 +242,11 @@ both rows at once, so it can't pull them out of register.
 
 `ActivityHeatmap` has exactly one call site (the project page), so this covers
 every project at once. Verified by `node --check` over the extracted module
-plus a class-defined/class-used sweep; **this sandbox cannot render the app**,
-so the visual proof is prod.
+plus a class-defined/class-used sweep, then **confirmed by eye on prod
+2026-08-14** (musicforge): month labels sit over their own columns in both
+directions, dots line up, and the six months that read as "dead since March"
+now read as the continuous work they were. Note that the sandbox cannot render
+the app, so the eye check is not optional here.
 
 **Prompt ratings: ABANDONED 2026-08-14, don't revive it without a new idea.**
 The live `prompts` table carries `utility`, `tags`, `notes`, `outcome` and an
@@ -309,9 +312,13 @@ Three things fell out of the same change:
 
 **The discontinuity is annotated, not smoothed.** Counts before 2026-08-14 are
 filtered and counts after are not, so every prompt-count series steps up once
-on that date. `CAPTURE_FIX_DAY` (`web/index.html:579`) + a `.heatmap-note`
-caption say so on the chart. Backfill is impossible — the dropped prompts were
-never stored. **Not yet seen on prod**; the caption needs eyes.
+on that date. `CAPTURE_FIX_DAY` + a `.heatmap-note` caption say so on the
+chart. Backfill is impossible — the dropped prompts were never stored.
+Deployed and confirmed on prod 2026-08-14.
+
+The step won't actually be visible until enough post-cutover days accumulate,
+so if a future session finds prompt counts jumping around mid-August and starts
+hunting a bug, this is the answer. That is what the caption is for.
 
 **UptimeRobot alerted nobody for six weeks — FOUND AND FIXED 2026-08-09.**
 `scripts/uptimerobot.py` declared *what* to watch and never *who to tell*, so
