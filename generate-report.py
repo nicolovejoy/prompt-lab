@@ -4,13 +4,16 @@
 import json
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from anthropic import Anthropic
 
 import heartbeat
 from claude_api import SONNET, REPO_DIR, call_claude, load_env
 from store import get_store
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "web"))
+from day_helper import lab_days_ago  # noqa: E402
 
 REPORTS_DIR = REPO_DIR / "reports"
 
@@ -28,10 +31,28 @@ REPORT_TOOL = {
 }
 
 
-def build_prompt(sessions, daily_summaries, weekly_rollups, stats, days):
-    def format_sessions(rows):
-        return chr(10).join(f"[{s['date']}] {s['project']}: {s['summary']}" for s in rows) or "(none)"
+def derive_stats(daily_summaries):
+    """Period stats from daily summaries — the processed-tier equivalent of
+    the old raw-tier period-stats reader, which counted machine-local raw
+    prompts and therefore saw only one machine's work."""
+    per_project: dict[str, dict] = {}
+    for ds in daily_summaries:
+        p = per_project.setdefault(ds["project"], {"prompts": 0, "days": set()})
+        p["prompts"] += ds.get("prompt_count") or 0
+        p["days"].add(ds["date"])
+    projects = sorted(
+        ({"name": name, "prompts": v["prompts"], "active_days": len(v["days"])}
+         for name, v in per_project.items()),
+        key=lambda p: p["prompts"], reverse=True)
+    return {
+        "total_prompts": sum(p["prompts"] for p in projects),
+        "total_sessions": sum(ds.get("session_count") or 0 for ds in daily_summaries),
+        "total_projects": len(projects),
+        "projects": projects,
+    }
 
+
+def build_prompt(daily_summaries, weekly_rollups, stats, days):
     def format_summaries(rows):
         return chr(10).join(f"[{ds['date']}] {ds['project']}: {ds['summary']}" for ds in rows) or "(none)"
 
@@ -72,10 +93,6 @@ Review period: last {days} days
 
 {format_stats(stats)}
 
-== Session summaries ({len(sessions)}) ==
-
-{format_sessions(sessions)}
-
 == Daily summaries ({len(daily_summaries)}) ==
 
 {format_summaries(daily_summaries)}{rollup_section}"""
@@ -92,7 +109,7 @@ Write a comprehensive review in Markdown format. Structure:
    - Explain technical concepts briefly — spell out acronyms, say what tools do
    - Include context: what problem was being solved, what approach was taken, what the outcome was
    - Mention blockers hit and how they were resolved
-   - If multiple sessions exist for a project, walk through them chronologically
+   - If multiple days exist for a project, walk through them chronologically
    - Include commit counts and activity days from the stats when relevant
 
 3. **Other Projects** section for projects with only 1-2 sessions — bullet points with one-line summaries
@@ -121,24 +138,29 @@ def main():
         print("Error: ANTHROPIC_API_KEY not found. Set it in .env.local", file=sys.stderr)
         sys.exit(1)
 
-    store = get_store()
-    since_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-    sessions = store.get_raw_sessions(since_days=days)
+    # Merged store: processed tables in Turso carry every machine's
+    # summaries. The raw tier is machine-local and must never be read here —
+    # a report composed from it silently omits every other machine's work
+    # while looking authoritative. Turso unreachable raises and kills the
+    # run; the #45 heartbeat catches the stale artifact.
+    store = get_store("turso")
+    since_date = lab_days_ago(days)
     daily_summaries = store.get_daily_summaries(since=since_date)
     weekly_rollups = store.get_weekly_rollups(since=since_date)
-    stats = store.get_period_stats(days)
     store.close()
 
-    if not sessions and not daily_summaries:
-        print("No sessions or summaries found for the period.")
+    if not daily_summaries and not weekly_rollups:
+        print("No summaries or rollups found for the period.")
         return
 
-    system, user_msg = build_prompt(sessions, daily_summaries, weekly_rollups, stats, days)
+    stats = derive_stats(daily_summaries)
+
+    system, user_msg = build_prompt(daily_summaries, weekly_rollups, stats, days)
 
     if dry_run:
         print(f"Would generate {days}-day report")
-        print(f"  Sessions: {len(sessions)}")
         print(f"  Daily summaries: {len(daily_summaries)}")
+        print(f"  Weekly rollups: {len(weekly_rollups)}")
         print(f"  Stats: {stats['total_prompts']} prompts, {stats['total_sessions']} sessions")
         print(f"\nPrompt length: {len(user_msg)} chars")
         return
