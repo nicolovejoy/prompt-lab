@@ -216,19 +216,18 @@ and all of it filed in `~/src/.handoff` (new channels
 FIXED 2026-08-12.** Full diagnosis in `docs/history.md` / git history
 (`877ea15`, `c332ac9`); what happened and what remains:
 
-*Bug A, the window — FIXED in code.* The job fires at 2:30am and asked for
-**today**, structurally empty at that hour, and picked sessions by `started_at`
-in a rolling UTC day, so raconte's 31-hour session never appeared on the day it
-worked. Now: `review_windows()` in `send-review.py` makes "Today" mean
-**yesterday's completed lab-day** (Pacific), and sessions are selected by
-**overlap** with that day's UTC bounds via `get_raw_sessions(overlap_utc=…)`
-(new kwarg, all three store homes) + `day_helper.lab_day_bounds_utc` (DST-
-correct). Pinned by `scripts/test_send_review.py` (5 tests, incl. the raconte
-case and a source grep that fails if the run-date query returns). Verified
-against the laptop DB: the exact failure day (Aug 11) now yields 4 sessions +
-7 summaries where the old code got 0/0. **Pulled on the mini same day** so
-tonight's 2:30am run uses it — the real proof is tomorrow morning's email
-naming Aug 12 work; check it.
+*Bug A, the window — FIXED in code, 2026-08-12; window logic survived the
+2026-08-14 Turso refactor below, raw-session selection did not.* The job
+fires at 2:30am and asked for **today**, structurally empty at that hour, so
+`review_windows()` in `send-review.py` makes "Today" mean **yesterday's
+completed lab-day** (Pacific) — that part is unchanged today. What's gone:
+`send-review.py` no longer selects raw sessions at all (Task 2 of the Turso
+refactor removed the read entirely; it composes from `daily_summaries`/
+`weekly_rollups` instead — see the "Turso refactor DONE" line below). The
+overlap-by-time-range logic that originally fixed raconte's 31-hour session
+(`get_raw_sessions(overlap_utc=…)` + `day_helper.lab_day_bounds_utc`,
+DST-correct) still exists and is still tested, but only at the store layer
+(`scripts/test_send_review.py`, 7 tests) — nothing above it calls it anymore.
 
 *Bug B, delivery — RESOLVED by unloading, not by repairing the sender.* The
 laptop's 33 Resend 403s came from its stale Jun 6 `.env.local` using the

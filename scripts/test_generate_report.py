@@ -71,6 +71,31 @@ def _():
     assert st["projects"][0]["name"] == "musicforge", st["projects"]
 
 
+@test("derive_stats coerces Turso's string counts instead of crashing")
+def _():
+    # Turso returns every integer column as a JSON string over its HTTP API
+    # (store/turso_store.py:840; sync_to_turso.py's merge_summary_parts does
+    # the same int(...) coercion at the same boundary). A row shaped like a
+    # real Turso read must not raise TypeError on `+=` or string-concatenate.
+    mod = _load_generate_report()
+    rows = [
+        {"project": "raconte", "date": "2026-08-11", "prompt_count": "20",
+         "session_count": "2", "commit_count": "1"},
+        {"project": "raconte", "date": "2026-08-12", "prompt_count": "4",
+         "session_count": "1", "commit_count": "0"},
+        {"project": "musicforge", "date": "2026-08-12", "prompt_count": "27",
+         "session_count": "3", "commit_count": "2"},
+    ]
+    st = mod.derive_stats(rows)
+    assert st["total_prompts"] == 51, st
+    assert isinstance(st["total_prompts"], int), st
+    assert st["total_sessions"] == 6, st
+    assert isinstance(st["total_sessions"], int), st
+    by_name = {p["name"]: p for p in st["projects"]}
+    assert by_name["raconte"] == {"name": "raconte", "prompts": 24, "active_days": 2}
+    assert isinstance(by_name["raconte"]["prompts"], int), by_name
+
+
 @test("derive_stats of nothing is zeros, not a crash")
 def _():
     mod = _load_generate_report()

@@ -38,7 +38,7 @@ def derive_stats(daily_summaries):
     per_project: dict[str, dict] = {}
     for ds in daily_summaries:
         p = per_project.setdefault(ds["project"], {"prompts": 0, "days": set()})
-        p["prompts"] += ds.get("prompt_count") or 0
+        p["prompts"] += int(ds.get("prompt_count") or 0)
         p["days"].add(ds["date"])
     projects = sorted(
         ({"name": name, "prompts": v["prompts"], "active_days": len(v["days"])}
@@ -46,7 +46,7 @@ def derive_stats(daily_summaries):
         key=lambda p: p["prompts"], reverse=True)
     return {
         "total_prompts": sum(p["prompts"] for p in projects),
-        "total_sessions": sum(ds.get("session_count") or 0 for ds in daily_summaries),
+        "total_sessions": sum(int(ds.get("session_count") or 0) for ds in daily_summaries),
         "total_projects": len(projects),
         "projects": projects,
     }
