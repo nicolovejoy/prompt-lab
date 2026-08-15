@@ -791,6 +791,14 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
   diff-sweep: `for f in workflow/bin/* ; do diff -q "$f" ~/.claude/bin/$(basename "$f"); done`
   (and the same for commands) — on BOTH machines.
 
+- **`tail -r` is BSD-only; CI is Linux.** `log-prompt.sh` reversed the
+  transcript with `tail -r`, which works on the Macs it actually runs on and
+  silently produces nothing everywhere else — so `prompts.context` was empty on
+  any Linux host and nobody knew, because no test asserted on the column until
+  2026-08-14. The hook now detects (`tail -r /dev/null` → else `tac`). The
+  general lesson: a macOS-only shell idiom in `workflow/` is a latent bug the
+  moment the code touches a Pi (phrpi is Debian) or CI, and it fails by
+  producing empty output rather than an error.
 - **Turso returns `SUM()`/`COUNT()` aggregates as JSON strings.** An explicit `int()`
   coalesce is load-bearing — without it chart math concatenates instead of adding.
 - **UptimeRobot v2's `custom_uptime_ratio` is a string** (`"100.000-99.980-99.990"`,

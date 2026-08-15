@@ -146,13 +146,24 @@ fi
 # than the proposal being approved. Now the whole message is taken and the
 # TRAILING 2000 chars kept, because a message ends with its ask.
 #
-# base64 is doing real work here: `tail -r` reverses the transcript so the
+# base64 is doing real work here: reversing the transcript makes the
 # first record out is the most recent, but a message spans many lines, so
 # `head -1` on raw text truncates it. Encoding each message to a single line
 # makes "first record" and "first line" the same thing again.
+#
+# `tail -r` is BSD-only. It works on the Macs this hook actually runs on, so
+# the empty context it produced everywhere else went unnoticed for months —
+# nothing asserted on the column until 2026-08-14, and CI is Linux. GNU spells
+# it `tac`. Detect once rather than assume the platform: phrpi is Debian.
+if tail -r /dev/null >/dev/null 2>&1; then
+    REVERSE="tail -r"
+else
+    REVERSE="tac"
+fi
+
 CONTEXT=""
 if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-    CONTEXT_B64=$(tail -r "$TRANSCRIPT_PATH" 2>/dev/null | \
+    CONTEXT_B64=$($REVERSE "$TRANSCRIPT_PATH" 2>/dev/null | \
         jq -r 'select(.type == "assistant")
                | [.message.content[]? | select(.type == "text") | .text]
                | join("\n")
