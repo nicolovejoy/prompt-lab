@@ -237,22 +237,73 @@ structural rather than a magic 10px pitch constant. Verification is the usual
 constraint: this sandbox cannot render the app, so `node --check` plus eyes on
 prod.
 
-**Prompt ratings: the mechanism exists and has never once been used.** The
-`prompts` table carries `utility`, `tags`, `notes`, `outcome`, `/handoff` is
-supposed to offer rating, and `/readup` surfaces utility-4+ prompts from past
-sessions. **0 of 1046 prompts on the laptop are rated.** So the whole
-high-utility-prompt loop is dead code paths over an empty column. Nico wants to
-mark the prompts that turned out to be good ones — he raised it 2026-08-12 —
-and the lesson from the zero is that **retrospective batch-rating at handoff
-time does not work**, because by then you cannot remember which prompt was the
-good one. Anything built here has to capture in the moment. Not designed; needs
-its own session.
+**Prompt ratings: ABANDONED 2026-08-14, don't revive it without a new idea.**
+The live `prompts` table carries `utility`, `tags`, `notes`, `outcome` and an
+`idx_prompts_utility` index; **0 of 1318 rows have ever been rated**, and the
+columns are not even declared in `store/` (they exist only in the live DB and
+in two test fixtures). Correcting the record: earlier notes claimed `/handoff`
+offers rating and `/readup` surfaces utility-4+ prompts — **neither has ever
+existed**. `grep -rn "utility" workflow/` returns exactly one hit, a comment in
+`log-prompt.sh`. So this was never dead code over an empty column; it was an
+empty column with no code at all, and the same claim is in the *global*
+`~/.claude/CLAUDE.md` (lines 22, 27-29) describing `/prompts` and rating flows
+that don't exist. The columns stay (harmless, indexed); the aspiration is
+dropped. If it ever returns, the two ideas worth starting from are a one-word
+in-the-moment marker (a `/good` command stamping the previous prompt — slash
+commands are already filtered out of the table, so it can't pollute its own
+data) or deriving utility from outcome rather than asking a human at all.
 
-Worth checking while there: today-counts read **1 prompt for prompt-lab** on a
-day with at least six user turns in this repo, and mid-turn interjections were
-absent from the `prompts` table minutes after being sent. Possibly a lag,
-possibly `log-prompt.sh` only sees turn-initial prompts. Unverified, but it
-would mean the raw tier undercounts, which poisons everything downstream.
+**The raw tier undercounted prompts by design — FIXED 2026-08-14.** The old
+guess (that `log-prompt.sh` only sees turn-initial prompts) was **wrong**: it
+runs on `UserPromptSubmit`, which fires per submitted message, mid-turn
+interjections included. The real cause was a write-time filter,
+`[ ${#PROMPT} -lt 20 ] && exit 0`. Every prompt under 20 characters was
+silently dropped — "yes", "go ahead", "ship it". The fingerprint was exact:
+`min(length(prompt))` over the whole table was **20**, with **zero** rows
+below. That is a filter, not a distribution.
+
+The damage was never the missing rows, it was the **shape** of the loss: a day
+spent steering is mostly short prompts and rendered as a quiet day, while a day
+spent writing specs rendered as busy. `daily_summaries.prompt_count` feeds the
+trajectory heatmap and the KPI tiles, so the charts presented a filtered signal
+as an activity record — the repo's signature failure again. It is also what
+made "1 prompt for prompt-lab" on a six-turn day look like a lag.
+
+Now: **store everything, label it, select at read time.** `prompts.kind` is
+written by the hook from `scripts/prompt_kind.py` — the single implementation,
+shared with `scripts/backfill_prompt_kind.py` so live rules and backfill rules
+can't drift. Five kinds: `approval`, `correction`, `question`, `command` (a
+bare `/slash` invocation), `spec` (everything else). **No rule consults
+length**, pinned by a test that pads a prompt and asserts the label doesn't
+move. A label is recomputable; a discarded row is not — that asymmetry is the
+whole design, so misclassification is cheap and `--all --apply` relabels
+everything.
+
+Backfill applied to all 1353 existing rows: 81% spec, 17% question, 2%
+correction, and — the diagnosis confirming itself — **0 approvals**, because
+approvals were exactly what the filter had been deleting.
+
+Three things fell out of the same change:
+- **`prompts.context` now holds the whole last assistant message, trailing 2000
+  chars** (was `head -1 | head -c 500` — the first *line*, averaging 124 chars,
+  usually a lead-in rather than the proposal). Paired with `kind='approval'`
+  this is what answers "what did I actually say yes to?". `base64` in the jq
+  pipeline is load-bearing: `tail -r` makes the first *record* the most recent,
+  but a message spans lines, so encoding each to one line makes "first record"
+  and "first line" agree again.
+- **A failed insert is no longer silent.** It used to go to `/dev/null`; it now
+  appends to `~/.claude/hooks/log-prompt-errors.log`. The hook also ALTERs
+  `prompts` defensively, because the table predates `store/`'s migrate path
+  (the retired Flask dashboard created it) and bash never calls `migrate()` —
+  without that, a DB lacking `kind` would fail *every* insert silently.
+- `printf` replaced `echo` when escaping, since a prompt can now legitimately
+  be exactly `-n` or `-e`.
+
+**The discontinuity is annotated, not smoothed.** Counts before 2026-08-14 are
+filtered and counts after are not, so every prompt-count series steps up once
+on that date. `CAPTURE_FIX_DAY` (`web/index.html:579`) + a `.heatmap-note`
+caption say so on the chart. Backfill is impossible — the dropped prompts were
+never stored. **Not yet seen on prod**; the caption needs eyes.
 
 **UptimeRobot alerted nobody for six weeks — FOUND AND FIXED 2026-08-09.**
 `scripts/uptimerobot.py` declared *what* to watch and never *who to tell*, so
@@ -388,10 +439,15 @@ being off must mean off. Nico ruled out running nightly work on the laptop
 explicitly. The build-out this implies, none of it done yet:
 - Laptop gets its own `com.promptlab.synthesizer` + turso-sync LaunchAgents
   (its `/handoff` already covers most days inline).
-- `send-review.py:174-176` reads `get_raw_sessions()` — raw-tier, local-only —
+- `send-review.py:197,200` reads `get_raw_sessions()` — raw-tier, local-only —
   so the mini's review email misses laptop session detail. Refactor it to
-  processed tables only, read via `GROUND_CONTROL_STORE=turso` (the Turso
-  store backend already implements the ABC). **2026-08-12 raises the priority
+  processed tables only, and only *then* read via `GROUND_CONTROL_STORE=turso`.
+  **The env var is the LAST step, not the first** (verified 2026-08-14): the
+  Turso backend implements the ABC by *raising* on every raw method
+  (`store/turso_store.py:700`), because Turso holds no `sessions` table by
+  invariant — so flipping the var today doesn't degrade the email, it kills the
+  job on line 197 before anything is composed. Same trap in
+  `generate-report.py:126`. **2026-08-12 raises the priority
   and the scope:** this is not merely "misses detail" — it is why the email
   reads "no new work" on busy days, and the same two lines carry a second,
   independent window bug (see the review-email entry at the top of Open). Both

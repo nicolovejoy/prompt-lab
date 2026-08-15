@@ -301,6 +301,12 @@
       font-family: "SF Mono", ui-monospace, monospace; margin-bottom: 4px;
     }
 
+    /* Why the series steps up on 2026-08-14 — see .heatmap-note in the render. */
+    .heatmap-note {
+      margin-top: 6px; font-size: 0.75rem; line-height: 1.4;
+      color: var(--text-secondary); opacity: 0.8; max-width: 60ch;
+    }
+
     .sub-tabs {
       display: flex; gap: 2px; margin-bottom: 18px;
       background: var(--card); padding: 3px; border-radius: var(--radius);
@@ -565,6 +571,12 @@
     // The three metrics #/activity can decompose (issue #31). Declared here
     // because parseHash validates against it.
     const ACTIVITY_METRICS = ['sessions', 'prompts', 'commits'];
+
+    // The day log-prompt.sh stopped discarding prompts under 20 characters.
+    // Every prompt-count series has a one-off step up here that is a capture
+    // change, not a change in how much work happened. Annotated rather than
+    // smoothed: an unexplained jump costs more than a footnote.
+    const CAPTURE_FIX_DAY = '2026-08-14';
 
     function parseHash() {
       const hash = (location.hash || '#/').slice(1);
@@ -1607,6 +1619,14 @@
                 `)}
               </div>
             `)}
+          </div>
+          <div class="heatmap-note">
+            Counts before ${CAPTURE_FIX_DAY} exclude prompts under 20
+            characters, which the logger discarded at write time. Short prompts
+            are mostly steering — "yes", "go ahead" — so supervision-heavy days
+            are undercounted before that date and complete after it. The step is
+            the fix, not a change in activity. Not backfillable: the dropped
+            prompts were never stored.
           </div>
         </div>
       `;

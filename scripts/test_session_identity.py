@@ -100,24 +100,25 @@ class Env:
         e["HOME"] = str(self.home)
         return e
 
-    def transcript(self, session_uuid: str) -> Path:
+    def transcript(self, session_uuid: str, reply: str = "prior reply") -> Path:
         p = self.transcripts / f"{session_uuid}.jsonl"
         p.write_text(json.dumps({
             "type": "assistant", "sessionId": session_uuid,
-            "message": {"content": [{"type": "text", "text": "prior reply"}],
+            "message": {"content": [{"type": "text", "text": reply}],
                         "usage": {"input_tokens": 10}},
         }) + "\n")
         return p
 
     def submit(self, prompt: str, *, session_uuid: str | None = None,
                include_session_id: bool = True, transcript: bool = True,
-               cwd: Path | None = None) -> None:
+               cwd: Path | None = None, reply: str = "prior reply") -> None:
         # cwd overrides the repo root, for the project-resolution cases.
         where = cwd or self.cwd
         payload = {"prompt": prompt, "cwd": str(where)}
         if session_uuid:
             if transcript:
-                payload["transcript_path"] = str(self.transcript(session_uuid))
+                payload["transcript_path"] = str(
+                    self.transcript(session_uuid, reply))
             if include_session_id:
                 payload["session_id"] = session_uuid
         subprocess.run([str(HOOK)], input=json.dumps(payload), text=True,
@@ -332,6 +333,69 @@ def test_project_is_the_repo(tmp: Path) -> None:
           e.q("SELECT project FROM prompts ORDER BY id DESC LIMIT 1")[0][0], PROJECT)
 
 
+def test_short_prompts_are_stored_and_labelled(tmp: Path) -> None:
+    """The hook must store every prompt and label it, never drop it.
+
+    A `${#PROMPT} -lt 20` filter used to sit at the top of log-prompt.sh. It
+    deleted the entire steering half of the record — "yes", "go ahead", "no,
+    the other one" — so supervising-heavy days rendered as idle ones in a chart
+    that claimed to show activity. Its fingerprint survived in the live DB:
+    min(length(prompt)) was exactly 20, with zero rows below.
+    """
+    print("\n11. short prompts are stored, not dropped, and carry a kind")
+    e = Env(tmp)
+
+    cases = [("yes", "approval"), ("no", "correction"),
+             ("why?", "question"), ("fix", "spec")]
+    for text, _ in cases:
+        e.submit(text, session_uuid="uuid-k")
+
+    check("every short prompt stored",
+          e.q("SELECT COUNT(*) FROM prompts")[0][0], len(cases))
+    check("a 2-char prompt survives",
+          e.q("SELECT COUNT(*) FROM prompts WHERE prompt='no'")[0][0], 1)
+
+    for text, want in cases:
+        check(f"kind of {text!r}",
+              e.q("SELECT kind FROM prompts WHERE prompt=?", (text,))[0][0], want)
+
+    # The classifier is a label, not a gate: an unclassifiable prompt is still
+    # stored. Empty-string is the only thing the hook is allowed to discard.
+    e.submit("🎉", session_uuid="uuid-k")
+    check("emoji-only prompt still stored",
+          e.q("SELECT COUNT(*) FROM prompts WHERE prompt='🎉'")[0][0], 1)
+
+
+def test_context_captures_the_whole_last_reply(tmp: Path) -> None:
+    """`kind='approval'` is only useful if context says what was approved.
+
+    The capture used to be `head -1 | head -c 500` — the first LINE of the last
+    assistant message, averaging 124 chars across the live table, which is
+    usually a lead-in rather than the proposal being agreed to. The ask lives at
+    the END of a message, so the trailing 2000 chars are what's kept.
+    """
+    print("\n12. context keeps the whole last reply, tail-anchored")
+    e = Env(tmp)
+
+    reply = "## Design\nsome middle reasoning\nShall I go ahead with this?"
+    e.submit("yes", session_uuid="uuid-c", reply=reply)
+    ctx = e.q("SELECT context FROM prompts ORDER BY id DESC LIMIT 1")[0][0]
+
+    check("keeps the final line (the actual ask)",
+          ctx.endswith("Shall I go ahead with this?"), True)
+    check("keeps the middle, not just line one",
+          "some middle reasoning" in ctx, True)
+    check("keeps the opening line too", ctx.startswith("## Design"), True)
+
+    # Longer than the cap: the tail wins, because that's where the ask is.
+    long_reply = ("filler line\n" * 400) + "FINAL ASK HERE?"
+    e.submit("ok", session_uuid="uuid-c", reply=long_reply)
+    ctx2 = e.q("SELECT context FROM prompts ORDER BY id DESC LIMIT 1")[0][0]
+    check("over-long reply keeps its tail",
+          ctx2.endswith("FINAL ASK HERE?"), True)
+    check("over-long reply is capped", len(ctx2) <= 2000, True)
+
+
 def main() -> int:
     # The hook is bash and shells out; skip rather than fail red if the runner
     # lacks a dependency. A skip is honest; a red CI for an env reason is noise.
@@ -351,6 +415,8 @@ def main() -> int:
         test_gc_read_contract,
         test_summary_does_not_end,
         test_project_is_the_repo,
+        test_short_prompts_are_stored_and_labelled,
+        test_context_captures_the_whole_last_reply,
     ]
     for t in tests:
         with tempfile.TemporaryDirectory() as d:

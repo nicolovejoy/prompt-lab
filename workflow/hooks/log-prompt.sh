@@ -15,8 +15,20 @@ if [ -n "$CLAUDE_HOOK_DEBUG" ]; then
     echo "$(date): Prompt length: ${#PROMPT}, first 50: ${PROMPT:0:50}" >> "$DEBUG_LOG"
 fi
 
-# Skip if empty or too short
-if [ -z "$PROMPT" ] || [ ${#PROMPT} -lt 20 ]; then
+# Skip only genuinely empty input.
+#
+# There used to be a `${#PROMPT} -lt 20` filter here. It threw away every short
+# prompt — "yes", "go ahead", "ship it", "no, the other one" — which is most of
+# what steering a session looks like. The damage wasn't the missing rows, it
+# was the SHAPE of the loss: days spent supervising read as quiet, days spent
+# writing specs read as busy, and prompt_count feeds the trajectory heatmap and
+# the KPI tiles. The charts presented a filtered signal as an activity record.
+# Its fingerprint was still in the data on 2026-08-14: min(length(prompt)) over
+# the whole table was exactly 20, with zero rows below.
+#
+# Everything is stored now and labelled instead (see `kind` below), because a
+# label can be recomputed and a discarded row cannot.
+if [ -z "$PROMPT" ]; then
     exit 0
 fi
 
@@ -125,17 +137,49 @@ if [ -n "$SESSION_ID" ]; then
     echo "$SESSION_ID" > ~/.claude/state/current-session-"$PROJECT" 2>/dev/null
 fi
 
-# Extract last assistant response from transcript as context
+# Extract the last assistant response as context. Paired with kind='approval'
+# this is what answers "what did I actually say yes to?" — the prompt alone is
+# the word "yes", the answer is in the message above it.
+#
+# This used to be `head -1 | head -c 500`, which kept the first LINE of the
+# last message: an average of 124 characters, usually a lead-in sentence rather
+# than the proposal being approved. Now the whole message is taken and the
+# TRAILING 2000 chars kept, because a message ends with its ask.
+#
+# base64 is doing real work here: `tail -r` reverses the transcript so the
+# first record out is the most recent, but a message spans many lines, so
+# `head -1` on raw text truncates it. Encoding each message to a single line
+# makes "first record" and "first line" the same thing again.
 CONTEXT=""
 if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-    # Get last assistant text, excluding system reminders (use tail -r for macOS)
-    CONTEXT=$(tail -r "$TRANSCRIPT_PATH" 2>/dev/null | \
-        jq -r 'select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text' 2>/dev/null | \
-        grep -v '^<system-reminder>' | \
-        grep -v '^<thinking>' | \
-        head -1 | \
-        head -c 500)
+    CONTEXT_B64=$(tail -r "$TRANSCRIPT_PATH" 2>/dev/null | \
+        jq -r 'select(.type == "assistant")
+               | [.message.content[]? | select(.type == "text") | .text]
+               | join("\n")
+               | select(length > 0)
+               | @base64' 2>/dev/null | \
+        head -1)
+    if [ -n "$CONTEXT_B64" ]; then
+        CONTEXT=$(printf '%s' "$CONTEXT_B64" | base64 --decode 2>/dev/null | \
+            grep -v '^<system-reminder>' | \
+            grep -v '^<thinking>' | \
+            tail -c 2000)
+    fi
 fi
+
+# Coarse label so selection happens at read time instead of at write time.
+# One implementation lives in scripts/prompt_kind.py and is shared with
+# scripts/backfill_prompt_kind.py, so the live rules and the backfill rules
+# cannot drift apart. This file is normally reached through a symlink in
+# ~/.claude/hooks, so resolve to the real repo before looking for it.
+HOOK_REAL=$(readlink -f "$0" 2>/dev/null || echo "$0")
+KIND_PY="$(dirname "$HOOK_REAL")/../../scripts/prompt_kind.py"
+KIND=""
+if [ -f "$KIND_PY" ]; then
+    KIND=$(printf '%s' "$PROMPT" | python3 "$KIND_PY" 2>/dev/null)
+fi
+# An unreachable classifier must never cost us the row — log unlabelled.
+[ -z "$KIND" ] && KIND="spec"
 if [ -n "$CLAUDE_HOOK_DEBUG" ]; then
     echo "$(date): Context length: ${#CONTEXT}" >> "$DEBUG_LOG"
 fi
@@ -143,18 +187,37 @@ fi
 # Capture hostname for multi-machine tracking
 MACHINE=$(hostname -s)
 
-# Escape single quotes for SQL
-PROMPT_ESCAPED=$(echo "$PROMPT" | sed "s/'/''/g")
-CONTEXT_ESCAPED=$(echo "$CONTEXT" | sed "s/'/''/g")
+# Escape single quotes for SQL. printf rather than echo: with the length filter
+# gone, a prompt can now legitimately be exactly "-n" or "-e", which echo would
+# swallow as a flag instead of storing.
+PROMPT_ESCAPED=$(printf '%s' "$PROMPT" | sed "s/'/''/g")
+CONTEXT_ESCAPED=$(printf '%s' "$CONTEXT" | sed "s/'/''/g")
 
 # Auto-register project if not already known
-sqlite3 ~/.claude/prompt-history.db "INSERT OR IGNORE INTO projects (name) VALUES ('$PROJECT');" 2>/dev/null
+sqlite3 "$DB" "INSERT OR IGNORE INTO projects (name) VALUES ('$PROJECT');" 2>/dev/null
 
-# Insert into database (utility=NULL means unrated)
+# The `prompts` table predates store/sqlite_store.py's migrate path (it was
+# created by the Flask dashboard, retired 2026-05-28), and this hook is bash —
+# it never calls migrate(). So add the column defensively. Without this, on any
+# DB lacking `kind` EVERY insert below fails and every prompt is lost silently,
+# which is precisely the failure shape this repo keeps re-learning.
+# Already-exists is an expected error, not a problem.
+sqlite3 "$DB" "ALTER TABLE prompts ADD COLUMN kind TEXT;" 2>/dev/null
+
+# Insert into database
 if [ -n "$SESSION_ID" ]; then
-    sqlite3 ~/.claude/prompt-history.db "INSERT INTO prompts (project, prompt, session_id, context, hostname) VALUES ('$PROJECT', '$PROMPT_ESCAPED', $SESSION_ID, '$CONTEXT_ESCAPED', '$MACHINE');" 2>/dev/null
+    INSERT_ERR=$(sqlite3 "$DB" "INSERT INTO prompts (project, prompt, session_id, context, hostname, kind) VALUES ('$PROJECT', '$PROMPT_ESCAPED', $SESSION_ID, '$CONTEXT_ESCAPED', '$MACHINE', '$KIND');" 2>&1 >/dev/null)
 else
-    sqlite3 ~/.claude/prompt-history.db "INSERT INTO prompts (project, prompt, context, hostname) VALUES ('$PROJECT', '$PROMPT_ESCAPED', '$CONTEXT_ESCAPED', '$MACHINE');" 2>/dev/null
+    INSERT_ERR=$(sqlite3 "$DB" "INSERT INTO prompts (project, prompt, context, hostname, kind) VALUES ('$PROJECT', '$PROMPT_ESCAPED', '$CONTEXT_ESCAPED', '$MACHINE', '$KIND');" 2>&1 >/dev/null)
+fi
+
+# A failed insert used to go to /dev/null, so a broken hook and a quiet day
+# looked identical from the data. Record it unconditionally — this log existing
+# at all is the alarm.
+if [ -n "$INSERT_ERR" ]; then
+    mkdir -p ~/.claude/hooks 2>/dev/null
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) prompt insert failed [$PROJECT]: $INSERT_ERR" \
+        >> ~/.claude/hooks/log-prompt-errors.log
 fi
 
 # === Context Usage Alert ===

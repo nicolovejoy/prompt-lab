@@ -283,6 +283,13 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 "ON sessions(claude_session_id)"
             )
         self._add_column_if_missing("prompts", "hostname", "TEXT")
+        # Coarse label written by log-prompt.sh (approval/correction/question/
+        # spec) so selection happens at read time. It replaced a write-time
+        # `length < 20` filter that silently discarded every short prompt and
+        # made steering-heavy days look idle. See scripts/prompt_kind.py.
+        # The hook is bash and never calls migrate(), so it ALTERs defensively
+        # too — this line is for store-only consumers.
+        self._add_column_if_missing("prompts", "kind", "TEXT")
         self._add_column_if_missing("projects", "github_url", "TEXT")
         self._add_column_if_missing("projects", "site_url", "TEXT")
 
