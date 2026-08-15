@@ -13,7 +13,7 @@ from claude_api import SONNET, call_claude, load_env
 from store import get_store
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "web"))
-from day_helper import lab_day_bounds_utc, lab_days_ago  # noqa: E402
+from day_helper import lab_days_ago  # noqa: E402
 
 
 def review_windows():
@@ -22,16 +22,10 @@ def review_windows():
     "Today" is *yesterday's completed lab-day*, never the run date: the job
     fires at 2:30am, when the run date structurally has no summaries yet —
     asking for "today" is how the email said "no new work" on days with 25
-    prompts across 4 projects. Sessions for that day are selected by overlap
-    with its UTC bounds, so a session that started the day before but ran
-    into it (raconte's 31-hour run) still counts.
+    prompts across 4 projects.
     """
-    review_day = lab_days_ago(1)
-    day_start_utc, day_end_utc = lab_day_bounds_utc(review_day)
     return {
-        "review_day": review_day,
-        "day_start_utc": day_start_utc,
-        "day_end_utc": day_end_utc,
+        "review_day": lab_days_ago(1),
         "week_since": lab_days_ago(7),
     }
 
@@ -51,12 +45,13 @@ REVIEW_TOOL = {
 }
 
 
-def build_prompt(daily_sessions, daily_summaries_1d, weekly_sessions, weekly_summaries, weekly_rollups, is_weekly):
-    def format_sessions(sessions):
-        return chr(10).join(f"[{s['date']}] {s['project']}: {s['summary']}" for s in sessions) or "(none)"
-
+def build_prompt(daily_summaries_1d, weekly_summaries, weekly_rollups, is_weekly):
     def format_summaries(summaries):
-        return chr(10).join(f"[{ds['date']}] {ds['project']}: {ds['summary']}" for ds in summaries) or "(none)"
+        lines = []
+        for ds in summaries:
+            counts = f" ({ds.get('prompt_count') or 0} prompts, {ds.get('session_count') or 0} sessions)"
+            lines.append(f"[{ds['date']}] {ds['project']}{counts}: {ds['summary']}")
+        return chr(10).join(lines) or "(none)"
 
     def format_rollups(rollups):
         if not rollups:
@@ -79,16 +74,10 @@ def build_prompt(daily_sessions, daily_summaries_1d, weekly_sessions, weekly_sum
 
 == Last 24 hours ==
 
-Session summaries ({len(daily_sessions)}):
-{format_sessions(daily_sessions)}
-
 Daily summaries ({len(daily_summaries_1d)}):
 {format_summaries(daily_summaries_1d)}
 
 == This week (7 days) ==
-
-Session summaries ({len(weekly_sessions)}):
-{format_sessions(weekly_sessions)}
 
 Daily summaries ({len(weekly_summaries)}):
 {format_summaries(weekly_summaries)}{rollup_section}"""
@@ -193,21 +182,25 @@ def main():
     today_str = today.strftime("%Y-%m-%d")
     w = review_windows()
 
-    store = get_store()
-    daily_sessions = store.get_raw_sessions(
-        overlap_utc=(w["day_start_utc"], w["day_end_utc"]))
-    daily_summaries_1d = store.get_daily_summaries(since=w["review_day"])
-    weekly_sessions = store.get_raw_sessions(since_days=7)
+    # Reads come from the merged store: processed tables in Turso carry every
+    # machine's summaries, so the email covers all work no matter which
+    # machine sends it. The raw tier is machine-local by invariant and must
+    # never be read here — that's how the email said "no new work" on busy
+    # days. Turso being unreachable raises and kills the run: no email, a
+    # stale artifact, and the #45 heartbeat catches it — never a confidently
+    # empty email.
+    store = get_store("turso")
+    daily_summaries_1d = store.get_daily_summaries(
+        since=w["review_day"], until=w["review_day"])
     weekly_summaries = store.get_daily_summaries(since=w["week_since"])
     weekly_rollups = store.get_weekly_rollups(since=w["week_since"])
     store.close()
 
-    if not weekly_sessions and not weekly_summaries:
-        print("No sessions or summaries found for the period.")
+    if not weekly_summaries and not weekly_rollups:
+        print("No summaries or rollups found for the period.")
         return
 
-    system, user_msg = build_prompt(daily_sessions, daily_summaries_1d,
-                                     weekly_sessions, weekly_summaries,
+    system, user_msg = build_prompt(daily_summaries_1d, weekly_summaries,
                                      weekly_rollups, is_weekly)
 
     client = Anthropic()

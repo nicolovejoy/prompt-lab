@@ -122,10 +122,7 @@ def _():
     week_since = (lab_today() - timedelta(days=7)).isoformat()
     assert w["review_day"] == yesterday, f"review_day={w['review_day']}, want {yesterday}"
     assert w["week_since"] == week_since, f"week_since={w['week_since']}, want {week_since}"
-    # bounds must be the UTC window of that lab-day, start < end
-    assert w["day_start_utc"] < w["day_end_utc"]
-    assert w["day_start_utc"].startswith(w["review_day"]), \
-        f"day_start_utc {w['day_start_utc']} not on review_day"
+    assert "day_start_utc" not in w, "UTC bounds should be gone with the raw-session read"
 
 
 @test("send-review no longer queries daily summaries with the run date")
@@ -133,8 +130,28 @@ def _():
     src = (ROOT / "send-review.py").read_text()
     assert "get_daily_summaries(since=today_str)" not in src, \
         "the 2:30am bug is back: daily summaries fetched with the run date"
-    assert "get_raw_sessions(since_days=1)" not in src, \
-        "daily sessions still selected by started_at in a rolling UTC day"
+    assert "get_raw_sessions" not in src, \
+        "send-review must not read the raw tier: it is machine-local, and " \
+        "reading it is why the email said 'no new work' on busy days"
+    assert 'get_store("turso")' in src, \
+        "reads must go through the merged (Turso) store"
+    assert 'until=w["review_day"]' in src, \
+        "the Today window must be closed on both ends (until is inclusive)"
+
+
+@test("build_prompt composes from summaries and rollups, with counts inline")
+def _():
+    mod = _load_send_review()
+    daily = [{"date": "2026-08-12", "project": "raconte", "summary": "Shipped the exporter.",
+              "prompt_count": 24, "session_count": 3}]
+    weekly = daily + [{"date": "2026-08-10", "project": "musicforge",
+                       "summary": "Fixed the mixer.", "prompt_count": 10, "session_count": 1}]
+    rollups = [{"project": "raconte", "week_start": "2026-08-03", "narrative": "A big week."}]
+    system, user_msg = mod.build_prompt(daily, weekly, rollups, is_weekly=False)
+    assert "raconte" in user_msg and "musicforge" in user_msg
+    assert "24 prompts" in user_msg, "per-day counts must reach the model"
+    assert "A big week." in user_msg
+    assert "Session summaries" not in user_msg, "raw-session sections must be gone"
 
 
 @test("get_store honors an explicit backend argument over the env default")
