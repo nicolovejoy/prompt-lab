@@ -126,6 +126,21 @@ class TursoKnowledgeStore(KnowledgeStore):
                 )
             """},
             {"sql": """
+                CREATE TABLE IF NOT EXISTS daily_summaries_machine (
+                    project TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    machine TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    key_decisions TEXT,
+                    prompt_count INTEGER DEFAULT 0,
+                    session_count INTEGER DEFAULT 0,
+                    commit_count INTEGER DEFAULT 0,
+                    model TEXT,
+                    synced_at TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (project, date, machine)
+                )
+            """},
+            {"sql": """
                 CREATE TABLE IF NOT EXISTS weekly_rollups (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     project TEXT NOT NULL,
@@ -341,6 +356,27 @@ class TursoKnowledgeStore(KnowledgeStore):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, [project, date, summary, json.dumps(key_decisions),
               prompt_count, session_count, commit_count, model])
+
+    def upsert_daily_summary_part(self, *, project, date, machine, summary,
+                                   key_decisions, prompt_count, session_count,
+                                   commit_count, model):
+        """One machine's contribution to a project-day. Pure idempotent
+        upsert on (project, date, machine) — re-syncing is a no-op."""
+        self._execute(
+            "INSERT OR REPLACE INTO daily_summaries_machine "
+            "(project, date, machine, summary, key_decisions, prompt_count, "
+            " session_count, commit_count, model) VALUES (?,?,?,?,?,?,?,?,?)",
+            [project, date, machine, summary,
+             json.dumps(key_decisions or []), prompt_count, session_count,
+             commit_count, model])
+
+    def get_daily_summary_parts(self, *, since, until):
+        result = self._execute(
+            "SELECT project, date, machine, summary, key_decisions, "
+            "prompt_count, session_count, commit_count, model "
+            "FROM daily_summaries_machine WHERE date >= ? AND date <= ?",
+            [since, until])
+        return self._rows_to_dicts(result)
 
     # ---- Weekly rollups ----
 
