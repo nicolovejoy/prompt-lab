@@ -497,10 +497,12 @@ explicitly. The build-out this implies:
   missed laptop session detail and read "no new work" on busy days. Both now
   call `get_store("turso")` directly and read only
   `daily_summaries`/`weekly_rollups`, so the env-var-ordering trap
-  (`store/turso_store.py:700` raises on every raw method) no longer applies.
-  Note the four promptlab plists are still **loaded on the laptop too**, so
-  until federation is deliberate rather than accidental, two machines compose
-  nightly reviews from two different DBs — orthogonal to this fix.
+  (`store/turso_store.py:736` raises `NotImplementedError` on every raw
+  method, e.g. `get_raw_sessions`) no longer applies. Residual risk, not a
+  current state (see the what-runs-where entry above — only the synthesizer
+  is loaded on the laptop today): if the laptop's readers are ever
+  re-enabled without the mini also carrying this refactor, two machines
+  would again compose nightly reviews from two different DBs.
 - `daily_summaries` clobber — **FIXED 2026-08-14**: per-machine parts table
   (`daily_summaries_machine`) + deterministic merge at sync time
   (`merge_summary_parts`/`sync_daily_summaries` in `sync_to_turso.py`);
