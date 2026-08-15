@@ -63,6 +63,26 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**Two small follow-ups from 2026-08-14, neither urgent.**
+
+*byside's Neon bill.* The deep health poll was consuming 80 of byside's 100
+monthly CU-hours (Neon free tier autosuspends after 5 min idle; we polled at
+5 min, so it never slept). Monitor is shallow now and applied live — **check
+the September CU number to confirm the drop**, since nothing alarms on it. The
+transferable rule, filed in `scripts/uptimerobot.py`: deep coverage over an
+autosuspending DB needs an interval **longer than the suspend window**, not a
+deeper URL, because polling at the suspend interval makes the check circular —
+it keeps the database warm and then reports that the warm database answers.
+Notified byside; their route comment still calls the deep check "cheap enough
+to poll every 5 minutes", which is true of the function and false of the
+compute.
+
+*Public data is stale again* — 9 unpublished weeks for prompt-lab, 4 prntd,
+3 musicforge, 2 ibuild4you (`scripts/draft_public_refresh.py --list`). It goes
+stale silently by design, and sat six weeks before a consumer noticed last
+time. Drafting is cheap; the human review is the expensive part and the actual
+privacy gate, so this waits for Nico to want it.
+
 **Per-Pi service inventory — NEW 2026-08-13, prompt-lab owns it** (Nico's
 request, relayed by the mini-decommission agent mid-wipe). No document
 anywhere lists what runs on each Pi; the decommission cross-checks had to
