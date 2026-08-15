@@ -156,21 +156,36 @@ its SSH add-on). Then consider promoting this to a `docs/` file:
   One thing still unproven, cheap to note: a Core restart does not re-acquire
   DHCP leases, so whether ethernet comes back after a real power cycle is
   untested. The closet's next outage tests it.
-Travelling with the inventory, **UNBLOCKED and pending Nico**: rotate the
-mini's HASS_TOKEN — it is LIVE (HA session tested it, 200) and a plaintext
-copy sits in `~/mini-staging/home/zshrc.mini`. **Corrected 2026-08-13: there
-is no separate "mini token" to delete.** The HA UI lists exactly ONE
-long-lived access token, named `automation-dev`, and it is shared — the mini
-used it and phrpi-lights uses it now. The earlier note claimed "phrpi-lights
-holds its own token that must survive" while the same paragraph listed
-`phrpi-lights/.env.tpl` as a consumer of the mini's token; only the second
-was right. So **deletion is off the table and this is a rotation**, in this
-order: create a new long-lived token in the HA UI → update phrpi-lights'
-`HASS_TOKEN` (`/home/nico/phrpi-lights` on phrpi, no laptop clone; the
-`lights` container needs a restart) → verify lights still writes its
-`input_text`s → only then delete `automation-dev`. Deleting first breaks the
-lights integration. Note also that the thing that made this urgent stands:
-a valid credential is sitting in plaintext under `~/mini-staging/`.
+**`automation-dev` is DELETED — Nico did it 2026-08-14, and nothing broke.**
+This closes the only item that carried a live security edge. Verified by SSH
+the same day, and the verification is worth reading because it overturns the
+note it replaces:
+
+- The `lights` container on phrpi still authenticates to HA — **200 from
+  `GET /api/`** with its own credential, tested from inside the container so
+  the value never entered a session.
+- The container has been **up 28 hours without a restart**, so its environment
+  cannot have changed. A still-valid token in an unrestarted container is proof
+  the credential it holds was *never* `automation-dev`.
+- Therefore the **2026-08-13 "correction" was itself wrong**, and the note it
+  overturned was right the first time: **phrpi-lights holds its own separate
+  token.** The HA UI listing one long-lived token was read as "there is only
+  one"; what it actually showed is one token *of the ones created that way*.
+  The lesson to keep: a UI list is evidence about the UI, not about every
+  credential in the system — the authoritative test is whether the consumer
+  still authenticates.
+- Also corrected: the variable is **`HA_TOKEN`**, not `HASS_TOKEN` as this file
+  said for two days. `HASS_TOKEN` is unset in the container. A rotation
+  following the old instructions would have edited a variable nothing reads and
+  "succeeded" while changing nothing.
+
+Residual, both minor now: the plaintext copy in
+`~/mini-staging/home/zshrc.mini` is a **dead** credential rather than a live
+one, so it's cleanup rather than exposure — still delete it. And the mini's old
+consumers (`deploy.py`, `tools/matter_diag.py`, `dashboard/ha_client.py`,
+tests, `phrpi-lights/.env.tpl`) now reference a revoked token; they'll need the
+new one whenever the HA deploy path is re-provisioned.
+
 Separately, the token card was nearly mistaken for the **Refresh tokens**
 card above it — those are login sessions (browser, iOS app), and deleting
 one revokes a session, not an API token. Known consumers of the dead token (mini pre-erase grep): the
@@ -185,8 +200,10 @@ Closet move DONE 2026-08-13 — both Pis wired, both deliberately dual-homed,
 all four interfaces DHCP-reserved. What's left, none of it prompt-lab's code
 and all of it filed in `~/src/.handoff` (new channels
 `home-assistant-prompt-lab.md` + `phrpi-lights-prompt-lab.md`):
-- **Rotate `automation-dev`** (order above; deleting first breaks lights).
-  The only item with a live security edge — plaintext copy in staging.
+- ~~Rotate `automation-dev`~~ — **DONE 2026-08-14, deleted by Nico.** lights
+  verified still authenticating (200) afterwards; it holds its own token.
+  Only cleanup left: delete the now-dead plaintext copy in
+  `~/mini-staging/home/zshrc.mini`.
 - **Laptop SSH key into HA's add-on.** The highest-leverage one: today's HA
   work ran on screenshots and inference while phrpi got measured in seconds.
   Everything else about that box stays guesswork until this lands.
