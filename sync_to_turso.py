@@ -101,22 +101,28 @@ def sync_daily_summaries(local, remote, since, dry_run):
     buffer = []
     orig_execute = remote._execute
     remote._execute = lambda sql, args=None: buffer.append((sql, args or []))
+    synced = 0
     try:
         for row in rows:
-            kd = row["key_decisions"]
-            remote.upsert_daily_summary_part(
-                project=row["project"], date=row["date"], machine=machine,
-                summary=row["summary"],
-                key_decisions=json.loads(kd) if isinstance(kd, str) else (kd or []),
-                prompt_count=row.get("prompt_count", 0) or 0,
-                session_count=row.get("session_count", 0) or 0,
-                commit_count=row.get("commit_count", 0) or 0,
-                model=row.get("model", "unknown"))
+            try:
+                kd = row["key_decisions"]
+                remote.upsert_daily_summary_part(
+                    project=row["project"], date=row["date"], machine=machine,
+                    summary=row["summary"],
+                    key_decisions=json.loads(kd) if isinstance(kd, str) else (kd or []),
+                    prompt_count=row.get("prompt_count", 0) or 0,
+                    session_count=row.get("session_count", 0) or 0,
+                    commit_count=row.get("commit_count", 0) or 0,
+                    model=row.get("model", "unknown"))
+                synced += 1
+            except Exception as e:
+                print(f"  daily_summaries: error on part "
+                      f"{row.get('project', '?')}/{row.get('date', '?')}: {e}")
     finally:
         remote._execute = orig_execute
     for i in range(0, len(buffer), 100):
         remote._execute_many(buffer[i:i + 100])
-    print(f"  daily_summaries: {len(rows)} parts synced as '{machine}'")
+    print(f"  daily_summaries: {synced} parts synced as '{machine}'")
 
     dates = sorted({r["date"] for r in rows})
     parts = remote.get_daily_summary_parts(since=dates[0], until=dates[-1])
@@ -126,15 +132,20 @@ def sync_daily_summaries(local, remote, since, dry_run):
 
     buffer = []
     remote._execute = lambda sql, args=None: buffer.append((sql, args or []))
+    rebuilt = 0
     try:
-        for pair_parts in grouped.values():
-            remote.upsert_daily_summary(**merge_summary_parts(pair_parts))
+        for (project, date), pair_parts in grouped.items():
+            try:
+                remote.upsert_daily_summary(**merge_summary_parts(pair_parts))
+                rebuilt += 1
+            except Exception as e:
+                print(f"  daily_summaries: error rebuilding {project}/{date}: {e}")
     finally:
         remote._execute = orig_execute
     for i in range(0, len(buffer), 100):
         remote._execute_many(buffer[i:i + 100])
-    print(f"  daily_summaries: {len(grouped)} merged rows rebuilt")
-    return len(rows)
+    print(f"  daily_summaries: {rebuilt} merged rows rebuilt")
+    return synced
 
 
 def sync_table(local, remote, table_name, query_fn, upsert_fn, dry_run=False, chunk=100):
