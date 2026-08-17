@@ -994,6 +994,119 @@ def _():
     assert row and row["referrer"] is None, f"got {row}"
 
 
+# === beacon: automation labelling (issue #52) ===
+
+@test("beacon #52: a normal browser hit is NOT flagged")
+def _():
+    import os
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_agent_human")
+    os.environ.setdefault("BEACON_SALT", "test-salt")
+    row = mod.parse_event(GOOD_HEADERS, json.dumps({"path": "/"}).encode())
+    assert row, "valid hit was dropped"
+    assert row["agent"] == 0, f"human traffic flagged as automation: {row}"
+    # An explicitly-false webdriver flag must not trip the label either.
+    row2 = mod.parse_event(
+        GOOD_HEADERS, json.dumps({"path": "/", "wd": False}).encode())
+    assert row2["agent"] == 0, f"wd:false flagged: {row2}"
+    row3 = mod.parse_event(
+        GOOD_HEADERS, json.dumps({"path": "/", "wd": 0}).encode())
+    assert row3["agent"] == 0, f"wd:0 flagged: {row3}"
+
+
+@test("beacon #52: navigator.webdriver is stored as a label, not dropped")
+def _():
+    import os
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_agent_wd")
+    os.environ.setdefault("BEACON_SALT", "test-salt")
+    for payload in ({"path": "/", "wd": 1}, {"path": "/", "wd": True},
+                    {"path": "/", "wd": "true"}, {"path": "/", "agent": 1}):
+        row = mod.parse_event(GOOD_HEADERS, json.dumps(payload).encode())
+        # Labelled, NOT dropped — the whole design of #52. A discarded row
+        # makes automation volume invisible; a labelled one is recomputable.
+        assert row is not None, f"automation hit was dropped, not labelled: {payload}"
+        assert row["agent"] == 1, f"automation not flagged: {payload} -> {row}"
+
+
+@test("beacon #52: X-Test-Agent header flags header-capable callers")
+def _():
+    import os
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_agent_header")
+    os.environ.setdefault("BEACON_SALT", "test-salt")
+    h = {**GOOD_HEADERS, mod.AGENT_HEADER: "1"}
+    row = mod.parse_event(h, json.dumps({"path": "/"}).encode())
+    assert row and row["agent"] == 1, f"header not honored: {row}"
+    # Falsey spellings must not flag.
+    for value in ("", "0", "false", "off"):
+        h2 = {**GOOD_HEADERS, mod.AGENT_HEADER: value}
+        row2 = mod.parse_event(h2, json.dumps({"path": "/"}).encode())
+        assert row2["agent"] == 0, f"{value!r} flagged as automation: {row2}"
+
+
+@test("beacon #52: the agent flag reaches the INSERT")
+def _():
+    import os
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_agent_insert")
+    os.environ.setdefault("BEACON_SALT", "test-salt")
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        return []
+
+    restore = patch_turso_query(mod, fake_turso)
+    try:
+        invoke_post(mod, "/api/beacon",
+                    json.dumps({"path": "/x", "wd": 1}).encode(), GOOD_HEADERS)
+        inserts = [c for c in captured if "INSERT INTO page_views" in c[0]]
+        assert len(inserts) == 1, f"expected 1 insert, got {captured}"
+        sql, args = inserts[0]
+        assert "agent" in sql, f"agent column not in INSERT: {sql}"
+        assert args[-1] == 1, f"agent flag not last arg / not 1: {args}"
+
+        captured.clear()
+        invoke_post(mod, "/api/beacon",
+                    json.dumps({"path": "/x"}).encode(), GOOD_HEADERS)
+        args2 = [c for c in captured if "INSERT INTO page_views" in c[0]][0][1]
+        assert args2[-1] == 0, f"human row not agent=0: {args2}"
+    finally:
+        restore()
+
+
+@test("beacon #52: a missing agent column keeps humans, drops automation, says so")
+def _():
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_agent_migration")
+    calls = []
+
+    def unmigrated(sql, args=None):
+        calls.append((sql, args or []))
+        if "agent" in sql:
+            raise RuntimeError("SQLITE_ERROR: table page_views has no column "
+                               "named agent")
+        return []
+
+    restore = patch_turso_query(mod, unmigrated)
+    try:
+        base = {"ts": "2026-08-17T00:00:00Z", "site": "x.com", "path": "/",
+                "referrer": None, "country": "US", "device": "desktop",
+                "event": "pageview", "visitor_hash": "abc"}
+        # Human row survives the window on the legacy column shape.
+        mod.insert_row({**base, "agent": 0})
+        legacy = [c for c in calls if "INSERT INTO page_views" in c[0]
+                  and "agent" not in c[0]]
+        assert len(legacy) == 1, f"human row lost during migration gap: {calls}"
+        assert len(legacy[0][1]) == 8, f"legacy shape wrong: {legacy[0][1]}"
+
+        # An automation row must NEVER land unlabelled — dropping it is the
+        # point of #52. Otherwise the gap silently reintroduces the pollution.
+        calls.clear()
+        mod.insert_row({**base, "agent": 1})
+        legacy2 = [c for c in calls if "INSERT INTO page_views" in c[0]
+                   and "agent" not in c[0]]
+        assert not legacy2, f"automation row written unlabelled: {calls}"
+    finally:
+        restore()
+
+
 @test("beacon: drops bot user-agents and missing UA")
 def _():
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_bots")
@@ -1126,7 +1239,8 @@ def _():
         assert h.status_code == 204, f"got {h.status_code}"
         inserts = [c for c in captured_sql if "INSERT INTO page_views" in c[0]]
         assert len(inserts) == 1, f"expected 1 insert, got {captured_sql}"
-        assert len(inserts[0][1]) == 8
+        # 8 original columns + `agent` (issue #52).
+        assert len(inserts[0][1]) == 9
 
         def boom(sql, args=None):
             raise RuntimeError("turso down")
@@ -1299,6 +1413,40 @@ def _():
     finally:
         restore_a()
         restore_q()
+
+
+@test("visitor_overview #52: every query excludes agent-flagged rows")
+def _():
+    mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_agent")
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append(sql)
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, is_authenticated=lambda _: True)
+    try:
+        h = invoke(mod, "/api/visitor_overview")
+        assert h.status_code == 200, f"got {h.status_code}"
+        assert len(captured) == 6, f"expected 6 queries, got {captured}"
+        for sql in captured:
+            assert "agent = 0" in sql, (
+                f"automation traffic not excluded from a visitor read: {sql}")
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("day #52: the visitors block excludes agent-flagged rows")
+def _():
+    import re
+    src = open("web/api/day.py").read()
+    m = re.search(r"SELECT site, COUNT\(\*\) AS views FROM page_views.*?\"\s*\)",
+                  src, re.S)
+    assert m, "page_views query not found in day.py — did it move?"
+    q = m.group(0)
+    assert "agent = 0" in q, f"day page counts automation as visitors: {q}"
 
 
 @test("visitor_overview: login queries honor since/until like the rest")

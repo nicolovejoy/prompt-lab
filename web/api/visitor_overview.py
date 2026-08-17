@@ -56,8 +56,13 @@ class handler(BaseHTTPRequestHandler):
         if until:
             bounds.append("substr(ts, 1, 10) <= ?")
             args.append(until)
-        where = " AND ".join(["event = 'pageview'"] + bounds)
-        login_where = " AND ".join(["event = 'login'"] + bounds)
+        # `agent = 0` excludes browser-automation traffic (issue #52). It is a
+        # filter on a WRITE-TIME label, not a read-time exclusion list — the
+        # thing this repo deleted twice for drifting. There is no fallback: if
+        # the column is missing the query fails loudly, because a read that
+        # silently degraded to unfiltered would rebuild the bug it fixes.
+        where = " AND ".join(["event = 'pageview'", "agent = 0"] + bounds)
+        login_where = " AND ".join(["event = 'login'", "agent = 0"] + bounds)
 
         daily = turso_query(
             f"SELECT substr(ts, 1, 10) AS date, site, "

@@ -21,6 +21,12 @@ environment). If BEACON_SALT is unset, the hit is dropped rather than salted
 with anything else — no accidental dependency on AUTH_SECRET, and no
 traceback: the endpoint stays an opaque 204 on every path.
 
+Browser automation (issue #52) is LABELLED rather than dropped: `agent = 1` on
+the row when the hit carries navigator.webdriver, the beacon's localStorage
+kill-switch, or an `X-Test-Agent` header. Visitor-facing reads filter
+`agent = 0`. Declared bot user-agents are still dropped outright — a crawler
+never becomes a row at all.
+
 Abuse posture: `site` is derived server-side from the Origin header (never
 client-supplied), obvious bot user-agents and localhost origins are dropped,
 body is capped at 2 KB, and every outcome — stored or dropped — returns an
@@ -30,12 +36,14 @@ opaque 204 so probes learn nothing. Drops are print()-logged to Vercel logs.
 from http.server import BaseHTTPRequestHandler
 
 from beacon_helper import (  # noqa: F401  (re-exported: tested surface)
+    AGENT_HEADER,
     ALLOWED_EVENTS,
     BOT_UA,
     HOST_OK,
     MAX_BODY,
     MAX_HOST,
     MAX_PATH,
+    _agent_flag,
     _device,
     _hostname,
     _visitor_hash,
