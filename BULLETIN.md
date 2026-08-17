@@ -10,6 +10,31 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-08-17 — Worktrees: one per mutating agent, not one per feature
+
+Scope: all projects, any time two or more agents write files in the same repo concurrently
+
+Git operations are tree-global — `stash`, `checkout`, `reset`, and `clean` don't
+know which agent authored which hunk. On 2026-08-13 in person-tracking, one
+subagent ran `git stash` to A/B-compare a fix against HEAD and wiped a second
+subagent's uncommitted work tree-wide. Recovered with `git stash pop`, but only
+because the second agent noticed its files had reverted and said so.
+
+**Give each file-mutating agent its own `git worktree`** whenever it might run
+concurrently with another mutating agent — not per feature, per agent. Two
+mechanisms already do this:
+
+- The Agent tool's `isolation: "worktree"` option, for subagent dispatch.
+- The `superpowers:using-git-worktrees` skill, for a solo session starting
+  feature work that needs isolation.
+
+Read-only agents (audits, scouts, `Explore`) are safe to share a tree — this
+only applies to agents that write. If agents must share a tree anyway, tell
+each explicitly not to run `stash`/`reset`/`checkout`, and check `git status`
+after each returns.
+
+---
+
 ## 2026-08-06 — Xcode: two red suites that aren't real failures
 
 Scope: every Xcode project — raconte, MusicForge, anything using XcodeGen
