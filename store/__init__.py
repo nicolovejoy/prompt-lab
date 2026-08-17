@@ -4,12 +4,13 @@ import os
 from .base import KnowledgeStore
 
 
-def get_store() -> KnowledgeStore:
-    """Return a KnowledgeStore instance based on GROUND_CONTROL_STORE env var.
+def get_store(backend: str | None = None) -> KnowledgeStore:
+    """Return a KnowledgeStore instance.
 
-    Supported values: 'sqlite' (default), 'turso'.
+    `backend` overrides the GROUND_CONTROL_STORE env var; None falls back to
+    the env var, then to 'sqlite'. Supported: 'sqlite', 'turso'.
     """
-    backend = os.environ.get("GROUND_CONTROL_STORE", "sqlite")
+    backend = backend or os.environ.get("GROUND_CONTROL_STORE", "sqlite")
 
     if backend == "sqlite":
         from .sqlite_store import SqliteKnowledgeStore

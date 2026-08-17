@@ -16,6 +16,7 @@ Requires TURSO_DATABASE_URL and TURSO_AUTH_TOKEN in .env or environment.
 
 import json
 import os
+import socket
 import subprocess
 import sys
 from datetime import datetime, timedelta
@@ -25,6 +26,126 @@ from store.sqlite_store import SqliteKnowledgeStore
 from store.turso_store import TursoKnowledgeStore
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+
+def machine_label():
+    """Stable label naming this machine in merged summaries.
+
+    GROUND_CONTROL_MACHINE (set it in each machine's .env.local: `laptop`,
+    `mini`) wins; the fallback is the short hostname lowercased. The override
+    exists because hostnames change — the mini was renamed at its 2026-08
+    re-purposing — and a renamed machine must not fork its own history into
+    two part rows.
+    """
+    return os.environ.get("GROUND_CONTROL_MACHINE") or \
+        socket.gethostname().split(".")[0].lower()
+
+
+def merge_summary_parts(parts):
+    """Deterministically merge per-machine parts for one (project, date).
+
+    Pure function: the same set of parts in any order produces an identical
+    row. Counts are int()-coerced — Turso returns numbers as strings.
+    """
+    def kd(p):
+        v = p.get("key_decisions") or []
+        return json.loads(v) if isinstance(v, str) else v
+
+    parts = sorted(parts, key=lambda p: p["machine"])
+    if len(parts) == 1:
+        p = parts[0]
+        return {
+            "project": p["project"], "date": p["date"],
+            "summary": p["summary"], "key_decisions": kd(p),
+            "prompt_count": int(p.get("prompt_count") or 0),
+            "session_count": int(p.get("session_count") or 0),
+            "commit_count": int(p.get("commit_count") or 0),
+            "model": p.get("model") or "unknown",
+        }
+    decisions = []
+    for p in parts:
+        for d in kd(p):
+            if d not in decisions:
+                decisions.append(d)
+    return {
+        "project": parts[0]["project"], "date": parts[0]["date"],
+        "summary": "\n".join(f"[{p['machine']}] {p['summary']}" for p in parts),
+        "key_decisions": decisions,
+        "prompt_count": sum(int(p.get("prompt_count") or 0) for p in parts),
+        "session_count": sum(int(p.get("session_count") or 0) for p in parts),
+        "commit_count": sum(int(p.get("commit_count") or 0) for p in parts),
+        "model": "merged",
+    }
+
+
+def sync_daily_summaries(local, remote, since, dry_run):
+    """Push this machine's summaries as parts, then rebuild merged rows.
+
+    Replaces the blind whole-row upsert that let two machines clobber each
+    other on shared project-days. Parts go up first into daily_summaries_machine
+    (idempotent on project+date+machine), then every (project, date) pair with
+    parts in the synced window is rebuilt from ALL machines' parts — rebuilding
+    a pair is always safe because the merge is a pure function of its parts.
+    Historical days with no parts yet keep their existing merged rows; a full
+    sync (no --days) from each machine backfills parts for all history.
+    """
+    rows = local.get_daily_summaries(since=since)
+    if not rows:
+        print("  daily_summaries: 0 rows (skip)")
+        return 0
+    if dry_run:
+        print(f"  daily_summaries: {len(rows)} rows (dry run)")
+        return len(rows)
+
+    machine = machine_label()
+    buffer = []
+    orig_execute = remote._execute
+    remote._execute = lambda sql, args=None: buffer.append((sql, args or []))
+    synced = 0
+    try:
+        for row in rows:
+            try:
+                kd = row["key_decisions"]
+                remote.upsert_daily_summary_part(
+                    project=row["project"], date=row["date"], machine=machine,
+                    summary=row["summary"],
+                    key_decisions=json.loads(kd) if isinstance(kd, str) else (kd or []),
+                    prompt_count=row.get("prompt_count", 0) or 0,
+                    session_count=row.get("session_count", 0) or 0,
+                    commit_count=row.get("commit_count", 0) or 0,
+                    model=row.get("model", "unknown"))
+                synced += 1
+            except Exception as e:
+                print(f"  daily_summaries: error on part "
+                      f"{row.get('project', '?')}/{row.get('date', '?')}: {e}")
+    finally:
+        remote._execute = orig_execute
+    for i in range(0, len(buffer), 100):
+        remote._execute_many(buffer[i:i + 100])
+    print(f"  daily_summaries: {synced} parts synced as '{machine}'")
+
+    dates = sorted({r["date"] for r in rows})
+    parts = remote.get_daily_summary_parts(since=dates[0], until=dates[-1])
+    grouped = {}
+    for p in parts:
+        grouped.setdefault((p["project"], p["date"]), []).append(p)
+
+    buffer = []
+    remote._execute = lambda sql, args=None: buffer.append((sql, args or []))
+    rebuilt = 0
+    try:
+        for (project, date), pair_parts in grouped.items():
+            try:
+                remote.upsert_daily_summary(**merge_summary_parts(pair_parts))
+                rebuilt += 1
+            except Exception as e:
+                print(f"  daily_summaries: error rebuilding {project}/{date}: {e}")
+    finally:
+        remote._execute = orig_execute
+    for i in range(0, len(buffer), 100):
+        remote._execute_many(buffer[i:i + 100])
+    print(f"  daily_summaries: {rebuilt} merged rows rebuilt")
+    return synced
 
 
 def sync_table(local, remote, table_name, query_fn, upsert_fn, dry_run=False, chunk=100):
@@ -135,21 +256,9 @@ def main():
 
     total = 0
 
-    # Daily summaries
-    total += sync_table(
-        local, remote, "daily_summaries",
-        lambda s: s.get_daily_summaries(since=since),
-        lambda r, row: r.upsert_daily_summary(
-            project=row["project"], date=row["date"],
-            summary=row["summary"],
-            key_decisions=json.loads(row["key_decisions"]) if isinstance(row["key_decisions"], str) else (row["key_decisions"] or []),
-            prompt_count=row.get("prompt_count", 0) or 0,
-            session_count=row.get("session_count", 0) or 0,
-            commit_count=row.get("commit_count", 0) or 0,
-            model=row.get("model", "unknown"),
-        ),
-        dry_run,
-    )
+    # Daily summaries — per-machine parts + deterministic merge, NOT the
+    # generic blind upsert: two machines on one project-day must both survive.
+    total += sync_daily_summaries(local, remote, since, dry_run)
 
     # Weekly rollups
     total += sync_table(

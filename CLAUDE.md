@@ -25,8 +25,8 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 - `store/` — backend-agnostic KnowledgeStore ABC + SQLite (default) and Turso implementations
 - `claude_api.py` — shared Claude API utilities, centralized env loading (.env, .env.local)
 - `synthesizer.py` — nightly: daily summaries, weekly rollups, project snapshots
-- `send-review.py` — nightly email via Resend, saves to review_snapshots
-- `generate-report.py` — bi-monthly markdown report, saves to review_snapshots
+- `send-review.py` — nightly email via Resend; reads processed tables from Turso (`get_store("turso")`); snapshot writes stay local and sync as before
+- `generate-report.py` — bi-monthly markdown report; reads processed tables from Turso (`get_store("turso")`); snapshot writes stay local and sync as before
 - `sync_to_turso.py` — pushes processed tables to Turso (no raw prompts)
 - `web/` — cloud dashboard (Preact+HTM + Vercel Python serverless), auth-protected, reads from Turso
 - `mobile/` — legacy local mobile PWA, reads from Turso directly
@@ -63,45 +63,47 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**The mini is reconstituted and mostly ready to resume sending — plan written
-2026-08-17, not yet executed.** Confirmed live over SSH: `mini.local` has been
-up since the 2026-08-13 rebuild, synthesizer + cost-pull are loaded, and
-review + report are pre-staged in `~/src/prompt-lab/workflow/gated-plists/`
-on the mini, gated on the Turso/processed-tables refactor
-(`docs/turso-readers-plan.md`).
+**Turso-readers refactor MERGED to main 2026-08-17** (direct merge, no PR,
+per Nico) — get_store backend arg, send-review.py + generate-report.py onto
+the Turso merged store, per-machine daily_summaries clobber fix, 3 new test
+files. Full task record: `.superpowers/sdd/turso-readers-plan/progress.md`
+(on the branch). The final branch review had caught and fixed a real
+Critical bug — `generate-report.py`'s `derive_stats` crashed on Turso's
+string-typed counts, now `int()`-coerced and pinned by a test.
 
-That refactor turns out to already be **done, just unmerged**: 9 commits /
-790 lines on `origin/worktree-turso-readers` (get_store backend arg,
-send-review.py + generate-report.py onto the Turso merged store, per-machine
-daily_summaries clobber fix, 3 new test files) — implemented and reviewed
-last session, pushed, but no PR and not in `main`. This is the actual gate,
-not any remaining mini-side work.
+The `pull_api_costs.py` Python 3.9 crash (bare `value: str | None`
+annotation, mini's CLT Python 3.9.6, crashed nightly since the wipe — why
+the health email's "cost pull + sync" heartbeat reads stale) is fixed the
+same day: `from __future__ import annotations` added there plus
+`backfill_project_urls.py` and `scripts/draft_public_refresh.py`, which had
+the same latent hazard. Repo swept: no other unguarded PEP 604 annotations,
+no runtime (isinstance/alias) uses anywhere.
 
-Separately, direct SSH turned up a **live, independent bug**: cost-pull is
-loaded and firing nightly on the mini but has crashed on every run since the
-wipe — `pull_api_costs.py:175` uses `value: str | None` (a bare parameter
-annotation, evaluated at def time), and the mini's fresh venv only has the
-CLT-bundled **Python 3.9.6** (no Homebrew Python survived the wipe), which
-doesn't support that PEP 604 syntax. `store/base.py`, `sqlite_store.py`, and
-`turso_store.py` all use the identical pattern safely because each starts
-with `from __future__ import annotations`; `pull_api_costs.py` (line dates
-to 2026-05-19) never got it, and the laptop's Python 3.10.5 never exposed the
-gap. This is why the health email's "cost pull + sync" heartbeat reads stale
-even though the job is loaded and running.
+**Mini-side steps in flight 2026-08-17** (session executing; verify by
+artifact after the first overnight — email arrives + `review_snapshots` row
++ heartbeats green):
+- Pull main on the mini; verify `pull_api_costs.py` imports under its 3.9.
+- Move `com.promptlab.{review,report}.plist` from the mini's
+  `workflow/gated-plists/` into `~/Library/LaunchAgents/`, bootstrap, then
+  check off 7a/7b in `mini-decommission`'s `WIPE-CHECKLIST.md` (Nico
+  authorized working in `~/src/mini-decommission` from here).
 
-Plan, three steps, Nico's go-ahead needed before executing:
-1. Add `from __future__ import annotations` to `pull_api_costs.py`; test;
-   commit/push; pull + verify on the mini.
-2. Merge `origin/worktree-turso-readers` → `main` (no PR exists yet — open
-   one or merge directly, undecided).
-3. Move `com.promptlab.{review,report}.plist` back into the mini's
-   `~/Library/LaunchAgents/`, bootstrap them, then check off items 7a/7b in
-   `mini-decommission`'s `WIPE-CHECKLIST.md`.
-
-No separate mini-decommission agent needed — its checklist is done except
-7a/7b, and both are blocked purely on this prompt-lab work, not on anything
-left in that repo. Nico has authorized working in `~/src/mini-decommission`
-directly from a prompt-lab session for this.
+Still needing Nico before the refactor is fully live in production:
+1. Task 5's live sync verification (`sync_to_turso.py --days 3` against
+   real Turso) failed twice on a 1Password `authorization timeout` —
+   not a code problem (8/8 automated tests pass), just auth flakiness in
+   the sandbox. Retry from a terminal with 1Password unlocked:
+   `GROUND_CONTROL_MACHINE=laptop op run --env-file=.env.tpl -- .venv/bin/python sync_to_turso.py --days 3`
+2. The real laptop's `.env.local` (not the worktree) needs
+   `GROUND_CONTROL_MACHINE=laptop` appended so the actual nightly sync
+   carries a machine label — never done, deliberately, since it's outside
+   worktree scope.
+3. A real gap the final review found: nothing syncs local→Turso between
+   the 2:00am synthesizer write and the 2:30am review read, so the
+   freshest ("Today") window can still read empty even after this fix.
+   Needs a `workflow/`-level decision (wrap the review job to sync first,
+   or retime `com.promptlab.api-costs`) — out of scope for the plan/branch,
+   Nico's call.
 
 **Two small follow-ups from 2026-08-14, neither urgent.**
 
@@ -256,19 +258,18 @@ and all of it filed in `~/src/.handoff` (new channels
 FIXED 2026-08-12.** Full diagnosis in `docs/history.md` / git history
 (`877ea15`, `c332ac9`); what happened and what remains:
 
-*Bug A, the window — FIXED in code.* The job fires at 2:30am and asked for
-**today**, structurally empty at that hour, and picked sessions by `started_at`
-in a rolling UTC day, so raconte's 31-hour session never appeared on the day it
-worked. Now: `review_windows()` in `send-review.py` makes "Today" mean
-**yesterday's completed lab-day** (Pacific), and sessions are selected by
-**overlap** with that day's UTC bounds via `get_raw_sessions(overlap_utc=…)`
-(new kwarg, all three store homes) + `day_helper.lab_day_bounds_utc` (DST-
-correct). Pinned by `scripts/test_send_review.py` (5 tests, incl. the raconte
-case and a source grep that fails if the run-date query returns). Verified
-against the laptop DB: the exact failure day (Aug 11) now yields 4 sessions +
-7 summaries where the old code got 0/0. **Pulled on the mini same day** so
-tonight's 2:30am run uses it — the real proof is tomorrow morning's email
-naming Aug 12 work; check it.
+*Bug A, the window — FIXED in code, 2026-08-12; window logic survived the
+2026-08-14 Turso refactor below, raw-session selection did not.* The job
+fires at 2:30am and asked for **today**, structurally empty at that hour, so
+`review_windows()` in `send-review.py` makes "Today" mean **yesterday's
+completed lab-day** (Pacific) — that part is unchanged today. What's gone:
+`send-review.py` no longer selects raw sessions at all (Task 2 of the Turso
+refactor removed the read entirely; it composes from `daily_summaries`/
+`weekly_rollups` instead — see the "Turso refactor DONE" line below). The
+overlap-by-time-range logic that originally fixed raconte's 31-hour session
+(`get_raw_sessions(overlap_utc=…)` + `day_helper.lab_day_bounds_utc`,
+DST-correct) still exists and is still tested, but only at the store layer
+(`scripts/test_send_review.py`, 7 tests) — nothing above it calls it anymore.
 
 *Bug B, delivery — RESOLVED by unloading, not by repairing the sender.* The
 laptop's 33 Resend 403s came from its stale Jun 6 `.env.local` using the
@@ -286,10 +287,10 @@ upstream of it. Also never explained: the laptop wrote no `review_snapshots`
 rows for Aug 10-11 despite its job running — academic now the readers are
 unloaded, but if it recurs on the mini, dig.
 
-Still open from this thread (tracked in the DB-ownership bullet below): the
-mini's email reads its **local** `sessions` table, so laptop session detail is
-missing from the Today section until `send-review.py` is refactored to
-processed tables via `GROUND_CONTROL_STORE=turso`.
+**Turso refactor DONE 2026-08-14** (tracked in the DB-ownership bullet below):
+`send-review.py` no longer reads its **local** `sessions` table, so laptop
+session detail reaches the Today section. `generate-report.py` was covered by
+the same change.
 
 **The trajectory heatmap's month labels were on a different scale than the grid
 — FIXED 2026-08-14** (diagnosed 2026-08-12; Nico re-reported it from a
@@ -507,9 +508,10 @@ run them. **Expect the daily 8am health email's #45 heartbeats to go stale
 and say so — that is the system working, not a bug to chase.** The open
 choice for Nico: re-enable the laptop readers (accepting laptop-closed =
 no email), wait for whatever the re-purposed mini becomes, or move readers
-cloud-side — and whichever machine sends next, the `send-review.py` →
-processed-tables/Turso refactor is the prerequisite for an email that sees
-all machines' work. The original split, for the record:
+cloud-side. **The prerequisite gate is met as of 2026-08-14** — the
+`send-review.py`/`generate-report.py` → Turso refactor is done, so whichever
+machine sends next, the email sees all machines' work. The original split,
+for the record:
 - *Local-data jobs* run on **every** machine, over its own DB, because raw
   prompts are machine-local by invariant and never leave. That is
   `com.promptlab.synthesizer`, plus the turso-sync leg. The laptop keeps its
@@ -528,29 +530,26 @@ machine-local per the invariant; each machine synthesizes its own prompts and
 pushes processed rows to Turso; the merge happens there; the always-on mini
 keeps the reader jobs (review email, report, cost pull) because the laptop
 being off must mean off. Nico ruled out running nightly work on the laptop
-explicitly. The build-out this implies, none of it done yet:
+explicitly. The build-out this implies:
 - Laptop gets its own `com.promptlab.synthesizer` + turso-sync LaunchAgents
   (its `/handoff` already covers most days inline).
-- `send-review.py:197,200` reads `get_raw_sessions()` — raw-tier, local-only —
-  so the mini's review email misses laptop session detail. Refactor it to
-  processed tables only, and only *then* read via `GROUND_CONTROL_STORE=turso`.
-  **The env var is the LAST step, not the first** (verified 2026-08-14): the
-  Turso backend implements the ABC by *raising* on every raw method
-  (`store/turso_store.py:700`), because Turso holds no `sessions` table by
-  invariant — so flipping the var today doesn't degrade the email, it kills the
-  job on line 197 before anything is composed. Same trap in
-  `generate-report.py:126`. **2026-08-12 raises the priority
-  and the scope:** this is not merely "misses detail" — it is why the email
-  reads "no new work" on busy days, and the same two lines carry a second,
-  independent window bug (see the review-email entry at the top of Open). Both
-  get fixed together, and note that the four promptlab plists are currently
-  **loaded on the laptop too**, so until federation is deliberate rather than
-  accidental, two machines are composing nightly reviews from two different
-  DBs.
-- `daily_summaries` is `UNIQUE(project, date)` + `INSERT OR REPLACE`
-  (`store/sqlite_store.py:328`): two machines touching one project the same
-  day = last sync clobbers the other's summary in Turso. Needs merge-on-upsert
-  or a machine column in the key before the federation is honest.
+- **FIXED 2026-08-14**: `send-review.py` and `generate-report.py` both used to
+  read `get_raw_sessions()` — raw-tier, local-only, so the mini's review email
+  missed laptop session detail and read "no new work" on busy days. Both now
+  call `get_store("turso")` directly and read only
+  `daily_summaries`/`weekly_rollups`, so the env-var-ordering trap
+  (`store/turso_store.py:736` raises `NotImplementedError` on every raw
+  method, e.g. `get_raw_sessions`) no longer applies. Residual risk, not a
+  current state (see the what-runs-where entry above — only the synthesizer
+  is loaded on the laptop today): if the laptop's readers are ever
+  re-enabled without the mini also carrying this refactor, two machines
+  would again compose nightly reviews from two different DBs.
+- `daily_summaries` clobber — **FIXED 2026-08-14**: per-machine parts table
+  (`daily_summaries_machine`) + deterministic merge at sync time
+  (`merge_summary_parts`/`sync_daily_summaries` in `sync_to_turso.py`);
+  `weekly_rollups` still has the same clobber shape, deferred until it bites;
+  machine labels come from `GROUND_CONTROL_MACHINE` in each `.env.local` (not
+  yet set on any real machine — that's a follow-up, not done by this commit).
 
 **The week-grouping SQL filed every Monday under the previous week —
 EXPRESSION FIXED 2026-08-08; DATA REPAIR APPLIED 2026-08-10.** The 207
@@ -865,6 +864,17 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
   bypassed, not a config annoyance to route around.
 
 ### Traps that cost real time
+
+- **`gc-read.sh`/`gc-write.sh` derive project via `basename($PWD)`, not the
+  git-common-dir fix `log-prompt.sh` got 2026-08-05.** Run either from a
+  worktree under `.claude/worktrees/<name>/` and `PROJECT` resolves to
+  `<name>`, not the real repo — `current-session`, `today-counts`, and
+  `weekly-rollup-check` all silently return nothing/zero even when the real
+  session (found under the correct project via the hook's own resolution)
+  has real prompts and commits. Hit during `/handoff` from a worktree
+  2026-08-15. Workaround: query `sessions`/`prompts`/`commits` directly by
+  id when this happens; the actual fix (mirror `log-prompt.sh`'s
+  `git rev-parse --git-common-dir` resolution in both scripts) is unstarted.
 
 - **`workflow/bin/*` and `workflow/commands/*` run from installed copies under
   `~/.claude/`, not from the repo.** A fix committed to the repo is not live
