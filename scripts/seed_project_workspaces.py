@@ -20,6 +20,12 @@ MAPPINGS = [
     ("wrkspc_01SqVqpmijYCi5CixCFwUfej", "notemaxxing", "notemaxxing"),
     ("wrkspc_01YLFBLWB27KcaNTgmetB6SD", "musicForge", "musicforge"),
     ("wrkspc_017NDm4zWZQz8fZGf2sUCswn", "prntd", "prntd"),
+    # Haiku-only pennies on dashboard-usage days (Jun 25, Jul 19-29) — the
+    # Todos classifier via web/'s ANTHROPIC_API_KEY. Attribution assumed, not
+    # console-confirmed (Nico's call 2026-08-17, issue #51): the workspace
+    # shows no visible spend in the Console, so it's rolled into prompt-lab
+    # like the __default__ bucket below.
+    ("wrkspc_01B8VSus5qTLtiE8YyzRBYuA", "prompt-lab web key (assumed)", "prompt-lab"),
     # Legacy traffic from before workspace-scoped keys existed; almost all of
     # it was prompt-lab itself, so we roll it into the prompt-lab bucket.
     ("__default__", "Default", "prompt-lab"),
