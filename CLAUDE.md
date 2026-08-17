@@ -79,14 +79,19 @@ same day: `from __future__ import annotations` added there plus
 the same latent hazard. Repo swept: no other unguarded PEP 604 annotations,
 no runtime (isinstance/alias) uses anywhere.
 
-**Mini-side steps in flight 2026-08-17** (session executing; verify by
-artifact after the first overnight — email arrives + `review_snapshots` row
-+ heartbeats green):
-- Pull main on the mini; verify `pull_api_costs.py` imports under its 3.9.
-- Move `com.promptlab.{review,report}.plist` from the mini's
-  `workflow/gated-plists/` into `~/Library/LaunchAgents/`, bootstrap, then
-  check off 7a/7b in `mini-decommission`'s `WIPE-CHECKLIST.md` (Nico
-  authorized working in `~/src/mini-decommission` from here).
+**Mini-side steps DONE 2026-08-17, one overnight artifact pending.** Main
+pulled on the mini; `pull_api_costs.py` imports clean under its 3.9.6; a
+launchd `kickstart` of api-costs ran end-to-end (pulled through Aug 16,
+synced 173 rows to Turso, allowlist OK) — the stale "cost pull + sync"
+heartbeat should go green. `send-review.py --dry-run` on the mini composed
+an email containing laptop-side work from the merged store — the gate
+proven, not assumed. Both plists moved back into `~/Library/LaunchAgents/`
+and bootstrapped; all four promptlab jobs loaded. `WIPE-CHECKLIST.md` 7a
+checked off by artifact; 7b annotated gate-lifted, and **passes the morning
+of 2026-08-18**: review email arrives (2:30am fire) naming Aug 17 work +
+new `review_snapshots` row. Check it. Also noted there: the mini's
+`project_workspaces` is seeded (6 rows) — issue #51's empty mapping table
+is the laptop's DB, so unmapped spend is historical rows only.
 
 Still needing Nico before the refactor is fully live in production:
 1. Task 5's live sync verification (`sync_to_turso.py --days 3` against
