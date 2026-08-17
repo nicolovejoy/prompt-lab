@@ -63,52 +63,51 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**Turso-readers refactor MERGED to main 2026-08-17** (direct merge, no PR,
-per Nico) — get_store backend arg, send-review.py + generate-report.py onto
-the Turso merged store, per-machine daily_summaries clobber fix, 3 new test
-files. Full task record: `.superpowers/sdd/turso-readers-plan/progress.md`
-(on the branch). The final branch review had caught and fixed a real
-Critical bug — `generate-report.py`'s `derive_stats` crashed on Turso's
-string-typed counts, now `int()`-coerced and pinned by a test.
+**FIRST THING NEXT SESSION (any date ≥ 2026-08-18): verify the mini's
+first overnight BY ARTIFACT.** Everything else on 2026-08-17 landed and was
+verified live (see below); the one claim that could only be proven overnight
+is 7b. Pass = the 2:30am review email arrived naming Aug 17 work AND a new
+`review_snapshots` row exists AND the 8am health email's heartbeats read
+green (cost-pull's had been stale since the wipe). Then tick 7b in
+`mini-decommission`'s `WIPE-CHECKLIST.md` — the wipe checklist is DONE at
+that point. Fail = read `~/src/prompt-lab/send-review.log` **on the mini**
+(launchd-written; a manual run prints to the terminal instead).
 
-The `pull_api_costs.py` Python 3.9 crash (bare `value: str | None`
-annotation, mini's CLT Python 3.9.6, crashed nightly since the wipe — why
-the health email's "cost pull + sync" heartbeat reads stale) is fixed the
-same day: `from __future__ import annotations` added there plus
-`backfill_project_urls.py` and `scripts/draft_public_refresh.py`, which had
-the same latent hazard. Repo swept: no other unguarded PEP 604 annotations,
-no runtime (isinstance/alias) uses anywhere.
+For the record, 2026-08-17 in one breath: turso-readers merged to main
+(direct, per Nico); py3.9 `from __future__ import annotations` fixes in
+`pull_api_costs.py` + `store/__init__.py` + 2 more (repo swept — and note
+the sweep ran pre-merge and missed the file the branch was about to add;
+sweep AFTER merging); mini's four jobs loaded, cost-pull kickstarted clean
+end-to-end, review dry-run composed laptop work from the merged store; #50
+(day-page cache/prefetch) and #52 (write-time `agent` label on
+`page_views`) shipped via parallel worktree agents, deployed, eye-checked
+by Nico; #51 closed (laptop's `project_workspaces` was never seeded —
+seeded both machines, laptop rows UPDATEd, Turso backfilled by re-pull +
+full sync); Turso `_pipeline` got a 60s timeout + one retry after a full
+sync hung 1.5h on a dead connection (0.36s CPU / 89min wall — true
+full-sync time is 2m35s, no perf issue); repo housekeeping: 14 archived,
+`react-firebase-authentication` deleted, all 13 mini-staging repos rescued
+to `~/src/mini-rescue/` with pushed `mini-rescue-20260817` branches.
 
-**Mini-side steps DONE 2026-08-17, one overnight artifact pending.** Main
-pulled on the mini; `pull_api_costs.py` imports clean under its 3.9.6; a
-launchd `kickstart` of api-costs ran end-to-end (pulled through Aug 16,
-synced 173 rows to Turso, allowlist OK) — the stale "cost pull + sync"
-heartbeat should go green. `send-review.py --dry-run` on the mini composed
-an email containing laptop-side work from the merged store — the gate
-proven, not assumed. Both plists moved back into `~/Library/LaunchAgents/`
-and bootstrapped; all four promptlab jobs loaded. `WIPE-CHECKLIST.md` 7a
-checked off by artifact; 7b annotated gate-lifted, and **passes the morning
-of 2026-08-18**: review email arrives (2:30am fire) naming Aug 17 work +
-new `review_snapshots` row. Check it. Also noted there: the mini's
-`project_workspaces` is seeded (6 rows) — issue #51's empty mapping table
-is the laptop's DB, so unmapped spend is historical rows only.
+Turso-readers production leftovers, both needing Nico:
+1. Laptop's `.env.local` needs `GROUND_CONTROL_MACHINE=laptop` appended so
+   its nightly sync carries a machine label (mini's is set).
+2. Nothing syncs laptop→Turso between the 2:00am synthesizer write and the
+   mini's 2:30am review read, so the "Today" window can read empty for
+   laptop work. Needs a `workflow/`-level decision (sync-before-review vs
+   retiming) — Nico's call.
 
-Still needing Nico before the refactor is fully live in production:
-1. Task 5's live sync verification (`sync_to_turso.py --days 3` against
-   real Turso) failed twice on a 1Password `authorization timeout` —
-   not a code problem (8/8 automated tests pass), just auth flakiness in
-   the sandbox. Retry from a terminal with 1Password unlocked:
-   `GROUND_CONTROL_MACHINE=laptop op run --env-file=.env.tpl -- .venv/bin/python sync_to_turso.py --days 3`
-2. The real laptop's `.env.local` (not the worktree) needs
-   `GROUND_CONTROL_MACHINE=laptop` appended so the actual nightly sync
-   carries a machine label — never done, deliberately, since it's outside
-   worktree scope.
-3. A real gap the final review found: nothing syncs local→Turso between
-   the 2:00am synthesizer write and the 2:30am review read, so the
-   freshest ("Today") window can still read empty even after this fix.
-   Needs a `workflow/`-level decision (wrap the review job to sync first,
-   or retime `com.promptlab.api-costs`) — out of scope for the plan/branch,
-   Nico's call.
+**mini-rescue curation — open, unhurried.** `~/src/mini-rescue/` holds 13
+rescued repos; walk them at leisure, merge-or-discard, delete each folder as
+judged (the dir emptying is the progress meter). Settled 2026-08-17, don't
+revisit: freevite IS invitekit under its old name, left to rest (its last
+commit lives only in that local copy — remote is archived, deliberately not
+pushed); roll-your-own (GitLab, no auth) and skitrack-ntzb-poc (third-party
+remote) also deliberately unpushed. Two loose ends from the rescue: the
+agent installed git-lfs globally (Homebrew) to get rock-art-fab pushed, and
+musicforge's lilypond submodule edits went to the shared
+`neonscribe/lilypond-lead-sheets` repo on a rescue branch. Also still to
+delete: the dead-token copy in `~/mini-staging/home/zshrc.mini`.
 
 **Two small follow-ups from 2026-08-14, neither urgent.**
 
