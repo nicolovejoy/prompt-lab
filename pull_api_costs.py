@@ -30,6 +30,8 @@ Usage:
   python pull_api_costs.py --inspect            # dump raw response, no writes
 """
 
+from __future__ import annotations
+
 import json
 import os
 import sys
