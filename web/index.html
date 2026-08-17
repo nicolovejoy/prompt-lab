@@ -686,6 +686,76 @@
     function lsGet(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } }
     function lsSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* quota — skip */ } }
 
+    // ---- Per-day cache (#50) ---------------------------------------------
+    // The day page is reached by tapping a chart column, so it is opened often
+    // and re-opened often, and on a phone the cold `/api/day` round trip is
+    // most of what the page costs.
+    //
+    // A past lab day is immutable once it has been summarized, so it is served
+    // from cache with no request at all. Two cases are NOT immutable and are
+    // always revalidated after painting from cache (stale-while-revalidate):
+    //   • today and yesterday — the 2:30am synthesizer still rewrites them;
+    //   • any entry stored while `provisional` was true, i.e. captured on the
+    //     day itself, before its summaries existed.
+    // Serving a provisional entry as final is exactly the "quiet day vs.
+    // untallied day" confusion the Today banner exists to prevent, so the
+    // provisional flag is stored with the payload and consulted on every read.
+    //
+    // The version is part of the storage key: bump `_v1` whenever the
+    // /api/day response shape changes, so old-shape entries are dropped rather
+    // than rendered by new code. localStorage rather than sessionStorage
+    // because the win being chased is the cold open on a phone, which is a new
+    // session by definition.
+    const DAY_CACHE_KEY = 'promptlab_days_v1';
+    const DAY_CACHE_MAX = 30;
+    const dayInflight = new Map();   // one request per date, shared with prefetch
+
+    const dayCacheAll = () => lsGet(DAY_CACHE_KEY) || {};
+
+    function dayCacheGet(date) {
+      const e = dayCacheAll()[date];
+      return e && e.data ? e : null;
+    }
+
+    function dayCachePut(date, data) {
+      const all = dayCacheAll();
+      all[date] = { data, at: Date.now() };
+      const keys = Object.keys(all);
+      if (keys.length > DAY_CACHE_MAX) {   // LRU by write time
+        keys.sort((a, b) => (all[a].at || 0) - (all[b].at || 0))
+            .slice(0, keys.length - DAY_CACHE_MAX)
+            .forEach(k => { delete all[k]; });
+      }
+      lsSet(DAY_CACHE_KEY, all);
+    }
+
+    function dayCacheClear() {
+      try { localStorage.removeItem(DAY_CACHE_KEY); } catch { /* ignore */ }
+    }
+
+    // Lab days, never UTC (#48) — `labDay(1)` is yesterday, and the strings
+    // compare lexicographically, so this covers today and yesterday.
+    const dayNeedsRevalidate = (date, entry) =>
+      !entry || !!entry.data.provisional || date >= labDay(1);
+
+    function fetchDay(date) {
+      if (dayInflight.has(date)) return dayInflight.get(date);
+      const p = api('/api/day?date=' + encodeURIComponent(date))
+        .then(d => { dayCachePut(date, d); return d; })
+        .finally(() => dayInflight.delete(date));
+      dayInflight.set(date, p);
+      return p;
+    }
+
+    // Warm the cache without rendering. Silent and cheap: an immutable day
+    // already in cache costs no request.
+    function prefetchDay(date) {
+      const entry = dayCacheGet(date);
+      if (entry && !dayNeedsRevalidate(date, entry)) return;
+      if (dayInflight.has(date)) return;
+      fetchDay(date).catch(() => {});
+    }
+
     // #48 — UTC at rest, Pacific on display.
     //
     // `toISOString()` is UTC. Using it to name a calendar day is the bug this
@@ -1055,6 +1125,22 @@
         }
       }, [overview]);
 
+      // Prefetch the days a chart tap is most likely to land on (#50): today
+      // and the two before it. Deliberately three and not thirty — the point
+      // is an instant day page for the taps that actually happen, not a warm
+      // cache of the whole month. Runs at idle so it never competes with the
+      // overview fetch that paints the home screen.
+      useEffect(() => {
+        if (!authed) return;
+        const run = () => { for (let i = 0; i < 3; i++) prefetchDay(labDay(i)); };
+        if (window.requestIdleCallback) {
+          const h = window.requestIdleCallback(run, { timeout: 3000 });
+          return () => window.cancelIdleCallback && window.cancelIdleCallback(h);
+        }
+        const t = setTimeout(run, 1200);   // Safari has no requestIdleCallback
+        return () => clearTimeout(t);
+      }, [authed]);
+
       // Keyboard shortcut: / to open Ask (admin only)
       useEffect(() => {
         const onKey = (e) => {
@@ -1082,7 +1168,7 @@
       const logout = async () => {
         await fetch('/api/login', { method: 'DELETE' });
         // Clear caches so a different login never sees the prior user's data.
-        memo.project.clear(); memo.cost.clear();
+        memo.project.clear(); memo.cost.clear(); dayCacheClear();
         try { localStorage.removeItem('promptlab_overview'); } catch { /* ignore */ }
         setOverview(null); setEmail(null); setRole(null);
         await probeAuth();  // 401 branch populates the sign-in buttons
@@ -1415,6 +1501,7 @@
                             cursor:pointer"
                      onMouseEnter=${() => setHovered(i)}
                      onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
+                     onPointerEnter=${() => prefetchDay(d)}
                      onClick=${() => navigate('#/day/' + d)}>
                   ${isToday && html`
                     <div style="position:absolute; left:0; right:0; bottom:0; top:0;
@@ -2195,6 +2282,7 @@
                         <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
                              onMouseEnter=${() => setHovered(i)}
                              onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
+                             onPointerEnter=${() => prefetchDay(d)}
                              onClick=${() => navigate('#/day/' + d)}>
                           <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
                                       display: flex; flex-direction: column-reverse;
@@ -2479,6 +2567,7 @@
                         <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
                              onMouseEnter=${() => setHovered(i)}
                              onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
+                             onPointerEnter=${() => prefetchDay(d)}
                              onClick=${() => navigate('#/day/' + d)}>
                           <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
                                       display: flex; flex-direction: column-reverse;
@@ -2656,12 +2745,19 @@
       const [data, setData] = useState(null);
       const [err, setErr] = useState(null);
 
+      // Cache-first (#50): paint the last-seen copy of this day with no
+      // skeleton, then revalidate only if the day can still change. A cached
+      // error path is deliberate too — a background refresh that fails keeps
+      // the cached day on screen rather than replacing it with an error.
       useEffect(() => {
         let alive = true;
-        setData(null); setErr(null);
-        api('/api/day?date=' + encodeURIComponent(date))
+        const entry = dayCacheGet(date);
+        setData(entry ? entry.data : null);
+        setErr(null);
+        if (entry && !dayNeedsRevalidate(date, entry)) return;
+        fetchDay(date)
           .then(d => { if (alive) setData(d); })
-          .catch(e => { if (alive) setErr(e.message || 'could not load'); });
+          .catch(e => { if (alive && !entry) setErr(e.message || 'could not load'); });
         return () => { alive = false; };
       }, [date]);
 
@@ -2996,6 +3092,7 @@
                         <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
                              onMouseEnter=${() => setHovered(i)}
                              onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
+                             onPointerEnter=${() => prefetchDay(d)}
                              onClick=${() => navigate('#/day/' + d)}>
                           <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
                                       display: flex; flex-direction: column-reverse;
@@ -3443,6 +3540,7 @@
                     <div style="flex: 1; min-width: 3px; position: relative; cursor: pointer"
                          onMouseEnter=${() => setHovered(i)}
                          onMouseLeave=${() => setHovered(h => h === i ? null : h)}
+                         onPointerEnter=${() => prefetchDay(d)}
                          onClick=${() => navigate('#/day/' + d)}>
                       <div style="height: ${STRIP_H}px; border-radius: 2px;
                                   background: ${uptimeColor(v ? v.uptime : null)};
