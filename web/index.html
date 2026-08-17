@@ -610,6 +610,12 @@
     // smoothed: an unexplained jump costs more than a footnote.
     const CAPTURE_FIX_DAY = '2026-08-14';
 
+    // Issue #52. From this day, beacon rows carry an `agent` label and every
+    // visitor read filters it out. Rows before it are unlabelled and may
+    // include test-agent traffic; the beacon stores no UA, so no backfill is
+    // possible. Same convention as CAPTURE_FIX_DAY: annotate, never smooth.
+    const AGENT_LABEL_DAY = '2026-08-17';
+
     function parseHash() {
       const hash = (location.hash || '#/').slice(1);
       const parts = hash.split('/').filter(Boolean);
@@ -2931,6 +2937,11 @@
           Anonymous page views from the first-party beacon — cookie-less, IPs
           never stored, visitor hashes rotate daily (so uniques are per-day by
           design). Only instrumented sites appear here.
+        </div>
+        <div class="heatmap-note" style="margin: -12px 0 20px">
+          Browser automation is excluded from ${AGENT_LABEL_DAY} onward. Earlier
+          rows predate the label and may include test traffic — the beacon
+          stores no user-agent, so it can't be sorted out after the fact.
         </div>`;
 
       if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading visitors…</div></div>`;

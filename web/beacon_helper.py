@@ -41,6 +41,23 @@ BOT_UA = re.compile(
 HOST_OK = re.compile(r"^[a-z0-9][a-z0-9.-]{0,99}$")
 ALLOWED_EVENTS = {"pageview", "login"}
 
+# Issue #52. BOT_UA above is a DROP — a declared crawler never becomes a row.
+# This is the other case: browser automation that presents a perfectly normal
+# Chrome UA (Playwright headed, Selenium, a CDP-driven test agent). Those hits
+# are LABELLED, not dropped, so the volume stays measurable and every
+# visitor-facing read filters on `agent = 0`. Labelling beats discarding for
+# the same reason `prompts.kind` does: a label is recomputable, a discarded row
+# is not.
+#
+# Three signals, any one of which is enough:
+#   * body `wd`    — navigator.webdriver, sent by beacon.js
+#   * body `agent` — the localStorage/query-param kill-switch a harness sets
+#   * header `X-Test-Agent` — for callers that can set headers (sendBeacon
+#     cannot, which is why the body carries the other two)
+AGENT_HEADER = "x-test-agent"
+AGENT_BODY_KEYS = ("wd", "agent")
+AGENT_FALSEY = ("", "0", "false", "no", "off")
+
 # Fallback `site` for server-side events when the request carries no usable
 # Host header. page_views.site is NOT NULL.
 DEFAULT_SITE = "prompt-labs.org"
@@ -48,6 +65,14 @@ DEFAULT_SITE = "prompt-labs.org"
 LOGIN_ROLES = ("admin", "reader")
 
 INSERT_SQL = (
+    "INSERT INTO page_views "
+    "(ts, site, path, referrer, country, device, event, visitor_hash, agent) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+# Pre-#52 column shape. Used only while the `agent` migration
+# (scripts/create_page_views.py) has not been run against a deployed schema —
+# see insert_row.
+LEGACY_INSERT_SQL = (
     "INSERT INTO page_views "
     "(ts, site, path, referrer, country, device, event, visitor_hash) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -92,6 +117,35 @@ def _visitor_hash(ip, ua):
     day = time.strftime("%Y-%m-%d", time.gmtime())
     raw = f"{secret}|{day}|{ip}|{ua}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _truthy(value):
+    """True for anything a client might send to mean "yes" — `true`, `1`, the
+    JSON boolean. Explicitly false for the falsey spellings, so a harness that
+    sends `wd: false` is not mislabelled."""
+    if value is True:
+        return True
+    if value is False or value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() not in AGENT_FALSEY
+    return False
+
+
+def _agent_flag(headers, body=None):
+    """1 if this hit is browser automation, else 0 (issue #52)."""
+    try:
+        if _truthy(headers.get(AGENT_HEADER, "")):
+            return 1
+    except AttributeError:
+        pass
+    if isinstance(body, dict):
+        for key in AGENT_BODY_KEYS:
+            if key in body and _truthy(body[key]):
+                return 1
+    return 0
 
 
 def _drop(reason, detail=""):
@@ -151,16 +205,34 @@ def parse_event(headers, body_bytes):
         "device": _device(ua),
         "event": event,
         "visitor_hash": visitor_hash,
+        "agent": _agent_flag(headers, body),
     }
+
+
+def _missing_agent_column(err):
+    msg = str(err).lower()
+    return "agent" in msg and ("no such column" in msg or "has no column" in msg)
 
 
 def insert_row(row):
     """Write one page_views row. Raises on DB failure — callers decide."""
-    turso_helper.turso_query(
-        INSERT_SQL,
-        [row["ts"], row["site"], row["path"], row["referrer"], row["country"],
-         row["device"], row["event"], row["visitor_hash"]],
-    )
+    agent = int(row.get("agent") or 0)
+    base = [row["ts"], row["site"], row["path"], row["referrer"], row["country"],
+            row["device"], row["event"], row["visitor_hash"]]
+    try:
+        turso_helper.turso_query(INSERT_SQL, base + [agent])
+    except Exception as e:
+        if not _missing_agent_column(e):
+            raise
+        # The code deployed ahead of the migration. Never silently: an
+        # automation row must not land unlabelled (that is the bug #52 exists
+        # to fix), so it is dropped; a human row keeps the legacy shape so no
+        # real traffic is lost during the window.
+        print("beacon: page_views.agent MISSING "
+              "— run scripts/create_page_views.py")
+        if agent:
+            return
+        turso_helper.turso_query(LEGACY_INSERT_SQL, base)
 
 
 def _self_site(headers):
@@ -199,6 +271,9 @@ def record_login(headers, role):
             "device": _device(ua) if ua else None,
             "event": "login",
             "visitor_hash": visitor_hash,
+            # A real OAuth round-trip, so normally 0 — but an automated
+            # sign-in in a smoke test can still say so via X-Test-Agent.
+            "agent": _agent_flag(headers),
         })
         return True
     except Exception as e:  # never break sign-in

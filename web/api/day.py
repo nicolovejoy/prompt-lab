@@ -165,7 +165,8 @@ class handler(BaseHTTPRequestHandler):
         # that would silently be wrong for half the year.
         rows = self._soft(
             "SELECT site, COUNT(*) AS views FROM page_views "
-            "WHERE event = 'pageview' AND ts >= datetime(?, '+7 hours') "
+            "WHERE event = 'pageview' AND agent = 0 "
+            "AND ts >= datetime(?, '+7 hours') "
             "AND ts < datetime(?, '+1 day', '+7 hours') GROUP BY site",
             [date, date])
         if rows is None:
