@@ -9,6 +9,8 @@ Usage:
   python backfill_project_urls.py --dry-run    # show what would be set
 """
 
+from __future__ import annotations
+
 import os
 import subprocess
 import sys

@@ -22,6 +22,8 @@ Usage:
     .venv/bin/python scripts/draft_public_refresh.py --list
 """
 
+from __future__ import annotations
+
 import argparse
 import sys
 from datetime import date
