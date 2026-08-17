@@ -63,6 +63,46 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**The mini is reconstituted and mostly ready to resume sending — plan written
+2026-08-17, not yet executed.** Confirmed live over SSH: `mini.local` has been
+up since the 2026-08-13 rebuild, synthesizer + cost-pull are loaded, and
+review + report are pre-staged in `~/src/prompt-lab/workflow/gated-plists/`
+on the mini, gated on the Turso/processed-tables refactor
+(`docs/turso-readers-plan.md`).
+
+That refactor turns out to already be **done, just unmerged**: 9 commits /
+790 lines on `origin/worktree-turso-readers` (get_store backend arg,
+send-review.py + generate-report.py onto the Turso merged store, per-machine
+daily_summaries clobber fix, 3 new test files) — implemented and reviewed
+last session, pushed, but no PR and not in `main`. This is the actual gate,
+not any remaining mini-side work.
+
+Separately, direct SSH turned up a **live, independent bug**: cost-pull is
+loaded and firing nightly on the mini but has crashed on every run since the
+wipe — `pull_api_costs.py:175` uses `value: str | None` (a bare parameter
+annotation, evaluated at def time), and the mini's fresh venv only has the
+CLT-bundled **Python 3.9.6** (no Homebrew Python survived the wipe), which
+doesn't support that PEP 604 syntax. `store/base.py`, `sqlite_store.py`, and
+`turso_store.py` all use the identical pattern safely because each starts
+with `from __future__ import annotations`; `pull_api_costs.py` (line dates
+to 2026-05-19) never got it, and the laptop's Python 3.10.5 never exposed the
+gap. This is why the health email's "cost pull + sync" heartbeat reads stale
+even though the job is loaded and running.
+
+Plan, three steps, Nico's go-ahead needed before executing:
+1. Add `from __future__ import annotations` to `pull_api_costs.py`; test;
+   commit/push; pull + verify on the mini.
+2. Merge `origin/worktree-turso-readers` → `main` (no PR exists yet — open
+   one or merge directly, undecided).
+3. Move `com.promptlab.{review,report}.plist` back into the mini's
+   `~/Library/LaunchAgents/`, bootstrap them, then check off items 7a/7b in
+   `mini-decommission`'s `WIPE-CHECKLIST.md`.
+
+No separate mini-decommission agent needed — its checklist is done except
+7a/7b, and both are blocked purely on this prompt-lab work, not on anything
+left in that repo. Nico has authorized working in `~/src/mini-decommission`
+directly from a prompt-lab session for this.
+
 **Two small follow-ups from 2026-08-14, neither urgent.**
 
 *byside's Neon bill.* The deep health poll was consuming 80 of byside's 100
