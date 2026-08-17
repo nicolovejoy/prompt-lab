@@ -20,6 +20,10 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
 
+from .base import (
+    KnowledgeStore,
+)
+
 # Per-request ceiling for the pipeline API. Without one, urlopen inherits the
 # default socket timeout of *forever*: a full sync from the mini once sat
 # 1.5 hours blocked on a single read of a connection Turso had silently
@@ -27,10 +31,6 @@ from datetime import datetime, timedelta
 # that into a loud, retryable failure, which is the same trade the Anthropic
 # client path already makes.
 PIPELINE_TIMEOUT = 60
-
-from .base import (
-    KnowledgeStore,
-)
 
 
 class TursoKnowledgeStore(KnowledgeStore):
