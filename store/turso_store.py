@@ -15,8 +15,18 @@ from __future__ import annotations
 
 import json
 import os
+import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
+
+# Per-request ceiling for the pipeline API. Without one, urlopen inherits the
+# default socket timeout of *forever*: a full sync from the mini once sat
+# 1.5 hours blocked on a single read of a connection Turso had silently
+# abandoned (0.36s of CPU over 89 minutes — hung, not slow). A timeout turns
+# that into a loud, retryable failure, which is the same trade the Anthropic
+# client path already makes.
+PIPELINE_TIMEOUT = 60
 
 from .base import (
     KnowledgeStore,
@@ -48,16 +58,27 @@ class TursoKnowledgeStore(KnowledgeStore):
                 "Content-Type": "application/json",
             },
         )
-        try:
-            with urllib.request.urlopen(req) as resp:
-                data = json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="replace")
-            # Include enough context to spot the failing statement
-            first_stmt = (requests[0].get("stmt") or {}).get("sql", "")[:200]
-            raise RuntimeError(
-                f"Turso HTTP {e.code}: {body}  (first stmt: {first_stmt!r}, "
-                f"total stmts: {len(requests)})") from e
+        # One retry, only on timeout/connection errors: every statement this
+        # store sends is an idempotent upsert or a read, so a replay is safe,
+        # and a single transient stall shouldn't kill a 6-table sync.
+        for attempt in (1, 2):
+            try:
+                with urllib.request.urlopen(req, timeout=PIPELINE_TIMEOUT) as resp:
+                    data = json.loads(resp.read())
+                break
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", errors="replace")
+                # Include enough context to spot the failing statement
+                first_stmt = (requests[0].get("stmt") or {}).get("sql", "")[:200]
+                raise RuntimeError(
+                    f"Turso HTTP {e.code}: {body}  (first stmt: {first_stmt!r}, "
+                    f"total stmts: {len(requests)})") from e
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                if attempt == 2:
+                    raise RuntimeError(
+                        f"Turso pipeline unreachable after retry: {e} "
+                        f"(total stmts: {len(requests)})") from e
+                time.sleep(2)
 
         results = []
         for r in data.get("results", []):
