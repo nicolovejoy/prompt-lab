@@ -3,7 +3,7 @@
 import time
 from pathlib import Path
 
-from anthropic import Anthropic, RateLimitError
+from anthropic import Anthropic, APIConnectionError, APITimeoutError, RateLimitError
 from dotenv import load_dotenv
 
 REPO_DIR = Path(__file__).resolve().parent
@@ -72,6 +72,13 @@ def call_claude(client: Anthropic, *, model: str, system: str, user_msg: str,
             if attempt < max_retries - 1:
                 wait = 2 ** (attempt + 1)
                 print(f"  Rate limited, waiting {wait}s...")
+                time.sleep(wait)
+            else:
+                raise
+        except (APITimeoutError, APIConnectionError) as e:
+            if attempt < max_retries - 1:
+                wait = 2 ** (attempt + 1)
+                print(f"  {type(e).__name__}, retrying in {wait}s...")
                 time.sleep(wait)
             else:
                 raise
