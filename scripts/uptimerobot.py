@@ -52,8 +52,18 @@ RATE_LIMIT_BACKOFF = 65  # a full window, since the limit is per rolling minute
 # url is the source of truth; a monitor found under the same friendlyName with
 # a different url gets updated. Prefer a deep health URL over a homepage.
 HTTP_MONITORS = [
+    # Shallow since 2026-08-18, same failure as byside (f0391c3): garm's
+    # database is Neon on the free tier, autosuspend after 5 minutes idle —
+    # the same interval this monitor polls at, so the deep check never let it
+    # sleep. Flagged by prompt-lab on the garm handoff channel: Neon reported
+    # garm's project at 100% of its 100 CU-hour monthly quota with 12+ days
+    # left before reset, confirmed via `neonctl` (~101.6 CU-hours from
+    # active_time alone). Consumers fail closed on a garm outage, so a
+    # Neon-enforced suspension here risks an ecosystem-wide lockout, not just
+    # a bill — friendlyName kept as-is (it's the URL) to match by existing
+    # monitor rather than create a duplicate.
     ("garm.prompt-labs.org/api/health?db=1",
-     "https://garm.prompt-labs.org/api/health?db=1"),
+     "https://garm.prompt-labs.org/api/health"),
     ("prompt-labs", "https://prompt-labs.org/api/health?db=1"),
     # ibuild4you implements the convention with per-dependency detail; its
     # monitor pointed at the homepage until 2026-07-31.

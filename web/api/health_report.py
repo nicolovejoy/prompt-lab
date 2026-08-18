@@ -63,7 +63,14 @@ from turso_helper import turso_query
 # their own repos' call (ISR-cached pages, and a plain path that already
 # reports per-dependency detail).
 TARGETS = [
-    ("garm", "https://garm.prompt-labs.org/api/health?db=1", True),
+    # Shallow since 2026-08-18, same failure as byside below: garm's Neon
+    # database is on the free tier (5-minute autosuspend), and this list gets
+    # re-polled on every #/health page load on top of UptimeRobot's 5-minute
+    # cron — two sources of deep hits, neither letting compute sleep. Neon
+    # reported garm's project over its 100 CU-hour monthly quota with 12+
+    # days left before reset. See scripts/uptimerobot.py for the full
+    # reasoning and the confirming numbers.
+    ("garm", "https://garm.prompt-labs.org/api/health", False),
     ("prompt-labs.org", "https://prompt-labs.org/api/health?db=1", True),
     ("ibuild4you", "https://ibuild4you.com/api/health", True),
     # Shallow since 2026-08-14: byside's Neon free tier autosuspends after 5
