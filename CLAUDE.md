@@ -63,15 +63,35 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**FIRST THING NEXT SESSION (any date ≥ 2026-08-18): verify the mini's
-first overnight BY ARTIFACT.** Everything else on 2026-08-17 landed and was
-verified live (see below); the one claim that could only be proven overnight
-is 7b. Pass = the 2:30am review email arrived naming Aug 17 work AND a new
-`review_snapshots` row exists AND the 8am health email's heartbeats read
-green (cost-pull's had been stale since the wipe). Then tick 7b in
-`mini-decommission`'s `WIPE-CHECKLIST.md` — the wipe checklist is DONE at
-that point. Fail = read `~/src/prompt-lab/send-review.log` **on the mini**
-(launchd-written; a manual run prints to the terminal instead).
+**FIRST THING NEXT SESSION (any date ≥ 2026-08-20): confirm the mini's
+2:30am review job survived unattended, for real this time.** The mini's
+first two overnight attempts both failed silently — diagnosed 2026-08-19,
+neither was 7b's checklist item passing:
+- Night 1 (Aug 17→18): `send-review.py` composed + sent the Aug 17 email
+  fine (Resend confirms `delivered`), then crashed with an uncaught
+  `anthropic.APITimeoutError` generating a second piece — no retry existed.
+- Night 2 (Aug 18→19): worse — the process didn't error at all. It started
+  2:30am, opened a TCP connection to `api.anthropic.com`, and just hung.
+  Found it still "running" at 8:42am (`lsof` showed the socket ESTABLISHED
+  but silent); killed it by hand. The SDK's default timeout never fired, so
+  nothing was ever raised for a retry to catch.
+
+Both fixed same day: `claude_api.call_claude` now retries
+`APITimeoutError`/`APIConnectionError` with backoff (was rate-limit-only),
+and `claude_api.get_client()` sets an explicit httpx timeout (300s read/10s
+connect) so a stalled socket is forced to raise instead of hanging forever —
+applied to all three unattended jobs (`send-review.py`, `generate-report.py`,
+`synthesizer.py`). Two manual live-fire tests same day both worked cleanly
+(130-173s, real Resend sends, confirmed delivered) — but neither test
+exercised the actual failure path, since neither hung or timed out. **Tonight
+(Aug 19→20) at 2:30am is the first unattended run of the fixed code.** Pass =
+check `~/src/prompt-lab/send-review.log` **on the mini** (launchd-written; a
+manual run prints to the terminal, not the log) shows one clean "Sent" with
+no trailing traceback, AND `launchctl list com.promptlab.review` shows
+`LastExitStatus = 0`, AND no process is still alive hours later. Only then
+tick 7b in `mini-decommission`'s `WIPE-CHECKLIST.md`. Fail = same log check,
+plus `ps -o lstart,etime -p <pid>` if something's still running to see how
+long it's been stuck, before killing it again.
 
 For the record, 2026-08-17 in one breath: turso-readers merged to main
 (direct, per Nico); py3.9 `from __future__ import annotations` fixes in
@@ -108,6 +128,19 @@ agent installed git-lfs globally (Homebrew) to get rock-art-fab pushed, and
 musicforge's lilypond submodule edits went to the shared
 `neonscribe/lilypond-lead-sheets` repo on a rescue branch. Also still to
 delete: the dead-token copy in `~/mini-staging/home/zshrc.mini`.
+
+**garm hit the same Neon-CU bug as byside — found 2026-08-18, fixed same day
+by the garm side.** Neon alerted that `neon-bole-tree` (garm's DB, project
+`steep-glitter-55844373`) used 100% of its 100 CU-hour monthly quota with
+12+ days left before reset — confirmed by the math (0.25 CU × 1,453,008
+active-seconds ÷ 3600 = 100.9 CU-hours, exact match). Same root cause as
+byside below: `scripts/uptimerobot.py` deep-polled
+`garm.prompt-labs.org/api/health?db=1` every 5 minutes, never letting Neon's
+free-tier autosuspend kick in. Filed to `~/src/.handoff/garm-prompt-lab.md`;
+commit `59ea622` ("garm's health check stops paying to keep Neon awake")
+landed same day. Since consumers fail closed on a garm outage, this wasn't
+just a cost problem — worth confirming next month's CU number actually drops
+like byside's did, same as the open byside check below.
 
 **Two small follow-ups from 2026-08-14, neither urgent.**
 
