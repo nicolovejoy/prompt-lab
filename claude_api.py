@@ -23,6 +23,20 @@ def load_env():
         if env_file.exists():
             load_dotenv(env_file, override=False)
 
+def get_client(**kwargs) -> Anthropic:
+    """Anthropic client with an explicit request timeout.
+
+    The SDK's default timeout doesn't reliably fire on a half-open socket
+    (seen 2026-08-19: a nightly send-review.py run hung 6+ hours on an
+    ESTABLISHED-but-silent connection to api.anthropic.com, never raising,
+    so call_claude's retry logic never got a chance to run). An explicit
+    httpx-level ceiling forces a raise within minutes regardless.
+    """
+    from httpx import Timeout
+    kwargs.setdefault("timeout", Timeout(300.0, connect=10.0))
+    return Anthropic(**kwargs)
+
+
 HAIKU = "claude-haiku-4-5-20251001"
 SONNET = "claude-sonnet-4-6"
 OPUS = "claude-opus-4-6"

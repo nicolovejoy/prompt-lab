@@ -7,10 +7,8 @@ import os
 import sys
 from datetime import datetime
 
-from anthropic import Anthropic
-
 import heartbeat
-from claude_api import SONNET, call_claude, estimate_cost_cents, load_env
+from claude_api import SONNET, call_claude, estimate_cost_cents, get_client, load_env
 from store import get_store
 
 
@@ -366,7 +364,7 @@ def main():
         print("Error: ANTHROPIC_API_KEY not found. Set it in .env.local")
         sys.exit(1)
 
-    client = Anthropic() if needs_api else None
+    client = get_client() if needs_api else None
     store = get_store()
     store.migrate()
 

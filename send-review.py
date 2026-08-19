@@ -6,10 +6,8 @@ import os
 import sys
 from datetime import datetime
 
-from anthropic import Anthropic
-
 import heartbeat
-from claude_api import SONNET, call_claude, load_env
+from claude_api import SONNET, call_claude, get_client, load_env
 from store import get_store
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "web"))
@@ -203,7 +201,7 @@ def main():
     system, user_msg = build_prompt(daily_summaries_1d, weekly_summaries,
                                      weekly_rollups, is_weekly)
 
-    client = Anthropic()
+    client = get_client()
     result = call_claude(client, model=SONNET, system=system, user_msg=user_msg,
                          tool=REVIEW_TOOL, max_tokens=16384)
 
