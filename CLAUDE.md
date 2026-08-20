@@ -63,35 +63,57 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**FIRST THING NEXT SESSION (any date ≥ 2026-08-20): confirm the mini's
-2:30am review job survived unattended, for real this time.** The mini's
-first two overnight attempts both failed silently — diagnosed 2026-08-19,
-neither was 7b's checklist item passing:
-- Night 1 (Aug 17→18): `send-review.py` composed + sent the Aug 17 email
-  fine (Resend confirms `delivered`), then crashed with an uncaught
-  `anthropic.APITimeoutError` generating a second piece — no retry existed.
-- Night 2 (Aug 18→19): worse — the process didn't error at all. It started
-  2:30am, opened a TCP connection to `api.anthropic.com`, and just hung.
-  Found it still "running" at 8:42am (`lsof` showed the socket ESTABLISHED
-  but silent); killed it by hand. The SDK's default timeout never fired, so
-  nothing was ever raised for a retry to catch.
+**Aug 19→20 unattended review run: hang/crash bug confirmed fixed, but
+exposed a second, narrower timeout gap — problem statement below, fix not
+yet written (Nico's call, 2026-08-20).** Background: the mini's first two
+overnight `send-review.py` attempts both failed silently, diagnosed
+2026-08-19:
+- Night 1 (Aug 17→18): sent the Aug 17 email fine, then crashed with an
+  uncaught `anthropic.APITimeoutError` generating a second piece — no retry
+  existed.
+- Night 2 (Aug 18→19): worse — no error at all. Opened a TCP connection to
+  `api.anthropic.com` at 2:30am and hung silently for 6+ hours; found still
+  "running" at 8:42am, killed by hand. The SDK's default timeout never
+  fired, so nothing was ever raised for a retry to catch.
 
-Both fixed same day: `claude_api.call_claude` now retries
+Both fixed same day: `claude_api.call_claude` retries
 `APITimeoutError`/`APIConnectionError` with backoff (was rate-limit-only),
 and `claude_api.get_client()` sets an explicit httpx timeout (300s read/10s
-connect) so a stalled socket is forced to raise instead of hanging forever —
-applied to all three unattended jobs (`send-review.py`, `generate-report.py`,
-`synthesizer.py`). Two manual live-fire tests same day both worked cleanly
-(130-173s, real Resend sends, confirmed delivered) — but neither test
-exercised the actual failure path, since neither hung or timed out. **Tonight
-(Aug 19→20) at 2:30am is the first unattended run of the fixed code.** Pass =
-check `~/src/prompt-lab/send-review.log` **on the mini** (launchd-written; a
-manual run prints to the terminal, not the log) shows one clean "Sent" with
-no trailing traceback, AND `launchctl list com.promptlab.review` shows
-`LastExitStatus = 0`, AND no process is still alive hours later. Only then
-tick 7b in `mini-decommission`'s `WIPE-CHECKLIST.md`. Fail = same log check,
-plus `ps -o lstart,etime -p <pid>` if something's still running to see how
-long it's been stuck, before killing it again.
+connect) so a stalled socket is forced to raise instead of hanging forever.
+
+**The Aug 19→20 run (checked 2026-08-20) is a partial pass — read carefully
+before reusing `send-review.log` as evidence again.** The log file has
+never rotated since Aug 17 and just appends forever, so it reads like a
+disaster (tracebacks interleaved with a 3-hour send) when it's actually
+three days of history stacked up. The tell: one traceback references
+`send-review.py` line 257, but the current file is 256 lines — that's
+fossil output from the original Aug 17→18 crash, not from last night. The
+actual Aug 19→20 entry is only the log's last 5 lines: one `call_claude`
+call, no logged retries (the code prints "retrying in Xs..." on every
+caught timeout, and none appeared), took **11,942s (3h19m)**, then
+succeeded — `Sent`, `launchctl list com.promptlab.review` shows
+`LastExitStatus = 0`, no process still alive. So: the specific bugs above
+(uncaught crash, silent infinite hang) did not recur — genuine fix. 7b in
+`mini-decommission`'s `WIPE-CHECKLIST.md` can be ticked on that basis.
+
+**But a 3h19m single API call is not "clean," and the 300s timeout didn't
+catch it — that's the open problem.** `httpx.Timeout(300.0, connect=10.0)`
+is a read/inactivity timeout: it only fires if the connection goes fully
+silent for 300s straight. It is not a cap on total request duration. If the
+connection receives any trickle of data periodically, that clock keeps
+resetting and a single call can legitimately run for hours without ever
+tripping it — the same failure class as the Night 2 hang, just less severe
+because this one eventually delivered. Checked Anthropic's public status
+page and an outage tracker for an incident overlapping Aug 20
+~09:30-13:00 UTC (2:30-6am PT) — found nothing; last logged incident ended
+two days earlier. So there's no external corroboration this was
+Anthropic-side, and the code currently logs no per-attempt timestamps, so a
+repeat is undiagnosable beyond "it took a while." Fix, not yet applied:
+wrap the `call_claude` call in a hard wall-clock deadline (e.g. abort at
+~10 min regardless of read-timeout resets) and log a timestamp at the start
+of each attempt. Also: `send-review.log` needs rotation/truncation — as-is
+it will keep accumulating fossil tracebacks that look like fresh failures
+to whoever reads it next.
 
 For the record, 2026-08-17 in one breath: turso-readers merged to main
 (direct, per Nico); py3.9 `from __future__ import annotations` fixes in
