@@ -88,20 +88,22 @@ row is permanently **one day behind** (inside its 2-day threshold), and
 newest ~68 rows nightly. Step 1 (idempotent remote writes) is the prerequisite
 and fixes the duplication on its own.
 
-**SPAN outage, live as of 2026-08-21 — prompt-lab is not the cause but owns the
-monitor.** SPAN's `/api/health` flaps ~25 times a day: Cloudflare serves a JS
-bot-challenge in place of the Influx response to its Vercel functions, so the
-check 503s. Full evidence and the agreed position are in
-`~/src/.handoff/span-prompt-lab.md`. Three things to carry: the remedy
-**branches** — a bot-challenge cause wants SPAN's WAF skip rule, a rate-limit
-cause wants the limit rescoped and would put our 5-minute polling back in the
-frame — so read what Security → Events *names* before applying anything.
-Load-shedding is **not** available on our side: the `deep` flag in
-`web/api/health_report.py` is descriptive (it mirrors `?db=1` in the URL) and
-`_check_target()` issues the request either way, so flipping it removes zero
-requests. And Nico's UptimeRobot account display timezone is **UTC-10**, so
-every alert email is stamped ten hours behind Pacific — that cost two rounds of
-cross-agent confusion and will do it again.
+**SPAN outage 2026-08-21 — RESOLVED same day, not our fault, and the cause was
+one toggle.** Cloudflare **Bot Fight Mode** was managed-challenging Vercel's
+egress on `influx.pianohouseproject.org/api/v2/query`, so SPAN's health check
+503'd and its monitor flapped ~25 times in a day. Nico disabled BFM; verified
+green from both repos. Thread archived in `~/src/.handoff/span-prompt-lab.md`.
+Two residuals for us:
+- **Nico's UptimeRobot account display timezone is UTC-10**, so every alert
+  email is stamped ten hours behind Pacific. That cost two rounds of cross-agent
+  confusion over the incident time and will do it again until it's changed in
+  account settings.
+- **Load-shedding is not available on our side and never was.** The `deep` flag
+  in `web/api/health_report.py` is *descriptive* — it mirrors `?db=1` in the URL
+  — and `_check_target()` issues the request either way, so flipping it removes
+  zero requests. byside and garm got their reduction by editing the **URL**. Do
+  not offer "flip it to shallow" as a remedy again without checking whether the
+  target's URL actually has a deep variant to drop.
 
 **The nightly review's "3h19m API call" was never an API problem — the Mac
 was asleep. SOLVED 2026-08-20; do not re-open the timeout theory.** The
@@ -1032,6 +1034,26 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
   general lesson: a macOS-only shell idiom in `workflow/` is a latent bug the
   moment the code touches a Pi (phrpi is Debian) or CI, and it fails by
   producing empty output rather than an error.
+- **A Vercel-origin service behind Cloudflare bot protection fails ~95%, not
+  100%, and the partial failure impersonates a rate limit.** Diagnosed on SPAN
+  2026-08-21. Vercel egresses from a rotating pool of AWS IPs; Bot Fight Mode
+  scores each independently, so a check occasionally draws an unchallenged IP,
+  succeeds once, then fails again on the next draw. That produced UP windows of
+  exactly one check interval separated by multi-hour DOWN runs, with gaps
+  regular enough (three consecutive at 2:07:4x to the second) that both agents
+  on the incident independently reached for "refilling budget / rate limit."
+  It was IP roulette. Cloudflare's firewall-events export settles it in
+  seconds — read `ruleId`/`source`/`action`, don't infer the control from the
+  failure pattern.
+- **Two sampling traps from the same incident, both of which produced confident
+  wrong answers.** A probe of 10 requests at 3s intervals spans 30 seconds and
+  cannot distinguish "blocked 100%" from "~5% pass rate spread over hours" — at
+  p=0.05, 10/10 failures is the *expected* result ~60% of the time. And
+  UptimeRobot's v2 log caps at **25 entries** regardless of `logs_limit`, while
+  Cloudflare's firewall-events export caps at **500** — so neither bounds an
+  onset time, and the oldest visible entry is a cap artifact, not a start.
+  Before accepting any peer's "we tested it, it isn't that", ask what sampling
+  window produced it.
 - **Turso returns `SUM()`/`COUNT()` aggregates as JSON strings.** An explicit `int()`
   coalesce is load-bearing — without it chart math concatenates instead of adding.
 - **UptimeRobot v2's `custom_uptime_ratio` is a string** (`"100.000-99.980-99.990"`,
