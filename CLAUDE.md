@@ -63,6 +63,46 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**UNVERIFIED: tonight (2026-08-21→22) is the first unattended run of all four
+jobs on the laptop.** Everything below about the sleep fix is proven by hand —
+a 420s test job held its caffeinate assertion, and a full `send-review.py`
+dry run through the wrapper took 129.7s with wall and awake agreeing — but no
+*scheduled* run has happened yet. Check by artifact, not by the change having
+applied: `tail -6 send-review.log` should show a `started 02:30:0x` stamp and a
+generation in seconds; the email should be timestamped ~02:32, not ~06:00;
+`launchctl list com.promptlab.review` should show `LastExitStatus = 0`; and
+`pmset -g log | egrep '^2026-08-22 02:'` should show no `Entering Sleep state`
+between the job's start and finish. That last one is the direct test — the
+others are its consequences.
+
+**Next piece of work: `docs/nightly-pipeline-plan.md`** (written 2026-08-21,
+not started). Collapses the racing nightly agents into one ordered pipeline,
+because **a scheduler is not a dependency mechanism** — launchd coalesces
+missed `StartCalendarInterval`s onto one wake, so two agents scheduled 45
+minutes apart start simultaneously after a closed-lid night, and retiming
+`api-costs` would look like a fix and not be one. Two measured defects it
+addresses, neither of which alarms today: Turso's newest `review_snapshots`
+row is permanently **one day behind** (inside its 2-day threshold), and
+`review_snapshots` holds **10,938 rows in Turso against 69 locally**, because
+`store/turso_store.py:549` is a plain `INSERT` and the sync re-pushes the
+newest ~68 rows nightly. Step 1 (idempotent remote writes) is the prerequisite
+and fixes the duplication on its own.
+
+**SPAN outage, live as of 2026-08-21 — prompt-lab is not the cause but owns the
+monitor.** SPAN's `/api/health` flaps ~25 times a day: Cloudflare serves a JS
+bot-challenge in place of the Influx response to its Vercel functions, so the
+check 503s. Full evidence and the agreed position are in
+`~/src/.handoff/span-prompt-lab.md`. Three things to carry: the remedy
+**branches** — a bot-challenge cause wants SPAN's WAF skip rule, a rate-limit
+cause wants the limit rescoped and would put our 5-minute polling back in the
+frame — so read what Security → Events *names* before applying anything.
+Load-shedding is **not** available on our side: the `deep` flag in
+`web/api/health_report.py` is descriptive (it mirrors `?db=1` in the URL) and
+`_check_target()` issues the request either way, so flipping it removes zero
+requests. And Nico's UptimeRobot account display timezone is **UTC-10**, so
+every alert email is stamped ten hours behind Pacific — that cost two rounds of
+cross-agent confusion and will do it again.
+
 **The nightly review's "3h19m API call" was never an API problem — the Mac
 was asleep. SOLVED 2026-08-20; do not re-open the timeout theory.** The
 earlier entry here diagnosed a read-timeout that kept resetting on trickled
@@ -162,12 +202,9 @@ full-sync time is 2m35s, no perf issue); repo housekeeping: 14 archived,
 to `~/src/mini-rescue/` with pushed `mini-rescue-20260817` branches.
 
 Turso-readers production leftovers:
-1. **Still open, needs Nico** (agents must not edit `.env*`): laptop's
-   `.env.local` needs `GROUND_CONTROL_MACHINE=laptop` appended so its nightly
-   sync carries a machine label. Verified unset 2026-08-20, and it matters
-   more now the laptop is the only machine running jobs — the
-   `daily_summaries_machine` parts table keys on it. One line:
-   `echo 'GROUND_CONTROL_MACHINE=laptop' >> ~/src/prompt-lab/.env.local`
+1. ~~Laptop's `.env.local` needs `GROUND_CONTROL_MACHINE=laptop`~~ — **DONE
+   2026-08-20, Nico appended it.** Matters now the laptop is the only machine
+   running jobs, since `daily_summaries_machine` keys on it.
 2. ~~Nothing syncs laptop→Turso between the 2:00am synthesizer write and the
    mini's 2:30am review read~~ — **MOOT 2026-08-20.** Both now run on the
    laptop, in sequence, over the same local DB, so there is no cross-machine
