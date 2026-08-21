@@ -186,6 +186,70 @@ def _():
         pass
 
 
+@test("clocks: a normal call renders as one plain duration")
+def test_elapsed_normal():
+    from claude_api import describe_elapsed
+
+    out = describe_elapsed(136.3, 136.1)
+    assert out == "136.3s", out
+    assert "SLEPT" not in out, out
+
+
+@test("clocks: divergence just under the threshold stays quiet")
+def test_elapsed_under_threshold():
+    from claude_api import HOST_SLEEP_THRESHOLD_S, describe_elapsed
+
+    out = describe_elapsed(100.0, 100.0 - (HOST_SLEEP_THRESHOLD_S - 1))
+    assert "SLEPT" not in out, out
+
+
+@test("clocks: a sleep-stretched call names the sleep, not API latency")
+def test_elapsed_host_slept():
+    # The real 2026-08-19->20 numbers: 3h19m wall, ~10min awake.
+    from claude_api import describe_elapsed
+
+    out = describe_elapsed(11942.4, 638.0)
+    assert "HOST SLEPT" in out, out
+    assert "11942.4s wall" in out, out
+    assert "638.0s awake" in out, out
+    # The whole point is that a reader cannot mistake the wall figure for
+    # how long Anthropic took.
+    assert "not API latency" in out, out
+
+
+@test("call_claude returns awake_ms alongside duration_ms")
+def test_call_claude_reports_awake():
+    import types
+
+    from claude_api import call_claude
+
+    resp = types.SimpleNamespace(
+        content=[types.SimpleNamespace(input={"ok": True})],
+        usage=types.SimpleNamespace(input_tokens=11, output_tokens=22),
+    )
+    client = types.SimpleNamespace(
+        messages=types.SimpleNamespace(create=lambda **kw: resp))
+
+    got = call_claude(client, model="m", system="s", user_msg="u",
+                      tool={"name": "t"})
+    assert got["parsed"] == {"ok": True}, got
+    assert "awake_ms" in got, got
+    # On a machine that never slept mid-call the two agree closely; the
+    # detector is only meaningful because both are recorded.
+    assert abs(got["duration_ms"] - got["awake_ms"]) < 1000, got
+
+
+@test("clocks: both nightly readers still surface the sleep diagnostic")
+def test_readers_use_describe_elapsed():
+    # A grep, not a behavioural assert, for the same reason the other clocks:
+    # guards are greps — if a reader quietly goes back to printing bare
+    # duration_ms, the next 3h19m night is undiagnosable again and no
+    # functional test would notice.
+    for name in ("send-review.py", "generate-report.py"):
+        src = (ROOT / name).read_text()
+        assert "describe_elapsed" in src, f"{name} no longer reports awake time"
+
+
 if __name__ == "__main__":
     failed = 0
     for name, ok, msg in _results:

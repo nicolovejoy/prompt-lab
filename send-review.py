@@ -7,7 +7,7 @@ import sys
 from datetime import datetime
 
 import heartbeat
-from claude_api import SONNET, call_claude, get_client, load_env
+from claude_api import SONNET, call_claude, describe_elapsed, get_client, load_env
 from store import get_store
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "web"))
@@ -209,7 +209,8 @@ def main():
     html = result["parsed"].get("html", "")
     text = result["parsed"].get("text", "")
 
-    print(f"Generated review in {result['duration_ms']/1000:.1f}s "
+    print(f"Generated review in "
+          f"{describe_elapsed(result['duration_ms']/1000, result['awake_ms']/1000)} "
           f"({result['input_tokens']}+{result['output_tokens']} tokens)")
     print(f"Subject: {subject}")
     print(f"Model: {SONNET}")

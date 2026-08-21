@@ -63,57 +63,87 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**Aug 19→20 unattended review run: hang/crash bug confirmed fixed, but
-exposed a second, narrower timeout gap — problem statement below, fix not
-yet written (Nico's call, 2026-08-20).** Background: the mini's first two
-overnight `send-review.py` attempts both failed silently, diagnosed
-2026-08-19:
-- Night 1 (Aug 17→18): sent the Aug 17 email fine, then crashed with an
-  uncaught `anthropic.APITimeoutError` generating a second piece — no retry
-  existed.
-- Night 2 (Aug 18→19): worse — no error at all. Opened a TCP connection to
-  `api.anthropic.com` at 2:30am and hung silently for 6+ hours; found still
-  "running" at 8:42am, killed by hand. The SDK's default timeout never
-  fired, so nothing was ever raised for a retry to catch.
+**The nightly review's "3h19m API call" was never an API problem — the Mac
+was asleep. SOLVED 2026-08-20; do not re-open the timeout theory.** The
+earlier entry here diagnosed a read-timeout that kept resetting on trickled
+data and prescribed a hard wall-clock deadline of ~10 minutes. **That fix
+would have aborted a healthy run every single night.** It was never applied.
+Keep the reasoning below, because the measurement trap it describes will
+recur on any machine that idles.
 
-Both fixed same day: `claude_api.call_claude` retries
-`APITimeoutError`/`APIConnectionError` with backoff (was rate-limit-only),
-and `claude_api.get_client()` sets an explicit httpx timeout (300s read/10s
-connect) so a stalled socket is forced to raise instead of hanging forever.
+The evidence, gathered by `pmset -g log` on the mini:
+- The mini deep-sleeps every ~15 minutes with 45-second dark wakes, all
+  night — **19 sleep cycles between 02:00 and 06:00**, 742 sleep/wakes since
+  the Aug 13 boot, each logged `Entering Sleep state due to 'Maintenance
+  Sleep':TCPKeepAlive=active`. `pmset sleep 0` is already set and does not
+  prevent this on Apple silicon.
+- launchd fires `StartCalendarInterval` on the next **wake**, not the
+  scheduled minute. The 02:30 job actually started at **02:42:07**.
+- 02:42 → the log's 06:01 mtime is **exactly the 11,942s** in the log.
+  Summing the sleep intervals across that span: **~11,350s asleep, ~640s
+  awake.** There was no 3h19m call. There was a normal generation (a healthy
+  night is 136s) stretched across a machine powered down for 95% of the
+  wall clock.
+- `time.time()` counts sleep; the monotonic clock httpx uses for its read
+  timeout does not. So the 300s ceiling **correctly** never fired and
+  `duration_ms` **correctly** read 3h19m. Both numbers were right and they
+  measure different things. `TCPKeepAlive=active` is what let the socket
+  survive the sleeps, which is also the better explanation for the Night 2
+  "6-hour silent hang" than a half-open socket.
 
-**The Aug 19→20 run (checked 2026-08-20) is a partial pass — read carefully
-before reusing `send-review.log` as evidence again.** The log file has
-never rotated since Aug 17 and just appends forever, so it reads like a
-disaster (tracebacks interleaved with a 3-hour send) when it's actually
-three days of history stacked up. The tell: one traceback references
-`send-review.py` line 257, but the current file is 256 lines — that's
-fossil output from the original Aug 17→18 crash, not from last night. The
-actual Aug 19→20 entry is only the log's last 5 lines: one `call_claude`
-call, no logged retries (the code prints "retrying in Xs..." on every
-caught timeout, and none appeared), took **11,942s (3h19m)**, then
-succeeded — `Sent`, `launchctl list com.promptlab.review` shows
-`LastExitStatus = 0`, no process still alive. So: the specific bugs above
-(uncaught crash, silent infinite hang) did not recur — genuine fix. 7b in
-`mini-decommission`'s `WIPE-CHECKLIST.md` can be ticked on that basis.
+Confirmed still true from the old entry: the two real bugs found 2026-08-19
+(uncaught `APITimeoutError` with no retry; unbounded client timeout) did not
+recur, so those fixes are genuine. And the `send-review.py` line-257
+traceback **is** a fossil — it matches `86ed77d` (257 lines, Aug 14–19), not
+the current 255-line file.
 
-**But a 3h19m single API call is not "clean," and the 300s timeout didn't
-catch it — that's the open problem.** `httpx.Timeout(300.0, connect=10.0)`
-is a read/inactivity timeout: it only fires if the connection goes fully
-silent for 300s straight. It is not a cap on total request duration. If the
-connection receives any trickle of data periodically, that clock keeps
-resetting and a single call can legitimately run for hours without ever
-tripping it — the same failure class as the Night 2 hang, just less severe
-because this one eventually delivered. Checked Anthropic's public status
-page and an outage tracker for an incident overlapping Aug 20
-~09:30-13:00 UTC (2:30-6am PT) — found nothing; last logged incident ended
-two days earlier. So there's no external corroboration this was
-Anthropic-side, and the code currently logs no per-attempt timestamps, so a
-repeat is undiagnosable beyond "it took a while." Fix, not yet applied:
-wrap the `call_claude` call in a hard wall-clock deadline (e.g. abort at
-~10 min regardless of read-timeout resets) and log a timestamp at the start
-of each attempt. Also: `send-review.log` needs rotation/truncation — as-is
-it will keep accumulating fossil tracebacks that look like fresh failures
-to whoever reads it next.
+Fixed same day, all of it machine-agnostic and in git:
+- `workflow/run-nightly.sh` — every nightly plist now runs its job through
+  it. Holds `caffeinate -ims` for exactly the job's lifetime (with a utility
+  argument, `-t`/`-w` are ignored and the assertion cannot orphan; no `-d`,
+  so the display still sleeps), stamps start/finish times into the log, and
+  rotates the log by **copy-truncate** at 256KB. Rotation must not be `mv`:
+  launchd opens `StandardOutPath` before spawning, so renaming leaves the
+  inherited fd on the renamed inode and the whole run lands in the archive.
+- `claude_api.call_claude` logs each attempt's start timestamp and records
+  both wall and monotonic elapsed; `describe_elapsed()` prints
+  `"11942.4s wall / 638.0s awake — HOST SLEPT ~189min mid-call"` instead of a
+  bare duration. `awake_ms` joins `duration_ms` in the returned dict. Five
+  `clocks:` tests pin this, including a grep guard that both readers still
+  call `describe_elapsed` — if one quietly reverts to printing bare
+  `duration_ms`, the next such night is undiagnosable again.
+
+**Do not add a wall-clock deadline.** If a deadline is ever wanted it must be
+enforced on monotonic time, or it will abort healthy runs on any sleeping
+host.
+
+**Found while fixing the above: `com.promptlab.report` has been silently dead
+on the mini since the 2026-08-13 rebuild.** Its plist ran
+`source $REPO/.env && python generate-report.py 30`, and **the mini has no
+`.env`** (only `.env.local`), so `source` failed, `&&` short-circuited, and
+python never ran — no `generate-report.log` exists there at all. This is the
+identical `&&` short-circuit that killed this same job for four months once
+before. The `source` was always redundant: `generate-report.py:134` calls
+`load_env()` itself, which loads `.env` *and* `.env.local` and tolerates
+either being absent. The plist now invokes python directly through
+`run-nightly.sh`. Next scheduled run is the 1st.
+
+**Also found: the mini's raw prompt DB is frozen** — 11,240 prompts, last
+`2026-08-12 00:35`, i.e. the restored pre-wipe snapshot, while the laptop
+logs 46–198 prompts/day. Nothing is captured on the mini, so its synthesizer
+runs nightly over a dead database and its sync re-pushes identical rows.
+Harmless, but it means the mini's only real contribution was *being awake at
+2:30am* — which it wasn't.
+
+**Decided 2026-08-20 (Nico): the nightly jobs move to the laptop.** He leaves
+it on and plugged in, and explicitly accepted the limitation that a closed
+lid means a late or missing report. Two things make this better than it
+sounds: launchd re-fires a missed `StartCalendarInterval` on wake, so a
+closed-lid night gets a late email rather than none; and co-locating the
+readers with the capture machine closes the old "laptop synthesizes at 2:00,
+mini reads Turso at 2:30" “Today”-window gap for free. The laptop sleeps too,
+so the caffeinate wrapper is what makes this viable — it is not a
+mini-specific hack.
 
 For the record, 2026-08-17 in one breath: turso-readers merged to main
 (direct, per Nico); py3.9 `from __future__ import annotations` fixes in
@@ -131,13 +161,18 @@ full-sync time is 2m35s, no perf issue); repo housekeeping: 14 archived,
 `react-firebase-authentication` deleted, all 13 mini-staging repos rescued
 to `~/src/mini-rescue/` with pushed `mini-rescue-20260817` branches.
 
-Turso-readers production leftovers, both needing Nico:
-1. Laptop's `.env.local` needs `GROUND_CONTROL_MACHINE=laptop` appended so
-   its nightly sync carries a machine label (mini's is set).
-2. Nothing syncs laptop→Turso between the 2:00am synthesizer write and the
-   mini's 2:30am review read, so the "Today" window can read empty for
-   laptop work. Needs a `workflow/`-level decision (sync-before-review vs
-   retiming) — Nico's call.
+Turso-readers production leftovers:
+1. **Still open, needs Nico** (agents must not edit `.env*`): laptop's
+   `.env.local` needs `GROUND_CONTROL_MACHINE=laptop` appended so its nightly
+   sync carries a machine label. Verified unset 2026-08-20, and it matters
+   more now the laptop is the only machine running jobs — the
+   `daily_summaries_machine` parts table keys on it. One line:
+   `echo 'GROUND_CONTROL_MACHINE=laptop' >> ~/src/prompt-lab/.env.local`
+2. ~~Nothing syncs laptop→Turso between the 2:00am synthesizer write and the
+   mini's 2:30am review read~~ — **MOOT 2026-08-20.** Both now run on the
+   laptop, in sequence, over the same local DB, so there is no cross-machine
+   window to miss. This resolved by co-location rather than by the
+   sync-before-review-vs-retiming decision it was waiting on.
 
 **mini-rescue curation — open, unhurried.** `~/src/mini-rescue/` holds 13
 rescued repos; walk them at leisure, merge-or-discard, delete each folder as
@@ -558,19 +593,26 @@ And the process lesson stands: *agreeing with an idea is not the same as the
 idea being chosen* — this entry records a decision only because Nico stated
 one.
 
-**What runs where — OVERTAKEN 2026-08-13: the reader jobs now run NOWHERE.**
-The mini is wiped and being re-purposed, so the readers-mini-only split below
-is history, kept for its reasoning. Current reality: the laptop runs only
-`com.promptlab.synthesizer`; review email, report, and api-costs are parked
-in `~/Library/LaunchAgents/disabled-readers-20260812/` with no machine to
-run them. **Expect the daily 8am health email's #45 heartbeats to go stale
-and say so — that is the system working, not a bug to chase.** The open
-choice for Nico: re-enable the laptop readers (accepting laptop-closed =
-no email), wait for whatever the re-purposed mini becomes, or move readers
-cloud-side. **The prerequisite gate is met as of 2026-08-14** — the
-`send-review.py`/`generate-report.py` → Turso refactor is done, so whichever
-machine sends next, the email sees all machines' work. The original split,
-for the record:
+**What runs where — SETTLED 2026-08-20: all four jobs run on the LAPTOP, and
+nowhere else.** Nico's call, on the reasoning that he leaves the laptop on and
+plugged in and accepts that a closed lid means a late or missing report. Applied
+the same day: the mini's four agents are booted out and parked in
+`~/Library/LaunchAgents/disabled-promptlab-20260820/` (reverse: move back +
+`launchctl bootstrap gui/$UID/<plist>`), and all four are rendered and loaded on
+the laptop. **There is exactly one sender — never load the readers on two
+machines at once or Nico gets two emails a night.**
+
+Why this beats the mini-only split it replaces: the mini's raw DB is frozen
+(nothing is captured there), it deep-sleeps through the night so its jobs
+started late and ran for hours of wall clock, and co-locating the readers with
+the capture machine removes the cross-machine "Today"-window gap entirely. The
+laptop sleeps too — `workflow/run-nightly.sh` is what makes this work, and
+launchd re-fires a missed `StartCalendarInterval` on wake, so a closed-lid
+night degrades to a late email rather than none.
+
+The laptop's older `~/Library/LaunchAgents/disabled-readers-20260812/` is now a
+stale backup of the 2026-08-12 parking; the live copies are the rendered ones in
+`~/Library/LaunchAgents/`. The original split, for the record:
 - *Local-data jobs* run on **every** machine, over its own DB, because raw
   prompts are machine-local by invariant and never leave. That is
   `com.promptlab.synthesizer`, plus the turso-sync leg. The laptop keeps its
@@ -580,7 +622,8 @@ for the record:
   `com.promptlab.api-costs`. **Done 2026-08-12 (Nico triggered it):** all three
   unloaded on the laptop and parked in
   `~/Library/LaunchAgents/disabled-readers-20260812/`; only the synthesizer
-  remains loaded there.
+  remains loaded there. **Reversed 2026-08-20 — see above; the availability
+  argument lost to the fact that the mini slept through every night anyway.**
 - Vercel crons (the 8am health email) are cloud-side and location-independent —
   out of scope for any of this, don't move them.
 

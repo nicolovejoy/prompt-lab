@@ -6,10 +6,18 @@
     <string>com.promptlab.report</string>
 
     <key>ProgramArguments</key>
+    <!-- No `source .env && …` here. generate-report.py calls load_env() itself
+         (generate-report.py:134), so the source was always redundant, and the
+         `&&` short-circuit is what killed this job for four months once and
+         again after the 2026-08-13 rebuild: the mini has no .env at all (only
+         .env.local), so `source` failed and python never ran. Silently. -->
     <array>
-        <string>/bin/bash</string>
-        <string>-c</string>
-        <string>source __REPO_DIR__/.env &amp;&amp; __PYTHON3__ __REPO_DIR__/generate-report.py 30</string>
+        <string>/bin/sh</string>
+        <string>__REPO_DIR__/workflow/run-nightly.sh</string>
+        <string>__REPO_DIR__/generate-report.log</string>
+        <string>__PYTHON3__</string>
+        <string>__REPO_DIR__/generate-report.py</string>
+        <string>30</string>
     </array>
 
     <key>StartCalendarInterval</key>
