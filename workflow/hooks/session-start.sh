@@ -90,16 +90,27 @@ fi
 HANDOFF_DIR="$HOME/src/.handoff"
 HANDOFF_BIN="$HOME/.claude/bin/handoff.sh"
 if [ -d "$HANDOFF_DIR/.git" ]; then
+  # Pull BEFORE scanning. Gating the pull on having already matched a file is a
+  # chicken-and-egg: a channel created by the other side does not exist in this
+  # clone yet, so it can never match, so the pull never runs, so the file never
+  # arrives. Hit for real 2026-08-21 — prompt-lab opened span-prompt-lab.md and
+  # pushed it; the SPAN agent's hook reported "no span-* file exists, nothing
+  # waiting for you" while the file sat on origin. That is this repo's signature
+  # failure shape wearing a new hat: the check never looked, and reported
+  # nothing found. Best-effort and time-boxed (handoff.sh pull always exits 0
+  # and never blocks), so the cost of doing it unconditionally is a short
+  # network call in repos that turn out to have no channel.
+  [ -x "$HANDOFF_BIN" ] && "$HANDOFF_BIN" pull >/dev/null 2>&1
   MATCHED=""
   for f in "$HANDOFF_DIR"/*-*.md; do
     [ -e "$f" ] || continue
+    # Case-sensitive by design: PROJECT is the cwd basename, so a repo living at
+    # ~/src/SPAN matches `repos: [SPAN, …]` and not `[span, …]`.
     if head -5 "$f" | grep '^repos:' | grep -qw "$PROJECT"; then
       MATCHED="$MATCHED $f"
     fi
   done
   if [ -n "$MATCHED" ]; then
-    # Best-effort, time-boxed pull (handoff.sh pull always exits 0; never blocks).
-    [ -x "$HANDOFF_BIN" ] && "$HANDOFF_BIN" pull >/dev/null 2>&1
     for f in $MATCHED; do
       # ## Active section = lines between '## Active' and the next '## ' header.
       ACTIVE="$(awk '/^## Active/{a=1;next} /^## /{a=0} a' "$f")"
