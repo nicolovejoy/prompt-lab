@@ -51,7 +51,8 @@ from html import escape
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlsplit
 
-from auth_helper import _sign, _unsign, get_role
+from access_helper import resolve_access
+from auth_helper import _sign, _unsign
 from day_helper import lab_today
 from turso_helper import turso_query
 
@@ -650,15 +651,19 @@ class handler(BaseHTTPRequestHandler):
     def _denial(self, dry):
         """(status, body) to refuse this caller, or None if it may proceed.
 
-        Read-only dry runs: any authenticated role. Sends: cron or admin only.
+        Cron bypasses this entirely. The cookie path is admin-only for BOTH
+        dry runs and sends (decision 3: health has no project column to
+        filter on and maps everything Nico runs, so there is no reader view
+        of it at all — unlike uptime/visitors, this is a role check, not a
+        grant-set check).
         """
         if self._is_cron():
             return None
-        role = get_role(self.headers)
-        if role is None:
+        access = resolve_access(self.headers)
+        if access is None:
             return 401, {"error": "unauthorized"}
-        if not dry and role != "admin":
-            return 403, {"error": "forbidden", "detail": "sending requires admin"}
+        if access.role != "admin":
+            return 403, {"error": "admin required"}
         return None
 
     def _handle_pause(self, qs):

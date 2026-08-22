@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from auth_helper import is_authenticated
+from access_helper import resolve_access
 from day_helper import lab_window
 from turso_helper import turso_query
 
@@ -59,8 +59,16 @@ def _i(v):
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if not is_authenticated(self.headers):
+        access = resolve_access(self.headers)
+        if access is None:
             self._json({"error": "unauthorized"}, 401)
+            return
+        # Admin-only (decision 3): uptime has no project column to filter on
+        # and maps everything Nico runs. Gate on the grant-set axis, not the
+        # role string — an unfiltered account (admin, or a reader when
+        # GARM_GATING=off) keeps today's behaviour.
+        if access.projects is not None:
+            self._json({"error": "admin required"}, 403)
             return
 
         params = parse_qs(urlparse(self.path).query)

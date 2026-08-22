@@ -788,7 +788,7 @@ def _():
 @test("todos: 401 when not authenticated")
 def _():
     mod = load_endpoint("web/api/todos.py", "endpoint_todos_unauth")
-    restore_a = patch(mod, is_authenticated=lambda _: False)
+    restore_a = patch(mod, resolve_access=lambda h: None)
     try:
         h = invoke(mod, "/api/todos")
         assert h.status_code == 401, f"got {h.status_code}"
@@ -800,7 +800,8 @@ def _():
 def _():
     import os
     mod = load_endpoint("web/api/todos.py", "endpoint_todos_unconfigured")
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
     saved = os.environ.pop("GITHUB_TOKEN", None)
     try:
         h = invoke(mod, "/api/todos")
@@ -817,7 +818,8 @@ def _():
 def _():
     import os
     mod = load_endpoint("web/api/todos.py", "endpoint_todos_group")
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
     restore_q = patch_turso_query(
         mod, lambda *a, **kw: [{"alias": "offer-builder", "canonical": "byside"}])
 
@@ -868,8 +870,8 @@ _CAT_ITEMS = [
 def _():
     import os
     mod = load_endpoint("web/api/todos.py", "endpoint_todos_cat_reader")
-    restore_auth = patch(mod, is_authenticated=lambda _: True,
-                         get_role=lambda _: "reader")
+    restore_auth = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "reader", "r@b.c", None, None))
     inserts = []
 
     def fake_turso(sql, args=None):
@@ -914,8 +916,8 @@ def _():
 def _():
     import os
     mod = load_endpoint("web/api/todos.py", "endpoint_todos_cat_admin")
-    restore_auth = patch(mod, is_authenticated=lambda _: True,
-                         get_role=lambda _: "admin")
+    restore_auth = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
     inserts = []
 
     def fake_turso(sql, args=None):
@@ -1281,7 +1283,7 @@ def _():
 def _():
     mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_unauth")
     restore_q = patch_turso_query(mod, lambda *a, **kw: [])
-    restore_a = patch(mod, is_authenticated=lambda _: False)
+    restore_a = patch(mod, resolve_access=lambda h: None)
 
     def restore():
         restore_a()
@@ -1306,7 +1308,8 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
 
     def restore():
         restore_a()
@@ -1345,7 +1348,8 @@ def _visov_logins(login_day_rows, login_path_rows, path="/api/visitor_overview")
         return login_path_rows if "GROUP BY path" in sql else login_day_rows
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
     try:
         h = invoke(mod, path)
     finally:
@@ -1402,7 +1406,8 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
     try:
         h = invoke(mod, "/api/visitor_overview")
         assert h.status_code == 200, f"got {h.status_code}"
@@ -1430,7 +1435,8 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
     try:
         h = invoke(mod, "/api/visitor_overview")
         assert h.status_code == 200, f"got {h.status_code}"
@@ -1468,12 +1474,18 @@ def _():
 
 # === project_metadata.py (issue #23) ===
 
-def _meta_mod(name: str, fake_turso, role="admin"):
-    """Load project_metadata.py with turso + auth patched. Returns (mod, restore)."""
+def _meta_mod(name: str, fake_turso, role="admin", projects=None):
+    """Load project_metadata.py with turso + auth patched. Returns (mod, restore).
+
+    `projects` is the reader's grant set (None = unfiltered, admin's shape);
+    passed straight into the stubbed Access so GET's filter_rows() has
+    something real to filter."""
     mod = load_endpoint("web/api/project_metadata.py", name)
     restore_q = patch_turso_query(mod, fake_turso)
+    access = None if role is None else access_helper.Access(
+        role, "t@test.invalid", projects, None)
     restore_a = patch(mod,
-                      is_authenticated=lambda _: role is not None,
+                      resolve_access=lambda _: access,
                       get_role=lambda _: role)
 
     def restore():
@@ -2907,17 +2919,30 @@ def _health_cookie(role, email="someone@test.invalid"):
     return {"cookie": f"{auth_helper.COOKIE_NAME}={tok}"}
 
 
-@test("health_report: reader cookie + ?dry=1 → 200 targets, nothing sent")
+@test("health_report: reader cookie + ?dry=1 → 403 (decision 3: admin-only, no reader dry view)")
 def _():
     restore = _health_env()
     try:
         mod, sent = _health_mod()
         h = invoke(mod, "/api/health_report?dry=1", _health_cookie("reader"))
+        assert h.status_code == 403, f"got {h.status_code}: {h.body}"
+        assert not mod._polls, "reader dry run polled targets"
+        assert not sent, "reader dry run sent an email"
+    finally:
+        restore()
+
+
+@test("health_report: admin cookie + ?dry=1 → 200 targets, nothing sent")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report?dry=1", _health_cookie("admin"))
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         assert ([t["name"] for t in h.body["targets"]]
                 == [n for n, _, _ in mod.TARGETS]), h.body["targets"]
         assert "paused_until" in h.body and "would_send" in h.body, h.body
-        assert not sent, "reader dry run sent an email"
+        assert not sent, "admin dry run sent an email"
     finally:
         restore()
 
@@ -3691,10 +3716,12 @@ def _():
     try:
         mod, sent = _health_mod()
         h = invoke(mod, "/api/health_report?dry=1", _health_cookie("reader"))
-        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.status_code == 403, (
+            f"got {h.status_code}: {h.body} — decision 3 makes health "
+            "admin-only even for dry runs, so a reader never reaches the "
+            "point where a write could happen")
         assert mod._uptime_writes == [], (
-            "dry run archived uptime — ?dry=1 is open to any authenticated role, "
-            f"so that is a privilege leak: {mod._uptime_writes}")
+            f"dry run archived uptime: {mod._uptime_writes}")
         assert not sent
     finally:
         restore()
@@ -3780,9 +3807,13 @@ def _():
 
 # === uptime_overview.py (read side; contract fixed in the plan) ===
 
-def _uptime_ov(rows, path="/api/uptime_overview", authed=True):
+def _uptime_ov(rows, path="/api/uptime_overview", authed=True, access=None):
     """Invoke uptime_overview with the archive query stubbed.
-    Returns (captured_sql_list, response)."""
+    Returns (captured_sql_list, response).
+
+    `access` overrides the default admin/None shape derived from `authed` —
+    pass a reader Access (non-None `projects`) to exercise the decision-3
+    admin-only gate."""
     mod = load_endpoint("web/api/uptime_overview.py", "endpoint_uptime_ov")
     captured = []
 
@@ -3793,7 +3824,9 @@ def _uptime_ov(rows, path="/api/uptime_overview", authed=True):
         return rows
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: authed)
+    if access is None:
+        access = access_helper.Access("admin", "a@b.c", None, None) if authed else None
+    restore_a = patch(mod, resolve_access=lambda h: access)
     try:
         h = invoke(mod, path)
     finally:
@@ -4570,6 +4603,167 @@ def _():
     finally:
         r2()
         r()
+
+
+# === project_metadata / todos / info / admin-only pages: reader gating (Task 6) ===
+
+@test("project_metadata: GET reader sees only their granted project's key")
+def _():
+    rows = [
+        {"project": "prntd", "category": "Tools", "private": 0, "status": "active",
+         "public_counts": 0, "updated_at": "2026-08-01T00:00:00Z"},
+        {"project": "musicforge", "category": "Music", "private": 0, "status": "active",
+         "public_counts": 0, "updated_at": "2026-08-01T00:00:00Z"},
+    ]
+    mod, restore = _meta_mod("endpoint_meta_reader_filter", lambda *a, **kw: rows,
+                             role="reader", projects=frozenset({"prntd"}))
+    try:
+        h = invoke(mod, "/api/project_metadata")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert list(h.body["projects"]) == ["prntd"], h.body["projects"]
+        assert "musicforge" not in json.dumps(h.body), "musicforge leaked into project_metadata"
+    finally:
+        restore()
+
+
+@test("todos: reader sees no non-granted project keys in `projects`")
+def _():
+    import os
+    mod = load_endpoint("web/api/todos.py", "endpoint_todos_reader_filter")
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "reader", "r@b.c", frozenset({"prntd"}), None))
+    restore_q = patch_turso_query(mod, lambda *a, **kw: [])
+    fake_items = [
+        {"title": "Fix A", "number": 1, "html_url": "u1", "labels": [],
+         "repository_url": "https://api.github.com/repos/nicolovejoy/prntd",
+         "comments": 0, "updated_at": "2026-06-20T00:00:00Z"},
+        {"title": "Fix B", "number": 2, "html_url": "u2", "labels": [],
+         "repository_url": "https://api.github.com/repos/nicolovejoy/musicforge",
+         "comments": 0, "updated_at": "2026-06-21T00:00:00Z"},
+    ]
+    restore_fetch = patch(mod, _fetch_open_issues=lambda token, user: fake_items)
+    saved = os.environ.get("GITHUB_TOKEN")
+    os.environ["GITHUB_TOKEN"] = "ghp_test"
+    try:
+        h = invoke(mod, "/api/todos")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        projs = h.body["projects"]
+        assert list(projs) == ["prntd"], projs
+        assert h.body["total"] == 1, h.body
+        assert "musicforge" not in json.dumps(h.body), "musicforge leaked into todos"
+    finally:
+        if saved is None:
+            os.environ.pop("GITHUB_TOKEN", None)
+        else:
+            os.environ["GITHUB_TOKEN"] = saved
+        restore_fetch()
+        restore_q()
+        restore_a()
+
+
+@test("info: project_count counts only the reader's granted projects")
+def _():
+    mod = load_endpoint("web/api/info.py", "endpoint_info_reader")
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "reader", "r@b.c", frozenset({"prntd"}), None))
+
+    def fake_turso(sql, args=None):
+        if "MAX(date)" in sql:
+            return [{"latest": "2026-08-01"}]
+        if "DISTINCT project" in sql:
+            return [{"project": "prntd"}, {"project": "musicforge"}, {"project": "byside"}]
+        return []
+    restore_q = patch_turso_query(mod, fake_turso)
+    try:
+        h = invoke(mod, "/api/info")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["project_count"] == 1, h.body
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("info: admin project_count counts every distinct project")
+def _():
+    mod = load_endpoint("web/api/info.py", "endpoint_info_admin")
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
+
+    def fake_turso(sql, args=None):
+        if "MAX(date)" in sql:
+            return [{"latest": "2026-08-01"}]
+        if "DISTINCT project" in sql:
+            return [{"project": "prntd"}, {"project": "musicforge"}, {"project": "byside"}]
+        return []
+    restore_q = patch_turso_query(mod, fake_turso)
+    try:
+        h = invoke(mod, "/api/info")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["project_count"] == 3, h.body
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("uptime_overview: reader (grant set filtered) → 403, archive never read")
+def _():
+    captured, h = _uptime_ov(
+        [], access=access_helper.Access("reader", "r@b.c", frozenset({"prntd"}), None))
+    assert h.status_code == 403, f"got {h.status_code}: {h.body}"
+    assert captured == [], f"queried before rejecting: {captured}"
+
+
+@test("uptime_overview: admin → 200")
+def _():
+    _, h = _uptime_ov([{"date": "2026-08-01", "monitor": "garm", "uptime_1d": 100.0,
+                        "uptime_7d": 100.0, "uptime_30d": 99.98,
+                        "avg_response_ms": 281, "status": "up"}])
+    assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+
+
+@test("visitor_overview: reader (grant set filtered) → 403")
+def _():
+    mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_reader403")
+    restore_q = patch_turso_query(mod, lambda *a, **kw: [])
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "reader", "r@b.c", frozenset({"prntd"}), None))
+    try:
+        h = invoke(mod, "/api/visitor_overview")
+        assert h.status_code == 403, f"got {h.status_code}: {h.body}"
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("visitor_overview: admin → 200")
+def _():
+    mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_admin200")
+    restore_q = patch_turso_query(mod, lambda *a, **kw: [])
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
+    try:
+        h = invoke(mod, "/api/visitor_overview")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("garm guard: every web/api module that selects a project column resolves access (no is_authenticated)")
+def _():
+    import re
+    api = ROOT / "web" / "api"
+    offenders = []
+    for f in sorted(api.glob("*.py")):
+        src = f.read_text()
+        touches_project = re.search(r"\bproject\b", src) and "turso_query" in src
+        exempt = f.name in {"public_history.py", "private_history.py",   # service-key / public tiers
+                            "health_report.py", "health.py", "beacon.py",
+                            "uptime_overview.py", "visitor_overview.py",   # decision 3: admin-only, tested separately
+                            "login.py", "callback.py", "ask.py"}
+        if touches_project and not exempt and "is_authenticated(" in src:
+            offenders.append(f.name)
+    assert not offenders, f"still gating on is_authenticated (reader sees everything): {offenders}"
 
 
 # === Main ===

@@ -928,6 +928,11 @@
     function Header({ route, info, role, email, onLogout, active, dormant, refreshing, theme, onToggleTheme }) {
       const [menu, setMenu] = useState(false);
       const [more, setMore] = useState(false);
+      // Health and Visitors map everything Nico runs and have no per-project
+      // filter (decision 3, garm-consumer plan) — a reader never sees them in
+      // nav. This is UX only: the API 403s a reader who hits the route
+      // directly, so hiding the button here is not the enforcement.
+      const nav = role === 'admin' ? NAV : NAV.filter(([view]) => view !== 'visitors' && view !== 'health');
       // Any navigation closes it — otherwise the panel stays open over the page
       // you just asked for, which reads as the tap not having worked.
       useEffect(() => { setMenu(false); setMore(false); }, [route.view, route.project]);
@@ -1004,7 +1009,7 @@
           </div>
           <div class="header-right" ref=${navRef}>
             <div class="nav-wide">
-              ${NAV.map(([view, label, hash]) => html`
+              ${nav.map(([view, label, hash]) => html`
                 <button class="header-btn ${route.view === view ? 'active' : ''}"
                         onClick=${() => navigate(hash)}>${label}</button>`)}
               ${themeBtn}
@@ -1026,7 +1031,7 @@
             </button>
 
             <div class="nav-drop ${menu ? 'open' : ''}">
-              ${NAV.map(([view, label, hash]) => html`
+              ${nav.map(([view, label, hash]) => html`
                 <button class="header-btn ${route.view === view ? 'active' : ''}"
                         onClick=${() => navigate(hash)}>${label}</button>`)}
               <div class="nav-sep"></div>
@@ -1222,9 +1227,13 @@
           ${route.view === 'day' && html`<${DayView} date=${route.date} />`}
           ${route.view === 'about' && html`<${AboutView} info=${info}
             onAsk=${role === 'admin' ? () => setAskOpen(true) : null} />`}
-          ${route.view === 'visitors' && html`<${VisitorsOverview} />`}
+          ${route.view === 'visitors' && (role === 'admin'
+            ? html`<${VisitorsOverview} />`
+            : html`<p style="color: var(--text-secondary); padding: 24px 0">Admins only.</p>`)}
           ${route.view === 'todos' && html`<${TodosView} overview=${overview} />`}
-          ${route.view === 'health' && html`<${HealthView} onUnauthorized=${() => setAuthed(false)} />`}
+          ${route.view === 'health' && (role === 'admin'
+            ? html`<${HealthView} onUnauthorized=${() => setAuthed(false)} />`
+            : html`<p style="color: var(--text-secondary); padding: 24px 0">Admins only.</p>`)}
 
           ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
         </div>

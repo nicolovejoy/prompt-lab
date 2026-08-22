@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler
 
-from auth_helper import is_authenticated
+from access_helper import filter_rows, resolve_access
 from turso_helper import turso_query
 
 # Evaluated at import time (cold start ≈ deploy time). Sent as ISO 8601;
@@ -15,7 +15,8 @@ _BUILD_TIME = datetime.now(timezone.utc).isoformat()
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if not is_authenticated(self.headers):
+        access = resolve_access(self.headers)
+        if access is None:
             self.send_response(401)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -34,18 +35,19 @@ class handler(BaseHTTPRequestHandler):
         except Exception:
             pass
 
-        # Project count
+        # Project count — for a reader this counts only their granted
+        # projects, since daily_summaries has no per-row visibility of its
+        # own and a raw DISTINCT count would leak the ecosystem's size.
         project_count = 0
         try:
-            rows = turso_query(
-                "SELECT COUNT(DISTINCT project) as cnt FROM daily_summaries"
-            )
-            if rows:
-                project_count = int(rows[0].get("cnt", 0))
+            rows = turso_query("SELECT DISTINCT project FROM daily_summaries")
+            project_count = len(filter_rows(access, rows))
         except Exception:
             pass
 
         self.send_response(200)
+        if access.set_cookie:
+            self.send_header("Set-Cookie", access.set_cookie)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
