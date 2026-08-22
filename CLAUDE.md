@@ -63,53 +63,30 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**Decided 2026-08-22 (Nico): prompt-lab becomes a partial Garm consumer — issue
-#27's open "should prompt-lab itself use Garm" question, now answered. Not
-started; the plan is next session's work.** Trigger was wanting to invite
-Pierre and Nico's brother with per-project visibility (today `READER_EMAILS`
-is all-or-nothing — every reader sees every project) plus wanting usage
-tracking done respectfully rather than not at all.
+**Garm consumer — PLANNED 2026-08-22, not started. The plan is
+`docs/garm-consumer-plan.md`; execute it task-by-task (subagent-driven).**
+Decisions, all Nico's, same day: (1) Garm slugs are NAMESPACED
+`prompt-lab:<canonical>` — seeing a project's history is a different resource
+from using the app; (2) reader = anyone with ≥1 `prompt-lab:*` grant, Garm-only,
+`READER_EMAILS` survives only as the `GARM_GATING=off` kill-switch allowlist;
+(3) `#/health`, `#/visitors`, uptime go admin-only (no project column to filter
+on, and they map everything Nico runs); (4) revocation latency 10 min
+(cookie-carried grant set, refreshed on the request path). **Blocked on garm
+for one thing:** Garm's check is a point query `(email, project)`, a dashboard
+needs the set — asked garm (handoff 2026-08-22) for a consumer-key list endpoint
+`GET /gnipahellir/grants?email=` plus an unscoped (or prefix-scoped) key; the
+fan-out alternative would spam Howl with ~20 deny rows per reader per refresh.
+Tasks 1–7 of the plan don't depend on garm's answer beyond one function's
+URL/shape. The admin-bypass rationale (admin never routes through Garm, so a
+Garm outage can't lock Nico out of the tool that diagnoses Garm) stands as
+decided 2026-08-22 — see the plan's Architecture section; the two-accounts
+alternative was rejected on "simple is good".
 
-The design has one deliberate carve-out: **admin (Nico) does NOT route
-through Garm.** `docs/health-convention.md:60` already established why —
-"Garm consumers fail closed... a Garm outage is an ecosystem-wide lockout,"
-which is the same reasoning that keeps prompt-lab's own alerting on
-UptimeRobot rather than Garm/Vercel infra ("the watcher must not die with the
-watched," `docs/history.md:93`). prompt-lab is the dashboard used to diagnose
-a Garm outage; it can't require a live Garm to open, or a Garm outage locks
-Nico out of the one tool that would tell him Garm is down.
-
-So: `ADMIN_EMAILS` stays exactly as it is today (flat list, bypasses Garm,
-always works) — it answers "what can this account *do*" (trigger sends,
-classify issues, edit `project_metadata`), which is a different axis from
-"which projects can this account *see*" and isn't something Garm's
-`(email, project) → role` model needs to know about. Only the reader side
-becomes Garm grants: Pierre and the brother get real per-project `viewer`
-roles via Garm's people-admin flow, and if Garm is briefly down they lose
-access for a few minutes — an acceptable, contained failure, unlike locking
-out the admin.
-
-**Considered and set aside: two accounts for Nico** (one Garm-gated, one
-break-glass emergency login) — rejected for the single-admin-bypass design
-above on Nico's "simple is good" call; same outcome (an always-working path
-for Nico), fewer moving parts, nothing to keep in sync between two accounts.
-
-Usage tracking falls out for free: Garm's existing `GET /api/usage` endpoint
-(see the garm-prompt-lab handoff channel) already returns daily rollup counts
-per person × project × allow/deny — no raw access log, same aggregate-only
-philosophy as the anonymous visitor tracking already in this dashboard.
-
-**UNVERIFIED: tonight (2026-08-21→22) is the first unattended run of all four
-jobs on the laptop.** Everything below about the sleep fix is proven by hand —
-a 420s test job held its caffeinate assertion, and a full `send-review.py`
-dry run through the wrapper took 129.7s with wall and awake agreeing — but no
-*scheduled* run has happened yet. Check by artifact, not by the change having
-applied: `tail -6 send-review.log` should show a `started 02:30:0x` stamp and a
-generation in seconds; the email should be timestamped ~02:32, not ~06:00;
-`launchctl list com.promptlab.review` should show `LastExitStatus = 0`; and
-`pmset -g log | egrep '^2026-08-22 02:'` should show no `Entering Sleep state`
-between the job's start and finish. That last one is the direct test — the
-others are its consequences.
+**VERIFIED 2026-08-22: the first unattended laptop run of the nightly jobs
+worked.** `send-review.log`: started 02:30:01, generated in 138.0s, sent,
+finished 02:32:22, `LastExitStatus = 0`; `pmset -g log` shows the only sleep
+that hour was 02:05–02:21, before the job. The caffeinate wrapper held through
+the run. The sleep fix is no longer a claim.
 
 **Next piece of work: `docs/nightly-pipeline-plan.md`** (written 2026-08-21,
 not started). Collapses the racing nightly agents into one ordered pipeline,
