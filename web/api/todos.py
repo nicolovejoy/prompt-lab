@@ -22,7 +22,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from auth_helper import get_role, is_authenticated
+from access_helper import allowed, resolve_access
 from classify_helper import classify_batch, issue_key
 from turso_helper import turso_query
 
@@ -74,7 +74,8 @@ def _fetch_open_issues(token, user):
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if not is_authenticated(self.headers):
+        access = resolve_access(self.headers)
+        if access is None:
             self.send_response(401)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -83,7 +84,7 @@ class handler(BaseHTTPRequestHandler):
 
         token = os.environ.get("GITHUB_TOKEN")
         if not token:
-            self._send(200, {"configured": False, "projects": {}, "total": 0})
+            self._send(200, {"configured": False, "projects": {}, "total": 0}, access)
             return
 
         user = os.environ.get("GITHUB_USER", DEFAULT_USER)
@@ -106,6 +107,8 @@ class handler(BaseHTTPRequestHandler):
                 continue
             repo = _repo_name(it)
             proj = a2c.get(repo, repo)
+            if not allowed(access, proj):
+                continue
             projects.setdefault(proj, []).append({
                 "title": it.get("title"),
                 "number": it.get("number"),
@@ -123,11 +126,11 @@ class handler(BaseHTTPRequestHandler):
         params = parse_qs(urlparse(self.path).query)
         if params.get("categorize", ["0"])[0] in ("1", "true"):
             force = params.get("recategorize", ["0"])[0] in ("1", "true")
-            may_classify = get_role(self.headers) == "admin" and bool(
+            may_classify = access.role == "admin" and bool(
                 os.environ.get("ANTHROPIC_API_KEY"))
             payload.update(self._categorize(projects, force, may_classify))
 
-        self._send(200, payload)
+        self._send(200, payload, access)
 
     def _categorize(self, projects, force, may_classify):
         """Attach a `category` (type of work) to every issue, reading the
@@ -186,8 +189,10 @@ class handler(BaseHTTPRequestHandler):
         return {"categorized": True, "classified_now": classified_now,
                 "pending": pending}
 
-    def _send(self, code, payload):
+    def _send(self, code, payload, access=None):
         self.send_response(code)
+        if access is not None and access.set_cookie:
+            self.send_header("Set-Cookie", access.set_cookie)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()

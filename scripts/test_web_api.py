@@ -114,6 +114,11 @@ def invoke_post(endpoint_module, path: str, body, headers: dict | None = None) -
 # resolve_project_names calls internally.
 import turso_helper  # noqa: E402
 
+# Needed early: several endpoint fixtures below (cost_overview, activity_timeline,
+# overview, day) patch resolve_access directly now that those endpoints route
+# auth through access_helper instead of auth_helper.is_authenticated.
+import access_helper  # noqa: E402
+
 
 _results: list[tuple[str, bool, str]] = []
 
@@ -406,7 +411,7 @@ def _():
 def _():
     mod = load_endpoint("web/api/cost_timeline.py", "endpoint_cost_unauth")
     restore_q = patch_turso_query(mod, lambda *a, **kw: [])
-    restore_a = patch(mod, is_authenticated=lambda _: False)
+    restore_a = patch(mod, resolve_access=lambda h: None)
 
     def restore():
         restore_a()
@@ -428,7 +433,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access("admin", "a@b.c", None, None))
 
     def restore():
         restore_a()
@@ -464,7 +469,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access("admin", "a@b.c", None, None))
 
     def restore():
         restore_a()
@@ -492,7 +497,7 @@ def _():
 def _():
     mod = load_endpoint("web/api/cost_overview.py", "endpoint_costov_unauth")
     restore_q = patch_turso_query(mod, lambda *a, **kw: [])
-    restore_a = patch(mod, is_authenticated=lambda _: False)
+    restore_a = patch(mod, resolve_access=lambda h: None)
 
     def restore():
         restore_a()
@@ -524,7 +529,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -552,7 +557,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -575,7 +580,7 @@ def _():
 def _():
     mod = load_endpoint("web/api/activity_timeline.py", "endpoint_acttl_unauth")
     restore_q = patch_turso_query(mod, lambda *a, **kw: [])
-    restore_a = patch(mod, is_authenticated=lambda _: False)
+    restore_a = patch(mod, resolve_access=lambda h: None)
 
     def restore():
         restore_a()
@@ -608,7 +613,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -647,7 +652,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -687,7 +692,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -715,7 +720,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -756,7 +761,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -783,7 +788,7 @@ def _():
 @test("todos: 401 when not authenticated")
 def _():
     mod = load_endpoint("web/api/todos.py", "endpoint_todos_unauth")
-    restore_a = patch(mod, is_authenticated=lambda _: False)
+    restore_a = patch(mod, resolve_access=lambda h: None)
     try:
         h = invoke(mod, "/api/todos")
         assert h.status_code == 401, f"got {h.status_code}"
@@ -795,7 +800,8 @@ def _():
 def _():
     import os
     mod = load_endpoint("web/api/todos.py", "endpoint_todos_unconfigured")
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
     saved = os.environ.pop("GITHUB_TOKEN", None)
     try:
         h = invoke(mod, "/api/todos")
@@ -812,7 +818,8 @@ def _():
 def _():
     import os
     mod = load_endpoint("web/api/todos.py", "endpoint_todos_group")
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
     restore_q = patch_turso_query(
         mod, lambda *a, **kw: [{"alias": "offer-builder", "canonical": "byside"}])
 
@@ -863,8 +870,8 @@ _CAT_ITEMS = [
 def _():
     import os
     mod = load_endpoint("web/api/todos.py", "endpoint_todos_cat_reader")
-    restore_auth = patch(mod, is_authenticated=lambda _: True,
-                         get_role=lambda _: "reader")
+    restore_auth = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "reader", "r@b.c", None, None))
     inserts = []
 
     def fake_turso(sql, args=None):
@@ -909,8 +916,8 @@ def _():
 def _():
     import os
     mod = load_endpoint("web/api/todos.py", "endpoint_todos_cat_admin")
-    restore_auth = patch(mod, is_authenticated=lambda _: True,
-                         get_role=lambda _: "admin")
+    restore_auth = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
     inserts = []
 
     def fake_turso(sql, args=None):
@@ -1276,7 +1283,7 @@ def _():
 def _():
     mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_unauth")
     restore_q = patch_turso_query(mod, lambda *a, **kw: [])
-    restore_a = patch(mod, is_authenticated=lambda _: False)
+    restore_a = patch(mod, resolve_access=lambda h: None)
 
     def restore():
         restore_a()
@@ -1301,7 +1308,8 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
 
     def restore():
         restore_a()
@@ -1340,7 +1348,8 @@ def _visov_logins(login_day_rows, login_path_rows, path="/api/visitor_overview")
         return login_path_rows if "GROUP BY path" in sql else login_day_rows
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
     try:
         h = invoke(mod, path)
     finally:
@@ -1397,7 +1406,8 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
     try:
         h = invoke(mod, "/api/visitor_overview")
         assert h.status_code == 200, f"got {h.status_code}"
@@ -1425,7 +1435,8 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
     try:
         h = invoke(mod, "/api/visitor_overview")
         assert h.status_code == 200, f"got {h.status_code}"
@@ -1463,12 +1474,18 @@ def _():
 
 # === project_metadata.py (issue #23) ===
 
-def _meta_mod(name: str, fake_turso, role="admin"):
-    """Load project_metadata.py with turso + auth patched. Returns (mod, restore)."""
+def _meta_mod(name: str, fake_turso, role="admin", projects=None):
+    """Load project_metadata.py with turso + auth patched. Returns (mod, restore).
+
+    `projects` is the reader's grant set (None = unfiltered, admin's shape);
+    passed straight into the stubbed Access so GET's filter_rows() has
+    something real to filter."""
     mod = load_endpoint("web/api/project_metadata.py", name)
     restore_q = patch_turso_query(mod, fake_turso)
+    access = None if role is None else access_helper.Access(
+        role, "t@test.invalid", projects, None)
     restore_a = patch(mod,
-                      is_authenticated=lambda _: role is not None,
+                      resolve_access=lambda _: access,
                       get_role=lambda _: role)
 
     def restore():
@@ -1492,7 +1509,13 @@ def _():
     rows = [{"project": "byside", "category": "Collabs", "private": "1",
              "status": "active", "public_counts": "1",
              "updated_at": "2026-07-14T00:00:00Z"}]
-    mod, restore = _meta_mod("endpoint_meta_get", lambda *a, **kw: rows, role="reader")
+
+    def fake_turso(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        return rows
+
+    mod, restore = _meta_mod("endpoint_meta_get", fake_turso, role="reader")
     try:
         h = invoke(mod, "/api/project_metadata")
         assert h.status_code == 200, f"got {h.status_code}"
@@ -1658,7 +1681,7 @@ def _():
 
     mod = load_endpoint("web/api/overview.py", "endpoint_overview_meta")
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
     try:
         h = invoke(mod, "/api/overview")
         # The table not existing yet must degrade to {}, never 503 the page.
@@ -1681,7 +1704,7 @@ def _():
 
     mod = load_endpoint("web/api/overview.py", "endpoint_overview_meta_alias")
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
     try:
         h = invoke(mod, "/api/overview")
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
@@ -2128,7 +2151,7 @@ def _callback_env():
     import os
     restore = _save_env(
         "AUTH_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "ADMIN_EMAILS",
-        "BEACON_SALT", "TURSO_DATABASE_URL")
+        "BEACON_SALT", "TURSO_DATABASE_URL", "GARM_GATING")
     os.environ["AUTH_SECRET"] = "test-secret"
     os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
     os.environ["GOOGLE_CLIENT_SECRET"] = "test-client-secret"
@@ -2138,6 +2161,11 @@ def _callback_env():
     # doesn't patch turso_query can never reach a real database.
     os.environ["BEACON_SALT"] = "test-salt"
     os.environ["TURSO_DATABASE_URL"] = ""
+    # Default the kill switch OFF (READER_EMAILS path) so every callback test
+    # written before Garm consumption still exercises the behaviour it pins.
+    # Tests that want the live-Garm branch patch GARM_ENABLED directly, which
+    # overrides this regardless of env.
+    os.environ["GARM_GATING"] = "off"
     return restore
 
 
@@ -2467,6 +2495,92 @@ def _():
         restore()
 
 
+# === callback: readers resolve through Garm (Task 3) ===
+
+def _id_token(email):
+    """A verified, correct-aud id_token for `email` — the common case every
+    garm-consumer callback test needs."""
+    return _fake_id_token({
+        "email": email, "email_verified": True, "aud": "test-client-id"})
+
+
+def _state():
+    return auth_helper.make_state()
+
+
+@test("callback: non-admin with Garm grants → 302 + reader cookie carrying projects")
+def _():
+    restore = _callback_env()
+    os.environ.pop("READER_EMAILS", None)
+    cb = load_endpoint("web/api/callback.py", "cb_garm1")
+    r = patch(cb, _exchange_code=lambda c: {"id_token": _id_token("pierre@example.com")},
+              fetch_grants=lambda e: {"prntd"}, GARM_ENABLED=lambda: True)
+    try:
+        cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
+        assert cap.status_code == 302, cap.status_code
+        tok = [v for k, v in cap.response_headers if k == "Set-Cookie"][0].split(";")[0].split("=", 1)[1]
+        p = auth_helper.verify_token(tok)  # AUTH_SECRET must still be the test value here
+        assert p["role"] == "reader" and p["projects"] == ["prntd"], p
+    finally:
+        r(); restore()
+
+
+@test("callback: non-admin with NO grants → 403 even if in READER_EMAILS (gating on)")
+def _():
+    restore = _callback_env()
+    os.environ["READER_EMAILS"] = "pierre@example.com"
+    cb = load_endpoint("web/api/callback.py", "cb_garm2")
+    r = patch(cb, _exchange_code=lambda c: {"id_token": _id_token("pierre@example.com")},
+              fetch_grants=lambda e: set(), GARM_ENABLED=lambda: True)
+    try:
+        cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
+    finally:
+        r(); restore()
+    assert cap.status_code == 403, cap.status_code
+
+
+@test("callback: Garm unreachable → 403 with a 'try again' message, never a cookie")
+def _():
+    restore = _callback_env()
+    cb = load_endpoint("web/api/callback.py", "cb_garm3")
+    r = patch(cb, _exchange_code=lambda c: {"id_token": _id_token("pierre@example.com")},
+              fetch_grants=lambda e: None, GARM_ENABLED=lambda: True)
+    try:
+        cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
+    finally:
+        r(); restore()
+    assert cap.status_code == 503 and not [k for k, _ in cap.response_headers if k == "Set-Cookie"]
+
+
+@test("callback: GARM_GATING=off → READER_EMAILS path, unfiltered reader cookie, Garm not called")
+def _():
+    restore = _callback_env()
+    os.environ["READER_EMAILS"] = "pierre@example.com"
+    cb = load_endpoint("web/api/callback.py", "cb_garm4")
+    called = []
+    r = patch(cb, _exchange_code=lambda c: {"id_token": _id_token("pierre@example.com")},
+              fetch_grants=lambda e: called.append(e), GARM_ENABLED=lambda: False)
+    try:
+        cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
+    finally:
+        r(); restore()
+    assert cap.status_code == 302 and called == []
+
+
+@test("callback: admin path unchanged — Garm never called even when gating on")
+def _():
+    restore = _callback_env()
+    cb = load_endpoint("web/api/callback.py", "cb_garm5")
+    called = []
+    r = patch(cb, _exchange_code=lambda c: {"id_token": _id_token("nlovejoy@me.com")},
+              fetch_grants=lambda e: called.append(e), GARM_ENABLED=lambda: True)
+    try:
+        cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
+    finally:
+        r(); restore()
+    assert cap.status_code == 302 and called == []
+
+
 # === callback login events (issue #10) ===
 
 def _cb_login(email, role_env=None, name="endpoint_cb_login", turso=None,
@@ -2618,15 +2732,22 @@ def _():
 # === health_report (issue #34) ===
 
 def _health_env():
-    """Set the env the health endpoint needs; returns a restore fn."""
+    """Set the env the health endpoint needs; returns a restore fn.
+
+    GARM_URL is pinned to an unroutable test host so any reader-cookie
+    request that reaches resolve_access() and needs a fresh grant set fails
+    fast (DNS failure) instead of making a real network call to
+    garm.prompt-labs.org — GARM_GATING stays "on" (default) so those requests
+    still exercise the real resolve_access() path."""
     saved = {k: os.environ.get(k) for k in
              ("AUTH_SECRET", "CRON_SECRET", "RESEND_API_KEY", "HEALTH_TO_EMAIL",
-              "UPTIMEROBOT_API_KEY")}
+              "UPTIMEROBOT_API_KEY", "GARM_URL", "GARM_GATING")}
     os.environ["AUTH_SECRET"] = "test-secret"
     os.environ["CRON_SECRET"] = "cron-secret"
     os.environ["RESEND_API_KEY"] = "re_test"
     os.environ["HEALTH_TO_EMAIL"] = "nico@test.invalid"
     os.environ["UPTIMEROBOT_API_KEY"] = "ur-test"
+    os.environ["GARM_URL"] = "https://garm.test"
 
     def restore():
         for k, v in saved.items():
@@ -2804,24 +2925,42 @@ def _():
         restore()
 
 
-def _health_cookie(role, email="someone@test.invalid"):
+def _health_cookie(role, email="someone@test.invalid", projects=("nonexistent",)):
     """A real signed session cookie header for `role`. Call AFTER _health_env()
-    so AUTH_SECRET matches what the endpoint's get_role() will verify against."""
-    tok = auth_helper.make_token(role, email=email)
+    so AUTH_SECRET matches what the endpoint's get_role() will verify against.
+
+    `projects` defaults to a fresh, already-filtered grant set (list, not
+    None) so a reader cookie carries a fresh grants_at and resolve_access()
+    never needs to call Garm's real fetch_grants() — admin ignores `projects`
+    entirely (resolve_access short-circuits on role == 'admin')."""
+    tok = auth_helper.make_token(role, email=email, projects=list(projects))
     return {"cookie": f"{auth_helper.COOKIE_NAME}={tok}"}
 
 
-@test("health_report: reader cookie + ?dry=1 → 200 targets, nothing sent")
+@test("health_report: reader cookie + ?dry=1 → 403 (decision 3: admin-only, no reader dry view)")
 def _():
     restore = _health_env()
     try:
         mod, sent = _health_mod()
         h = invoke(mod, "/api/health_report?dry=1", _health_cookie("reader"))
+        assert h.status_code == 403, f"got {h.status_code}: {h.body}"
+        assert not mod._polls, "reader dry run polled targets"
+        assert not sent, "reader dry run sent an email"
+    finally:
+        restore()
+
+
+@test("health_report: admin cookie + ?dry=1 → 200 targets, nothing sent")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report?dry=1", _health_cookie("admin"))
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         assert ([t["name"] for t in h.body["targets"]]
                 == [n for n, _, _ in mod.TARGETS]), h.body["targets"]
         assert "paused_until" in h.body and "would_send" in h.body, h.body
-        assert not sent, "reader dry run sent an email"
+        assert not sent, "admin dry run sent an email"
     finally:
         restore()
 
@@ -2851,6 +2990,64 @@ def _():
         assert h.body == {"sent": True, "down": [], "stale": [],
                           "uptime_rows": 2}, h.body
         assert len(sent) == 1, f"admin send path broken: {sent}"
+    finally:
+        restore()
+
+
+@test("health_report: gating-off unfiltered reader (projects=None) → dry 200, send 403")
+def _():
+    """access.projects is None with role='reader' is exactly what a reader
+    looks like when GARM_GATING=off (the kill-switch allowlist path) —
+    indistinguishable from admin on the grant-set axis alone, which is why
+    _denial() layers the role check on top for the send path."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        unfiltered_reader = access_helper.Access("reader", "r@test.invalid", None, None)
+        restore_a = patch(mod, resolve_access=lambda h: unfiltered_reader)
+        try:
+            h = invoke(mod, "/api/health_report?dry=1")
+            assert h.status_code == 200, f"dry: got {h.status_code}: {h.body}"
+            assert not sent, "dry run sent an email"
+
+            h2 = invoke(mod, "/api/health_report")
+            assert h2.status_code == 403, f"send: got {h2.status_code}: {h2.body}"
+            assert not sent, "gating-off reader triggered a real send"
+        finally:
+            restore_a()
+    finally:
+        restore()
+
+
+@test("health_report: filtered reader (projects=set) → 403 even on dry")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        filtered_reader = access_helper.Access(
+            "reader", "r@test.invalid", frozenset({"prntd"}), None)
+        restore_a = patch(mod, resolve_access=lambda h: filtered_reader)
+        try:
+            h = invoke(mod, "/api/health_report?dry=1")
+            assert h.status_code == 403, f"got {h.status_code}: {h.body}"
+            assert not mod._polls, "filtered reader dry run polled targets"
+            assert not sent
+        finally:
+            restore_a()
+    finally:
+        restore()
+
+
+@test("health_report: cron bearer path is untouched by the dual-axis gate")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["sent"] is True, h.body
+        assert len(sent) == 1, sent
     finally:
         restore()
 
@@ -3235,7 +3432,7 @@ def _day_mod(rows, authed=True, boom=False):
             return rows
         return []
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: authed)
+    restore_a = patch(mod, resolve_access=lambda h: (access_helper.Access('admin', 'a@b.c', None, None) if authed else None))
 
     def restore():
         restore_a()
@@ -3361,7 +3558,7 @@ def _():
                      "prompts": 2, "sessions": 1, "commits": 0}]
         return []
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
     try:
         h = invoke(mod, "/api/day?date=2026-08-02")
         assert h.status_code == 200, f"{h.status_code}: {h.body}"
@@ -3595,10 +3792,12 @@ def _():
     try:
         mod, sent = _health_mod()
         h = invoke(mod, "/api/health_report?dry=1", _health_cookie("reader"))
-        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.status_code == 403, (
+            f"got {h.status_code}: {h.body} — decision 3 makes health "
+            "admin-only even for dry runs, so a reader never reaches the "
+            "point where a write could happen")
         assert mod._uptime_writes == [], (
-            "dry run archived uptime — ?dry=1 is open to any authenticated role, "
-            f"so that is a privilege leak: {mod._uptime_writes}")
+            f"dry run archived uptime: {mod._uptime_writes}")
         assert not sent
     finally:
         restore()
@@ -3684,9 +3883,13 @@ def _():
 
 # === uptime_overview.py (read side; contract fixed in the plan) ===
 
-def _uptime_ov(rows, path="/api/uptime_overview", authed=True):
+def _uptime_ov(rows, path="/api/uptime_overview", authed=True, access=None):
     """Invoke uptime_overview with the archive query stubbed.
-    Returns (captured_sql_list, response)."""
+    Returns (captured_sql_list, response).
+
+    `access` overrides the default admin/None shape derived from `authed` —
+    pass a reader Access (non-None `projects`) to exercise the decision-3
+    admin-only gate."""
     mod = load_endpoint("web/api/uptime_overview.py", "endpoint_uptime_ov")
     captured = []
 
@@ -3697,7 +3900,9 @@ def _uptime_ov(rows, path="/api/uptime_overview", authed=True):
         return rows
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: authed)
+    if access is None:
+        access = access_helper.Access("admin", "a@b.c", None, None) if authed else None
+    restore_a = patch(mod, resolve_access=lambda h: access)
     try:
         h = invoke(mod, path)
     finally:
@@ -4013,6 +4218,726 @@ def _():
                 assert banned not in low, f"{banned} in {sql}"
     finally:
         restore()
+
+
+# === garm consumer ===
+import garm_helper  # noqa: E402
+
+
+def _fake_urlopen(status=200, body=None, raise_exc=None):
+    import io
+
+    class _Resp(io.BytesIO):
+        def __init__(self, b, st):
+            super().__init__(b)
+            self.status = st
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake(req, timeout=None):
+        fake.calls.append((req, timeout))
+        if raise_exc:
+            raise raise_exc
+        return _Resp(json.dumps(body or {}).encode(), status)
+    fake.calls = []
+    return fake
+
+
+@test("garm: fetch_grants → bare slugs from the prompt-lab: namespace + wildcard; foreign grants dropped")
+def _():
+    saved = {k: os.environ.get(k) for k in ("GARM_URL", "GARM_KEY")}
+    os.environ["GARM_URL"] = "https://garm.test"
+    os.environ["GARM_KEY"] = "garm_x"
+    fake = _fake_urlopen(body={"grants": [{"project": "prompt-lab:prntd", "role": "viewer"},
+                                          {"project": "prntd", "role": "owner"},   # another app's grant — ignored
+                                          {"project": "*", "role": "viewer"}]})
+    r = patch(garm_helper, urlopen=fake)
+    try:
+        got = garm_helper.fetch_grants("pierre@example.com")
+    finally:
+        r()
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    assert got == {"prntd", "*"}, got
+    req, timeout = fake.calls[0]
+    assert timeout == 2.0, timeout
+    assert req.get_header("Authorization") == "Bearer garm_x"
+    assert req.get_header("X-garm-contract") == "1"
+    assert "email=pierre%40example.com" in req.full_url, req.full_url
+
+
+@test("garm: fetch_grants → empty set when no grants (not None)")
+def _():
+    r = patch(garm_helper, urlopen=_fake_urlopen(body={"grants": []}))
+    try:
+        assert garm_helper.fetch_grants("x@y.z") == set()
+    finally:
+        r()
+
+
+@test("garm: fetch_grants → None on exception / non-200 / bad json (fail closed)")
+def _():
+    for fake in (_fake_urlopen(raise_exc=OSError("down")),
+                 _fake_urlopen(status=401, body={}),
+                 _fake_urlopen(body={"nope": 1})):
+        r = patch(garm_helper, urlopen=fake)
+        try:
+            assert garm_helper.fetch_grants("x@y.z") is None
+        finally:
+            r()
+
+
+@test("garm: GARM_ENABLED honours GARM_GATING=off only")
+def _():
+    os.environ.pop("GARM_GATING", None)
+    assert garm_helper.GARM_ENABLED()
+    os.environ["GARM_GATING"] = "OFF"
+    assert not garm_helper.GARM_ENABLED()
+    os.environ["GARM_GATING"] = "on"
+    assert garm_helper.GARM_ENABLED()
+
+
+@test("garm: vercel.json includeFiles carries garm_helper + access_helper")
+def _():
+    v = json.loads((ROOT / "web" / "vercel.json").read_text())
+    inc = v["functions"]["api/**/*.py"]["includeFiles"]
+    assert "garm_helper.py" in inc and "access_helper.py" in inc, inc
+
+
+from auth_helper import make_token, COOKIE_NAME  # noqa: E402
+
+
+def _hdr(token):
+    return {"cookie": f"{COOKIE_NAME}={token}"}
+
+
+@test("access: admin → projects None (unfiltered), no cookie refresh, Garm never called")
+def _():
+    os.environ["AUTH_SECRET"] = "s"
+    called = []
+    r = patch(access_helper, fetch_grants=lambda e: called.append(e) or {"x"})
+    try:
+        a = access_helper.resolve_access(_hdr(make_token("admin", "nlovejoy@me.com")))
+    finally:
+        r()
+    assert a.role == "admin" and a.projects is None and a.set_cookie is None, a
+    assert called == [], called
+    assert access_helper.allowed(a, "anything")
+
+
+@test("access: reader with fresh grants_at → projects from cookie, no Garm call")
+def _():
+    called = []
+    r = patch(access_helper, fetch_grants=lambda e: called.append(e) or set())
+    try:
+        a = access_helper.resolve_access(_hdr(make_token("reader", "p@x.y", ["prntd"])))
+    finally:
+        r()
+    assert a.projects == frozenset({"prntd"}) and a.set_cookie is None and called == []
+    assert access_helper.allowed(a, "prntd") and not access_helper.allowed(a, "musicforge")
+
+
+@test("access: reader with stale grants_at → re-resolves, returns Set-Cookie with new set")
+def _():
+    from auth_helper import _sign
+    stale = _sign({"exp": int(time.time()) + 1000, "role": "reader", "email": "p@x.y",
+                   "projects": ["prntd"], "grants_at": int(time.time()) - 601})
+    r = patch(access_helper, fetch_grants=lambda e: {"musicforge"})
+    try:
+        a = access_helper.resolve_access(_hdr(stale))
+    finally:
+        r()
+    assert a.projects == frozenset({"musicforge"}), a
+    assert a.set_cookie and COOKIE_NAME in a.set_cookie
+
+
+@test("access: stale + Garm down → empty projects for this request, cookie NOT rewritten")
+def _():
+    from auth_helper import _sign
+    stale = _sign({"exp": int(time.time()) + 1000, "role": "reader", "email": "p@x.y",
+                   "projects": ["prntd"], "grants_at": 0})
+    r = patch(access_helper, fetch_grants=lambda e: None)
+    try:
+        a = access_helper.resolve_access(_hdr(stale))
+    finally:
+        r()
+    assert a is not None and a.projects == frozenset() and a.set_cookie is None, a
+
+
+@test("access: reader cookie with NO projects key (pre-Garm cookie) → treated as stale")
+def _():
+    r = patch(access_helper, fetch_grants=lambda e: {"prntd"})
+    try:
+        a = access_helper.resolve_access(_hdr(make_token("reader", "p@x.y")))
+    finally:
+        r()
+    assert a.projects == frozenset({"prntd"}) and a.set_cookie
+
+
+@test("access: wildcard grant allows everything; GARM_GATING=off → reader unfiltered")
+def _():
+    a = access_helper.resolve_access(_hdr(make_token("reader", "p@x.y", ["*"])))
+    assert access_helper.allowed(a, "anything")
+    os.environ["GARM_GATING"] = "off"
+    try:
+        a = access_helper.resolve_access(_hdr(make_token("reader", "p@x.y")))
+        assert a.projects is None
+    finally:
+        os.environ.pop("GARM_GATING")
+
+
+@test("access: filter_rows drops disallowed rows via canon()")
+def _():
+    a = access_helper.Access("reader", "p@x.y", frozenset({"raconte"}), None)
+    rows = [{"project": "recountly"}, {"project": "prntd"}]
+    out = access_helper.filter_rows(a, rows, canon=lambda n: {"recountly": "raconte"}.get(n, n))
+    assert out == [{"project": "recountly"}], out
+
+
+@test("access: unauthenticated → None")
+def _():
+    assert access_helper.resolve_access({}) is None
+
+
+def _reader_hdr(projects):
+    return {"cookie": f"{COOKIE_NAME}={make_token('reader', 'p@x.y', projects)}"}
+
+
+@test("overview: reader sees only granted projects in cards, activity, all_projects")
+def _():
+    ov = load_endpoint("web/api/overview.py", "ov_garm")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        if "project_metadata" in sql:
+            # A real row for a project the reader is NOT granted — the
+            # project_metadata roster is independent of daily_summaries/
+            # snapshots, so this must be filtered on its own, not merely by
+            # coincidence of what other tables returned.
+            return [{"project": "raconte", "category": "Collabs",
+                     "private": 0, "status": "active"}]
+        if "daily_summaries" in sql:
+            return [{"project": "prntd", "date": "2026-08-20", "prompt_count": 3},
+                    {"project": "recountly", "date": "2026-08-20", "prompt_count": 5}]
+        if "project_snapshots" in sql:
+            return [{"project": "prntd", "snapshot_date": "2026-08-20", "data": "{}"},
+                    {"project": "raconte", "snapshot_date": "2026-08-20", "data": "{}"}]
+        return []
+    r = patch_turso_query(ov, fake)
+    try:
+        cap = invoke(ov, "/api/overview", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    assert cap.body["all_projects"] == ["prntd"], cap.body["all_projects"]
+    assert "raconte" not in json.dumps(cap.body), "raconte leaked into overview"
+    assert "raconte" not in cap.body["project_metadata"], cap.body["project_metadata"]
+
+
+@test("overview: admin unfiltered; reader with stale cookie gets Set-Cookie on the JSON response")
+def _():
+    ov = load_endpoint("web/api/overview.py", "ov_garm2")
+    r1 = patch_turso_query(ov, lambda sql, args=None: [])
+    from auth_helper import _sign
+    stale = _sign({"exp": int(time.time()) + 1000, "role": "reader", "email": "p@x.y",
+                   "projects": [], "grants_at": 0})
+    r2 = patch(access_helper, fetch_grants=lambda e: {"prntd"})
+    try:
+        cap = invoke(ov, "/api/overview", {"cookie": f"{COOKIE_NAME}={stale}"})
+    finally:
+        r2()
+        r1()
+    assert any(k == "Set-Cookie" for k, _ in cap.response_headers), cap.response_headers
+
+
+@test("day: reader sees only granted projects in `projects` and re-summed `totals`")
+def _():
+    dy = load_endpoint("web/api/day.py", "day_garm")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        if "daily_summaries" in sql:
+            return [{"project": "prntd", "summary": "p work", "key_decisions": "[]",
+                      "prompts": 3, "sessions": 1, "commits": 1},
+                     {"project": "recountly", "summary": "r work", "key_decisions": "[]",
+                      "prompts": 5, "sessions": 2, "commits": 0}]
+        if "api_costs" in sql:
+            return [{"project": "prntd", "usd": 1.5}, {"project": "raconte", "usd": 2.5}]
+        return []
+    r = patch_turso_query(dy, fake)
+    try:
+        cap = invoke(dy, "/api/day?date=2026-08-20", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    names = [p["project"] for p in cap.body["projects"]]
+    assert names == ["prntd"], names
+    assert cap.body["totals"] == {"prompts": 3, "sessions": 1, "commits": 1}, cap.body["totals"]
+    assert "raconte" not in json.dumps(cap.body), "raconte leaked into day"
+
+
+@test("day: visitors/uptime are admin-only — omitted for a filtered reader, present for admin")
+def _():
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "daily_summaries" in sql:
+            return [{"project": "prntd", "summary": "p work", "key_decisions": "[]",
+                     "prompts": 1, "sessions": 1, "commits": 0}]
+        if "page_views" in sql:
+            return [{"site": "prompt-lab", "views": 4}]
+        if "uptime_daily" in sql:
+            return [{"monitor": "prntd", "uptime_1d": 100.0, "status": "up"}]
+        return []
+
+    dy_reader = load_endpoint("web/api/day.py", "day_garm_visibility_reader")
+    r = patch_turso_query(dy_reader, fake)
+    try:
+        cap = invoke(dy_reader, "/api/day?date=2026-08-20", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    assert cap.body["visitors"] is None, cap.body["visitors"]
+    assert cap.body["uptime"] is None, cap.body["uptime"]
+
+    dy_admin = load_endpoint("web/api/day.py", "day_garm_visibility_admin")
+    r = patch_turso_query(dy_admin, fake)
+    r2 = patch(dy_admin, resolve_access=lambda h: access_helper.Access(
+        "admin", "nlovejoy@me.com", None, None))
+    try:
+        cap = invoke(dy_admin, "/api/day?date=2026-08-20", {})
+    finally:
+        r2()
+        r()
+    assert cap.status_code == 200, cap.body
+    assert cap.body["visitors"] is not None, cap.body["visitors"]
+    assert cap.body["uptime"] is not None, cap.body["uptime"]
+
+
+@test("activity_timeline: filter_rows runs before folding, so a disallowed row can't reach the sum")
+def _():
+    at = load_endpoint("web/api/activity_timeline.py", "at_garm_prefold")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "daily_summaries" in sql:
+            return [{"date": "2026-08-20", "project": "prntd", "sessions": 1, "prompts": 3, "commits": 1},
+                    {"date": "2026-08-20", "project": "raconte", "sessions": 9, "prompts": 90, "commits": 9}]
+        return []
+    r = patch_turso_query(at, fake)
+    try:
+        cap = invoke(at, "/api/activity_timeline", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    rows = cap.body["rows"]
+    assert len(rows) == 1 and rows[0]["project"] == "prntd", rows
+    # If the disallowed row had leaked into the fold before filtering, prntd's
+    # own counts would be inflated by raconte's — pin that they aren't.
+    assert rows[0]["prompts"] == 3 and rows[0]["sessions"] == 1, rows[0]
+
+
+@test("cost_overview: filter_rows runs before folding, so a disallowed row can't reach the sum")
+def _():
+    co = load_endpoint("web/api/cost_overview.py", "co_garm_prefold")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "api_costs" in sql:
+            return [{"date": "2026-08-20", "project": "prntd", "model": "opus", "cost_usd": 1.0},
+                    {"date": "2026-08-20", "project": "raconte", "model": "opus", "cost_usd": 99.0}]
+        return []
+    r = patch_turso_query(co, fake)
+    try:
+        cap = invoke(co, "/api/cost_overview", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    rows = cap.body["rows"]
+    assert len(rows) == 1 and rows[0]["project"] == "prntd", rows
+    assert abs(rows[0]["cost_usd"] - 1.0) < 1e-9, rows[0]
+
+
+@test("activity_timeline: reader sees no disallowed project rows")
+def _():
+    at = load_endpoint("web/api/activity_timeline.py", "at_garm")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        if "daily_summaries" in sql:
+            return [{"date": "2026-08-20", "project": "prntd", "sessions": 1, "prompts": 3, "commits": 1},
+                    {"date": "2026-08-20", "project": "recountly", "sessions": 2, "prompts": 5, "commits": 0}]
+        return []
+    r = patch_turso_query(at, fake)
+    try:
+        cap = invoke(at, "/api/activity_timeline", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    assert "raconte" not in json.dumps(cap.body), "raconte leaked into activity_timeline"
+    assert all(row["project"] == "prntd" for row in cap.body["rows"]), cap.body["rows"]
+
+
+@test("cost_overview: reader sees no disallowed project rows")
+def _():
+    co = load_endpoint("web/api/cost_overview.py", "co_garm")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        if "api_costs" in sql:
+            return [{"date": "2026-08-20", "project": "prntd", "model": "opus", "cost_usd": 1.0},
+                    {"date": "2026-08-20", "project": "recountly", "model": "opus", "cost_usd": 2.0}]
+        return []
+    r = patch_turso_query(co, fake)
+    try:
+        cap = invoke(co, "/api/cost_overview", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    assert "raconte" not in json.dumps(cap.body), "raconte leaked into cost_overview"
+    assert all(row["project"] == "prntd" for row in cap.body["rows"]), cap.body["rows"]
+
+
+# === project.py / cost_timeline.py: reader gating (Task 5) ===
+
+@test("project: reader asking for a project outside their grants → 403, no Turso query")
+def _():
+    pj = load_endpoint("web/api/project.py", "pj_garm")
+    calls = []
+    r = patch_turso_query(pj, lambda sql, args=None: calls.append(sql) or [])
+    try:
+        cap = invoke(pj, "/api/project?name=musicforge", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 403, cap.status_code
+    assert not [s for s in calls if "daily_summaries" in s], calls
+
+
+@test("project: reader asking by ALIAS of a granted canonical → 200")
+def _():
+    pj = load_endpoint("web/api/project.py", "pj_garm2")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        return []
+    r = patch_turso_query(pj, fake)
+    try:
+        cap = invoke(pj, "/api/project?name=recountly", _reader_hdr(["raconte"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.status_code
+
+
+@test("cost_timeline: reader without ?project → only granted projects' rows; disallowed ?project → 403")
+def _():
+    ct = load_endpoint("web/api/cost_timeline.py", "ct_garm")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "api_costs" in sql:
+            return [{"date": "2026-08-20", "project": "prntd", "usd": 1},
+                    {"date": "2026-08-20", "project": "musicforge", "usd": 2}]
+        return []
+    r = patch_turso_query(ct, fake)
+    try:
+        cap = invoke(ct, "/api/cost_timeline", _reader_hdr(["prntd"]))
+        assert "musicforge" not in json.dumps(cap.body), cap.body
+        cap2 = invoke(ct, "/api/cost_timeline?project=musicforge", _reader_hdr(["prntd"]))
+        assert cap2.status_code == 403, cap2.status_code
+    finally:
+        r()
+
+
+@test("cost_timeline: admin unscoped call gets byte-identical shape — no project key added")
+def _():
+    ct = load_endpoint("web/api/cost_timeline.py", "ct_garm_admin")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "api_costs" in sql:
+            return [{"date": "2026-08-20", "model": "opus", "cost_usd": 1}]
+        if "api_usage" in sql:
+            return [{"date": "2026-08-20", "model": "opus", "input_tokens": 1}]
+        return []
+    r = patch_turso_query(ct, fake)
+    r2 = patch(ct, resolve_access=lambda h: access_helper.Access("admin", "a@b.c", None, None))
+    try:
+        cap = invoke(ct, "/api/cost_timeline")
+        assert cap.status_code == 200, cap.status_code
+        assert all("project" not in row for row in cap.body["costs"]), cap.body["costs"]
+        assert all("project" not in row for row in cap.body["usage"]), cap.body["usage"]
+    finally:
+        r2()
+        r()
+
+
+@test("cost_timeline: ?include=claude_code is org-wide with no project column — "
+      "omitted for a filtered reader, present for admin")
+def _():
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "claude_code_usage" in sql:
+            return [{"date": "2026-08-20", "customer_type": "api", "model": "opus",
+                     "sessions": 3, "estimated_cost_usd": 4.5}]
+        return []
+
+    ct = load_endpoint("web/api/cost_timeline.py", "ct_cc_reader")
+    r = patch_turso_query(ct, fake)
+    try:
+        cap = invoke(ct, "/api/cost_timeline?include=claude_code", _reader_hdr(["prntd"]))
+        assert cap.status_code == 200, cap.status_code
+        assert "claude_code" not in cap.body, (
+            f"reader got org-wide claude_code_usage rows: {cap.body}")
+    finally:
+        r()
+
+    ct2 = load_endpoint("web/api/cost_timeline.py", "ct_cc_admin")
+    r = patch_turso_query(ct2, fake)
+    r2 = patch(ct2, resolve_access=lambda h: access_helper.Access("admin", "a@b.c", None, None))
+    try:
+        cap = invoke(ct2, "/api/cost_timeline?include=claude_code")
+        assert cap.status_code == 200, cap.status_code
+        assert cap.body.get("claude_code"), f"admin missing claude_code rows: {cap.body}"
+    finally:
+        r2()
+        r()
+
+
+# === project_metadata / todos / info / admin-only pages: reader gating (Task 6) ===
+
+@test("project_metadata: GET reader sees only their granted project's key")
+def _():
+    rows = [
+        {"project": "prntd", "category": "Tools", "private": 0, "status": "active",
+         "public_counts": 0, "updated_at": "2026-08-01T00:00:00Z"},
+        {"project": "musicforge", "category": "Music", "private": 0, "status": "active",
+         "public_counts": 0, "updated_at": "2026-08-01T00:00:00Z"},
+    ]
+
+    def fake_turso(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        return rows
+
+    mod, restore = _meta_mod("endpoint_meta_reader_filter", fake_turso,
+                             role="reader", projects=frozenset({"prntd"}))
+    try:
+        h = invoke(mod, "/api/project_metadata")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert list(h.body["projects"]) == ["prntd"], h.body["projects"]
+        assert "musicforge" not in json.dumps(h.body), "musicforge leaked into project_metadata"
+    finally:
+        restore()
+
+
+@test("project_metadata: GET folds an aliased row's project through project_aliases before filtering")
+def _():
+    rows = [
+        {"project": "recountly", "category": "iOS", "private": 0, "status": "active",
+         "public_counts": 0, "updated_at": "2026-08-01T00:00:00Z"},
+        {"project": "prntd", "category": "Tools", "private": 0, "status": "active",
+         "public_counts": 0, "updated_at": "2026-08-01T00:00:00Z"},
+    ]
+
+    def fake_turso(sql, args=None):
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        return rows
+
+    mod, restore = _meta_mod("endpoint_meta_alias_filter", fake_turso,
+                             role="reader", projects=frozenset({"raconte"}))
+    try:
+        h = invoke(mod, "/api/project_metadata")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert "recountly" in h.body["projects"], h.body["projects"]
+        assert "prntd" not in h.body["projects"], h.body["projects"]
+    finally:
+        restore()
+
+
+@test("todos: reader sees no non-granted project keys in `projects`")
+def _():
+    import os
+    mod = load_endpoint("web/api/todos.py", "endpoint_todos_reader_filter")
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "reader", "r@b.c", frozenset({"prntd"}), None))
+    restore_q = patch_turso_query(mod, lambda *a, **kw: [])
+    fake_items = [
+        {"title": "Fix A", "number": 1, "html_url": "u1", "labels": [],
+         "repository_url": "https://api.github.com/repos/nicolovejoy/prntd",
+         "comments": 0, "updated_at": "2026-06-20T00:00:00Z"},
+        {"title": "Fix B", "number": 2, "html_url": "u2", "labels": [],
+         "repository_url": "https://api.github.com/repos/nicolovejoy/musicforge",
+         "comments": 0, "updated_at": "2026-06-21T00:00:00Z"},
+    ]
+    restore_fetch = patch(mod, _fetch_open_issues=lambda token, user: fake_items)
+    saved = os.environ.get("GITHUB_TOKEN")
+    os.environ["GITHUB_TOKEN"] = "ghp_test"
+    try:
+        h = invoke(mod, "/api/todos")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        projs = h.body["projects"]
+        assert list(projs) == ["prntd"], projs
+        assert h.body["total"] == 1, h.body
+        assert "musicforge" not in json.dumps(h.body), "musicforge leaked into todos"
+    finally:
+        if saved is None:
+            os.environ.pop("GITHUB_TOKEN", None)
+        else:
+            os.environ["GITHUB_TOKEN"] = saved
+        restore_fetch()
+        restore_q()
+        restore_a()
+
+
+@test("info: project_count counts only the reader's granted projects")
+def _():
+    mod = load_endpoint("web/api/info.py", "endpoint_info_reader")
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "reader", "r@b.c", frozenset({"prntd"}), None))
+
+    def fake_turso(sql, args=None):
+        if "MAX(date)" in sql:
+            return [{"latest": "2026-08-01"}]
+        if "DISTINCT project" in sql:
+            return [{"project": "prntd"}, {"project": "musicforge"}, {"project": "byside"}]
+        return []
+    restore_q = patch_turso_query(mod, fake_turso)
+    try:
+        h = invoke(mod, "/api/info")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["project_count"] == 1, h.body
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("info: admin project_count counts every distinct project")
+def _():
+    mod = load_endpoint("web/api/info.py", "endpoint_info_admin")
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
+
+    def fake_turso(sql, args=None):
+        if "MAX(date)" in sql:
+            return [{"latest": "2026-08-01"}]
+        if "DISTINCT project" in sql:
+            return [{"project": "prntd"}, {"project": "musicforge"}, {"project": "byside"}]
+        return []
+    restore_q = patch_turso_query(mod, fake_turso)
+    try:
+        h = invoke(mod, "/api/info")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["project_count"] == 3, h.body
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("info: project_count folds aliases — reader granted the canonical name sees the aliased row")
+def _():
+    mod = load_endpoint("web/api/info.py", "endpoint_info_alias")
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "reader", "r@b.c", frozenset({"raconte"}), None))
+
+    def fake_turso(sql, args=None):
+        if "MAX(date)" in sql:
+            return [{"latest": "2026-08-01"}]
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        if "DISTINCT project" in sql:
+            # Stored under the OLD name; the grant is issued against the
+            # canonical name — must still count as 1, not 0.
+            return [{"project": "recountly"}, {"project": "musicforge"}]
+        return []
+    restore_q = patch_turso_query(mod, fake_turso)
+    try:
+        h = invoke(mod, "/api/info")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["project_count"] == 1, h.body
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("uptime_overview: reader (grant set filtered) → 403, archive never read")
+def _():
+    captured, h = _uptime_ov(
+        [], access=access_helper.Access("reader", "r@b.c", frozenset({"prntd"}), None))
+    assert h.status_code == 403, f"got {h.status_code}: {h.body}"
+    assert captured == [], f"queried before rejecting: {captured}"
+
+
+@test("uptime_overview: admin → 200")
+def _():
+    _, h = _uptime_ov([{"date": "2026-08-01", "monitor": "garm", "uptime_1d": 100.0,
+                        "uptime_7d": 100.0, "uptime_30d": 99.98,
+                        "avg_response_ms": 281, "status": "up"}])
+    assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+
+
+@test("visitor_overview: reader (grant set filtered) → 403")
+def _():
+    mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_reader403")
+    restore_q = patch_turso_query(mod, lambda *a, **kw: [])
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "reader", "r@b.c", frozenset({"prntd"}), None))
+    try:
+        h = invoke(mod, "/api/visitor_overview")
+        assert h.status_code == 403, f"got {h.status_code}: {h.body}"
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("visitor_overview: admin → 200")
+def _():
+    mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_admin200")
+    restore_q = patch_turso_query(mod, lambda *a, **kw: [])
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
+    try:
+        h = invoke(mod, "/api/visitor_overview")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("garm guard: every web/api module that selects a project column resolves access (no is_authenticated)")
+def _():
+    import re
+    api = ROOT / "web" / "api"
+    offenders = []
+    for f in sorted(api.glob("*.py")):
+        src = f.read_text()
+        touches_project = re.search(r"\bproject\b", src) and "turso_query" in src
+        exempt = f.name in {"public_history.py", "private_history.py",   # service-key / public tiers
+                            "health_report.py", "health.py", "beacon.py",
+                            "uptime_overview.py", "visitor_overview.py",   # decision 3: admin-only, tested separately
+                            "login.py", "callback.py", "ask.py"}
+        if touches_project and not exempt and "is_authenticated(" in src:
+            offenders.append(f.name)
+        if touches_project and not exempt and "resolve_access(" not in src:
+            offenders.append(f.name)
+    assert not offenders, f"not gated by resolve_access (reader sees everything): {offenders}"
 
 
 # === Main ===

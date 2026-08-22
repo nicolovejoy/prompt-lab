@@ -44,11 +44,14 @@ def _unsign(token):
         return None
 
 
-def make_token(role="admin", email=None):
+def make_token(role="admin", email=None, projects=None):
     """Create a signed, time-limited auth token. The `email` key is ALWAYS
     present (null for password logins) — that's what distinguishes new-shape
-    tokens from legacy {exp, role} cookies."""
-    return _sign({"exp": int(time.time()) + MAX_AGE, "role": role, "email": email})
+    tokens from legacy {exp, role} cookies. `projects` (list|None) + `grants_at`
+    carry the reader's Garm-resolved visibility; None = unfiltered (admin, or
+    gating off)."""
+    return _sign({"exp": int(time.time()) + MAX_AGE, "role": role, "email": email,
+                  "projects": projects, "grants_at": int(time.time())})
 
 
 def verify_token(token):
@@ -120,9 +123,9 @@ def verify_state(state):
         return None
 
 
-def set_cookie_header(role="admin", email=None):
+def set_cookie_header(role="admin", email=None, projects=None):
     """Return Set-Cookie header value for a new auth token."""
-    token = make_token(role, email)
+    token = make_token(role, email, projects)
     parts = [
         f"{COOKIE_NAME}={token}",
         f"Max-Age={MAX_AGE}",

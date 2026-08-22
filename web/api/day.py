@@ -35,7 +35,7 @@ import re
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from auth_helper import is_authenticated
+from access_helper import filter_rows, resolve_access
 from day_helper import lab_today
 from turso_helper import turso_query
 
@@ -65,7 +65,8 @@ def _tidy(raw):
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if not is_authenticated(self.headers):
+        access = resolve_access(self.headers)
+        if access is None:
             self._json({"error": "unauthorized"}, 401)
             return
 
@@ -92,6 +93,7 @@ class handler(BaseHTTPRequestHandler):
             return
 
         a2c = _alias_to_canonical()
+        rows = filter_rows(access, rows, canon=lambda n: a2c.get(n, n))
         folded = {}
         for r in rows:
             proj = a2c.get(r["project"], r["project"])
@@ -117,19 +119,25 @@ class handler(BaseHTTPRequestHandler):
         totals = {m: sum(p[m] for p in projects)
                   for m in ("prompts", "sessions", "commits")}
 
+        # visitors (site) and uptime (monitor) are admin-only per the Garm plan
+        # (decision 3: no project column to filter on, and they map everything
+        # Nico runs) — a filtered reader gets neither section at all, not a
+        # filtered one.
+        restricted = access.projects is not None
+
         self._json({
             "date": date,
             "totals": totals,
             "projects": projects,
-            "spend": self._spend(date, a2c),
-            "visitors": self._visitors(date),
-            "uptime": self._uptime(date),
+            "spend": self._spend(date, a2c, access),
+            "visitors": None if restricted else self._visitors(date),
+            "uptime": None if restricted else self._uptime(date),
             # Today's row is written by /handoff or the nightly synthesizer, so
             # until one runs it under-reports — and a chart can't tell a quiet
             # day from an unsummarized one. Say which this is rather than let a
             # partial number read as a final one.
             "provisional": date == lab_today().isoformat(),
-        })
+        }, access=access)
 
     # Each of these is best-effort: a day page must still render if one table is
     # unavailable. The main daily_summaries read above is NOT — that one 503s,
@@ -142,12 +150,13 @@ class handler(BaseHTTPRequestHandler):
                   f"unreadable: {e}"[:200])
             return None
 
-    def _spend(self, date, a2c):
+    def _spend(self, date, a2c, access):
         rows = self._soft(
             "SELECT project, SUM(cost_reported_usd) AS usd FROM api_costs "
             "WHERE date = ? GROUP BY project", [date])
         if rows is None:
             return None
+        rows = filter_rows(access, rows, canon=lambda n: a2c.get(n, n))
         by = {}
         for r in rows:
             p = a2c.get(r["project"], r["project"]) or "unattributed"
@@ -185,8 +194,10 @@ class handler(BaseHTTPRequestHandler):
                  "uptime_1d": None if r.get("uptime_1d") is None else float(r["uptime_1d"]),
                  "status": r.get("status")} for r in rows]
 
-    def _json(self, payload, status=200):
+    def _json(self, payload, status=200, access=None):
         self.send_response(status)
+        if access and access.set_cookie:
+            self.send_header("Set-Cookie", access.set_cookie)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()

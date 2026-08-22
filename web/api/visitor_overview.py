@@ -20,7 +20,7 @@ import json
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from auth_helper import is_authenticated
+from access_helper import resolve_access
 from turso_helper import turso_query
 
 LOGIN_ROLES = ("admin", "reader")
@@ -38,11 +38,22 @@ def _login_role(path):
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if not is_authenticated(self.headers):
+        access = resolve_access(self.headers)
+        if access is None:
             self.send_response(401)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+            return
+        # Admin-only (decision 3): visitors has no project column to filter
+        # on and maps traffic across every site. Gate on the grant-set axis,
+        # not the role string — an unfiltered account (admin, or a reader
+        # when GARM_GATING=off) keeps today's behaviour.
+        if access.projects is not None:
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "admin required"}).encode())
             return
 
         params = parse_qs(urlparse(self.path).query)
