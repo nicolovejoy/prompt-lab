@@ -114,6 +114,11 @@ def invoke_post(endpoint_module, path: str, body, headers: dict | None = None) -
 # resolve_project_names calls internally.
 import turso_helper  # noqa: E402
 
+# Needed early: several endpoint fixtures below (cost_overview, activity_timeline,
+# overview, day) patch resolve_access directly now that those endpoints route
+# auth through access_helper instead of auth_helper.is_authenticated.
+import access_helper  # noqa: E402
+
 
 _results: list[tuple[str, bool, str]] = []
 
@@ -492,7 +497,7 @@ def _():
 def _():
     mod = load_endpoint("web/api/cost_overview.py", "endpoint_costov_unauth")
     restore_q = patch_turso_query(mod, lambda *a, **kw: [])
-    restore_a = patch(mod, is_authenticated=lambda _: False)
+    restore_a = patch(mod, resolve_access=lambda h: None)
 
     def restore():
         restore_a()
@@ -524,7 +529,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -552,7 +557,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -575,7 +580,7 @@ def _():
 def _():
     mod = load_endpoint("web/api/activity_timeline.py", "endpoint_acttl_unauth")
     restore_q = patch_turso_query(mod, lambda *a, **kw: [])
-    restore_a = patch(mod, is_authenticated=lambda _: False)
+    restore_a = patch(mod, resolve_access=lambda h: None)
 
     def restore():
         restore_a()
@@ -608,7 +613,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -647,7 +652,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -687,7 +692,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -715,7 +720,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -756,7 +761,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
 
     def restore():
         restore_a()
@@ -1658,7 +1663,7 @@ def _():
 
     mod = load_endpoint("web/api/overview.py", "endpoint_overview_meta")
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
     try:
         h = invoke(mod, "/api/overview")
         # The table not existing yet must degrade to {}, never 503 the page.
@@ -1681,7 +1686,7 @@ def _():
 
     mod = load_endpoint("web/api/overview.py", "endpoint_overview_meta_alias")
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
     try:
         h = invoke(mod, "/api/overview")
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
@@ -3326,7 +3331,7 @@ def _day_mod(rows, authed=True, boom=False):
             return rows
         return []
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: authed)
+    restore_a = patch(mod, resolve_access=lambda h: (access_helper.Access('admin', 'a@b.c', None, None) if authed else None))
 
     def restore():
         restore_a()
@@ -3452,7 +3457,7 @@ def _():
                      "prompts": 2, "sessions": 1, "commits": 0}]
         return []
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access('admin', 'a@b.c', None, None))
     try:
         h = invoke(mod, "/api/day?date=2026-08-02")
         assert h.status_code == 200, f"{h.status_code}: {h.body}"
@@ -4285,6 +4290,121 @@ def _():
 @test("access: unauthenticated → None")
 def _():
     assert access_helper.resolve_access({}) is None
+
+
+def _reader_hdr(projects):
+    return {"cookie": f"{COOKIE_NAME}={make_token('reader', 'p@x.y', projects)}"}
+
+
+@test("overview: reader sees only granted projects in cards, activity, all_projects")
+def _():
+    ov = load_endpoint("web/api/overview.py", "ov_garm")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        if "project_metadata" in sql:
+            return []
+        if "daily_summaries" in sql:
+            return [{"project": "prntd", "date": "2026-08-20", "prompt_count": 3},
+                    {"project": "recountly", "date": "2026-08-20", "prompt_count": 5}]
+        if "project_snapshots" in sql:
+            return [{"project": "prntd", "snapshot_date": "2026-08-20", "data": "{}"},
+                    {"project": "raconte", "snapshot_date": "2026-08-20", "data": "{}"}]
+        return []
+    r = patch_turso_query(ov, fake)
+    try:
+        cap = invoke(ov, "/api/overview", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    assert cap.body["all_projects"] == ["prntd"], cap.body["all_projects"]
+    assert "raconte" not in json.dumps(cap.body), "raconte leaked into overview"
+
+
+@test("overview: admin unfiltered; reader with stale cookie gets Set-Cookie on the JSON response")
+def _():
+    ov = load_endpoint("web/api/overview.py", "ov_garm2")
+    r1 = patch_turso_query(ov, lambda sql, args=None: [])
+    from auth_helper import _sign
+    stale = _sign({"exp": int(time.time()) + 1000, "role": "reader", "email": "p@x.y",
+                   "projects": [], "grants_at": 0})
+    r2 = patch(access_helper, fetch_grants=lambda e: {"prntd"})
+    try:
+        cap = invoke(ov, "/api/overview", {"cookie": f"{COOKIE_NAME}={stale}"})
+    finally:
+        r2()
+        r1()
+    assert any(k == "Set-Cookie" for k, _ in cap.response_headers), cap.response_headers
+
+
+@test("day: reader sees only granted projects in `projects` and re-summed `totals`")
+def _():
+    dy = load_endpoint("web/api/day.py", "day_garm")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        if "daily_summaries" in sql:
+            return [{"project": "prntd", "summary": "p work", "key_decisions": "[]",
+                      "prompts": 3, "sessions": 1, "commits": 1},
+                     {"project": "recountly", "summary": "r work", "key_decisions": "[]",
+                      "prompts": 5, "sessions": 2, "commits": 0}]
+        if "api_costs" in sql:
+            return [{"project": "prntd", "usd": 1.5}, {"project": "raconte", "usd": 2.5}]
+        return []
+    r = patch_turso_query(dy, fake)
+    try:
+        cap = invoke(dy, "/api/day?date=2026-08-20", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    names = [p["project"] for p in cap.body["projects"]]
+    assert names == ["prntd"], names
+    assert cap.body["totals"] == {"prompts": 3, "sessions": 1, "commits": 1}, cap.body["totals"]
+    assert "raconte" not in json.dumps(cap.body), "raconte leaked into day"
+
+
+@test("activity_timeline: reader sees no disallowed project rows")
+def _():
+    at = load_endpoint("web/api/activity_timeline.py", "at_garm")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        if "daily_summaries" in sql:
+            return [{"date": "2026-08-20", "project": "prntd", "sessions": 1, "prompts": 3, "commits": 1},
+                    {"date": "2026-08-20", "project": "recountly", "sessions": 2, "prompts": 5, "commits": 0}]
+        return []
+    r = patch_turso_query(at, fake)
+    try:
+        cap = invoke(at, "/api/activity_timeline", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    assert "raconte" not in json.dumps(cap.body), "raconte leaked into activity_timeline"
+    assert all(row["project"] == "prntd" for row in cap.body["rows"]), cap.body["rows"]
+
+
+@test("cost_overview: reader sees no disallowed project rows")
+def _():
+    co = load_endpoint("web/api/cost_overview.py", "co_garm")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        if "api_costs" in sql:
+            return [{"date": "2026-08-20", "project": "prntd", "model": "opus", "cost_usd": 1.0},
+                    {"date": "2026-08-20", "project": "recountly", "model": "opus", "cost_usd": 2.0}]
+        return []
+    r = patch_turso_query(co, fake)
+    try:
+        cap = invoke(co, "/api/cost_overview", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    assert "raconte" not in json.dumps(cap.body), "raconte leaked into cost_overview"
+    assert all(row["project"] == "prntd" for row in cap.body["rows"]), cap.body["rows"]
 
 
 # === Main ===

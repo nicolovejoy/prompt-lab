@@ -19,7 +19,7 @@ import json
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from auth_helper import is_authenticated
+from access_helper import filter_rows, resolve_access
 from turso_helper import turso_query
 
 
@@ -33,7 +33,8 @@ def _alias_to_canonical():
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if not is_authenticated(self.headers):
+        access = resolve_access(self.headers)
+        if access is None:
             self.send_response(401)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -74,10 +75,13 @@ class handler(BaseHTTPRequestHandler):
             for (d, p, m), c in folded.items()
         ]
         rows.sort(key=lambda r: (r["date"], r["project"], r["model"]))
+        rows = filter_rows(access, rows)  # already canonical, so default identity canon
 
         payload = {"rows": rows}
 
         self.send_response(200)
+        if access.set_cookie:
+            self.send_header("Set-Cookie", access.set_cookie)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()

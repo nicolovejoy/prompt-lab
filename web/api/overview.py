@@ -3,7 +3,7 @@
 import json
 from http.server import BaseHTTPRequestHandler
 
-from auth_helper import is_authenticated
+from access_helper import filter_rows, resolve_access
 from day_helper import lab_days_ago
 from turso_helper import turso_query
 
@@ -50,7 +50,8 @@ def _load_metadata(alias_to_canonical):
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if not is_authenticated(self.headers):
+        access = resolve_access(self.headers)
+        if access is None:
             self.send_response(401)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -58,7 +59,7 @@ class handler(BaseHTTPRequestHandler):
             return
 
         try:
-            self._handle()
+            self._handle(access)
         except Exception as e:
             # A transient Turso/cold-start hiccup shouldn't surface as an
             # opaque 500 stack trace. Return a clean 503 so the client retries.
@@ -68,7 +69,7 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": "temporarily unavailable", "detail": str(e)}).encode())
 
-    def _handle(self):
+    def _handle(self, access):
         # Lab days (#48). These were naive datetime.now() — UTC on Vercel, so
         # both windows slid a day forward every evening Pacific.
         week_ago = lab_days_ago(7)
@@ -76,17 +77,20 @@ class handler(BaseHTTPRequestHandler):
 
         # Load aliases
         alias_to_canonical, canonical_to_aliases = _load_alias_map()
+        canon = lambda n: _resolve(n, alias_to_canonical)  # noqa: E731
 
         summaries = turso_query(
             "SELECT * FROM daily_summaries WHERE date >= ? ORDER BY date DESC",
             [week_ago],
         )
+        summaries = filter_rows(access, summaries, canon=canon)
 
         # Activity data for last 30 days (dates + prompt counts for heat coloring)
         activity_rows = turso_query(
             "SELECT project, date, prompt_count FROM daily_summaries WHERE date >= ? ORDER BY date",
             [month_ago],
         )
+        activity_rows = filter_rows(access, activity_rows, canon=canon)
         activity_by_project = {}
         for row in activity_rows:
             p = _resolve(row["project"], alias_to_canonical)
@@ -96,6 +100,7 @@ class handler(BaseHTTPRequestHandler):
         snapshots = turso_query(
             "SELECT * FROM project_snapshots ORDER BY snapshot_date DESC"
         )
+        snapshots = filter_rows(access, snapshots, canon=canon)
 
         # Aggregate week stats — resolve aliases
         week = {"prompts": 0, "sessions": 0, "commits": 0}
@@ -129,10 +134,12 @@ class handler(BaseHTTPRequestHandler):
             "activity_by_project": activity_by_project,
             "all_projects": all_projects,
             "project_metadata": _load_metadata(alias_to_canonical),
-        })
+        }, access)
 
-    def _json(self, data):
+    def _json(self, data, access=None):
         self.send_response(200)
+        if access and access.set_cookie:
+            self.send_header("Set-Cookie", access.set_cookie)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
