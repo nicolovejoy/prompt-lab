@@ -63,24 +63,20 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**Garm consumer — PLANNED 2026-08-22, not started. The plan is
-`docs/garm-consumer-plan.md`; execute it task-by-task (subagent-driven).**
-Decisions, all Nico's, same day: (1) Garm slugs are NAMESPACED
-`prompt-lab:<canonical>` — seeing a project's history is a different resource
-from using the app; (2) reader = anyone with ≥1 `prompt-lab:*` grant, Garm-only,
-`READER_EMAILS` survives only as the `GARM_GATING=off` kill-switch allowlist;
-(3) `#/health`, `#/visitors`, uptime go admin-only (no project column to filter
-on, and they map everything Nico runs); (4) revocation latency 10 min
-(cookie-carried grant set, refreshed on the request path). **Blocked on garm
-for one thing:** Garm's check is a point query `(email, project)`, a dashboard
-needs the set — asked garm (handoff 2026-08-22) for a consumer-key list endpoint
-`GET /gnipahellir/grants?email=` plus an unscoped (or prefix-scoped) key; the
-fan-out alternative would spam Howl with ~20 deny rows per reader per refresh.
-Tasks 1–7 of the plan don't depend on garm's answer beyond one function's
-URL/shape. The admin-bypass rationale (admin never routes through Garm, so a
-Garm outage can't lock Nico out of the tool that diagnoses Garm) stands as
-decided 2026-08-22 — see the plan's Architecture section; the two-accounts
-alternative was rejected on "simple is good".
+**Garm consumer — BUILT 2026-08-22 on branch `garm-consumer` (13 commits,
+216/216 tests), NOT merged, NOT deployed. PR #54.** Plan: `docs/garm-consumer-plan.md`
+(read there for architecture/task detail — this repo's own CLAUDE.md on that
+branch has the fuller status). Decisions, all Nico's 2026-08-22: (1) Garm
+slugs NAMESPACED `prompt-lab.<canonical>` — **dot, not colon**, corrected
+same day per garm's reply (their `PROJECT_SLUG` validation excludes `:`);
+(2) reader = anyone with ≥1 `prompt-lab.*` grant, Garm-only, `READER_EMAILS`
+survives only as the `GARM_GATING=off` kill-switch allowlist; (3) `#/health`,
+`#/visitors`, uptime go admin-only; (4) revocation latency 10 min. **Garm
+replied same day:** unscoped key ratified as a documented exception; the
+list endpoint (`GET /gnipahellir/grants?email=<e>`) is being built now on
+garm's side, not yet live — that's the only remaining blocker before merge.
+The admin-bypass rationale (a Garm outage can't lock Nico out of the tool
+that diagnoses Garm) stands, decided 2026-08-22.
 
 **VERIFIED 2026-08-22: the first unattended laptop run of the nightly jobs
 worked.** `send-review.log`: started 02:30:01, generated in 138.0s, sent,
