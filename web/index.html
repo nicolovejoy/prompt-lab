@@ -1216,7 +1216,7 @@
           `}
 
           ${overview && route.view === 'home' && html`
-            <${HomeView} overview=${overview} />
+            <${HomeView} overview=${overview} role=${role} />
           `}
           ${overview && route.view === 'project' && html`
             <${ProjectPage} name=${route.project} overview=${overview} section=${route.section}
@@ -1295,7 +1295,7 @@
 
     // KPI tile row. Numbers we already have (week totals, active count) render
     // instantly; spend + views fill in when their endpoints resolve.
-    function PulseTiles({ overview, cost30, views30, hide }) {
+    function PulseTiles({ overview, cost30, views30, hide, role }) {
       const [showProjects, setShowProjects] = useState(false);
       const week = overview.week || {};
       const bp = overview.by_project || {};
@@ -1339,10 +1339,15 @@
         { label: 'commits · 7d', value: (week.commits || 0).toLocaleString(), to: '#/activity/commits' },
         { label: 'api spend · 30d', value: cost30 == null ? '…' : fmtUsd(spend30),
           series: cost30 == null ? null : spendSeries, color: 'var(--green)', to: '#/costs' },
-        { label: 'page views · 30d',
-          value: views30 == null ? '…' : (views30sum ? views30sum.toLocaleString() : 'new'),
-          series: views30 == null ? null : viewsSeries, color: '#06b6d4', to: '#/visitors' },
       ];
+      // Visitors is admin-only (decision 3) — a reader's fetch always 403s,
+      // so the tile is dropped rather than linking to a page that dead-ends
+      // on "Admins only."
+      if (role === 'admin') {
+        tiles.push({ label: 'page views · 30d',
+          value: views30 == null ? '…' : (views30sum ? views30sum.toLocaleString() : 'new'),
+          series: views30 == null ? null : viewsSeries, color: '#06b6d4', to: '#/visitors' });
+      }
 
       // Chip list shared by both halves of the inline expansion (same visual
       // vocabulary as home's dormant chip list); anchors, so keyboard reaches
@@ -1563,7 +1568,7 @@
     }
 
     // ---- Home: cross-project activity stream ----
-    function HomeView({ overview }) {
+    function HomeView({ overview, role }) {
       const { week, by_project } = overview;
       const [expanded, setExpanded] = useState({});
       const [showDormant, setShowDormant] = useState(false);
@@ -1576,10 +1581,15 @@
         api('/api/cost_overview?since=' + since)
           .then(d => { costOverviewMemo.set(30, d); setCost30(d.rows || []); })
           .catch(() => setCost30([]));
-        api('/api/visitor_overview?since=' + since)
-          .then(d => { visitorOverviewMemo.set(30, d); setViews30(d.daily || []); })
-          .catch(() => setViews30([]));
-      }, []);
+        // Visitors is admin-only (decision 3) — a reader's request always
+        // 403s, so skip the call entirely rather than eating a needless
+        // failed fetch on every home load.
+        if (role === 'admin') {
+          api('/api/visitor_overview?since=' + since)
+            .then(d => { visitorOverviewMemo.set(30, d); setViews30(d.daily || []); })
+            .catch(() => setViews30([]));
+        }
+      }, [role]);
       const toggle = (id) => setExpanded(p => ({ ...p, [id]: !p[id] }));
 
       // `private` is a cosmetic hide-toggle (issue #23), not a confidentiality
@@ -1618,7 +1628,7 @@
       const open = (p) => navigate('#/project/' + encodeURIComponent(p));
 
       return html`
-        <${PulseTiles} overview=${overview} cost30=${cost30} views30=${views30} hide=${hiddenSet} />
+        <${PulseTiles} overview=${overview} cost30=${cost30} views30=${views30} hide=${hiddenSet} role=${role} />
         <${CrossProjectActivity} overview=${overview} hide=${hiddenSet} />
 
         <div class="sec-label" style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.93rem;

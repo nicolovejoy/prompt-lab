@@ -13,6 +13,14 @@ from turso_helper import turso_query
 _BUILD_TIME = datetime.now(timezone.utc).isoformat()
 
 
+def _alias_to_canonical():
+    try:
+        rows = turso_query("SELECT alias, canonical FROM project_aliases")
+    except Exception:
+        return {}
+    return {r["alias"]: r["canonical"] for r in rows}
+
+
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         access = resolve_access(self.headers)
@@ -38,10 +46,17 @@ class handler(BaseHTTPRequestHandler):
         # Project count — for a reader this counts only their granted
         # projects, since daily_summaries has no per-row visibility of its
         # own and a raw DISTINCT count would leak the ecosystem's size.
+        # Aliases must be folded before both filtering and counting: rows
+        # can be stored under an old (aliased) name while a reader's grant
+        # is issued against the canonical name, and two aliased rows must
+        # not double-count as two projects.
         project_count = 0
         try:
             rows = turso_query("SELECT DISTINCT project FROM daily_summaries")
-            project_count = len(filter_rows(access, rows))
+            a2c = _alias_to_canonical()
+            canon = lambda n: a2c.get(n, n)  # noqa: E731
+            allowed_rows = filter_rows(access, rows, canon=canon)
+            project_count = len({canon(r["project"]) for r in allowed_rows})
         except Exception:
             pass
 

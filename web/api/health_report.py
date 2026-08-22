@@ -651,19 +651,27 @@ class handler(BaseHTTPRequestHandler):
     def _denial(self, dry):
         """(status, body) to refuse this caller, or None if it may proceed.
 
-        Cron bypasses this entirely. The cookie path is admin-only for BOTH
-        dry runs and sends (decision 3: health has no project column to
-        filter on and maps everything Nico runs, so there is no reader view
-        of it at all — unlike uptime/visitors, this is a role check, not a
-        grant-set check).
+        Cron bypasses this entirely. Both axes are checked, and they answer
+        different questions: the grant-set axis (`access.projects is not
+        None`) is the same admin-only gate uptime/visitors use, so a Garm
+        reader — filtered or not — never reaches health at all, and an
+        unfiltered account under GARM_GATING=off keeps today's behaviour
+        uniformly across all three admin-only surfaces. The role axis is
+        layered on top of that and is what actually protects the SEND path:
+        gating on projects alone would let a reader under GARM_GATING=off
+        (role='reader', projects=None — indistinguishable from admin on that
+        axis) trigger a real email send, which is the one thing the plan
+        says only cron or admin may do.
         """
         if self._is_cron():
             return None
         access = resolve_access(self.headers)
         if access is None:
             return 401, {"error": "unauthorized"}
-        if access.role != "admin":
+        if access.projects is not None:
             return 403, {"error": "admin required"}
+        if not dry and access.role != "admin":
+            return 403, {"error": "forbidden", "detail": "sending requires admin"}
         return None
 
     def _handle_pause(self, qs):

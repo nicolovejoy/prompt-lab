@@ -2976,6 +2976,64 @@ def _():
         restore()
 
 
+@test("health_report: gating-off unfiltered reader (projects=None) → dry 200, send 403")
+def _():
+    """access.projects is None with role='reader' is exactly what a reader
+    looks like when GARM_GATING=off (the kill-switch allowlist path) —
+    indistinguishable from admin on the grant-set axis alone, which is why
+    _denial() layers the role check on top for the send path."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        unfiltered_reader = access_helper.Access("reader", "r@test.invalid", None, None)
+        restore_a = patch(mod, resolve_access=lambda h: unfiltered_reader)
+        try:
+            h = invoke(mod, "/api/health_report?dry=1")
+            assert h.status_code == 200, f"dry: got {h.status_code}: {h.body}"
+            assert not sent, "dry run sent an email"
+
+            h2 = invoke(mod, "/api/health_report")
+            assert h2.status_code == 403, f"send: got {h2.status_code}: {h2.body}"
+            assert not sent, "gating-off reader triggered a real send"
+        finally:
+            restore_a()
+    finally:
+        restore()
+
+
+@test("health_report: filtered reader (projects=set) → 403 even on dry")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        filtered_reader = access_helper.Access(
+            "reader", "r@test.invalid", frozenset({"prntd"}), None)
+        restore_a = patch(mod, resolve_access=lambda h: filtered_reader)
+        try:
+            h = invoke(mod, "/api/health_report?dry=1")
+            assert h.status_code == 403, f"got {h.status_code}: {h.body}"
+            assert not mod._polls, "filtered reader dry run polled targets"
+            assert not sent
+        finally:
+            restore_a()
+    finally:
+        restore()
+
+
+@test("health_report: cron bearer path is untouched by the dual-axis gate")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["sent"] is True, h.body
+        assert len(sent) == 1, sent
+    finally:
+        restore()
+
+
 # === heartbeats / artifact freshness (issue #45) ===
 
 @test("heartbeats: all fresh → one summary line, subject stays ✅")
@@ -4700,6 +4758,32 @@ def _():
         h = invoke(mod, "/api/info")
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         assert h.body["project_count"] == 3, h.body
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("info: project_count folds aliases — reader granted the canonical name sees the aliased row")
+def _():
+    mod = load_endpoint("web/api/info.py", "endpoint_info_alias")
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "reader", "r@b.c", frozenset({"raconte"}), None))
+
+    def fake_turso(sql, args=None):
+        if "MAX(date)" in sql:
+            return [{"latest": "2026-08-01"}]
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        if "DISTINCT project" in sql:
+            # Stored under the OLD name; the grant is issued against the
+            # canonical name — must still count as 1, not 0.
+            return [{"project": "recountly"}, {"project": "musicforge"}]
+        return []
+    restore_q = patch_turso_query(mod, fake_turso)
+    try:
+        h = invoke(mod, "/api/info")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert h.body["project_count"] == 1, h.body
     finally:
         restore_a()
         restore_q()
