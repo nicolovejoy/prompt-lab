@@ -21,7 +21,7 @@
 
 WORK_SRC_DIR="$HOME/src"
 WORK_COLS=200   # window size in terminal cells; iTerm2 clamps to screen
-WORK_ROWS=55    # if larger than the display can fit
+WORK_ROWS=100   # if larger than the display can fit (set high to fill screen height)
 
 
 # --- 1. TAB COLOR HELPERS ----------------------------------
@@ -94,9 +94,9 @@ work() {
   local r g b
   read r g b <<< "$(_work_color "$name")"
 
-  # Bottom strip gets ~1/5 of the rows; the top Claude pane keeps
-  # the rest (~80%). "Close to 80/20 is fine" — the knob is the / 5.
-  local bottom_rows=$(( WORK_ROWS / 5 ))
+  # Bottom strip gets ~15% of the rows; the top Claude pane keeps
+  # the rest (~85%).
+  local bottom_rows=$(( WORK_ROWS * 15 / 100 ))
 
   # Drive iTerm2 with AppleScript. The zsh variables above
   # ($proj_dir, $r, $g, $b, $bottom_rows) are substituted into
@@ -140,8 +140,8 @@ if (( $+functions[compdef] )); then compdef _work work; fi
 
 # ============================================================
 # TWEAKS:
-# - Top/bottom ratio: change the `/ 5` in bottom_rows (smaller
-#   divisor = taller bottom strip).
+# - Top/bottom ratio: change the `* 15 / 100` in bottom_rows
+#   (bigger percentage = taller bottom strip).
 # - Window size: WORK_COLS / WORK_ROWS above (iTerm clamps to screen).
 # - Swap pane layout: change "split vertically" <-> "split
 #   horizontally" in section 2 to rearrange the splits.

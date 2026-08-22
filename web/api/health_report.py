@@ -31,6 +31,12 @@ this handler because Vercel Hobby crons are daily and one already exists here.
 
 The joke: generated per-send with the Anthropic API (Haiku tier), falling back
 to a canned rotation — the email must send even when the API doesn't.
+
+Cron schedule (issue #48): `web/vercel.json`'s `"0 15 * * *"` is 8am Pacific
+in summer and 7am in winter — Vercel crons are UTC-only and don't know about
+DST. Decided 2026-08-22 (Nico): accept the drift rather than add a
+month-based split, which would still be imprecise near the actual transition
+dates and adds permanent complexity for a once-a-day informational email.
 """
 
 import hmac

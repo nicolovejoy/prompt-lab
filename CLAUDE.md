@@ -63,6 +63,42 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**Decided 2026-08-22 (Nico): prompt-lab becomes a partial Garm consumer — issue
+#27's open "should prompt-lab itself use Garm" question, now answered. Not
+started; the plan is next session's work.** Trigger was wanting to invite
+Pierre and Nico's brother with per-project visibility (today `READER_EMAILS`
+is all-or-nothing — every reader sees every project) plus wanting usage
+tracking done respectfully rather than not at all.
+
+The design has one deliberate carve-out: **admin (Nico) does NOT route
+through Garm.** `docs/health-convention.md:60` already established why —
+"Garm consumers fail closed... a Garm outage is an ecosystem-wide lockout,"
+which is the same reasoning that keeps prompt-lab's own alerting on
+UptimeRobot rather than Garm/Vercel infra ("the watcher must not die with the
+watched," `docs/history.md:93`). prompt-lab is the dashboard used to diagnose
+a Garm outage; it can't require a live Garm to open, or a Garm outage locks
+Nico out of the one tool that would tell him Garm is down.
+
+So: `ADMIN_EMAILS` stays exactly as it is today (flat list, bypasses Garm,
+always works) — it answers "what can this account *do*" (trigger sends,
+classify issues, edit `project_metadata`), which is a different axis from
+"which projects can this account *see*" and isn't something Garm's
+`(email, project) → role` model needs to know about. Only the reader side
+becomes Garm grants: Pierre and the brother get real per-project `viewer`
+roles via Garm's people-admin flow, and if Garm is briefly down they lose
+access for a few minutes — an acceptable, contained failure, unlike locking
+out the admin.
+
+**Considered and set aside: two accounts for Nico** (one Garm-gated, one
+break-glass emergency login) — rejected for the single-admin-bypass design
+above on Nico's "simple is good" call; same outcome (an always-working path
+for Nico), fewer moving parts, nothing to keep in sync between two accounts.
+
+Usage tracking falls out for free: Garm's existing `GET /api/usage` endpoint
+(see the garm-prompt-lab handoff channel) already returns daily rollup counts
+per person × project × allow/deny — no raw access log, same aggregate-only
+philosophy as the anonymous visitor tracking already in this dashboard.
+
 **UNVERIFIED: tonight (2026-08-21→22) is the first unattended run of all four
 jobs on the laptop.** Everything below about the sleep fix is proven by hand —
 a 420s test job held its caffeinate assertion, and a full `send-review.py`
