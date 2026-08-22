@@ -661,8 +661,8 @@
       for (let attempt = 0; ; attempt++) {
         try {
           const resp = await fetch(path);
-          if (resp.status === 401) throw new Error('unauthorized');
-          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          if (resp.status === 401) throw Object.assign(new Error('unauthorized'), { status: 401 });
+          if (!resp.ok) throw Object.assign(new Error('HTTP ' + resp.status), { status: resp.status });
           return await resp.json();
         } catch (e) {
           if (e.message === 'unauthorized' || attempt >= retries) throw e;
@@ -4157,13 +4157,14 @@
         let alive = true;
         api('/api/project?name=' + encodeURIComponent(name))
           .then(d => { memo.project.set(name, d); if (alive) { setData(d); setLoading(false); } })
-          .catch(e => { if (alive && !cached) { setData({ error: e.message }); setLoading(false); } });
+          .catch(e => { if (alive && !cached) { setData({ error: e.message, status: e.status }); setLoading(false); } });
         return () => { alive = false; };
       }, [name]);
 
       if (section === 'cost') return html`<${CostDetailPage} project=${name} />`;
 
       if (loading) return html`<${SkeletonList} />`;
+      if (data?.status === 403) return html`<p style="color: var(--text-secondary); padding: 24px 0">This project isn't in your view.</p>`;
       if (data?.error) return html`<div class="error">${data.error}</div>`;
       if (!data) return null;
 
