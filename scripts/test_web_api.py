@@ -411,7 +411,7 @@ def _():
 def _():
     mod = load_endpoint("web/api/cost_timeline.py", "endpoint_cost_unauth")
     restore_q = patch_turso_query(mod, lambda *a, **kw: [])
-    restore_a = patch(mod, is_authenticated=lambda _: False)
+    restore_a = patch(mod, resolve_access=lambda h: None)
 
     def restore():
         restore_a()
@@ -433,7 +433,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access("admin", "a@b.c", None, None))
 
     def restore():
         restore_a()
@@ -469,7 +469,7 @@ def _():
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
-    restore_a = patch(mod, is_authenticated=lambda _: True)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access("admin", "a@b.c", None, None))
 
     def restore():
         restore_a()
@@ -4494,6 +4494,58 @@ def _():
     assert cap.status_code == 200, cap.body
     assert "raconte" not in json.dumps(cap.body), "raconte leaked into cost_overview"
     assert all(row["project"] == "prntd" for row in cap.body["rows"]), cap.body["rows"]
+
+
+# === project.py / cost_timeline.py: reader gating (Task 5) ===
+
+@test("project: reader asking for a project outside their grants → 403, no Turso query")
+def _():
+    pj = load_endpoint("web/api/project.py", "pj_garm")
+    calls = []
+    r = patch_turso_query(pj, lambda sql, args=None: calls.append(sql) or [])
+    try:
+        cap = invoke(pj, "/api/project?name=musicforge", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 403, cap.status_code
+    assert not [s for s in calls if "daily_summaries" in s], calls
+
+
+@test("project: reader asking by ALIAS of a granted canonical → 200")
+def _():
+    pj = load_endpoint("web/api/project.py", "pj_garm2")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        return []
+    r = patch_turso_query(pj, fake)
+    try:
+        cap = invoke(pj, "/api/project?name=recountly", _reader_hdr(["raconte"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.status_code
+
+
+@test("cost_timeline: reader without ?project → only granted projects' rows; disallowed ?project → 403")
+def _():
+    ct = load_endpoint("web/api/cost_timeline.py", "ct_garm")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "api_costs" in sql:
+            return [{"date": "2026-08-20", "project": "prntd", "usd": 1},
+                    {"date": "2026-08-20", "project": "musicforge", "usd": 2}]
+        return []
+    r = patch_turso_query(ct, fake)
+    try:
+        cap = invoke(ct, "/api/cost_timeline", _reader_hdr(["prntd"]))
+        assert "musicforge" not in json.dumps(cap.body), cap.body
+        cap2 = invoke(ct, "/api/cost_timeline?project=musicforge", _reader_hdr(["prntd"]))
+        assert cap2.status_code == 403, cap2.status_code
+    finally:
+        r()
 
 
 # === Main ===
