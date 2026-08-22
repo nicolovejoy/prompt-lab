@@ -119,13 +119,19 @@ class handler(BaseHTTPRequestHandler):
         totals = {m: sum(p[m] for p in projects)
                   for m in ("prompts", "sessions", "commits")}
 
+        # visitors (site) and uptime (monitor) are admin-only per the Garm plan
+        # (decision 3: no project column to filter on, and they map everything
+        # Nico runs) — a filtered reader gets neither section at all, not a
+        # filtered one.
+        admin_only = access.projects is not None
+
         self._json({
             "date": date,
             "totals": totals,
             "projects": projects,
             "spend": self._spend(date, a2c, access),
-            "visitors": self._visitors(date),
-            "uptime": self._uptime(date),
+            "visitors": None if admin_only else self._visitors(date),
+            "uptime": None if admin_only else self._uptime(date),
             # Today's row is written by /handoff or the nightly synthesizer, so
             # until one runs it under-reports — and a chart can't tell a quiet
             # day from an unsummarized one. Say which this is rather than let a

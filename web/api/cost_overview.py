@@ -62,8 +62,10 @@ class handler(BaseHTTPRequestHandler):
         raw = turso_query(sql, args)
 
         # Fold raw project names into canonical, re-summing collisions on the
-        # same (date, canonical, model).
+        # same (date, canonical, model). Filter BEFORE folding/aggregation, so
+        # a disallowed project's rows never touch a sum a reader receives.
         a2c = _alias_to_canonical()
+        raw = filter_rows(access, raw, canon=lambda n: a2c.get(n, n))
         folded = {}
         for r in raw:
             proj = a2c.get(r["project"], r["project"])
@@ -75,7 +77,6 @@ class handler(BaseHTTPRequestHandler):
             for (d, p, m), c in folded.items()
         ]
         rows.sort(key=lambda r: (r["date"], r["project"], r["model"]))
-        rows = filter_rows(access, rows)  # already canonical, so default identity canon
 
         payload = {"rows": rows}
 

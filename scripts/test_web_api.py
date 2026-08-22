@@ -4196,7 +4196,6 @@ def _():
     assert "garm_helper.py" in inc and "access_helper.py" in inc, inc
 
 
-import access_helper  # noqa: E402
 from auth_helper import make_token, COOKIE_NAME  # noqa: E402
 
 
@@ -4304,7 +4303,12 @@ def _():
         if "project_aliases" in sql:
             return [{"alias": "recountly", "canonical": "raconte"}]
         if "project_metadata" in sql:
-            return []
+            # A real row for a project the reader is NOT granted — the
+            # project_metadata roster is independent of daily_summaries/
+            # snapshots, so this must be filtered on its own, not merely by
+            # coincidence of what other tables returned.
+            return [{"project": "raconte", "category": "Collabs",
+                     "private": 0, "status": "active"}]
         if "daily_summaries" in sql:
             return [{"project": "prntd", "date": "2026-08-20", "prompt_count": 3},
                     {"project": "recountly", "date": "2026-08-20", "prompt_count": 5}]
@@ -4320,6 +4324,7 @@ def _():
     assert cap.status_code == 200, cap.body
     assert cap.body["all_projects"] == ["prntd"], cap.body["all_projects"]
     assert "raconte" not in json.dumps(cap.body), "raconte leaked into overview"
+    assert "raconte" not in cap.body["project_metadata"], cap.body["project_metadata"]
 
 
 @test("overview: admin unfiltered; reader with stale cookie gets Set-Cookie on the JSON response")
@@ -4363,6 +4368,90 @@ def _():
     assert names == ["prntd"], names
     assert cap.body["totals"] == {"prompts": 3, "sessions": 1, "commits": 1}, cap.body["totals"]
     assert "raconte" not in json.dumps(cap.body), "raconte leaked into day"
+
+
+@test("day: visitors/uptime are admin-only — omitted for a filtered reader, present for admin")
+def _():
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "daily_summaries" in sql:
+            return [{"project": "prntd", "summary": "p work", "key_decisions": "[]",
+                     "prompts": 1, "sessions": 1, "commits": 0}]
+        if "page_views" in sql:
+            return [{"site": "prompt-lab", "views": 4}]
+        if "uptime_daily" in sql:
+            return [{"monitor": "prntd", "uptime_1d": 100.0, "status": "up"}]
+        return []
+
+    dy_reader = load_endpoint("web/api/day.py", "day_garm_visibility_reader")
+    r = patch_turso_query(dy_reader, fake)
+    try:
+        cap = invoke(dy_reader, "/api/day?date=2026-08-20", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    assert cap.body["visitors"] is None, cap.body["visitors"]
+    assert cap.body["uptime"] is None, cap.body["uptime"]
+
+    dy_admin = load_endpoint("web/api/day.py", "day_garm_visibility_admin")
+    r = patch_turso_query(dy_admin, fake)
+    r2 = patch(dy_admin, resolve_access=lambda h: access_helper.Access(
+        "admin", "nlovejoy@me.com", None, None))
+    try:
+        cap = invoke(dy_admin, "/api/day?date=2026-08-20", {})
+    finally:
+        r2()
+        r()
+    assert cap.status_code == 200, cap.body
+    assert cap.body["visitors"] is not None, cap.body["visitors"]
+    assert cap.body["uptime"] is not None, cap.body["uptime"]
+
+
+@test("activity_timeline: filter_rows runs before folding, so a disallowed row can't reach the sum")
+def _():
+    at = load_endpoint("web/api/activity_timeline.py", "at_garm_prefold")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "daily_summaries" in sql:
+            return [{"date": "2026-08-20", "project": "prntd", "sessions": 1, "prompts": 3, "commits": 1},
+                    {"date": "2026-08-20", "project": "raconte", "sessions": 9, "prompts": 90, "commits": 9}]
+        return []
+    r = patch_turso_query(at, fake)
+    try:
+        cap = invoke(at, "/api/activity_timeline", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    rows = cap.body["rows"]
+    assert len(rows) == 1 and rows[0]["project"] == "prntd", rows
+    # If the disallowed row had leaked into the fold before filtering, prntd's
+    # own counts would be inflated by raconte's — pin that they aren't.
+    assert rows[0]["prompts"] == 3 and rows[0]["sessions"] == 1, rows[0]
+
+
+@test("cost_overview: filter_rows runs before folding, so a disallowed row can't reach the sum")
+def _():
+    co = load_endpoint("web/api/cost_overview.py", "co_garm_prefold")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "api_costs" in sql:
+            return [{"date": "2026-08-20", "project": "prntd", "model": "opus", "cost_usd": 1.0},
+                    {"date": "2026-08-20", "project": "raconte", "model": "opus", "cost_usd": 99.0}]
+        return []
+    r = patch_turso_query(co, fake)
+    try:
+        cap = invoke(co, "/api/cost_overview", _reader_hdr(["prntd"]))
+    finally:
+        r()
+    assert cap.status_code == 200, cap.body
+    rows = cap.body["rows"]
+    assert len(rows) == 1 and rows[0]["project"] == "prntd", rows
+    assert abs(rows[0]["cost_usd"] - 1.0) < 1e-9, rows[0]
 
 
 @test("activity_timeline: reader sees no disallowed project rows")

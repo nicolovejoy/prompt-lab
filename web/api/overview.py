@@ -3,7 +3,7 @@
 import json
 from http.server import BaseHTTPRequestHandler
 
-from access_helper import filter_rows, resolve_access
+from access_helper import allowed, filter_rows, resolve_access
 from day_helper import lab_days_ago
 from turso_helper import turso_query
 
@@ -26,12 +26,17 @@ def _resolve(name, alias_to_canonical):
     return alias_to_canonical.get(name, name)
 
 
-def _load_metadata(alias_to_canonical):
+def _load_metadata(alias_to_canonical, access):
     """Per-project category/private/status (issue #23).
 
     Turso-owned, written only by web/api/project_metadata.py. Missing row =
     defaults, so a project with no metadata still renders. Never fatal: this is
     display polish, not data the page needs to exist.
+
+    Unfiltered, this is the full project roster (every canonical name that has
+    ever had metadata written) regardless of what daily_summaries/snapshots
+    turned up — so a reader granted only one project must have it filtered
+    here too, not just on the raw-row reads above.
     """
     try:
         rows = turso_query(
@@ -45,6 +50,7 @@ def _load_metadata(alias_to_canonical):
             "status": r.get("status") or "active",
         }
         for r in rows
+        if allowed(access, _resolve(r["project"], alias_to_canonical))
     }
 
 
@@ -133,7 +139,7 @@ class handler(BaseHTTPRequestHandler):
             },
             "activity_by_project": activity_by_project,
             "all_projects": all_projects,
-            "project_metadata": _load_metadata(alias_to_canonical),
+            "project_metadata": _load_metadata(alias_to_canonical, access),
         }, access)
 
     def _json(self, data, access=None):
