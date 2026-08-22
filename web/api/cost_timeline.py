@@ -48,8 +48,10 @@ class handler(BaseHTTPRequestHandler):
 
         # Unscoped call: the query can't filter in SQL (no single project),
         # so pull `project` into every SELECT/GROUP BY and post-filter with
-        # filter_rows, same as cost_overview.
-        include_project_col = not project
+        # filter_rows, same as cost_overview. Only needed when there is
+        # actually something to filter — admin (projects=None) gets the
+        # exact pre-Garm response shape, no project column added.
+        include_project_col = not project and access.projects is not None
         a2c = _alias_to_canonical() if include_project_col else {}
         canon = lambda n: a2c.get(n, n)  # noqa: E731
 

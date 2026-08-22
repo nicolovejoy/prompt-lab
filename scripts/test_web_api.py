@@ -4548,6 +4548,30 @@ def _():
         r()
 
 
+@test("cost_timeline: admin unscoped call gets byte-identical shape — no project key added")
+def _():
+    ct = load_endpoint("web/api/cost_timeline.py", "ct_garm_admin")
+
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "api_costs" in sql:
+            return [{"date": "2026-08-20", "model": "opus", "cost_usd": 1}]
+        if "api_usage" in sql:
+            return [{"date": "2026-08-20", "model": "opus", "input_tokens": 1}]
+        return []
+    r = patch_turso_query(ct, fake)
+    r2 = patch(ct, resolve_access=lambda h: access_helper.Access("admin", "a@b.c", None, None))
+    try:
+        cap = invoke(ct, "/api/cost_timeline")
+        assert cap.status_code == 200, cap.status_code
+        assert all("project" not in row for row in cap.body["costs"]), cap.body["costs"]
+        assert all("project" not in row for row in cap.body["usage"]), cap.body["usage"]
+    finally:
+        r2()
+        r()
+
+
 # === Main ===
 
 def main() -> int:
