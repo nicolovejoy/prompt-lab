@@ -2128,7 +2128,7 @@ def _callback_env():
     import os
     restore = _save_env(
         "AUTH_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "ADMIN_EMAILS",
-        "BEACON_SALT", "TURSO_DATABASE_URL")
+        "BEACON_SALT", "TURSO_DATABASE_URL", "GARM_GATING")
     os.environ["AUTH_SECRET"] = "test-secret"
     os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
     os.environ["GOOGLE_CLIENT_SECRET"] = "test-client-secret"
@@ -2138,6 +2138,11 @@ def _callback_env():
     # doesn't patch turso_query can never reach a real database.
     os.environ["BEACON_SALT"] = "test-salt"
     os.environ["TURSO_DATABASE_URL"] = ""
+    # Default the kill switch OFF (READER_EMAILS path) so every callback test
+    # written before Garm consumption still exercises the behaviour it pins.
+    # Tests that want the live-Garm branch patch GARM_ENABLED directly, which
+    # overrides this regardless of env.
+    os.environ["GARM_GATING"] = "off"
     return restore
 
 
@@ -2465,6 +2470,92 @@ def _():
             r()
     finally:
         restore()
+
+
+# === callback: readers resolve through Garm (Task 3) ===
+
+def _id_token(email):
+    """A verified, correct-aud id_token for `email` — the common case every
+    garm-consumer callback test needs."""
+    return _fake_id_token({
+        "email": email, "email_verified": True, "aud": "test-client-id"})
+
+
+def _state():
+    return auth_helper.make_state()
+
+
+@test("callback: non-admin with Garm grants → 302 + reader cookie carrying projects")
+def _():
+    restore = _callback_env()
+    os.environ.pop("READER_EMAILS", None)
+    cb = load_endpoint("web/api/callback.py", "cb_garm1")
+    r = patch(cb, _exchange_code=lambda c: {"id_token": _id_token("pierre@example.com")},
+              fetch_grants=lambda e: {"prntd"}, GARM_ENABLED=lambda: True)
+    try:
+        cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
+        assert cap.status_code == 302, cap.status_code
+        tok = [v for k, v in cap.response_headers if k == "Set-Cookie"][0].split(";")[0].split("=", 1)[1]
+        p = auth_helper.verify_token(tok)  # AUTH_SECRET must still be the test value here
+        assert p["role"] == "reader" and p["projects"] == ["prntd"], p
+    finally:
+        r(); restore()
+
+
+@test("callback: non-admin with NO grants → 403 even if in READER_EMAILS (gating on)")
+def _():
+    restore = _callback_env()
+    os.environ["READER_EMAILS"] = "pierre@example.com"
+    cb = load_endpoint("web/api/callback.py", "cb_garm2")
+    r = patch(cb, _exchange_code=lambda c: {"id_token": _id_token("pierre@example.com")},
+              fetch_grants=lambda e: set(), GARM_ENABLED=lambda: True)
+    try:
+        cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
+    finally:
+        r(); restore()
+    assert cap.status_code == 403, cap.status_code
+
+
+@test("callback: Garm unreachable → 403 with a 'try again' message, never a cookie")
+def _():
+    restore = _callback_env()
+    cb = load_endpoint("web/api/callback.py", "cb_garm3")
+    r = patch(cb, _exchange_code=lambda c: {"id_token": _id_token("pierre@example.com")},
+              fetch_grants=lambda e: None, GARM_ENABLED=lambda: True)
+    try:
+        cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
+    finally:
+        r(); restore()
+    assert cap.status_code == 503 and not [k for k, _ in cap.response_headers if k == "Set-Cookie"]
+
+
+@test("callback: GARM_GATING=off → READER_EMAILS path, unfiltered reader cookie, Garm not called")
+def _():
+    restore = _callback_env()
+    os.environ["READER_EMAILS"] = "pierre@example.com"
+    cb = load_endpoint("web/api/callback.py", "cb_garm4")
+    called = []
+    r = patch(cb, _exchange_code=lambda c: {"id_token": _id_token("pierre@example.com")},
+              fetch_grants=lambda e: called.append(e), GARM_ENABLED=lambda: False)
+    try:
+        cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
+    finally:
+        r(); restore()
+    assert cap.status_code == 302 and called == []
+
+
+@test("callback: admin path unchanged — Garm never called even when gating on")
+def _():
+    restore = _callback_env()
+    cb = load_endpoint("web/api/callback.py", "cb_garm5")
+    called = []
+    r = patch(cb, _exchange_code=lambda c: {"id_token": _id_token("nlovejoy@me.com")},
+              fetch_grants=lambda e: called.append(e), GARM_ENABLED=lambda: True)
+    try:
+        cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
+    finally:
+        r(); restore()
+    assert cap.status_code == 302 and called == []
 
 
 # === callback login events (issue #10) ===
