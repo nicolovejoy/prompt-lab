@@ -4747,6 +4747,31 @@ def _():
         restore()
 
 
+@test("project_metadata: GET folds an aliased row's project through project_aliases before filtering")
+def _():
+    rows = [
+        {"project": "recountly", "category": "iOS", "private": 0, "status": "active",
+         "public_counts": 0, "updated_at": "2026-08-01T00:00:00Z"},
+        {"project": "prntd", "category": "Tools", "private": 0, "status": "active",
+         "public_counts": 0, "updated_at": "2026-08-01T00:00:00Z"},
+    ]
+
+    def fake_turso(sql, args=None):
+        if "project_aliases" in sql:
+            return [{"alias": "recountly", "canonical": "raconte"}]
+        return rows
+
+    mod, restore = _meta_mod("endpoint_meta_alias_filter", fake_turso,
+                             role="reader", projects=frozenset({"raconte"}))
+    try:
+        h = invoke(mod, "/api/project_metadata")
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert "recountly" in h.body["projects"], h.body["projects"]
+        assert "prntd" not in h.body["projects"], h.body["projects"]
+    finally:
+        restore()
+
+
 @test("todos: reader sees no non-granted project keys in `projects`")
 def _():
     import os

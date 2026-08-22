@@ -4161,10 +4161,11 @@
         return () => { alive = false; };
       }, [name]);
 
-      if (loading) return html`<${SkeletonList} />`;
       if (data?.status === 403) return html`<p style="color: var(--text-secondary); padding: 24px 0">This project isn't in your view.</p>`;
 
       if (section === 'cost') return html`<${CostDetailPage} project=${name} />`;
+
+      if (loading) return html`<${SkeletonList} />`;
 
       if (data?.error) return html`<div class="error">${data.error}</div>`;
       if (!data) return null;
