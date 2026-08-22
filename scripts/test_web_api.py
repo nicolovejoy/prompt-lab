@@ -1509,7 +1509,13 @@ def _():
     rows = [{"project": "byside", "category": "Collabs", "private": "1",
              "status": "active", "public_counts": "1",
              "updated_at": "2026-07-14T00:00:00Z"}]
-    mod, restore = _meta_mod("endpoint_meta_get", lambda *a, **kw: rows, role="reader")
+
+    def fake_turso(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        return rows
+
+    mod, restore = _meta_mod("endpoint_meta_get", fake_turso, role="reader")
     try:
         h = invoke(mod, "/api/project_metadata")
         assert h.status_code == 200, f"got {h.status_code}"
@@ -2726,15 +2732,22 @@ def _():
 # === health_report (issue #34) ===
 
 def _health_env():
-    """Set the env the health endpoint needs; returns a restore fn."""
+    """Set the env the health endpoint needs; returns a restore fn.
+
+    GARM_URL is pinned to an unroutable test host so any reader-cookie
+    request that reaches resolve_access() and needs a fresh grant set fails
+    fast (DNS failure) instead of making a real network call to
+    garm.prompt-labs.org — GARM_GATING stays "on" (default) so those requests
+    still exercise the real resolve_access() path."""
     saved = {k: os.environ.get(k) for k in
              ("AUTH_SECRET", "CRON_SECRET", "RESEND_API_KEY", "HEALTH_TO_EMAIL",
-              "UPTIMEROBOT_API_KEY")}
+              "UPTIMEROBOT_API_KEY", "GARM_URL", "GARM_GATING")}
     os.environ["AUTH_SECRET"] = "test-secret"
     os.environ["CRON_SECRET"] = "cron-secret"
     os.environ["RESEND_API_KEY"] = "re_test"
     os.environ["HEALTH_TO_EMAIL"] = "nico@test.invalid"
     os.environ["UPTIMEROBOT_API_KEY"] = "ur-test"
+    os.environ["GARM_URL"] = "https://garm.test"
 
     def restore():
         for k, v in saved.items():
@@ -2912,10 +2925,15 @@ def _():
         restore()
 
 
-def _health_cookie(role, email="someone@test.invalid"):
+def _health_cookie(role, email="someone@test.invalid", projects=("nonexistent",)):
     """A real signed session cookie header for `role`. Call AFTER _health_env()
-    so AUTH_SECRET matches what the endpoint's get_role() will verify against."""
-    tok = auth_helper.make_token(role, email=email)
+    so AUTH_SECRET matches what the endpoint's get_role() will verify against.
+
+    `projects` defaults to a fresh, already-filtered grant set (list, not
+    None) so a reader cookie carries a fresh grants_at and resolve_access()
+    never needs to call Garm's real fetch_grants() — admin ignores `projects`
+    entirely (resolve_access short-circuits on role == 'admin')."""
+    tok = auth_helper.make_token(role, email=email, projects=list(projects))
     return {"cookie": f"{auth_helper.COOKIE_NAME}={tok}"}
 
 
@@ -4231,6 +4249,7 @@ def _fake_urlopen(status=200, body=None, raise_exc=None):
 
 @test("garm: fetch_grants → bare slugs from the prompt-lab: namespace + wildcard; foreign grants dropped")
 def _():
+    saved = {k: os.environ.get(k) for k in ("GARM_URL", "GARM_KEY")}
     os.environ["GARM_URL"] = "https://garm.test"
     os.environ["GARM_KEY"] = "garm_x"
     fake = _fake_urlopen(body={"grants": [{"project": "prompt-lab:prntd", "role": "viewer"},
@@ -4241,6 +4260,11 @@ def _():
         got = garm_helper.fetch_grants("pierre@example.com")
     finally:
         r()
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
     assert got == {"prntd", "*"}, got
     req, timeout = fake.calls[0]
     assert timeout == 2.0, timeout
@@ -4663,6 +4687,39 @@ def _():
         r()
 
 
+@test("cost_timeline: ?include=claude_code is org-wide with no project column — "
+      "omitted for a filtered reader, present for admin")
+def _():
+    def fake(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        if "claude_code_usage" in sql:
+            return [{"date": "2026-08-20", "customer_type": "api", "model": "opus",
+                     "sessions": 3, "estimated_cost_usd": 4.5}]
+        return []
+
+    ct = load_endpoint("web/api/cost_timeline.py", "ct_cc_reader")
+    r = patch_turso_query(ct, fake)
+    try:
+        cap = invoke(ct, "/api/cost_timeline?include=claude_code", _reader_hdr(["prntd"]))
+        assert cap.status_code == 200, cap.status_code
+        assert "claude_code" not in cap.body, (
+            f"reader got org-wide claude_code_usage rows: {cap.body}")
+    finally:
+        r()
+
+    ct2 = load_endpoint("web/api/cost_timeline.py", "ct_cc_admin")
+    r = patch_turso_query(ct2, fake)
+    r2 = patch(ct2, resolve_access=lambda h: access_helper.Access("admin", "a@b.c", None, None))
+    try:
+        cap = invoke(ct2, "/api/cost_timeline?include=claude_code")
+        assert cap.status_code == 200, cap.status_code
+        assert cap.body.get("claude_code"), f"admin missing claude_code rows: {cap.body}"
+    finally:
+        r2()
+        r()
+
+
 # === project_metadata / todos / info / admin-only pages: reader gating (Task 6) ===
 
 @test("project_metadata: GET reader sees only their granted project's key")
@@ -4673,7 +4730,13 @@ def _():
         {"project": "musicforge", "category": "Music", "private": 0, "status": "active",
          "public_counts": 0, "updated_at": "2026-08-01T00:00:00Z"},
     ]
-    mod, restore = _meta_mod("endpoint_meta_reader_filter", lambda *a, **kw: rows,
+
+    def fake_turso(sql, args=None):
+        if "project_aliases" in sql:
+            return []
+        return rows
+
+    mod, restore = _meta_mod("endpoint_meta_reader_filter", fake_turso,
                              role="reader", projects=frozenset({"prntd"}))
     try:
         h = invoke(mod, "/api/project_metadata")
@@ -4847,7 +4910,9 @@ def _():
                             "login.py", "callback.py", "ask.py"}
         if touches_project and not exempt and "is_authenticated(" in src:
             offenders.append(f.name)
-    assert not offenders, f"still gating on is_authenticated (reader sees everything): {offenders}"
+        if touches_project and not exempt and "resolve_access(" not in src:
+            offenders.append(f.name)
+    assert not offenders, f"not gated by resolve_access (reader sees everything): {offenders}"
 
 
 # === Main ===

@@ -111,7 +111,11 @@ class handler(BaseHTTPRequestHandler):
 
         payload = {"costs": cost_rows, "usage": usage_rows}
 
-        if include == "claude_code":
+        # claude_code_usage is org-wide (sessions/tokens/cost, no project
+        # column) — there is nothing to filter on, so a filtered reader gets
+        # the section omitted entirely rather than a org-wide leak. Admin
+        # (projects is None) still gets it.
+        if include == "claude_code" and access.projects is None:
             cc_clauses, cc_args = ["1=1"], []
             if since:
                 cc_clauses.append("date >= ?")

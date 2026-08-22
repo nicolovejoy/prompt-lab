@@ -41,6 +41,14 @@ STATUSES = {"active", "dormant"}
 MAX_BODY = 2048
 
 
+def _alias_to_canonical():
+    try:
+        rows = turso_query("SELECT alias, canonical FROM project_aliases")
+    except Exception:
+        return {}
+    return {r["alias"]: r["canonical"] for r in rows}
+
+
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         access = resolve_access(self.headers)
@@ -55,7 +63,8 @@ class handler(BaseHTTPRequestHandler):
             self._send(503, {"error": "temporarily unavailable",
                              "detail": str(e)})
             return
-        rows = filter_rows(access, rows)
+        a2c = _alias_to_canonical()
+        rows = filter_rows(access, rows, canon=lambda n: a2c.get(n, n))
         self._send(200, {"projects": {r["project"]: _row(r) for r in rows}}, access)
 
     def do_POST(self):
