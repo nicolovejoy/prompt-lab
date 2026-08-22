@@ -70,7 +70,8 @@ whole-branch review; Tasks 8–10 — env/key/seed/deploy, smoke test + docs,
 usage line in the health email — remain, and are Nico-at-keyboard work).
 What shipped on the branch: `web/garm_helper.py` (the only module that talks
 to Garm; urllib, 2s timeout, fail closed, `GARM_GATING=off` kill switch,
-namespaced slugs `prompt-lab:<canonical>` stripped to bare names),
+namespaced slugs `prompt-lab.<canonical>` (dot, not colon — garm's slug
+validation rejects colons) stripped to bare names),
 `web/access_helper.py` (`resolve_access()` replaces `is_authenticated()` in
 every cookie-gated project-bearing endpoint; reader grant set carried in the
 cookie, refreshed every 10 min on the request path; admin bypasses Garm
@@ -80,18 +81,30 @@ uptime / `?include=claude_code` are admin-only on the grant-set axis, nav +
 routes hide them for non-admins, a drift guard pins that no project-bearing
 endpoint gates on anything but `resolve_access`.
 
-**Before merging + deploying, in this order:** (1) garm answers the
-2026-08-22 handoff (list endpoint shape + key) — `garm_helper.fetch_grants` is
-written against `GET /gnipahellir/grants?email=` → `{grants:[{project,role}]}`
-and is the one function to adjust; (2) set `GARM_URL`, `GARM_KEY`,
-`GARM_GATING` in Vercel (one `vercel env add` per var, no loop, no `tr`);
-(3) merge + `vercel --prod`; (4) the self-contained smoke test in the plan's
-Task 9. **If you deploy before garm answers, set `GARM_GATING=off` first** —
-with gating on and no key, every non-admin sign-in 503s (fail closed by
-design; admin is unaffected either way).
+**Garm replied 2026-08-22 (same day): plan agreed, one correction.** Slug
+separator is **dot, not colon** — garm's `PROJECT_SLUG` validation
+(`lib/http/validation.ts`) is `^[a-z0-9][a-z0-9._-]*$`, which excludes `:`;
+a colon slug would 400 on every grant write. Fixed here: `web/garm_helper.py`
+NAMESPACE, `scripts/test_web_api.py`, `docs/garm-consumer-plan.md`, this file.
+Unscoped key ratified as a documented exception — no code change needed. The
+list endpoint (`GET /gnipahellir/grants?email=<e>`, same shape we proposed)
+is being built now on garm's side; they'll post the live URL + key path to
+`~/src/.handoff/garm-prompt-lab.md` when it's up. `garm_helper.fetch_grants`
+already targets that exact path, so nothing else in this repo should need to
+change once the key exists.
+
+**Before merging + deploying, in this order:** (1) garm posts the endpoint
+live + the key (in progress, not yet done — watch the handoff channel);
+(2) set `GARM_URL`, `GARM_KEY`, `GARM_GATING` in Vercel (one `vercel env add`
+per var, no loop, no `tr`); (3) merge + `vercel --prod`; (4) the
+self-contained smoke test in the plan's Task 9. **If you deploy before garm's
+key exists, set `GARM_GATING=off` first** — with gating on and no key, every
+non-admin sign-in 503s (fail closed by design; admin is unaffected either
+way).
 
 Decisions, all Nico's, 2026-08-22: (1) Garm slugs NAMESPACED
-`prompt-lab:<canonical>`; (2) reader = anyone with ≥1 `prompt-lab:*` grant,
+`prompt-lab.<canonical>` (dot — corrected same day per garm's reply);
+(2) reader = anyone with ≥1 `prompt-lab.*` grant,
 Garm-only, `READER_EMAILS` survives only as the kill-switch allowlist;
 (3) health/visitors/uptime admin-only; (4) asked garm for a consumer-key
 list endpoint + unscoped/prefix-scoped key (a point-check fan-out would spam

@@ -23,8 +23,8 @@
 
 ## Decisions (Nico — answer by number; defaults in bold are what the plan assumes)
 
-1. **DECIDED 2026-08-22 (Nico): namespaced slugs.** Garm project = `prompt-lab:<canonical>` (`prompt-lab:prntd`, `prompt-lab:musicforge`, …). Seeing a project's history here is a different resource from using the app, so it gets its own grant. Garm's `normalizeProject` only trims+lowercases, so the colon is legal — the handoff ask has garm confirm nothing else rejects it. `garm_helper.fetch_grants` strips the `prompt-lab:` prefix and drops any grant outside the namespace (`*` wildcard kept); `allowed()` compares bare canonical names. A person with a bare `*` grant sees everything — that is Garm's meaning of `*`, accepted.
-2. **DECIDED 2026-08-22 (Nico): Garm-only.** A reader is anyone with ≥1 active `prompt-lab:*` grant (any role) or `*`. `READER_EMAILS` is consulted only when `GARM_GATING=off` (kill switch) — one source of truth for who's a reader, no second list to drift.
+1. **DECIDED 2026-08-22 (Nico): namespaced slugs.** Garm project = `prompt-lab.<canonical>` (`prompt-lab.prntd`, `prompt-lab.musicforge`, …). Seeing a project's history here is a different resource from using the app, so it gets its own grant. **Corrected 2026-08-22 (garm's reply): dot, not colon** — garm's `PROJECT_SLUG` validation (`lib/http/validation.ts`) is `^[a-z0-9][a-z0-9._-]*$`, which excludes `:`; a colon slug would 400 on every grant write. `garm_helper.fetch_grants` strips the `prompt-lab.` prefix and drops any grant outside the namespace (`*` wildcard kept); `allowed()` compares bare canonical names. A person with a bare `*` grant sees everything — that is Garm's meaning of `*`, accepted.
+2. **DECIDED 2026-08-22 (Nico): Garm-only.** A reader is anyone with ≥1 active `prompt-lab.*` grant (any role) or `*`. `READER_EMAILS` is consulted only when `GARM_GATING=off` (kill switch) — one source of truth for who's a reader, no second list to drift.
 3. **DECIDED 2026-08-22 (Nico): conservative — `#/health`, `#/visitors`, uptime are admin-only.** They have no project column so grants can't filter them, and they map everything Nico runs. Readers get a nav without those three items; `uptime_overview.py`, `visitor_overview.py` and `health_report.py`'s authenticated GET return 403 to readers. Reversible in one line each if that ever changes. Costs, activity, day, overview, project, todos and project_metadata get filtered (they all carry a `project`).
 4. **How prompt-lab learns the *set* of projects.** Garm's check is `(email, project) → allowed` — a point query; a dashboard needs the set. **Default: ask garm for a consumer-key list endpoint** (`GET /gnipahellir/grants?email=` → `{grants:[{project, role}]}`, exact + wildcard, active only) and an **unscoped** consumer key for prompt-lab (onboarding.md says never mint unscoped — prompt-lab is the legitimate exception, it spans every project by nature; garm should ratify that). Fallback if garm declines: fan out one `/gnipahellir` check per dashboard project at login + daily refresh — works today but writes a deny row per non-granted project per refresh into Garm's log, which Howl would then mail to you every morning. That noise is why the list endpoint is the default.
 5. **Revocation latency = `GRANTS_TTL` = 600s.** A revoked reader keeps seeing their old set for up to 10 min. Consuming.md recommends 60s in-app cache, but serverless has no in-process cache, so the cookie is the cache and each refresh is a Garm round-trip on the request path; 10 min keeps that to ~1 call per reader per 10 min.
@@ -53,16 +53,22 @@ Plan: prompt-lab docs/garm-consumer-plan.md. Two asks before we can cut over:
    we're asking you to ratify it as the exception rather than work around it. If you'd
    rather keep scope non-null, a scope value meaning "any project" would do.
 
-Slug convention, decided: NAMESPACED — Garm project = `prompt-lab:<canonical>`
-(`prompt-lab:prntd`, `prompt-lab:musicforge`, …), because seeing a project's history here
-is a different resource from using the app. normalizeProject only trims+lowercases, so the
-colon looks legal — please confirm nothing else (zod, scope matching) rejects it. Given the
-namespace, a PREFIX-scoped key (`scope_project: "prompt-lab:*"` or similar) would be a fine
-alternative to unscoped, if you'd rather keep the never-unscoped rule. `*` = everything, as
-Garm defines it. Usage will come off
-/api/usage with the reporting key you already minted. Fail-closed, 2s timeout,
-GARM_GATING=off kill switch, 10-min cookie-carried grant cache.
+Slug convention, decided: NAMESPACED — Garm project = `prompt-lab.<canonical>`
+(`prompt-lab.prntd`, `prompt-lab.musicforge`, …), because seeing a project's history here
+is a different resource from using the app. `*` = everything, as Garm defines it. Usage
+will come off /api/usage with the reporting key you already minted. Fail-closed, 2s
+timeout, GARM_GATING=off kill switch, 10-min cookie-carried grant cache.
 ```
+
+**Sent 2026-08-22 with the colon separator (`prompt-lab:<canonical>`) shown above** —
+draft text quoted here is the template this note was built from, not the verbatim send.
+**Garm's 2026-08-22 reply corrected it: dot, not colon.** Garm's `PROJECT_SLUG` validation
+(`lib/http/validation.ts`) is `^[a-z0-9][a-z0-9._-]*$` — colon isn't in the allowed
+charset, so a colon slug 400s on every grant write. This doc, `CLAUDE.md`, and the code
+(`web/garm_helper.py`, `scripts/test_web_api.py`) are all updated to `prompt-lab.<canonical>`.
+Garm also ratified the unscoped key as a named exception, and is building the list endpoint
+now (`GET /gnipahellir/grants?email=<e>`, same shape proposed above) — will post back when
+live + the key path is minted.
 
 ---
 
@@ -110,10 +116,10 @@ def _fake_urlopen(status=200, body=None, raise_exc=None):
     fake.calls = []
     return fake
 
-@test("garm: fetch_grants → bare slugs from the prompt-lab: namespace + wildcard; foreign grants dropped")
+@test("garm: fetch_grants → bare slugs from the prompt-lab. namespace + wildcard; foreign grants dropped")
 def _():
     os.environ["GARM_URL"] = "https://garm.test"; os.environ["GARM_KEY"] = "garm_x"
-    fake = _fake_urlopen(body={"grants": [{"project": "prompt-lab:prntd", "role": "viewer"},
+    fake = _fake_urlopen(body={"grants": [{"project": "prompt-lab.prntd", "role": "viewer"},
                                           {"project": "prntd", "role": "owner"},   # another app's grant — ignored
                                           {"project": "*", "role": "viewer"}]})
     r = patch(garm_helper, urlopen=fake)
@@ -167,7 +173,7 @@ import urllib.parse
 from urllib.request import Request, urlopen  # module-level so tests can patch urlopen
 
 TIMEOUT = 2.0
-NAMESPACE = "prompt-lab:"  # decision 1: Garm slug = prompt-lab:<canonical>
+NAMESPACE = "prompt-lab."  # decision 1: Garm slug = prompt-lab.<canonical> (dot, not colon — garm's PROJECT_SLUG regex excludes ':')
 
 
 def GARM_ENABLED():
@@ -702,7 +708,7 @@ printf 'https://garm.prompt-labs.org\n' | vercel env add GARM_URL production --f
 printf 'on\n' | vercel env add GARM_GATING production --force -y
 vercel env ls | grep GARM_
 ```
-- [ ] **Step 4:** seed grants (garm onboarding.md Step 2 curl, `actor: "nico-manual"`), e.g. Pierre → `viewer` on `prompt-lab:prntd`; the brother → `viewer` on his. Decision 1: slugs are `prompt-lab:<canonical>`.
+- [ ] **Step 4:** seed grants (garm onboarding.md Step 2 curl, `actor: "nico-manual"`), e.g. Pierre → `viewer` on `prompt-lab.prntd`; the brother → `viewer` on his. Decision 1: slugs are `prompt-lab.<canonical>` (dot — garm's slug validation rejects colons).
 - [ ] **Step 5:** `cd web && vercel --prod`.
 - [ ] **Step 6:** run garm's `scripts/conformance.mjs` with the new key (sanity, not required).
 - [ ] **Step 7:** remove the now-dormant `READER_EMAILS` entries? **No** — leave it; it is the kill-switch allowlist (decision 2). Note that in CLAUDE.md.

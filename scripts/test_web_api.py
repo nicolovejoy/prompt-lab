@@ -4247,12 +4247,12 @@ def _fake_urlopen(status=200, body=None, raise_exc=None):
     return fake
 
 
-@test("garm: fetch_grants → bare slugs from the prompt-lab: namespace + wildcard; foreign grants dropped")
+@test("garm: fetch_grants → bare slugs from the prompt-lab. namespace + wildcard; foreign grants dropped")
 def _():
     saved = {k: os.environ.get(k) for k in ("GARM_URL", "GARM_KEY")}
     os.environ["GARM_URL"] = "https://garm.test"
     os.environ["GARM_KEY"] = "garm_x"
-    fake = _fake_urlopen(body={"grants": [{"project": "prompt-lab:prntd", "role": "viewer"},
+    fake = _fake_urlopen(body={"grants": [{"project": "prompt-lab.prntd", "role": "viewer"},
                                           {"project": "prntd", "role": "owner"},   # another app's grant — ignored
                                           {"project": "*", "role": "viewer"}]})
     r = patch(garm_helper, urlopen=fake)

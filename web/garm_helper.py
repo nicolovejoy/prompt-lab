@@ -10,7 +10,7 @@ import urllib.parse
 from urllib.request import Request, urlopen  # module-level so tests can patch urlopen
 
 TIMEOUT = 2.0
-NAMESPACE = "prompt-lab:"  # decision 1: Garm slug = prompt-lab:<canonical>
+NAMESPACE = "prompt-lab."  # decision 1: Garm slug = prompt-lab.<canonical> (dot, not colon — garm's PROJECT_SLUG regex excludes ':')
 
 
 def GARM_ENABLED():
