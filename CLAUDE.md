@@ -63,24 +63,53 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**Garm consumer — PLANNED 2026-08-22, not started. The plan is
-`docs/garm-consumer-plan.md`; execute it task-by-task (subagent-driven).**
-Decisions, all Nico's, same day: (1) Garm slugs are NAMESPACED
-`prompt-lab:<canonical>` — seeing a project's history is a different resource
-from using the app; (2) reader = anyone with ≥1 `prompt-lab:*` grant, Garm-only,
-`READER_EMAILS` survives only as the `GARM_GATING=off` kill-switch allowlist;
-(3) `#/health`, `#/visitors`, uptime go admin-only (no project column to filter
-on, and they map everything Nico runs); (4) revocation latency 10 min
-(cookie-carried grant set, refreshed on the request path). **Blocked on garm
-for one thing:** Garm's check is a point query `(email, project)`, a dashboard
-needs the set — asked garm (handoff 2026-08-22) for a consumer-key list endpoint
-`GET /gnipahellir/grants?email=` plus an unscoped (or prefix-scoped) key; the
-fan-out alternative would spam Howl with ~20 deny rows per reader per refresh.
-Tasks 1–7 of the plan don't depend on garm's answer beyond one function's
-URL/shape. The admin-bypass rationale (admin never routes through Garm, so a
-Garm outage can't lock Nico out of the tool that diagnoses Garm) stands as
-decided 2026-08-22 — see the plan's Architecture section; the two-accounts
-alternative was rejected on "simple is good".
+**Garm consumer — BUILT 2026-08-22 on branch `garm-consumer` (11 commits,
+216/216 tests), NOT merged, NOT deployed.** Plan: `docs/garm-consumer-plan.md`
+(Tasks 1–7 done via subagent-driven development, per-task review + a final
+whole-branch review; Tasks 8–10 — env/key/seed/deploy, smoke test + docs,
+usage line in the health email — remain, and are Nico-at-keyboard work).
+What shipped on the branch: `web/garm_helper.py` (the only module that talks
+to Garm; urllib, 2s timeout, fail closed, `GARM_GATING=off` kill switch,
+namespaced slugs `prompt-lab:<canonical>` stripped to bare names),
+`web/access_helper.py` (`resolve_access()` replaces `is_authenticated()` in
+every cookie-gated project-bearing endpoint; reader grant set carried in the
+cookie, refreshed every 10 min on the request path; admin bypasses Garm
+entirely), callback resolves readers through Garm, eleven endpoints filter
+after the alias fold and before aggregation, `#/health` / `#/visitors` /
+uptime / `?include=claude_code` are admin-only on the grant-set axis, nav +
+routes hide them for non-admins, a drift guard pins that no project-bearing
+endpoint gates on anything but `resolve_access`.
+
+**Before merging + deploying, in this order:** (1) garm answers the
+2026-08-22 handoff (list endpoint shape + key) — `garm_helper.fetch_grants` is
+written against `GET /gnipahellir/grants?email=` → `{grants:[{project,role}]}`
+and is the one function to adjust; (2) set `GARM_URL`, `GARM_KEY`,
+`GARM_GATING` in Vercel (one `vercel env add` per var, no loop, no `tr`);
+(3) merge + `vercel --prod`; (4) the self-contained smoke test in the plan's
+Task 9. **If you deploy before garm answers, set `GARM_GATING=off` first** —
+with gating on and no key, every non-admin sign-in 503s (fail closed by
+design; admin is unaffected either way).
+
+Decisions, all Nico's, 2026-08-22: (1) Garm slugs NAMESPACED
+`prompt-lab:<canonical>`; (2) reader = anyone with ≥1 `prompt-lab:*` grant,
+Garm-only, `READER_EMAILS` survives only as the kill-switch allowlist;
+(3) health/visitors/uptime admin-only; (4) asked garm for a consumer-key
+list endpoint + unscoped/prefix-scoped key (a point-check fan-out would spam
+Howl with ~20 deny rows per reader per refresh); (5) 10-min revocation
+latency. Admin-bypass rationale stands: a Garm outage must not lock Nico out
+of the tool that diagnoses Garm.
+
+Deferred from the reviews, none blocking: a refreshed cookie is not emitted
+on 403 responses (a denied reader re-asks Garm each request — shows up as
+usage rows); under the kill switch the API lets an unfiltered reader reach
+health/visitors but the nav/routes still gate on `role === 'admin'`
+(accepted asymmetry); reader sessions roll their 30-day `exp` on every
+grant refresh; a preview password login (`email=None`) fails closed to an
+empty dashboard with no message; the 403 "not in your view"/"admin required"
+branch is copy-pasted across five endpoints (three different response idioms
+— a helper would paper over that, not fix it). Frontend changes are
+`node --check`ed only — the sandbox can't render the app — so the smoke test
+is where they become real.
 
 **VERIFIED 2026-08-22: the first unattended laptop run of the nightly jobs
 worked.** `send-review.log`: started 02:30:01, generated in 138.0s, sent,
