@@ -4100,6 +4100,102 @@ def _():
     assert "garm_helper.py" in inc and "access_helper.py" in inc, inc
 
 
+import access_helper  # noqa: E402
+from auth_helper import make_token, COOKIE_NAME  # noqa: E402
+
+
+def _hdr(token):
+    return {"cookie": f"{COOKIE_NAME}={token}"}
+
+
+@test("access: admin → projects None (unfiltered), no cookie refresh, Garm never called")
+def _():
+    os.environ["AUTH_SECRET"] = "s"
+    called = []
+    r = patch(access_helper, fetch_grants=lambda e: called.append(e) or {"x"})
+    try:
+        a = access_helper.resolve_access(_hdr(make_token("admin", "nlovejoy@me.com")))
+    finally:
+        r()
+    assert a.role == "admin" and a.projects is None and a.set_cookie is None, a
+    assert called == [], called
+    assert access_helper.allowed(a, "anything")
+
+
+@test("access: reader with fresh grants_at → projects from cookie, no Garm call")
+def _():
+    called = []
+    r = patch(access_helper, fetch_grants=lambda e: called.append(e) or set())
+    try:
+        a = access_helper.resolve_access(_hdr(make_token("reader", "p@x.y", ["prntd"])))
+    finally:
+        r()
+    assert a.projects == frozenset({"prntd"}) and a.set_cookie is None and called == []
+    assert access_helper.allowed(a, "prntd") and not access_helper.allowed(a, "musicforge")
+
+
+@test("access: reader with stale grants_at → re-resolves, returns Set-Cookie with new set")
+def _():
+    from auth_helper import _sign
+    stale = _sign({"exp": int(time.time()) + 1000, "role": "reader", "email": "p@x.y",
+                   "projects": ["prntd"], "grants_at": int(time.time()) - 601})
+    r = patch(access_helper, fetch_grants=lambda e: {"musicforge"})
+    try:
+        a = access_helper.resolve_access(_hdr(stale))
+    finally:
+        r()
+    assert a.projects == frozenset({"musicforge"}), a
+    assert a.set_cookie and COOKIE_NAME in a.set_cookie
+
+
+@test("access: stale + Garm down → empty projects for this request, cookie NOT rewritten")
+def _():
+    from auth_helper import _sign
+    stale = _sign({"exp": int(time.time()) + 1000, "role": "reader", "email": "p@x.y",
+                   "projects": ["prntd"], "grants_at": 0})
+    r = patch(access_helper, fetch_grants=lambda e: None)
+    try:
+        a = access_helper.resolve_access(_hdr(stale))
+    finally:
+        r()
+    assert a is not None and a.projects == frozenset() and a.set_cookie is None, a
+
+
+@test("access: reader cookie with NO projects key (pre-Garm cookie) → treated as stale")
+def _():
+    r = patch(access_helper, fetch_grants=lambda e: {"prntd"})
+    try:
+        a = access_helper.resolve_access(_hdr(make_token("reader", "p@x.y")))
+    finally:
+        r()
+    assert a.projects == frozenset({"prntd"}) and a.set_cookie
+
+
+@test("access: wildcard grant allows everything; GARM_GATING=off → reader unfiltered")
+def _():
+    a = access_helper.resolve_access(_hdr(make_token("reader", "p@x.y", ["*"])))
+    assert access_helper.allowed(a, "anything")
+    os.environ["GARM_GATING"] = "off"
+    try:
+        a = access_helper.resolve_access(_hdr(make_token("reader", "p@x.y")))
+        assert a.projects is None
+    finally:
+        os.environ.pop("GARM_GATING")
+
+
+@test("access: filter_rows drops disallowed rows via canon()")
+def _():
+    a = access_helper.Access("reader", "p@x.y", frozenset({"raconte"}), None)
+    rows = [{"project": "recountly"}, {"project": "prntd"}]
+    out = access_helper.filter_rows(a, rows, canon=lambda n: {"recountly": "raconte"}.get(n, n))
+    assert out == [{"project": "recountly"}], out
+
+
+@test("access: unauthenticated → None")
+def _():
+    assert access_helper.resolve_access({}) is None
+
+
 # === Main ===
 
 def main() -> int:
