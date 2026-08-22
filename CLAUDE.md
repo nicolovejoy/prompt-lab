@@ -93,11 +93,13 @@ one toggle.** Cloudflare **Bot Fight Mode** was managed-challenging Vercel's
 egress on `influx.pianohouseproject.org/api/v2/query`, so SPAN's health check
 503'd and its monitor flapped ~25 times in a day. Nico disabled BFM; verified
 green from both repos. Thread archived in `~/src/.handoff/span-prompt-lab.md`.
-Two residuals for us:
-- **Nico's UptimeRobot account display timezone is UTC-10**, so every alert
-  email is stamped ten hours behind Pacific. That cost two rounds of cross-agent
-  confusion over the incident time and will do it again until it's changed in
-  account settings.
+Two residuals, one already closed:
+- ~~UptimeRobot's account display timezone was **UTC-10**, stamping every alert
+  email ten hours behind Pacific~~ — **FIXED 2026-08-21 by Nico.** Kept because
+  of what it cost: two rounds of cross-agent confusion over the incident time,
+  with an authoritative-sounding wrong timestamp handed between repos. When two
+  sources disagree about *when*, suspect a display timezone before suspecting
+  either party's reading.
 - **Load-shedding is not available on our side and never was.** The `deep` flag
   in `web/api/health_report.py` is *descriptive* — it mirrors `?db=1` in the URL
   — and `_check_target()` issues the request either way, so flipping it removes
