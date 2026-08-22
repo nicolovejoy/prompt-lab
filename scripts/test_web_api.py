@@ -4015,6 +4015,91 @@ def _():
         restore()
 
 
+# === garm consumer ===
+import garm_helper  # noqa: E402
+
+
+def _fake_urlopen(status=200, body=None, raise_exc=None):
+    import io
+
+    class _Resp(io.BytesIO):
+        def __init__(self, b, st):
+            super().__init__(b)
+            self.status = st
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake(req, timeout=None):
+        fake.calls.append((req, timeout))
+        if raise_exc:
+            raise raise_exc
+        return _Resp(json.dumps(body or {}).encode(), status)
+    fake.calls = []
+    return fake
+
+
+@test("garm: fetch_grants → bare slugs from the prompt-lab: namespace + wildcard; foreign grants dropped")
+def _():
+    os.environ["GARM_URL"] = "https://garm.test"
+    os.environ["GARM_KEY"] = "garm_x"
+    fake = _fake_urlopen(body={"grants": [{"project": "prompt-lab:prntd", "role": "viewer"},
+                                          {"project": "prntd", "role": "owner"},   # another app's grant — ignored
+                                          {"project": "*", "role": "viewer"}]})
+    r = patch(garm_helper, urlopen=fake)
+    try:
+        got = garm_helper.fetch_grants("pierre@example.com")
+    finally:
+        r()
+    assert got == {"prntd", "*"}, got
+    req, timeout = fake.calls[0]
+    assert timeout == 2.0, timeout
+    assert req.get_header("Authorization") == "Bearer garm_x"
+    assert req.get_header("X-garm-contract") == "1"
+    assert "email=pierre%40example.com" in req.full_url, req.full_url
+
+
+@test("garm: fetch_grants → empty set when no grants (not None)")
+def _():
+    r = patch(garm_helper, urlopen=_fake_urlopen(body={"grants": []}))
+    try:
+        assert garm_helper.fetch_grants("x@y.z") == set()
+    finally:
+        r()
+
+
+@test("garm: fetch_grants → None on exception / non-200 / bad json (fail closed)")
+def _():
+    for fake in (_fake_urlopen(raise_exc=OSError("down")),
+                 _fake_urlopen(status=401, body={}),
+                 _fake_urlopen(body={"nope": 1})):
+        r = patch(garm_helper, urlopen=fake)
+        try:
+            assert garm_helper.fetch_grants("x@y.z") is None
+        finally:
+            r()
+
+
+@test("garm: GARM_ENABLED honours GARM_GATING=off only")
+def _():
+    os.environ.pop("GARM_GATING", None)
+    assert garm_helper.GARM_ENABLED()
+    os.environ["GARM_GATING"] = "OFF"
+    assert not garm_helper.GARM_ENABLED()
+    os.environ["GARM_GATING"] = "on"
+    assert garm_helper.GARM_ENABLED()
+
+
+@test("garm: vercel.json includeFiles carries garm_helper + access_helper")
+def _():
+    v = json.loads((ROOT / "web" / "vercel.json").read_text())
+    inc = v["functions"]["api/**/*.py"]["includeFiles"]
+    assert "garm_helper.py" in inc and "access_helper.py" in inc, inc
+
+
 # === Main ===
 
 def main() -> int:
