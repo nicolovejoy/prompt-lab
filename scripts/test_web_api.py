@@ -2522,7 +2522,8 @@ def _():
         p = auth_helper.verify_token(tok)  # AUTH_SECRET must still be the test value here
         assert p["role"] == "reader" and p["projects"] == ["prntd"], p
     finally:
-        r(); restore()
+        r()
+        restore()
 
 
 @test("callback: non-admin with NO grants → 403 even if in READER_EMAILS (gating on)")
@@ -2535,7 +2536,8 @@ def _():
     try:
         cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
     finally:
-        r(); restore()
+        r()
+        restore()
     assert cap.status_code == 403, cap.status_code
 
 
@@ -2548,7 +2550,8 @@ def _():
     try:
         cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
     finally:
-        r(); restore()
+        r()
+        restore()
     assert cap.status_code == 503 and not [k for k, _ in cap.response_headers if k == "Set-Cookie"]
 
 
@@ -2563,7 +2566,8 @@ def _():
     try:
         cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
     finally:
-        r(); restore()
+        r()
+        restore()
     assert cap.status_code == 302 and called == []
 
 
@@ -2577,7 +2581,8 @@ def _():
     try:
         cap = invoke(cb, "/api/callback?state=%s&code=c" % _state())
     finally:
-        r(); restore()
+        r()
+        restore()
     assert cap.status_code == 302 and called == []
 
 
