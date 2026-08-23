@@ -86,6 +86,13 @@ usage/traffic-over-time panel against Garm's `GET /api/usage` (gated by
 lookup" (who has access to project X) was explicitly ruled out by Nico as
 too much blast-radius.
 
+**Not prompt-lab's bug, just diagnosed here 2026-08-23:** the `howl@` denial
+digest is Garm's own email (not ours), and a burst of ~35 denials on
+ibuild4you traced to ibuild4you's own liveness probe hammering
+`/gnipahellir` with a synthetic `health-probe@example.com` credential. Garm
+already asked ibuild4you to kill it (`~/src/.handoff/ibuild4you-prompt-lab.md`,
+2026-08-23); nothing to do here unless it recurs.
+
 **VERIFIED 2026-08-22: the first unattended laptop run of the nightly jobs
 worked.** `send-review.log`: started 02:30:01, generated in 138.0s, sent,
 finished 02:32:22, `LastExitStatus = 0`; `pmset -g log` shows the only sleep
