@@ -51,7 +51,8 @@ from html import escape
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlsplit
 
-from auth_helper import _sign, _unsign, get_role
+from access_helper import resolve_access
+from auth_helper import _sign, _unsign
 from day_helper import lab_today
 from turso_helper import turso_query
 
@@ -650,14 +651,26 @@ class handler(BaseHTTPRequestHandler):
     def _denial(self, dry):
         """(status, body) to refuse this caller, or None if it may proceed.
 
-        Read-only dry runs: any authenticated role. Sends: cron or admin only.
+        Cron bypasses this entirely. Both axes are checked, and they answer
+        different questions: the grant-set axis (`access.projects is not
+        None`) is the same admin-only gate uptime/visitors use, so a Garm
+        reader — filtered or not — never reaches health at all, and an
+        unfiltered account under GARM_GATING=off keeps today's behaviour
+        uniformly across all three admin-only surfaces. The role axis is
+        layered on top of that and is what actually protects the SEND path:
+        gating on projects alone would let a reader under GARM_GATING=off
+        (role='reader', projects=None — indistinguishable from admin on that
+        axis) trigger a real email send, which is the one thing the plan
+        says only cron or admin may do.
         """
         if self._is_cron():
             return None
-        role = get_role(self.headers)
-        if role is None:
+        access = resolve_access(self.headers)
+        if access is None:
             return 401, {"error": "unauthorized"}
-        if not dry and role != "admin":
+        if access.projects is not None:
+            return 403, {"error": "admin required"}
+        if not dry and access.role != "admin":
             return 403, {"error": "forbidden", "detail": "sending requires admin"}
         return None
 

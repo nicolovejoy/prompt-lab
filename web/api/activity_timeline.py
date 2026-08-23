@@ -23,7 +23,7 @@ import json
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from auth_helper import is_authenticated
+from access_helper import filter_rows, resolve_access
 from day_helper import lab_window
 from turso_helper import turso_query
 
@@ -51,7 +51,8 @@ def _parse_days(raw):
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if not is_authenticated(self.headers):
+        access = resolve_access(self.headers)
+        if access is None:
             self.send_response(401)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -77,8 +78,10 @@ class handler(BaseHTTPRequestHandler):
         raw = turso_query(sql, [since])
 
         # Fold raw project names into canonical, re-summing collisions on the
-        # same (date, canonical).
+        # same (date, canonical). Filter BEFORE folding/aggregation, so a
+        # disallowed project's rows never touch a sum a reader receives.
         a2c = _alias_to_canonical()
+        raw = filter_rows(access, raw, canon=lambda n: a2c.get(n, n))
         folded = {}
         for r in raw:
             proj = a2c.get(r["project"], r["project"])
@@ -96,6 +99,8 @@ class handler(BaseHTTPRequestHandler):
         payload = {"rows": rows, "days": days}
 
         self.send_response(200)
+        if access.set_cookie:
+            self.send_header("Set-Cookie", access.set_cookie)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()

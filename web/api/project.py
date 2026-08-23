@@ -4,13 +4,14 @@ import json
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from auth_helper import is_authenticated
+from access_helper import allowed, resolve_access
 from turso_helper import turso_query, resolve_project_names
 
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if not is_authenticated(self.headers):
+        access = resolve_access(self.headers)
+        if access is None:
             self.send_response(401)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -27,7 +28,14 @@ class handler(BaseHTTPRequestHandler):
             return
 
         # Resolve aliases: combine data from canonical + aliased project names
+        # (resolve_project_names always returns the canonical name first).
         names = resolve_project_names(name)
+        if not allowed(access, names[0]):
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "not in your view"}).encode())
+            return
         placeholders = ", ".join("?" for _ in names)
 
         summaries = turso_query(
@@ -62,6 +70,8 @@ class handler(BaseHTTPRequestHandler):
                 snapshot_data = None
 
         self.send_response(200)
+        if access.set_cookie:
+            self.send_header("Set-Cookie", access.set_cookie)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()

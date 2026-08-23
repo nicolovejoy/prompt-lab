@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler
 
 from auth_helper import REDIRECT_URI, set_cookie_header, verify_state
 from beacon_helper import record_login
+from garm_helper import GARM_ENABLED, fetch_grants
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
@@ -89,12 +90,21 @@ class handler(BaseHTTPRequestHandler):
             return [e.strip().lower() for e in os.environ.get(var, "").split(",")
                     if e.strip()]
 
-        role = None
+        role, projects = None, None
         if email:
             if email.lower() in _allowlist("ADMIN_EMAILS"):
-                role = "admin"
-            elif email.lower() in _allowlist("READER_EMAILS"):
-                role = "reader"
+                role = "admin"                       # never consults Garm (plan: admin bypass)
+            elif not GARM_ENABLED():
+                if email.lower() in _allowlist("READER_EMAILS"):
+                    role = "reader"                  # kill-switch path: today's behaviour
+            else:
+                grants = fetch_grants(email)
+                if grants is None:
+                    return self._error(
+                        503, "The authorization service did not answer. "
+                             "Please try signing in again in a minute.")
+                if grants:
+                    role, projects = "reader", sorted(grants)
         if not role:
             return self._error(
                 403, f"{email or 'This account'} is not authorized to access "
@@ -106,7 +116,7 @@ class handler(BaseHTTPRequestHandler):
         record_login(self.headers, role)
 
         self.send_response(302)
-        self.send_header("Set-Cookie", set_cookie_header(role, email))
+        self.send_header("Set-Cookie", set_cookie_header(role, email, projects))
         self.send_header("Location", "/")  # fixed target — no open-redirect surface
         self.end_headers()
 

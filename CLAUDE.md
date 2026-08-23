@@ -63,43 +63,28 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**Garm consumer — endpoint LIVE 2026-08-23, PR #54 CI-green, NOT merged, NOT
-deployed.** Branch `garm-consumer`, 216/216 tests. Plan: `docs/garm-consumer-plan.md`
-Task 8 has the exact env/merge/deploy commands. Garm's `GET /gnipahellir/grants?email=<e>`
-went live 2026-08-23 — confirmed independently (unauthenticated request went
-404→401) and by garm's own handoff post (`~/src/.handoff/garm-prompt-lab.md`):
-prod-verified against real data, key at `op://dev-secrets/garm-consumer-prompt-lab/password`
-(unscoped, named "prompt-lab" — **garm calls this the most sensitive credential
-in the ecosystem**: it can enumerate any email's full cross-project grant map +
-alias mapping in one call — server-side only, never in a browser bundle, rotate
-on any suspicion). Also worth knowing: `canonical_email` is only returned when
-the resolved alias holds a grant *in the returned list* — an empty `{grants: []}`
-doesn't tell you whether an alias fired.
+**Garm consumer — MERGED + DEPLOYED 2026-08-23.** PR #54 squash-merged to
+main, `GARM_URL`/`GARM_KEY`/`GARM_GATING` set in Vercel prod, deployed via
+`vercel --prod`. Branch `garm-consumer` deleted. Plan: `docs/garm-consumer-plan.md`.
 
-PR #54's CI was red (ruff E702 on 5 `r(); restore()` semicolon pairs in
-`scripts/test_web_api.py`) — fixed and pushed 2026-08-23 (`3521898`), CI now
-green. **Blocked on the Vercel env write**: `GARM_KEY` and `GARM_GATING` both
-got denied by the permission classifier (writing prod secrets/config), only
-`GARM_URL` went through. Do NOT merge before these are set — `GARM_GATING`
-defaults to `on` in code with no fallback, so a deploy with no `GARM_KEY`
-503s every non-admin sign-in. Run from `web/`:
+Still open from the plan: **Task 8 Step 4, grant seeding** — no non-admin
+reader has a grant yet (e.g. Pierre → `viewer` on `prompt-lab.prntd`), so
+with `GARM_GATING=on` every existing `READER_EMAILS` reader is currently cut
+off until grants exist. **Task 9, the smoke test**, is unrun. Decisions, all
+Nico's 2026-08-22: (1) Garm slugs NAMESPACED `prompt-lab.<canonical>` — dot,
+not colon; (2) reader = anyone with ≥1 `prompt-lab.*` grant, Garm-only,
+`READER_EMAILS` survives only as the `GARM_GATING=off` kill-switch allowlist;
+(3) `#/health`, `#/visitors`, uptime go admin-only; (4) revocation latency 10
+min. Admin-bypass rationale (a Garm outage can't lock Nico out of the tool
+that diagnoses Garm) stands.
 
-```
-op read 'op://dev-secrets/garm-consumer-prompt-lab/password' | vercel env add GARM_KEY production --sensitive --force -y
-printf 'on\n' | vercel env add GARM_GATING production --force -y
-vercel env ls | grep GARM_
-```
-
-Then merge PR #54 (squash, matching repo convention) and `cd web && vercel --prod`.
-Grants still need seeding (plan Task 8 Step 4 — e.g. Pierre → `viewer` on
-`prompt-lab.prntd`) before any non-admin reader actually gets in; without it,
-GARM_GATING=on cuts existing READER_EMAILS readers off entirely until grants
-exist. Smoke test is plan Task 9. Decisions, all Nico's 2026-08-22: (1) Garm
-slugs NAMESPACED `prompt-lab.<canonical>` — dot, not colon; (2) reader = anyone
-with ≥1 `prompt-lab.*` grant, Garm-only, `READER_EMAILS` survives only as the
-`GARM_GATING=off` kill-switch allowlist; (3) `#/health`, `#/visitors`, uptime
-go admin-only; (4) revocation latency 10 min. Admin-bypass rationale (a Garm
-outage can't lock Nico out of the tool that diagnoses Garm) stands.
+Also asked of Garm 2026-08-23 (see `~/src/.handoff/garm-prompt-lab.md`), not
+yet built: a per-person access lookup dashboard panel against PR #54's own
+grants-by-email client (pure UI work, nothing new needed from Garm), and a
+usage/traffic-over-time panel against Garm's `GET /api/usage` (gated by
+`GARM_REPORTING_KEY` — not yet minted/pulled into Vercel). The "reverse
+lookup" (who has access to project X) was explicitly ruled out by Nico as
+too much blast-radius.
 
 **VERIFIED 2026-08-22: the first unattended laptop run of the nightly jobs
 worked.** `send-review.log`: started 02:30:01, generated in 138.0s, sent,

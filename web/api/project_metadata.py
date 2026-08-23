@@ -32,7 +32,8 @@ import json
 import time
 from http.server import BaseHTTPRequestHandler
 
-from auth_helper import get_role, is_authenticated
+from access_helper import filter_rows, resolve_access
+from auth_helper import get_role
 from turso_helper import resolve_project_names, turso_query
 
 CATEGORIES = {"Music", "Art", "Collabs", "Tools", "Other"}
@@ -40,9 +41,18 @@ STATUSES = {"active", "dormant"}
 MAX_BODY = 2048
 
 
+def _alias_to_canonical():
+    try:
+        rows = turso_query("SELECT alias, canonical FROM project_aliases")
+    except Exception:
+        return {}
+    return {r["alias"]: r["canonical"] for r in rows}
+
+
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if not is_authenticated(self.headers):
+        access = resolve_access(self.headers)
+        if access is None:
             self._send(401, {"error": "unauthorized"})
             return
         try:
@@ -53,7 +63,9 @@ class handler(BaseHTTPRequestHandler):
             self._send(503, {"error": "temporarily unavailable",
                              "detail": str(e)})
             return
-        self._send(200, {"projects": {r["project"]: _row(r) for r in rows}})
+        a2c = _alias_to_canonical()
+        rows = filter_rows(access, rows, canon=lambda n: a2c.get(n, n))
+        self._send(200, {"projects": {r["project"]: _row(r) for r in rows}}, access)
 
     def do_POST(self):
         role = get_role(self.headers)
@@ -126,8 +138,10 @@ class handler(BaseHTTPRequestHandler):
             f"ON CONFLICT(project) DO UPDATE SET {assignments}",
             args)
 
-    def _send(self, code, payload):
+    def _send(self, code, payload, access=None):
         self.send_response(code)
+        if access is not None and access.set_cookie:
+            self.send_header("Set-Cookie", access.set_cookie)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
