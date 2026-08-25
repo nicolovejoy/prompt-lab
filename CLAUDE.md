@@ -70,7 +70,17 @@ main, `GARM_URL`/`GARM_KEY`/`GARM_GATING` set in Vercel prod, deployed via
 Still open from the plan: **Task 8 Step 4, grant seeding** — no non-admin
 reader has a grant yet (e.g. Pierre → `viewer` on `prompt-lab.prntd`), so
 with `GARM_GATING=on` every existing `READER_EMAILS` reader is currently cut
-off until grants exist. **Task 9, the smoke test**, is unrun. Decisions, all
+off until grants exist. Writing a grant needs Garm's own **admin key** — a
+different credential from prompt-lab's `GARM_KEY` (read-only consumer key,
+already in Vercel) — and where that key lives (1Password ref, or whether it's
+even minted) isn't documented anywhere in this repo. Asked in
+`~/src/.handoff/garm-prompt-lab.md` 2026-08-25, along with whether a
+project-agnostic grant-listing endpoint exists (today it's
+`GET /api/grants?project=<slug>` one namespaced project at a time — there's
+no admin UI in prompt-lab for this yet, build-plan #8, "grants are curl for
+now"). Also still unsettled: which project "the brother" gets granted on
+(only Pierre → `prompt-lab.prntd` is decided). **Task 9, the smoke test**, is
+unrun. Decisions, all
 Nico's 2026-08-22: (1) Garm slugs NAMESPACED `prompt-lab.<canonical>` — dot,
 not colon; (2) reader = anyone with ≥1 `prompt-lab.*` grant, Garm-only,
 `READER_EMAILS` survives only as the `GARM_GATING=off` kill-switch allowlist;
