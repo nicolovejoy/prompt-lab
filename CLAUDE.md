@@ -63,38 +63,33 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**Garm consumer — MERGED + DEPLOYED 2026-08-23.** PR #54 squash-merged to
-main, `GARM_URL`/`GARM_KEY`/`GARM_GATING` set in Vercel prod, deployed via
-`vercel --prod`. Branch `garm-consumer` deleted. Plan: `docs/garm-consumer-plan.md`.
+**Garm: HARDEN-THEN-FREEZE — Nico's decision 2026-08-27, don't re-litigate
+the unwind question.** He seriously considered unwinding Garm ecosystem-wide
+(triggered by the grant-seeding lockout gap) and chose: keep it, harden the
+two operational risks, then freeze the rollout until real demand. Posted to
+`~/src/.handoff/garm-prompt-lab.md` 2026-08-27. What that means here:
 
-Still open from the plan: **Task 8 Step 4, grant seeding** — no non-admin
-reader has a grant yet (e.g. Pierre → `viewer` on `prompt-lab.prntd`), so
-with `GARM_GATING=on` every existing `READER_EMAILS` reader is currently cut
-off until grants exist. Writing a grant needs Garm's own **admin key** — a
-different credential from prompt-lab's `GARM_KEY` (read-only consumer key,
-already in Vercel) — and where that key lives (1Password ref, or whether it's
-even minted) isn't documented anywhere in this repo. Asked in
-`~/src/.handoff/garm-prompt-lab.md` 2026-08-25, along with whether a
-project-agnostic grant-listing endpoint exists (today it's
-`GET /api/grants?project=<slug>` one namespaced project at a time — there's
-no admin UI in prompt-lab for this yet, build-plan #8, "grants are curl for
-now"). Also still unsettled: which project "the brother" gets granted on
-(only Pierre → `prompt-lab.prntd` is decided). **Task 9, the smoke test**, is
-unrun. Decisions, all
-Nico's 2026-08-22: (1) Garm slugs NAMESPACED `prompt-lab.<canonical>` — dot,
-not colon; (2) reader = anyone with ≥1 `prompt-lab.*` grant, Garm-only,
-`READER_EMAILS` survives only as the `GARM_GATING=off` kill-switch allowlist;
-(3) `#/health`, `#/visitors`, uptime go admin-only; (4) revocation latency 10
-min. Admin-bypass rationale (a Garm outage can't lock Nico out of the tool
-that diagnoses Garm) stands.
-
-Also asked of Garm 2026-08-23 (see `~/src/.handoff/garm-prompt-lab.md`), not
-yet built: a per-person access lookup dashboard panel against PR #54's own
-grants-by-email client (pure UI work, nothing new needed from Garm), and a
-usage/traffic-over-time panel against Garm's `GET /api/usage` (gated by
-`GARM_REPORTING_KEY` — not yet minted/pulled into Vercel). The "reverse
-lookup" (who has access to project X) was explicitly ruled out by Nico as
-too much blast-radius.
+- **Frozen indefinitely:** `GARM_GATING` stays **off**; `READER_EMAILS`
+  remains the live gate. Grant seeding (Pierre → `prompt-lab.prntd`, the
+  brother) is DEFERRED, no longer blocking anything. Task 9 smoke test
+  deferred with it. No new consumers, no admin UI (build-plan #8), and the
+  2026-08-23 dashboard-panel offers (per-person access lookup, usage panel,
+  `GARM_REPORTING_KEY` handover) are deferred with thanks. Revisit trigger:
+  a real second user who needs actual access management, not "might someday."
+- **Harden asks, garm-side, pending in the handoff channel:** (1) answer +
+  document where the admin key lives — narrowed for them 2026-08-27:
+  1Password `dev-secrets` has no `garm-admin-key` item, only a bare `garm`
+  item it might be a field on (titles checked from here; the classifier
+  correctly blocked opening the item); (2) free-tier Neon is a mismatch for
+  fail-closed auth (this month's 100% CU-quota near-miss) — either Nico
+  upgrades the plan or garm proposes a softer failure posture (longer
+  consumer grant caches).
+- PR #54 stays merged/deployed (it's inert with gating off — 97 lines of
+  helpers built kill-switch-first, so gating-off IS the unwound behavior for
+  free). Decisions from 2026-08-22 stand unchanged for whenever the freeze
+  lifts: namespaced dot slugs, reader = ≥1 `prompt-lab.*` grant, admin-only
+  `#/health`/`#/visitors`/uptime, 10-min revocation, admin bypass. "Reverse
+  lookup" (who has access to project X) remains ruled out — blast radius.
 
 **Not prompt-lab's bug, just diagnosed here 2026-08-23:** the `howl@` denial
 digest is Garm's own email (not ours), and a burst of ~35 denials on
