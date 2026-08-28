@@ -63,15 +63,17 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**Public refresh (2026-08-27/28) published — style guide for future drafts now
-lives in Claude's memory, not here.** Nico reviewed and edited drafts for
-ibuild4you, musicforge, prntd, prompt-lab (21 weeks); iterated twice on the
-narrative style (terser, cut process/debugging narrative, active voice) and
-had it saved as a standing memory (`feedback_public_draft_narrative_style.md`
-in prompt-lab's Claude memory dir) — apply it automatically on future
-`draft_public_refresh.py` passes, don't wait to be told again. All four
-published via `publish_public_draft.py --apply` + synced to Turso, `a166082`.
-3 more prompt-lab weeks remain unpublished — routine backlog, not urgent.
+**Public refresh backlog fully cleared 2026-08-27/28 — style guide for future
+drafts now lives in Claude's memory, not here.** Nico reviewed and edited
+drafts for ibuild4you, musicforge, prntd, prompt-lab (24 weeks total across
+two rounds); iterated on the narrative style (terser, cut process/debugging
+narrative, active voice, judge redundancy per-entry rather than by a fixed
+phrase list) and had it saved as a standing memory
+(`feedback_public_draft_narrative_style.md` in prompt-lab's Claude memory
+dir) — apply it automatically on future `draft_public_refresh.py` passes,
+don't wait to be told again. All published via `publish_public_draft.py
+--apply` + synced to Turso (`a166082`, `6bd8844`). `--list` now shows 0
+unpublished weeks for every project on the allowlist — nothing pending.
 
 **Garm: HARDEN-THEN-FREEZE — Nico's decision 2026-08-27, don't re-litigate
 the unwind question.** He seriously considered unwinding Garm ecosystem-wide
