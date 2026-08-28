@@ -29,11 +29,11 @@ commits: 0
 
 ### PRIVATE — source material, do not publish
 
-> PRNTD went from idea to functional MVP in three days. The week started with a full spec and tech stack decision (Next.js 16, Turso, Stripe, Printful, Replicate, R2), moved into scaffolding and wiring up all service integrations on day two, and by day three the core design-to-checkout flow was working in production. A significant mid-week pivot swapped Flux for Ideogram v3 Turbo after Flux proved unreliable for text rendering on t-shirt designs, which also drove a UI simplification to a single full-width chat with inline images. Most debugging time went to production auth (a CORS issue from www→non-www redirects and a client-side redirect bug) and integration plumbing across six services.
+> PRNTD went from idea to functional MVP in three days. The week started with a full spec and stack decision (Next.js 16, Turso, Stripe, Printful, Replicate, R2), moved into scaffolding and wiring up all service integrations on day two, and by day three the core design-to-checkout flow was working in production. A mid-week pivot swapped Flux for Ideogram v3 Turbo after Flux proved unreliable at rendering text on t-shirt designs, which also drove a UI simplification to a single full-width chat with inline images.
 
 ### PUBLIC
 
-Idea to functional MVP in three days: a full spec and stack decision on day one, all six service integrations wired on day two, and the core design-to-checkout flow live in production on day three. A mid-week pivot swapped the image-generation model after the first choice proved unreliable at rendering text on shirt designs — which also drove a simpler interface built around a single full-width chat with inline images.
+Idea to functional MVP in three days: nailed down a full spec and stack decision on day one, wired six service integrations on day two, and got the core design-to-checkout flow live in production on day three. A mid-week pivot swapped the image-generation model after the first choice proved unreliable at rendering text on shirt designs, which also led to building a simpler interface around a single full-width chat with inline images.
 
 ## WEEK 2026-05-11
 
@@ -42,11 +42,11 @@ commits: 0
 
 ### PRIVATE — source material, do not publish
 
-> Despite only one active day, the week was highly productive for prntd. Two significant features shipped to production: multi-generator support and a Generate-readiness gate backed by a fast `assessReadiness` thin-check, marking meaningful progress on the generation pipeline. A Recraft API bug causing 422 errors on unsupported vector illustration types was identified and resolved. Beyond shipping, the day extended into design and strategy territory — a redesigned `/design` empty state was specced out around a centered composer with delayed suggestions, and early ideation began on a cross-domain user tracking and project expense monitoring system that may warrant its own standalone repository.
+> Shipped two features to production: multi-generator support and a Generate-readiness gate backed by a fast readiness check. Identified and resolved an upstream API bug causing errors on unsupported vector illustration types. Also specced a redesigned empty state for the design page, built around a centered composer with delayed suggestions.
 
 ### PUBLIC
 
-Two features shipped to production from a single working day: support for multiple image-generation backends, and a readiness gate that fast-checks whether a design is actually ready before generation runs. An upstream API bug producing errors on unsupported illustration types was also identified and resolved, and a redesigned empty state for the design page was specced.
+Shipped two features to production: support for multiple image-generation backends, and a readiness gate that fast-checks whether a design is actually ready before generation runs. Also identified and resolved an upstream API bug producing errors on unsupported illustration types, and specced a redesigned empty state for the design page.
 
 ## WEEK 2026-07-13
 
@@ -55,11 +55,11 @@ commits: 0
 
 ### PRIVATE — source material, do not publish
 
-> This was a light maintenance week for the prntd project, with only two active days focused on synchronization and verification rather than new development. The developer's primary concern was ensuring consistency across machines — a fix applied on the mini machine was verified, and the local repository was brought up to date via git fetch --prune to remove stale remote-tracking branches. The week also included an exploratory review of pull request statuses through a resync operation, suggesting the developer was taking stock of the project's current state before moving forward. No new commits were produced, indicating the week served more as a housekeeping and orientation effort than a productive coding sprint.
+> A maintenance week focused on synchronization and verification rather than new development: verified a fix across machines, brought the local repository up to date and pruned stale remote-tracking branches, and reviewed pull-request statuses to take stock of the project's current state. No new commits.
 
 ### PUBLIC
 
-A housekeeping week: synchronized repository state across development machines, verified an earlier fix had landed everywhere, pruned stale branches, and took stock of open work before the next push of feature development.
+Synchronized repository state across development machines, verified an earlier fix had landed everywhere, pruned stale branches, and took stock of open work before the next push of feature development.
 
 ## WEEK 2026-08-03
 
@@ -68,11 +68,11 @@ commits: 0
 
 ### PRIVATE — source material, do not publish
 
-> This was a light week for prntd, with a single active day dedicated entirely to architectural thinking rather than implementation. The focus was on resolving foundational data model questions — specifically how designs, products (e.g., T-shirts), and placements (front, back, etc.) relate to one another across both shop and product contexts. No code was committed, reflecting a deliberate step back to get the core structure right before building on top of it. Progress was cut short by a system interruption, leaving the design discussion unfinished and likely to carry into next week.
+> A day of architectural thinking rather than implementation, resolving foundational data-model questions — how designs, products (e.g., T-shirts), and placements (front, back, etc.) relate to one another across both shop and product contexts. No code committed; the goal was getting the core structure right before building on top of it.
 
 ### PUBLIC
 
-A deliberate step back from implementation to get the data model right: how designs, physical products, and print placements (front, back, and so on) relate to one another across shop and product contexts. No code — the point was to settle the foundations before building on top of them.
+Data model development: how designs, physical products, and print placements (front, back, and so on) relate to one another across shop and product contexts. No code — the point was to settle the foundations before building on top of them.
 
 ## WEEK 2026-08-17
 
@@ -81,8 +81,8 @@ commits: 3
 
 ### PRIVATE — source material, do not publish
 
-> Despite only a single active day, the week was dense with momentum on the prntd project. Direction B was formally locked in — the composition-first-class plan was written, reviewed, and fully approved by Nico the same day, giving the team a clear architectural path forward. Two agent PRs shipped to production in parallel: #164 addressed the front picker and swap flow while quietly resolving three latent cache and lookup bugs, and #165 landed the first slice of the composition migration with an additive schema, dual-write publishing, and 15 backfilled listings on prod. Alongside the forward progress, two environment risks were caught and contained — a stray .env.local pointing at prod (tracked in #166) and a smoke test failure that was root-caused as the known /d gap rather than a regression, leading to the decision to tackle both-sides-at-once preview in #167.
+> Formally locked in the composition-first data model — wrote, reviewed, and approved the plan the same day, giving a clear architectural path forward. Shipped two changes to production in parallel: a reworked front picker and swap flow that also quietly resolved three latent cache and lookup bugs, and the first slice of the composition migration — an additive schema, dual-write publishing, and 15 backfilled listings on production. Caught and contained two environment-configuration risks the same day.
 
 ### PUBLIC
 
-The composition-first data model was formally locked in, and two changes shipped to production in parallel: a reworked product picker and swap flow that also quietly resolved three latent caching bugs, and the first slice of the composition migration — an additive schema, dual-write publishing, and existing listings backfilled on production. Two environment-configuration risks were caught and contained the same day.
+Selected a composition-first data model. Shipped two changes to production in parallel: a reworked product picker and swap flow that also quietly resolved three latent caching bugs, and the first slice of the composition migration — an additive schema, dual-write publishing, and backfilled existing listings on production.
