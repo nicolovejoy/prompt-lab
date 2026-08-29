@@ -87,6 +87,10 @@ TARGETS = [
     ("byside", "https://by-side.net/api/health", False),
     ("pianohouse", "https://www.pianohouseproject.org/api/health?db=1", True),
     ("bakerylouise", "https://bakerylouise.com/api/health", False),
+    # Direct Fly line paired with the www rewrite line below — deep+deep on
+    # purpose (musicforge's 2026-08-16 decision; see scripts/uptimerobot.py
+    # for the pair-reading table). Only-www-red means Vercel or the rewrite.
+    ("musicforge-fly", "https://musicforge.fly.dev/api/health?db=1", True),
     ("musicforge", "https://www.musicforge.org/api/health?db=1", True),
     ("prntd", "https://prntd.org/api/health?db=1", True),
     # Two artifact checks behind one URL: collector freshness (Influx last

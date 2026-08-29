@@ -92,6 +92,17 @@ HTTP_MONITORS = [
     # www.musicforge.org, not musicforge.app: the health rewrite to the Fly
     # backend only exists on the .org deployment (.app 404s on the path).
     ("musicforge", "https://www.musicforge.org/api/health?db=1"),
+    # Second musicforge line, straight at the Fly backend, bypassing the
+    # Vercel rewrite — agreed in the handoff channel 2026-08-16 after their
+    # 08-09 outage showed one line can't separate the tiers. DELIBERATELY
+    # deep+deep with the www line above (their call, not an oversight): www
+    # stays deep because it is the only check exercising the user path
+    # (browser → Vercel → /api/* rewrite → Fly), and a broken rewrite must
+    # not sit green. Read the pair together: both red → Fly down; only www
+    # red → Vercel or the rewrite; only fly red → Fly down while Vercel
+    # serves cached/static. Accepted cost: one backend outage alerts twice.
+    # URL verified live by musicforge (200, unauthenticated, no rewrite).
+    ("musicforge-fly", "https://musicforge.fly.dev/api/health?db=1"),
     # recountly was dropped 2026-08-02: it became Raconte, a native iOS app, so
     # there is nothing left to poll and the monitor would have false-alarmed the
     # day the deployment came down. This script never deletes — the monitor
