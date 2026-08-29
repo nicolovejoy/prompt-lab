@@ -40,7 +40,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -155,7 +155,79 @@ def run_pipeline(stages: list[Stage], cwd: Path = ROOT) -> list[StageResult]:
     return list(results.values())
 
 
+def run_identity(now_utc: datetime, host: str) -> tuple:
+    """(run_id, started_at, lab_date) for a run starting at `now_utc`.
+
+    run_id is deterministic from the pair that identifies a run, so the start
+    write and the finish write address the same row without carrying state,
+    and a catch-up push cannot mint a second row for a run already sent.
+
+    lab_date is the PACIFIC calendar day (#48). The nightly slot is 02:30
+    Pacific, which is 09:30 UTC — the same date — but a run that starts
+    before 5pm Pacific on the preceding evening is a different UTC day, and
+    grading freshness on a UTC bucket is the phantom-tomorrow bug.
+    """
+    started_at = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    lab_date = now_utc.astimezone(LAB_TZ).date().isoformat()
+    return f"{started_at}|{host}", started_at, lab_date
+
+
+def overall_status(results: list) -> str:
+    """ok when nothing failed, partial when some did, failed when none ran."""
+    if not results:
+        return "failed"
+    bad = {"failed", "timeout", "skipped"}
+    failures = [r for r in results if r.outcome in bad]
+    if not failures:
+        return "ok"
+    return "failed" if len(failures) == len(results) else "partial"
+
+
+def record_run(store, **fields) -> bool:
+    """Write the run record. NEVER raises — returns True if the write landed.
+
+    Same rule as heartbeat.ping and record_login: a monitoring write must not
+    be able to fail the work it monitors. A dropped record costs one false
+    staleness line in the health email; an exception here would cost the
+    night's actual work, which is the wrong trade in every direction.
+    """
+    try:
+        store.upsert_nightly_run(**fields)
+        return True
+    except Exception as e:  # noqa: BLE001 — deliberately swallowed, see above
+        print(f"run record: write failed ({type(e).__name__}: {e})", flush=True)
+        return False
+
+
+def machine_host() -> str:
+    """This machine's label, shared with the Turso sync so both agree.
+
+    Imported lazily: sync_to_turso pulls in the store and env loading, and
+    nightly_pipeline must stay importable by tests without that cost.
+    """
+    from sync_to_turso import machine_label
+    return machine_label()
+
+
 def main() -> int:
+    from store import get_store
+
+    host = machine_host()
+    run_id, started_at, lab_date = run_identity(
+        datetime.now(timezone.utc), host)
+
+    store = get_store()
+    try:
+        store.migrate()
+    except Exception as e:  # noqa: BLE001
+        print(f"run record: migrate failed ({type(e).__name__}: {e})", flush=True)
+
+    # Written before any stage so a host powered off mid-run leaves a
+    # started-never-finished row. "Died mid-run" and "never ran" are
+    # different facts and this is the only thing that tells them apart.
+    record_run(store, run_id=run_id, host=host, started_at=started_at,
+               lab_date=lab_date, status="running")
+
     stages = build_stages()
     results = run_pipeline(stages)
     by_name = {r.name: r for r in results}
@@ -167,9 +239,22 @@ def main() -> int:
                        cwd=ROOT, timeout=60)
 
     failed = [r for r in results if r.outcome in ("failed", "timeout", "skipped")]
+    exit_code = 1 if failed else 0
     summary = " · ".join(f"{r.name}={r.outcome}" for r in results)
     print(f"pipeline: {summary}", flush=True)
-    return 1 if failed else 0
+
+    record_run(store, run_id=run_id, host=host, started_at=started_at,
+               lab_date=lab_date, status=overall_status(results),
+               finished_at=datetime.now(timezone.utc).strftime(
+                   "%Y-%m-%dT%H:%M:%SZ"),
+               stages=[{"name": r.name, "outcome": r.outcome,
+                        "detail": r.detail} for r in results],
+               exit_code=exit_code)
+    try:
+        store.close()
+    except Exception:  # noqa: BLE001
+        pass
+    return exit_code
 
 
 if __name__ == "__main__":

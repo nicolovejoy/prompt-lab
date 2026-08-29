@@ -163,6 +163,67 @@ def _():
         assert s.timeout > 0
 
 
+@test("run_identity derives run_id from started_at and host")
+def _():
+    from datetime import datetime, timezone
+    now = datetime(2026, 8, 30, 9, 30, 4, tzinfo=timezone.utc)
+    run_id, started_at, lab_date = np.run_identity(now, "laptop")
+    assert started_at == "2026-08-30T09:30:04Z", started_at
+    # 09:30 UTC on Aug 30 is 02:30 Pacific the SAME day — the nightly slot.
+    assert lab_date == "2026-08-30", lab_date
+    assert run_id == "2026-08-30T09:30:04Z|laptop", run_id
+
+
+@test("lab_date is Pacific, not UTC (the 5pm rollover trap)")
+def _():
+    from datetime import datetime, timezone
+    # 02:00 UTC on Aug 30 is 19:00 Pacific on Aug 29.
+    now = datetime(2026, 8, 30, 2, 0, 0, tzinfo=timezone.utc)
+    _, _, lab_date = np.run_identity(now, "laptop")
+    assert lab_date == "2026-08-29", lab_date
+
+
+@test("overall_status distinguishes ok, partial and failed")
+def _():
+    R = np.StageResult
+    assert np.overall_status([R("a", "ok"), R("b", "not-due")]) == "ok"
+    assert np.overall_status([R("a", "ok"), R("b", "failed")]) == "partial"
+    assert np.overall_status([R("a", "failed"), R("b", "timeout")]) == "failed"
+    assert np.overall_status([]) == "failed"
+
+
+@test("record_run never raises when the store blows up")
+def _():
+    class Exploding:
+        def upsert_nightly_run(self, **kw):
+            raise RuntimeError("turso is down")
+
+    ok = np.record_run(Exploding(), run_id="r1", host="laptop",
+                       started_at="2026-08-30T09:30:04Z",
+                       lab_date="2026-08-30", status="running")
+    assert ok is False, "a failed monitoring write must report False, not raise"
+
+
+@test("record_run returns True on success and forwards every field")
+def _():
+    seen = {}
+
+    class Capturing:
+        def upsert_nightly_run(self, **kw):
+            seen.update(kw)
+
+    ok = np.record_run(Capturing(), run_id="r1", host="laptop",
+                       started_at="2026-08-30T09:30:04Z",
+                       lab_date="2026-08-30", status="ok",
+                       finished_at="2026-08-30T09:34:00Z",
+                       stages=[{"name": "publish", "outcome": "ok"}],
+                       exit_code=0)
+    assert ok is True
+    assert seen["status"] == "ok"
+    assert seen["stages"][0]["name"] == "publish"
+    assert seen["exit_code"] == 0
+
+
 def main() -> int:
     failed = 0
     for name, ok, msg in _results:
