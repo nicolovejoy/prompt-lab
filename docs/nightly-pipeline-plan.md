@@ -5,8 +5,16 @@ Status: planned 2026-08-20. **Step 1 DONE 2026-08-29** — remote
 index on `(review_type, date)`, applied live (11,848 rows → 78, verified
 stable across two consecutive syncs). `project_snapshots` was checked for the
 same shape and is clean (live UNIQUE constraint, 0 duplicate pairs — its
-1,880 rows are real history). Steps 2–4 not started. Supersedes the tactical
-"write the review snapshot straight to Turso" idea, which patched a symptom.
+1,880 rows are real history). **Step 2 DONE 2026-08-29** — `nightly_pipeline.py`
+is the single entry point (cost pull → synthesizer → review → report-when-due →
+publish, per-stage monotonic timeouts, failed stage skips dependents, publish
+unconditional); `com.promptlab.nightly` (2:30) replaced the four agents, whose
+plists are parked in `~/Library/LaunchAgents/disabled-promptlab-step2-20260829/`.
+The report became artifact-keyed (runs when the current 1st/16th half-month has
+no `monthly_report` snapshot), which is a slice of step 4's catch-up property.
+Step 2's sleeping-host acceptance test pends the first overnight run. Steps 3–4
+not started. Supersedes the tactical "write the review snapshot straight to
+Turso" idea, which patched a symptom.
 
 ## Why
 

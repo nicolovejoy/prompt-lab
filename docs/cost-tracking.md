@@ -40,12 +40,12 @@ the Admin API, synced to Turso, rendered on each project's detail page.
 
 ## Operational checklist
 
-A fresh install or new machine needs all four steps. Once seeded, the
-LaunchAgent (`workflow/com.promptlab.api-costs.plist`, daily at 02:30) handles
-incremental pulls.
+A fresh install or new machine needs all four steps. Once seeded, the nightly
+pipeline (`workflow/com.promptlab.nightly.plist` → `nightly_pipeline.py`,
+daily at 02:30) handles incremental pulls as its first stage.
 
-**The nightly job pulls AND syncs** (`workflow/run-cost-pull.sh`: `pull_api_costs.py`
-then `sync_to_turso.py --days 7`). This coupling is load-bearing: the pull writes
+**The nightly run pulls AND syncs** (`nightly_pipeline.py`: `pull_api_costs.py`
+first, `sync_to_turso.py --days 7` as the unconditional last stage). This coupling is load-bearing: the pull writes
 only to local SQLite, but the cloud dashboard reads Turso. Before 2026-06-25 the
 agent ran the pull alone, so local ran ~a month ahead of Turso and the dashboard
 showed a stale, partially-`__unmapped__` snapshot while local was correct. If the

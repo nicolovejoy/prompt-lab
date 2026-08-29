@@ -129,11 +129,32 @@ verified stable across two consecutive syncs with today's row present.
 `project_snapshots` was audited for the same shape and is clean (live UNIQUE
 constraint, 0 dup pairs). Tests in
 `scripts/test_review_snapshot_idempotency.py` run the store's real SQL against
-in-memory sqlite. Next: step 2 (collapse the three reader agents + synthesizer
-into one ordered entry point reusing `run-nightly.sh`; per-stage timeouts must
-be MONOTONIC per the no-wall-clock-deadline rule), step 3 (`nightly_runs` run
-record — open design question: cloud-direct write vs. synced table; the
-invariants list must gain it either way), step 4 optional.
+in-memory sqlite.
+
+**Step 2 DONE 2026-08-29, applied live on the laptop.** `nightly_pipeline.py`
+is the single nightly entry point: cost pull → synthesizer → review →
+report-when-due → publish, wrapped by `run-nightly.sh` under one
+`com.promptlab.nightly` agent at 2:30. Per-stage timeouts are MONOTONIC
+(subprocess timeouts stop counting during sleep — no wall-clock deadline, per
+the standing rule). A failed stage skips its dependents (a review over a
+failed synthesis is the "no new work on a busy day" bug), but publish always
+runs; the cost-pull heartbeat fires only after publish lands. The bi-monthly
+report is now artifact-keyed — it runs when the current half-month (1st/16th
+split, Pacific) has no `monthly_report` snapshot — so a closed lid on the 1st
+means a late report, not a skipped one. NOTE: the Aug-16 report never ran
+(laptop jobs were re-enabled the 20th), so the first pipeline night catches it
+up — an extra report around 2026-08-29/30 is correct, not a bug. The four old
+agents are booted out and parked in
+`~/Library/LaunchAgents/disabled-promptlab-step2-20260829/`;
+`workflow/run-cost-pull.sh` and the four old plists are deleted from the repo
+(their coupling/no-`source` lessons live on in `nightly_pipeline.py` and the
+new plist's comments). Tests: `scripts/test_nightly_pipeline.py` (11, real
+subprocesses). **Pending verification: the sleeping-host acceptance test** —
+after the first overnight, check `nightly-pipeline.log` for stage order and
+that Turso's newest `review_snapshots` date equals the run date. Next: step 3
+(`nightly_runs` run record — open design question: cloud-direct write vs.
+synced table; the invariants list must gain it either way), step 4 mostly
+absorbed (report catch-up done; reader catch-up otherwise still optional).
 
 **SPAN outage 2026-08-21 — RESOLVED same day, not our fault, and the cause was
 one toggle.** Cloudflare **Bot Fight Mode** was managed-challenging Vercel's
@@ -681,8 +702,10 @@ And the process lesson stands: *agreeing with an idea is not the same as the
 idea being chosen* — this entry records a decision only because Nico stated
 one.
 
-**What runs where — SETTLED 2026-08-20: all four jobs run on the LAPTOP, and
-nowhere else.** Nico's call, on the reasoning that he leaves the laptop on and
+**What runs where — SETTLED 2026-08-20: the nightly jobs run on the LAPTOP,
+and nowhere else. (2026-08-29: the four agents described below were collapsed
+into the single `com.promptlab.nightly` pipeline agent — see the
+nightly-pipeline entry above; the one-sender rule is unchanged.)** Nico's call, on the reasoning that he leaves the laptop on and
 plugged in and accepts that a closed lid means a late or missing report. Applied
 the same day: the mini's four agents are booted out and parked in
 `~/Library/LaunchAgents/disabled-promptlab-20260820/` (reverse: move back +

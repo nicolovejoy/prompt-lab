@@ -8,8 +8,9 @@ codes. So a ping here must be placed after the thing the job exists to produce
 actually landed, not merely after the process reached the end.
 
 Concretely: `send-review.py` pings only when Resend accepted the message, not
-when the snapshot was written; `run-cost-pull.sh` pings after the Turso sync
-leg, not after the local pull (a pull alone silently drifts the dashboard).
+when the snapshot was written; `nightly_pipeline.py` pings cost-pull only
+after the publish stage lands, not after the local pull (a pull alone
+silently drifts the dashboard).
 
 The check lives outside the job. An external monitor holds "last ping + max
 age" and alarms on breach, so a job that dies completely — never reaching any

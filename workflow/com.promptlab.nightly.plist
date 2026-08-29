@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.promptlab.nightly</string>
+
+    <!-- The ONLY nightly agent (nightly-pipeline-plan step 2). Ordering,
+         dependencies, the bi-monthly report's date logic, and per-stage
+         timeouts all live in nightly_pipeline.py, which runs from the repo
+         checkout — edit + commit there and it is live the next night. This
+         plist only says when to start, and launchd re-fires it on wake after
+         a closed-lid night. No `source .env && …`: every stage script calls
+         load_env() itself, and a && short-circuit on a missing .env is what
+         silently killed the report job for four months, twice. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>__REPO_DIR__/workflow/run-nightly.sh</string>
+        <string>__REPO_DIR__/nightly-pipeline.log</string>
+        <string>__PYTHON3__</string>
+        <string>__REPO_DIR__/nightly_pipeline.py</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>2</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__REPO_DIR__/nightly-pipeline.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__REPO_DIR__/nightly-pipeline.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>
