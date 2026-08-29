@@ -1,7 +1,12 @@
 # Nightly pipeline: one ordered run, not four racing agents
 
-Status: planned 2026-08-20, not started. Supersedes the tactical "write the
-review snapshot straight to Turso" idea, which patched a symptom.
+Status: planned 2026-08-20. **Step 1 DONE 2026-08-29** — remote
+`save_review_snapshot` is an upsert, `migrate()` dedupes then adds a unique
+index on `(review_type, date)`, applied live (11,848 rows → 78, verified
+stable across two consecutive syncs). `project_snapshots` was checked for the
+same shape and is clean (live UNIQUE constraint, 0 duplicate pairs — its
+1,880 rows are real history). Steps 2–4 not started. Supersedes the tactical
+"write the review snapshot straight to Turso" idea, which patched a symptom.
 
 ## Why
 

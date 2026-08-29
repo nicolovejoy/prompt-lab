@@ -116,18 +116,24 @@ finished 02:32:22, `LastExitStatus = 0`; `pmset -g log` shows the only sleep
 that hour was 02:05–02:21, before the job. The caffeinate wrapper held through
 the run. The sleep fix is no longer a claim.
 
-**Next piece of work: `docs/nightly-pipeline-plan.md`** (written 2026-08-21,
-not started). Collapses the racing nightly agents into one ordered pipeline,
-because **a scheduler is not a dependency mechanism** — launchd coalesces
-missed `StartCalendarInterval`s onto one wake, so two agents scheduled 45
-minutes apart start simultaneously after a closed-lid night, and retiming
-`api-costs` would look like a fix and not be one. Two measured defects it
-addresses, neither of which alarms today: Turso's newest `review_snapshots`
-row is permanently **one day behind** (inside its 2-day threshold), and
-`review_snapshots` holds **10,938 rows in Turso against 69 locally**, because
-`store/turso_store.py:549` is a plain `INSERT` and the sync re-pushes the
-newest ~68 rows nightly. Step 1 (idempotent remote writes) is the prerequisite
-and fixes the duplication on its own.
+**Next piece of work: `docs/nightly-pipeline-plan.md` — step 1 DONE
+2026-08-29, steps 2–4 remain.** Collapses the racing nightly agents into one
+ordered pipeline, because **a scheduler is not a dependency mechanism** —
+launchd coalesces missed `StartCalendarInterval`s onto one wake, so two agents
+scheduled 45 minutes apart start simultaneously after a closed-lid night, and
+retiming `api-costs` would look like a fix and not be one. Step 1 (idempotent
+remote writes) shipped and was applied live: remote `save_review_snapshot` is
+now an upsert keyed `(review_type, date)`, `migrate()` dedupes-then-indexes
+(self-healing, safe on every sync), and Turso went **11,848 rows → 78**,
+verified stable across two consecutive syncs with today's row present.
+`project_snapshots` was audited for the same shape and is clean (live UNIQUE
+constraint, 0 dup pairs). Tests in
+`scripts/test_review_snapshot_idempotency.py` run the store's real SQL against
+in-memory sqlite. Next: step 2 (collapse the three reader agents + synthesizer
+into one ordered entry point reusing `run-nightly.sh`; per-stage timeouts must
+be MONOTONIC per the no-wall-clock-deadline rule), step 3 (`nightly_runs` run
+record — open design question: cloud-direct write vs. synced table; the
+invariants list must gain it either way), step 4 optional.
 
 **SPAN outage 2026-08-21 — RESOLVED same day, not our fault, and the cause was
 one toggle.** Cloudflare **Bot Fight Mode** was managed-challenging Vercel's

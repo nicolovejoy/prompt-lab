@@ -192,6 +192,21 @@ class TursoKnowledgeStore(KnowledgeStore):
                     created_at TEXT DEFAULT (datetime('now'))
                 )
             """},
+            # Dedupe before the unique index: save_review_snapshot was a plain
+            # INSERT until 2026-08-29, so the nightly sync re-pushed the same
+            # local rows every night (11,848 rows for 78 real (type, date)
+            # pairs). Keep the newest copy of each pair; once the index exists
+            # the DELETE matches nothing and both statements are no-ops.
+            {"sql": """
+                DELETE FROM review_snapshots WHERE id NOT IN (
+                    SELECT MAX(id) FROM review_snapshots
+                    GROUP BY review_type, date
+                )
+            """},
+            {"sql": """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_review_snapshots_key
+                    ON review_snapshots(review_type, date)
+            """},
             {"sql": """
                 CREATE TABLE IF NOT EXISTS project_snapshots (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -550,11 +565,24 @@ class TursoKnowledgeStore(KnowledgeStore):
                               content_html=None, content_text=None,
                               content_markdown=None, model,
                               input_tokens, output_tokens):
+        # Upsert, not INSERT: the nightly sync replays recent local rows, so
+        # this must be idempotent (nightly-pipeline-plan step 1). created_at
+        # is deliberately NOT updated on conflict — get_review_snapshots
+        # orders by it, and letting a replay bump it would reorder history by
+        # sync batch instead of first arrival.
         self._execute("""
             INSERT INTO review_snapshots
                 (review_type, date, subject, content_html, content_text,
                  content_markdown, model, input_tokens, output_tokens)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(review_type, date) DO UPDATE SET
+                subject = excluded.subject,
+                content_html = excluded.content_html,
+                content_text = excluded.content_text,
+                content_markdown = excluded.content_markdown,
+                model = excluded.model,
+                input_tokens = excluded.input_tokens,
+                output_tokens = excluded.output_tokens
         """, [review_type, date, subject, content_html, content_text,
               content_markdown, model, input_tokens, output_tokens])
 
