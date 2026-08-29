@@ -172,6 +172,27 @@ class KnowledgeStore(ABC):
                               model: str, input_tokens: int,
                               output_tokens: int) -> None: ...
 
+    # ---- Nightly run record (nightly-pipeline-plan step 3) ----
+
+    @abstractmethod
+    def upsert_nightly_run(self, *, run_id: str, host: str, started_at: str,
+                           lab_date: str, status: str,
+                           finished_at: str | None = None,
+                           stages: list | None = None,
+                           claims: dict | None = None,
+                           exit_code: int | None = None) -> None:
+        """Write or update one nightly pipeline run, keyed by run_id.
+
+        Called twice per run: once with status='running' before any stage,
+        once at the end with the full outcome. Upsert rather than insert so a
+        catch-up push of an already-pushed row is a no-op.
+        """
+
+    @abstractmethod
+    def get_nightly_runs(self, *, limit: int = 10,
+                         started_after: str | None = None) -> list[dict]:
+        """Runs newest first. `stages` and `claims` are decoded, or None."""
+
     # ---- Project snapshots ----
 
     @abstractmethod

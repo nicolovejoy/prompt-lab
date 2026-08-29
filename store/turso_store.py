@@ -208,6 +208,24 @@ class TursoKnowledgeStore(KnowledgeStore):
                     ON review_snapshots(review_type, date)
             """},
             {"sql": """
+                CREATE TABLE IF NOT EXISTS nightly_runs (
+                    run_id TEXT PRIMARY KEY,
+                    host TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    lab_date TEXT NOT NULL,
+                    finished_at TEXT,
+                    status TEXT NOT NULL,
+                    stages TEXT,
+                    claims TEXT,
+                    exit_code INTEGER,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            """},
+            {"sql": """
+                CREATE INDEX IF NOT EXISTS idx_nightly_runs_started
+                    ON nightly_runs(started_at)
+            """},
+            {"sql": """
                 CREATE TABLE IF NOT EXISTS project_snapshots (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     project TEXT NOT NULL,
@@ -585,6 +603,49 @@ class TursoKnowledgeStore(KnowledgeStore):
                 output_tokens = excluded.output_tokens
         """, [review_type, date, subject, content_html, content_text,
               content_markdown, model, input_tokens, output_tokens])
+
+    # ---- Nightly run record ----
+
+    def upsert_nightly_run(self, *, run_id, host, started_at, lab_date, status,
+                           finished_at=None, stages=None, claims=None,
+                           exit_code=None):
+        # Upsert by run_id: the pipeline's catch-up push replays local rows
+        # newer than the remote high-water mark, so re-pushing an already
+        # pushed run must be a no-op rather than a duplicate. created_at is
+        # deliberately not updated on conflict — it records first arrival.
+        self._execute("""
+            INSERT INTO nightly_runs
+                (run_id, host, started_at, lab_date, finished_at, status,
+                 stages, claims, exit_code)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
+                host = excluded.host,
+                started_at = excluded.started_at,
+                lab_date = excluded.lab_date,
+                finished_at = excluded.finished_at,
+                status = excluded.status,
+                stages = excluded.stages,
+                claims = excluded.claims,
+                exit_code = excluded.exit_code
+        """, [run_id, host, started_at, lab_date, finished_at, status,
+              json.dumps(stages) if stages is not None else None,
+              json.dumps(claims) if claims is not None else None,
+              exit_code])
+
+    def get_nightly_runs(self, *, limit=10, started_after=None):
+        clauses, args = ["1=1"], []
+        if started_after:
+            clauses.append("started_at > ?")
+            args.append(started_after)
+        sql = (f"SELECT * FROM nightly_runs WHERE {' AND '.join(clauses)} "
+               "ORDER BY started_at DESC LIMIT ?")
+        args.append(limit)
+        rows = self._rows_to_dicts(self._execute(sql, args))
+        for row in rows:
+            for col in ("stages", "claims"):
+                raw = row.get(col)
+                row[col] = json.loads(raw) if raw else None
+        return rows
 
     # ---- Project snapshots ----
 

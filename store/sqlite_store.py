@@ -37,6 +37,18 @@ from .base import (
 DEFAULT_DB_PATH = Path.home() / ".claude" / "prompt-history.db"
 
 
+def _decode_run(row: dict) -> dict:
+    """JSON-decode a nightly_runs row's blob columns in place.
+
+    Shared shape with the Turso store: both return `stages` as a list and
+    `claims` as a dict, so no reader needs to know which backend it holds.
+    """
+    for col in ("stages", "claims"):
+        raw = row.get(col)
+        row[col] = json.loads(raw) if raw else None
+    return row
+
+
 class SqliteKnowledgeStore(KnowledgeStore):
 
     def __init__(self, db_path: Path | str | None = None):
@@ -131,6 +143,21 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 output_tokens INTEGER,
                 created_at TEXT DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS nightly_runs (
+                run_id TEXT PRIMARY KEY,
+                host TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                lab_date TEXT NOT NULL,
+                finished_at TEXT,
+                status TEXT NOT NULL,
+                stages TEXT,
+                claims TEXT,
+                exit_code INTEGER,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_nightly_runs_started
+                ON nightly_runs(started_at);
 
             CREATE TABLE IF NOT EXISTS project_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -512,6 +539,42 @@ class SqliteKnowledgeStore(KnowledgeStore):
         """, (review_type, date, subject, content_html, content_text,
               content_markdown, model, input_tokens, output_tokens))
         self._conn.commit()
+
+    # ---- Nightly run record ----
+
+    def upsert_nightly_run(self, *, run_id, host, started_at, lab_date, status,
+                           finished_at=None, stages=None, claims=None,
+                           exit_code=None):
+        self._conn.execute("""
+            INSERT INTO nightly_runs
+                (run_id, host, started_at, lab_date, finished_at, status,
+                 stages, claims, exit_code)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
+                host = excluded.host,
+                started_at = excluded.started_at,
+                lab_date = excluded.lab_date,
+                finished_at = excluded.finished_at,
+                status = excluded.status,
+                stages = excluded.stages,
+                claims = excluded.claims,
+                exit_code = excluded.exit_code
+        """, (run_id, host, started_at, lab_date, finished_at, status,
+              json.dumps(stages) if stages is not None else None,
+              json.dumps(claims) if claims is not None else None,
+              exit_code))
+        self._conn.commit()
+
+    def get_nightly_runs(self, *, limit=10, started_after=None):
+        clauses, params = ["1=1"], []
+        if started_after:
+            clauses.append("started_at > ?")
+            params.append(started_after)
+        sql = (f"SELECT * FROM nightly_runs WHERE {' AND '.join(clauses)} "
+               "ORDER BY started_at DESC LIMIT ?")
+        params.append(limit)
+        return [_decode_run(dict(r))
+                for r in self._conn.execute(sql, params).fetchall()]
 
     # ---- Project snapshots ----
 
