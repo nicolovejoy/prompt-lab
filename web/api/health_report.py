@@ -52,6 +52,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlsplit
 
 from access_helper import resolve_access
+from artifact_checks import ARTIFACT_CHECKS
 from auth_helper import _sign, _unsign
 from day_helper import lab_today
 from turso_helper import turso_query
@@ -115,16 +116,10 @@ TARGETS = [
 # hours figure would imply precision that doesn't exist. "2" means one missed
 # night is quiet and two is a breach — #45's stated bar was catching the review
 # email on night two rather than night sixty.
-HEARTBEATS = [
-    ("review email", "SELECT max(date) AS d FROM review_snapshots "
-                     "WHERE review_type IN ('daily_email', 'weekly_email')", 2),
-    ("synthesizer", "SELECT max(date) AS d FROM daily_summaries", 2),
-    ("weekly rollups", "SELECT max(week_start) AS d FROM weekly_rollups", 10),
-    # Anthropic's Admin API reports a day behind, so yesterday is the normal
-    # newest row — 2 would alarm on a healthy pipeline.
-    ("cost pull + sync", "SELECT max(date) AS d FROM api_costs", 3),
-    ("bi-monthly report", "SELECT max(date) AS d FROM review_snapshots "
-                          "WHERE review_type = 'monthly_report'", 20),
+#
+# The first five entries are shared with nightly_pipeline.collect_claims —
+# see web/artifact_checks.py for why they must not drift into two lists.
+HEARTBEATS = ARTIFACT_CHECKS + [
     # Added 2026-08-02 after the archive wrote on Aug 1 and not Aug 2, and
     # nothing said so for two days. READ THE LIMIT BEFORE TRUSTING THIS ONE:
     # unlike every entry above, the watcher is not outside the watched job —

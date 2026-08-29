@@ -224,6 +224,58 @@ def _():
     assert seen["exit_code"] == 0
 
 
+@test("collect_claims reports a max date per artifact and never raises")
+def _():
+    class _Cursor:
+        """Mirrors sqlite3.Cursor's fetchone(), which production code calls."""
+
+        def __init__(self, row):
+            self._row = row
+
+        def fetchone(self):
+            return self._row
+
+    class FakeStore:
+        def __init__(self, rows):
+            self.rows = rows
+
+        class _Conn:
+            def __init__(self, rows):
+                self.rows = rows
+
+            def execute(self, sql, params=None):
+                return _Cursor((self.rows.get(sql),))
+
+        @property
+        def conn(self):
+            return self._Conn(self.rows)
+
+    import web.artifact_checks as ac  # noqa: F401
+    from web.artifact_checks import ARTIFACT_CHECKS
+    rows = {sql: "2026-08-29" for _, sql, _ in ARTIFACT_CHECKS}
+    claims = np.collect_claims(FakeStore(rows))
+    assert set(claims) == {label for label, _, _ in ARTIFACT_CHECKS}, claims
+    assert all(v == "2026-08-29" for v in claims.values()), claims
+
+
+@test("collect_claims survives a store that raises")
+def _():
+    class Exploding:
+        @property
+        def conn(self):
+            raise RuntimeError("db gone")
+
+    assert np.collect_claims(Exploding()) == {}
+
+
+@test("ARTIFACT_CHECKS excludes uptime archive (no local counterpart)")
+def _():
+    from web.artifact_checks import ARTIFACT_CHECKS
+    labels = {label for label, _, _ in ARTIFACT_CHECKS}
+    assert "uptime archive" not in labels, (
+        "uptime_daily is cloud-direct — the pipeline cannot claim it locally")
+
+
 def main() -> int:
     failed = 0
     for name, ok, msg in _results:

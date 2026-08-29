@@ -3211,6 +3211,19 @@ def _():
         restore()
 
 
+@test("HEARTBEATS stays a superset of the shared artifact-check list")
+def _():
+    """The pipeline claims what it can see locally; the email grades that
+    plus the cloud-direct uptime archive. If the two ever diverge on the
+    shared entries, a claim starts answering a question nobody asked."""
+    from web.artifact_checks import ARTIFACT_CHECKS
+    mod, _ = _health_mod()
+    hb_labels = {name for name, _, _ in mod.HEARTBEATS}
+    shared = {label for label, _, _ in ARTIFACT_CHECKS}
+    assert shared <= hb_labels, shared - hb_labels
+    assert "uptime archive" in hb_labels
+
+
 @test("health_report: no auth + ?dry=1 → 401 and targets never polled")
 def _():
     restore = _health_env()

@@ -199,6 +199,31 @@ def record_run(store, **fields) -> bool:
         return False
 
 
+def collect_claims(store) -> dict:
+    """Max date per artifact in the LOCAL store, as of end of run.
+
+    Never raises: a claims failure must not lose the run record that carries
+    the stage outcomes, which is the more valuable half.
+    """
+    sys.path.insert(0, str(ROOT / "web"))
+    try:
+        from artifact_checks import ARTIFACT_CHECKS
+    except Exception as e:  # noqa: BLE001
+        print(f"run record: claims unavailable ({type(e).__name__}: {e})",
+              flush=True)
+        return {}
+
+    claims = {}
+    for label, sql, _ in ARTIFACT_CHECKS:
+        try:
+            row = store.conn.execute(sql).fetchone()
+            claims[label] = row[0] if row else None
+        except Exception as e:  # noqa: BLE001
+            print(f"run record: claim {label} failed ({type(e).__name__})",
+                  flush=True)
+    return claims
+
+
 def machine_host() -> str:
     """This machine's label, shared with the Turso sync so both agree.
 
@@ -249,6 +274,7 @@ def main() -> int:
                    "%Y-%m-%dT%H:%M:%SZ"),
                stages=[{"name": r.name, "outcome": r.outcome,
                         "detail": r.detail} for r in results],
+               claims=collect_claims(store),
                exit_code=exit_code)
     try:
         store.close()
