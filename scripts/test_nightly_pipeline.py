@@ -560,6 +560,43 @@ def _():
     assert events == [], events
 
 
+@test("the pipeline loads .env itself before opening the remote store")
+def _():
+    """Found by the 2026-08-30 acceptance run, which otherwise passed clean:
+    every STAGE is a subprocess whose script calls load_env() itself, which is
+    why publish reached Turso — but push_runs is the one piece that runs
+    IN-PROCESS, inheriting launchd's bare environment. It died on
+    KeyError: 'TURSO_DATABASE_URL', best-effort swallowed it, and Turso's
+    nightly_runs stayed empty while every stage reported ok.
+
+    Pinned as source text, not behaviour: the bug is the ABSENCE of a call,
+    and a test that fakes the environment would pass with the call deleted —
+    which is exactly how this shipped. Same grep-guard shape the repo already
+    uses for describe_elapsed and the 'weekday 1' week expression."""
+    src = (ROOT / "nightly_pipeline.py").read_text()
+    assert "load_env" in src, \
+        "nightly_pipeline.py must load .env — push_runs runs in-process " \
+        "and launchd supplies no TURSO_DATABASE_URL"
+
+    # Behavioural, not textual: _finish_run is DEFINED above main() but CALLED
+    # from inside it, so asserting on source order compares file position to
+    # execution order and gets the wrong answer. Assert the call actually
+    # happens, and happens before the run opens any store.
+    import claude_api
+    calls: list = []
+    saved = claude_api.load_env
+    claude_api.load_env = lambda *a, **kw: calls.append("load_env")
+    try:
+        with fake_main_env(ok_results()) as (events, _local, _remote, _):
+            np.main()
+    finally:
+        claude_api.load_env = saved
+    assert calls == ["load_env"], \
+        f"expected exactly one load_env() call in the prelude, got {calls}"
+    assert events and events[0] == ("local", "running"), \
+        f"env must load before the first store write, got {events[:1]}"
+
+
 def main() -> int:
     failed = 0
     for name, ok, msg in _results:

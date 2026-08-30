@@ -369,6 +369,16 @@ def main(argv: list | None = None) -> int:
     # unable to set itself up.
     store, host = None, "unknown"
     try:
+        # THE STAGES DO NOT NEED THIS; the in-process code below does. Each
+        # stage is a subprocess whose script calls load_env() itself — that is
+        # why the plist deliberately carries no `source .env &&`. push_runs is
+        # the one piece running in THIS process, so it inherits launchd's bare
+        # environment: on 2026-08-30 every stage reported ok, publish reached
+        # Turso, and the run record alone died on KeyError TURSO_DATABASE_URL.
+        # Inside the guarded prelude on purpose — a monitoring write must not
+        # be able to fail the night, and that includes its own env loading.
+        from claude_api import load_env
+        load_env()
         from store import get_store
         host = machine_host()
         # "sqlite" pinned, not the GROUND_CONTROL_STORE default: this is
