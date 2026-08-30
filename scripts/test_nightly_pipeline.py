@@ -10,8 +10,11 @@ No pytest. Prints PASS/FAIL per test, exits 1 if any fail.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import tempfile
+import types
+from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 
@@ -250,7 +253,6 @@ def _():
         def conn(self):
             return self._Conn(self.rows)
 
-    import web.artifact_checks as ac  # noqa: F401
     from web.artifact_checks import ARTIFACT_CHECKS
     rows = {sql: "2026-08-29" for _, sql, _ in ARTIFACT_CHECKS}
     claims = np.collect_claims(FakeStore(rows))
@@ -347,6 +349,179 @@ def _():
                              started_at="2026-08-27T09:30:00Z",
                              lab_date="2026-08-27", status="ok")
     assert np.push_runs(local, _FakeRemote(explode=True)) == 0
+
+
+# === main(): the bracket around a run =======================================
+#
+# The ordering these pin is what the whole run record rests on: a "running"
+# row before the first stage, the final row after the last, the Turso push
+# after that. And the failure envelope around it — a prelude that cannot set
+# the monitoring up, or a monitoring call that raises mid-run, must never
+# cost the night's actual work or leave the local row stuck on "running".
+
+
+class _StubCursor:
+    def __init__(self, value):
+        self._value = value
+
+    def fetchone(self):
+        return (self._value,)
+
+
+class _StubConn:
+    """Answers collect_claims' queries so it stays quiet in these tests."""
+
+    def execute(self, sql, params=None):
+        return _StubCursor("2026-08-29")
+
+
+class _MainStore:
+    """A store double that logs every run-record write into a shared list."""
+
+    def __init__(self, events, name):
+        self.events, self.name = events, name
+        self.rows: dict = {}
+        self.closed = self.migrated = False
+
+    def migrate(self):
+        self.migrated = True
+
+    def upsert_nightly_run(self, **kw):
+        self.events.append((self.name, kw.get("status")))
+        self.rows[kw["run_id"]] = kw
+
+    def get_nightly_runs(self, *, limit=10, started_after=None):
+        rows = sorted(self.rows.values(), key=lambda r: r["started_at"],
+                      reverse=True)
+        if started_after:
+            rows = [r for r in rows if r["started_at"] > started_after]
+        return rows[:limit]
+
+    def close(self):
+        self.closed = True
+
+    @property
+    def conn(self):
+        return _StubConn()
+
+
+@contextmanager
+def fake_main_env(results, *, prelude_error=None):
+    """Run main() against stubbed stages, stores and machine label.
+
+    `store` is replaced in sys.modules because main() imports it lazily, by
+    name, exactly as the real pipeline does — stubbing the import is what
+    lets this exercise the real bracket rather than a copy of it.
+    """
+    events: list = []
+    local = _MainStore(events, "local")
+    remote = _MainStore(events, "remote")
+    calls = {"run_pipeline": 0}
+
+    def get_store(backend=None):
+        if backend == "turso":
+            return remote
+        if prelude_error is not None:
+            raise prelude_error
+        return local
+
+    fake_store_mod = types.ModuleType("store")
+    fake_store_mod.get_store = get_store
+    saved_mod = sys.modules.get("store")
+    sys.modules["store"] = fake_store_mod
+
+    def fake_run_pipeline(stages, cwd=None):
+        calls["run_pipeline"] += 1
+        return results
+
+    saved = (np.machine_host, np.build_stages, np.run_pipeline)
+    np.machine_host = lambda: "testhost"
+    np.build_stages = lambda: []
+    np.run_pipeline = fake_run_pipeline
+    try:
+        yield events, local, remote, calls
+    finally:
+        np.machine_host, np.build_stages, np.run_pipeline = saved
+        if saved_mod is None:
+            sys.modules.pop("store", None)
+        else:
+            sys.modules["store"] = saved_mod
+
+
+def ok_results() -> list:
+    return [np.StageResult(n, "ok") for n in
+            ("cost-pull", "synthesizer", "review", "publish")]
+
+
+@test("main brackets the run: running row, then final row, then the push")
+def _():
+    with fake_main_env(ok_results()) as (events, local, remote, _):
+        saved_run = np.subprocess.run
+        np.subprocess.run = lambda *a, **kw: None  # the cost-pull heartbeat
+        try:
+            code = np.main()
+        finally:
+            np.subprocess.run = saved_run
+    assert code == 0, code
+    assert events == [("local", "running"), ("local", "ok"), ("remote", "ok")], \
+        events
+    assert local.closed, "the local store handle leaked"
+    assert remote.migrated, "push_runs ran against an unmigrated remote"
+
+
+@test("main records the run's real status and exit code when a stage fails")
+def _():
+    results = [np.StageResult("cost-pull", "ok"),
+               np.StageResult("synthesizer", "failed", "exit 1"),
+               np.StageResult("publish", "ok")]
+    with fake_main_env(results) as (events, local, _remote, _):
+        code = np.main()
+    assert code == 1, code
+    assert events[1] == ("local", "partial"), events
+    row = local.rows[next(iter(local.rows))]
+    assert row["exit_code"] == 1, row
+    assert [s["outcome"] for s in row["stages"]] == ["ok", "failed", "ok"], row
+
+
+@test("a run-record prelude that raises still runs the night's stages")
+def _():
+    """The whole point of the guard: the cost pull, synthesizer, review and
+    publish must happen even when the monitoring cannot be set up at all."""
+    with fake_main_env(ok_results(),
+                       prelude_error=RuntimeError("db unreachable")) as (
+            events, local, _remote, calls):
+        saved_run = np.subprocess.run
+        np.subprocess.run = lambda *a, **kw: None
+        try:
+            code = np.main()
+        finally:
+            np.subprocess.run = saved_run
+    assert calls["run_pipeline"] == 1, "the stages never ran"
+    assert code == 0, code
+    assert events == [], events  # nothing to write to, and nothing raised
+
+
+@test("a raising heartbeat still writes the finish record")
+def _():
+    """subprocess.run raises TimeoutExpired, and it sits between the stages
+    and the finish write. Unguarded, the local row stays "running" forever
+    and the next morning's email reports "died mid-run" about a night that
+    completed every stage — the second axis manufacturing a false verdict
+    about the first."""
+    def boom(*a, **kw):
+        raise subprocess.TimeoutExpired(cmd="heartbeat.py", timeout=60)
+
+    with fake_main_env(ok_results()) as (events, local, _remote, _):
+        saved_run = np.subprocess.run
+        np.subprocess.run = boom
+        try:
+            code = np.main()
+        finally:
+            np.subprocess.run = saved_run
+    assert code == 0, code
+    assert events == [("local", "running"), ("local", "ok"), ("remote", "ok")], \
+        events
+    assert local.closed, "the local store handle leaked"
 
 
 def main() -> int:

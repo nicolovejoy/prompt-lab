@@ -275,40 +275,15 @@ def machine_host() -> str:
     return machine_label()
 
 
-def main() -> int:
-    from store import get_store
+def _finish_run(store, *, run_id, host, started_at, lab_date, results,
+                exit_code) -> None:
+    """The closing half of the bracket: final record, then the Turso push.
 
-    host = machine_host()
-    run_id, started_at, lab_date = run_identity(
-        datetime.now(timezone.utc), host)
-
-    store = get_store()
-    try:
-        store.migrate()
-    except Exception as e:  # noqa: BLE001
-        print(f"run record: migrate failed ({type(e).__name__}: {e})", flush=True)
-
-    # Written before any stage so a host powered off mid-run leaves a
-    # started-never-finished row. "Died mid-run" and "never ran" are
-    # different facts and this is the only thing that tells them apart.
-    record_run(store, run_id=run_id, host=host, started_at=started_at,
-               lab_date=lab_date, status="running")
-
-    stages = build_stages()
-    results = run_pipeline(stages)
-    by_name = {r.name: r for r in results}
-
-    # Heartbeat only when both legs actually landed (see module docstring).
-    if by_name.get("cost-pull") and by_name["cost-pull"].ok \
-            and by_name.get("publish") and by_name["publish"].ok:
-        subprocess.run([sys.executable, str(ROOT / "heartbeat.py"), "cost-pull"],
-                       cwd=ROOT, timeout=60)
-
-    failed = [r for r in results if r.outcome in ("failed", "timeout", "skipped")]
-    exit_code = 1 if failed else 0
-    summary = " · ".join(f"{r.name}={r.outcome}" for r in results)
-    print(f"pipeline: {summary}", flush=True)
-
+    Runs in main()'s `finally` so it happens whatever the stage block did —
+    a raise between the stages and here would otherwise leave the local row
+    reading "running" forever, and the next morning's email would report
+    "died mid-run" about a night that completed every stage.
+    """
     record_run(store, run_id=run_id, host=host, started_at=started_at,
                lab_date=lab_date, status=overall_status(results),
                finished_at=datetime.now(timezone.utc).strftime(
@@ -324,6 +299,12 @@ def main() -> int:
         from store import get_store as _get_store
         remote = _get_store("turso")
         try:
+            # The remote table is created by TursoKnowledgeStore.migrate(),
+            # whose only other caller in the nightly path is INSIDE the
+            # publish stage — so without this, night one plus a failed
+            # publish means the SELECT in push_runs raises and the record of
+            # the publish failure never leaves the laptop.
+            remote.migrate()
             n = push_runs(store, remote)
             print(f"run record: pushed {n} run(s) to Turso", flush=True)
         finally:
@@ -332,10 +313,75 @@ def main() -> int:
         print(f"run record: remote unavailable ({type(e).__name__}: {e})",
               flush=True)
 
+
+def main() -> int:
+    # The run-record PRELUDE is best-effort too, not just the write it sets
+    # up: the import, machine_host() (which pulls in sync_to_turso, the store
+    # layer and env loading) and get_store() (sqlite3.connect) can each
+    # raise, and an unguarded prelude means no stage runs at all — no cost
+    # pull, no synthesizer, no review, no publish. A monitoring write must
+    # never be able to fail the work it monitors, and that includes being
+    # unable to set itself up.
+    store, host = None, "unknown"
     try:
-        store.close()
-    except Exception:  # noqa: BLE001
-        pass
+        from store import get_store
+        host = machine_host()
+        # "sqlite" pinned, not the GROUND_CONTROL_STORE default: this is
+        # explicitly the LOCAL half of a local -> remote push, and a stray
+        # env var would otherwise make record_run write straight to Turso
+        # and collect_claims fail on the missing .conn.
+        store = get_store("sqlite")
+    except Exception as e:  # noqa: BLE001
+        print(f"run record: setup failed ({type(e).__name__}: {e})", flush=True)
+
+    run_id, started_at, lab_date = run_identity(
+        datetime.now(timezone.utc), host)
+
+    if store is not None:
+        try:
+            store.migrate()
+        except Exception as e:  # noqa: BLE001
+            print(f"run record: migrate failed ({type(e).__name__}: {e})",
+                  flush=True)
+        # Written before any stage so a host powered off mid-run leaves a
+        # started-never-finished row. "Died mid-run" and "never ran" are
+        # different facts and this is the only thing that tells them apart.
+        record_run(store, run_id=run_id, host=host, started_at=started_at,
+                   lab_date=lab_date, status="running")
+
+    results: list = []
+    exit_code = 1
+    try:
+        results = run_pipeline(build_stages())
+        by_name = {r.name: r for r in results}
+
+        failed = [r for r in results
+                  if r.outcome in ("failed", "timeout", "skipped")]
+        exit_code = 1 if failed else 0
+        summary = " · ".join(f"{r.name}={r.outcome}" for r in results)
+        print(f"pipeline: {summary}", flush=True)
+
+        # Heartbeat only when both legs actually landed (see module
+        # docstring). Guarded for the same reason record_run is — it is
+        # monitoring, and subprocess.run raises TimeoutExpired.
+        if by_name.get("cost-pull") and by_name["cost-pull"].ok \
+                and by_name.get("publish") and by_name["publish"].ok:
+            try:
+                subprocess.run(
+                    [sys.executable, str(ROOT / "heartbeat.py"), "cost-pull"],
+                    cwd=ROOT, timeout=60)
+            except Exception as e:  # noqa: BLE001
+                print(f"cost-pull heartbeat: skipped "
+                      f"({type(e).__name__}: {e})", flush=True)
+    finally:
+        if store is not None:
+            _finish_run(store, run_id=run_id, host=host,
+                        started_at=started_at, lab_date=lab_date,
+                        results=results, exit_code=exit_code)
+            try:
+                store.close()
+            except Exception:  # noqa: BLE001
+                pass
     return exit_code
 
 
