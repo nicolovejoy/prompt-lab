@@ -314,7 +314,52 @@ def _finish_run(store, *, run_id, host, started_at, lab_date, results,
               flush=True)
 
 
-def main() -> int:
+USAGE = """usage: nightly_pipeline.py
+
+Runs the whole night in dependency order: cost pull -> synthesizer -> review
+-> report (when due) -> publish. Takes no options — what runs is decided by
+the data (the report is artifact-keyed), not by flags.
+
+THIS IS NOT A DRY RUN. It sends the review email, writes review_snapshots,
+records the run in nightly_runs and pushes to Turso. There is deliberately no
+--dry-run: each stage script has its own, and the thing worth testing here is
+the ordering, which scripts/test_nightly_pipeline.py covers with real
+subprocesses.
+"""
+
+
+def parse_argv(argv: list) -> int | None:
+    """None to proceed; an exit code to stop having run nothing.
+
+    argparse is not worth a dependency-free file's import for zero options,
+    but "no options" must still be ENFORCED rather than assumed. Before this
+    existed main() ignored sys.argv entirely, so any argument — a typo, or a
+    `--help` probe expecting a usage string — silently launched a full
+    production nightly. That happened on 2026-08-29 and it is the exact shape
+    this repo keeps getting bitten by: a command that looks inert and isn't.
+    """
+    if not argv:
+        return None
+    if argv in (["-h"], ["--help"]):
+        print(USAGE, end="")
+        return 0
+    # Anything else, INCLUDING a --help mixed with other args: refuse. A
+    # partially-understood command line is not a reason to run the night.
+    print(USAGE, end="", file=sys.stderr)
+    print(f"\nerror: unrecognized arguments: {' '.join(argv)}\n"
+          "nothing was run.", file=sys.stderr)
+    return 2
+
+
+def main(argv: list | None = None) -> int:
+    # Before ANY side effect, including the run record: a refused invocation
+    # must leave no nightly_runs row, or a typo at the keyboard manufactures a
+    # fact about a night that never ran, on the exact table the morning health
+    # email grades.
+    stop = parse_argv(sys.argv[1:] if argv is None else argv)
+    if stop is not None:
+        return stop
+
     # The run-record PRELUDE is best-effort too, not just the write it sets
     # up: the import, machine_host() (which pulls in sync_to_turso, the store
     # layer and env loading) and get_store() (sqlite3.connect) can each

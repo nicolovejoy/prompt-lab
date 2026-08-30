@@ -524,6 +524,42 @@ def _():
     assert local.closed, "the local store handle leaked"
 
 
+@test("a bare invocation is accepted and runs the night")
+def _():
+    assert np.parse_argv([]) is None
+
+
+@test("--help prints usage and runs nothing")
+def _():
+    assert np.parse_argv(["--help"]) == 0
+    assert np.parse_argv(["-h"]) == 0
+
+
+@test("an unrecognized argument refuses to run the night")
+def _():
+    """The whole point. nightly_pipeline.py sends the review email, writes
+    review_snapshots and pushes to Turso, and this repo's own habit is to run
+    nightly stages by hand while awake. A no-op-looking flag that silently
+    triggers a full production run is the failure to prevent: on 2026-08-29 a
+    `--help` probe did exactly that, ran the cost pull and left a spurious
+    failed nightly_runs row. Anything unrecognized must exit non-zero having
+    run nothing at all."""
+    for argv in (["--help-me"], ["--dry-run"], ["--dryrun"], ["today"],
+                 ["-n"], ["--help", "--dry-run"]):
+        assert np.parse_argv(argv) == 2, argv
+
+
+@test("the argv guard runs before the run record, so a typo writes no row")
+def _():
+    """A refused invocation must not appear in nightly_runs. The run record is
+    the thing the morning health email grades; a typo at the keyboard writing
+    a row there would manufacture a fact about a night that never ran."""
+    with fake_main_env(ok_results()) as (events, _local, _remote, _):
+        code = np.main(["--nope"])
+    assert code == 2, code
+    assert events == [], events
+
+
 def main() -> int:
     failed = 0
     for name, ok, msg in _results:
