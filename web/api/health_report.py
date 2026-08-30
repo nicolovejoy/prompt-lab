@@ -337,16 +337,29 @@ NIGHTLY_RUN_SQL = (
 
 
 def _decode_json_column(value, default):
-    """`stages`/`claims` arrive as JSON text from Turso. Never raises."""
+    """`stages`/`claims` arrive as JSON text from Turso. Never raises.
+
+    Validates the ELEMENTS of a list, not just the outer container: a stray
+    `["a", "b"]` would otherwise decode cleanly and then blow up on
+    `s.get("outcome")` downstream, escaping this function's caller into the
+    handler's outer except — a 500 and NO EMAIL AT ALL. The second axis must
+    never be able to silence the first, which is the whole reason it is a
+    second axis. Malformed entries are dropped rather than rejecting the
+    payload, so one bad stage does not hide the four good ones.
+    """
     if value is None or value == "":
         return default
-    if isinstance(value, (list, dict)):
-        return value
-    try:
-        decoded = json.loads(value)
-    except (TypeError, ValueError):
+    decoded = value
+    if not isinstance(decoded, (list, dict)):
+        try:
+            decoded = json.loads(value)
+        except (TypeError, ValueError):
+            return default
+    if not isinstance(decoded, type(default)):
         return default
-    return decoded if isinstance(decoded, type(default)) else default
+    if isinstance(decoded, list):
+        return [item for item in decoded if isinstance(item, dict)]
+    return decoded
 
 
 def _claims_vs_remote(claims, heartbeats):
@@ -365,20 +378,31 @@ def _claims_vs_remote(claims, heartbeats):
     SKIPPED, not flagged. Its `last` is None for want of an answer, not
     because Turso is empty — reading that as "claimed but missing" would turn
     one Turso outage into a fleet of invented publish failures.
+
+    Returns (mismatches, unknown_labels). A claim naming an artifact this
+    email does not grade at all is DRIFT and is reported, not dropped: the
+    two lists match by construction today (web/artifact_checks.py is their
+    one home), and if that ever stops being true the cross-check must
+    complain rather than go quiet — going quiet is the anti-pattern this
+    whole mechanism exists to kill.
     """
-    by_name = {h["name"]: h for h in heartbeats if h.get("ok") is not None}
-    out = []
+    graded = {h["name"]: h for h in heartbeats if h.get("ok") is not None}
+    unchecked = {h["name"] for h in heartbeats if h.get("ok") is None}
+    out, unknown = [], []
     for label, claimed in (claims or {}).items():
-        if label not in by_name:
+        if label in unchecked:
             continue
-        remote = by_name[label].get("last")
+        if label not in graded:
+            unknown.append(label)
+            continue
+        remote = graded[label].get("last")
         if claimed and remote and str(claimed) > str(remote):
             out.append({"artifact": label, "claimed": str(claimed),
                         "remote": str(remote)})
         elif claimed and not remote:
             out.append({"artifact": label, "claimed": str(claimed),
                         "remote": None})
-    return out
+    return out, sorted(unknown)
 
 
 def _check_nightly_run(heartbeats=None):
@@ -400,7 +424,7 @@ def _check_nightly_run(heartbeats=None):
     """
     entry = {"lab_date": None, "host": None, "status": None,
              "age_days": None, "ok": None, "stages": [], "mismatches": [],
-             "note": ""}
+             "exit_code": None, "note": ""}
     try:
         rows = turso_query(NIGHTLY_RUN_SQL)
     except Exception as e:
@@ -416,6 +440,7 @@ def _check_nightly_run(heartbeats=None):
     row = rows[0]
     entry["host"] = row.get("host")
     entry["status"] = row.get("status")
+    entry["exit_code"] = row.get("exit_code")
     entry["lab_date"] = str(row.get("lab_date") or "")[:10]
     try:
         last = datetime.strptime(entry["lab_date"], "%Y-%m-%d").date()
@@ -437,19 +462,31 @@ def _check_nightly_run(heartbeats=None):
         entry["ok"] = False
         entry["note"] = "started but never finished — died mid-run"
         return entry
-    if bad:
+    # The run's OWN verdict is graded, not just the stage list it carries.
+    # nightly_pipeline.overall_status returns "failed" for an empty results
+    # list, so a night that ran no stages at all lands here as
+    # status="failed" with stages=[] — and grading on `bad` alone would
+    # render that self-declared failure GREEN. A self-report that says
+    # "failed" must never read as ok.
+    if bad or entry["status"] != "ok":
         entry["ok"] = False
-        entry["note"] = ", ".join(f"{s.get('name')}: {s['outcome']}"
-                                  for s in bad)
+        entry["note"] = (
+            ", ".join(f"{s.get('name')}: {s['outcome']}" for s in bad)
+            or f"run reported {entry['status'] or 'no status'}")
         return entry
 
-    entry["mismatches"] = _claims_vs_remote(
+    entry["mismatches"], unknown = _claims_vs_remote(
         _decode_json_column(row.get("claims"), {}), heartbeats or [])
+    notes = []
     if entry["mismatches"]:
+        notes.append("claimed but not in Turso: "
+                     + ", ".join(m["artifact"] for m in entry["mismatches"]))
+    if unknown:
+        notes.append("claim names an artifact this email does not grade: "
+                     + ", ".join(unknown))
+    if notes:
         entry["ok"] = False
-        entry["note"] = ("claimed but not in Turso: "
-                         + ", ".join(m["artifact"]
-                                     for m in entry["mismatches"]))
+        entry["note"] = "; ".join(notes)
         return entry
 
     entry["ok"] = True

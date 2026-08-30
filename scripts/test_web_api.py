@@ -2818,12 +2818,20 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
             row.update(status="running", finished_at=None)
         elif nr == "old":
             row.update(lab_date=old, started_at=f"{old}T09:31:00Z")
+        elif nr == "status-failed":
+            # overall_status() returns "failed" for an empty results list, so
+            # this pair is what a night that ran no stages at all looks like.
+            stages, row["status"], row["exit_code"] = [], "failed", 1
         elif nr == "claim-newer":
             claims["review email"] = tomorrow
         elif nr == "claim-older":
             claims["review email"] = "2019-01-01"
+        elif nr == "claim-unknown":
+            claims["a label this email does not grade"] = today
         row["stages"] = json.dumps(stages)
         row["claims"] = json.dumps(claims)
+        if nr == "malformed-stages":
+            row["stages"] = json.dumps(["a", "b"])  # a list of NON-dicts
         return row
 
     def fake_turso(sql, args=None):
@@ -3411,6 +3419,77 @@ def _():
                          {"authorization": "Bearer cron-secret"}).body["nightly_run"]
             assert run["mismatches"] == [], (variant, run)
             assert run["ok"] is True, (variant, run)
+    finally:
+        restore()
+
+
+@test("nightly run: status='failed' with zero stages is never green")
+def _():
+    """nightly_pipeline.overall_status returns 'failed' for an empty results
+    list, so this pair is a real night, not a hypothetical. Grading on the
+    stage list alone rendered it `ok` — a self-report that says "failed"
+    shown in green, which is the exact shape this branch exists to close."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="status-failed")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["stages"] == [], run
+        assert run["status"] == "failed", run
+        assert run["ok"] is False, run
+        assert "failed" in run["note"], run
+        assert run["exit_code"] == 1, run
+
+        mod, sent = _health_mod(nr="status-failed")
+        invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
+        subject, html_body, text = sent[0]
+        assert subject.startswith("🟡"), subject
+        assert "nightly run" in subject, subject
+    finally:
+        restore()
+
+
+@test("nightly run: a malformed stages payload cannot kill the email")
+def _():
+    """The second axis must never be able to silence the first. A stages
+    list of non-dicts used to raise AttributeError out of _check_nightly_run
+    — whose try covers only the query — into the handler's outer except: a
+    500 and no email at all. A monitoring addition that can suppress the
+    whole email is the bug this branch exists to kill."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="malformed-stages")
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert len(sent) == 1, "a malformed run record killed the email"
+        # The garbage is dropped, not rendered, and the artifact heartbeats
+        # — the first axis — are unaffected.
+        assert h.body["stale"] == [], h.body
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.body["nightly_run"]["stages"] == [], h.body["nightly_run"]
+    finally:
+        restore()
+
+
+@test("nightly run: a claim naming an ungraded artifact complains, not skips")
+def _():
+    """The claim labels and HEARTBEATS match by construction today. If they
+    ever drift, the cross-check must say so rather than quietly ignoring the
+    claim — going quiet is this mechanism's own anti-pattern."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="claim-unknown")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["ok"] is False, run
+        assert "does not grade" in run["note"], run
+        assert "a label this email does not grade" in run["note"], run
+        # A drifted label is not a publish failure, so it is not a mismatch.
+        assert run["mismatches"] == [], run
     finally:
         restore()
 
