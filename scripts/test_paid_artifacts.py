@@ -115,6 +115,29 @@ def _():
     s.close()
 
 
+@test("the archive keeps the PRE-replace created_at, not the new row's")
+def _():
+    """`INSERT OR REPLACE` resets the live row's created_at, so
+    original_created_at is the only surviving record of when the archived
+    prose was written — the archive's entire point. A regression capturing
+    the post-replace stamp would be invisible and unrecoverable."""
+    s = _store()
+    _upsert_daily(s, "v1")
+    s._conn.execute("UPDATE daily_summaries SET created_at = ?",
+                    ("2020-01-02 03:04:05",))
+    s._conn.commit()
+    _upsert_daily(s, "v2")
+    archived = s._conn.execute(
+        "SELECT original_created_at FROM daily_summaries_superseded").fetchall()
+    assert len(archived) == 1, archived
+    assert archived[0]["original_created_at"] == "2020-01-02 03:04:05", \
+        archived[0]["original_created_at"]
+    live = s._conn.execute(
+        "SELECT created_at FROM daily_summaries").fetchone()
+    assert live["created_at"] != "2020-01-02 03:04:05", dict(live)
+    s.close()
+
+
 # ---- weekly_rollups ----
 
 @test("overwriting a weekly rollup archives the OLD narrative, live row holds the new")
