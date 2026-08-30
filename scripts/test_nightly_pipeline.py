@@ -276,6 +276,79 @@ def _():
         "uptime_daily is cloud-direct — the pipeline cannot claim it locally")
 
 
+class _FakeRemote:
+    """Minimal store double: records upserts, answers get_nightly_runs."""
+
+    def __init__(self, existing=None, explode=False):
+        self.rows = dict(existing or {})
+        self.explode = explode
+
+    def upsert_nightly_run(self, **kw):
+        if self.explode:
+            raise RuntimeError("turso down")
+        self.rows[kw["run_id"]] = kw
+
+    def get_nightly_runs(self, *, limit=10, started_after=None):
+        rows = sorted(self.rows.values(), key=lambda r: r["started_at"],
+                      reverse=True)
+        if started_after:
+            rows = [r for r in rows if r["started_at"] > started_after]
+        return rows[:limit]
+
+
+class _FakeLocal(_FakeRemote):
+    pass
+
+
+@test("push_runs sends only rows newer than the remote high-water mark")
+def _():
+    local = _FakeLocal()
+    for n, ts in [("a", "2026-08-27T09:30:00Z"), ("b", "2026-08-28T09:30:00Z"),
+                  ("c", "2026-08-29T09:30:00Z")]:
+        local.upsert_nightly_run(run_id=n, host="laptop", started_at=ts,
+                                 lab_date=ts[:10], status="ok")
+    remote = _FakeRemote()
+    remote.upsert_nightly_run(run_id="a", host="laptop",
+                              started_at="2026-08-27T09:30:00Z",
+                              lab_date="2026-08-27", status="ok")
+    pushed = np.push_runs(local, remote)
+    assert pushed == 2, pushed
+    assert set(remote.rows) == {"a", "b", "c"}, remote.rows
+
+
+@test("push_runs backfills every run when the remote is empty")
+def _():
+    local = _FakeLocal()
+    for n, ts in [("a", "2026-08-27T09:30:00Z"), ("b", "2026-08-28T09:30:00Z")]:
+        local.upsert_nightly_run(run_id=n, host="laptop", started_at=ts,
+                                 lab_date=ts[:10], status="ok")
+    remote = _FakeRemote()
+    assert np.push_runs(local, remote) == 2
+    assert set(remote.rows) == {"a", "b"}
+
+
+@test("push_runs is a no-op when the remote is already current")
+def _():
+    local = _FakeLocal()
+    local.upsert_nightly_run(run_id="a", host="laptop",
+                             started_at="2026-08-27T09:30:00Z",
+                             lab_date="2026-08-27", status="ok")
+    remote = _FakeRemote(existing={"a": {"run_id": "a", "host": "laptop",
+                                         "started_at": "2026-08-27T09:30:00Z",
+                                         "lab_date": "2026-08-27",
+                                         "status": "ok"}})
+    assert np.push_runs(local, remote) == 0
+
+
+@test("push_runs never raises when the remote is down")
+def _():
+    local = _FakeLocal()
+    local.upsert_nightly_run(run_id="a", host="laptop",
+                             started_at="2026-08-27T09:30:00Z",
+                             lab_date="2026-08-27", status="ok")
+    assert np.push_runs(local, _FakeRemote(explode=True)) == 0
+
+
 def main() -> int:
     failed = 0
     for name, ok, msg in _results:

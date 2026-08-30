@@ -224,6 +224,47 @@ def collect_claims(store) -> dict:
     return claims
 
 
+def push_runs(local_store, remote_store, *, limit: int = 30) -> int:
+    """Publish local run records Turso has not seen. Returns rows pushed.
+
+    Stateless catch-up, deliberately: read the remote high-water mark and
+    send everything local holds after it. No `pushed_at` column to keep in
+    sync, no local mutation, and a machine that was offline for days heals on
+    its next run — the same self-healing shape as migrate()'s dedupe.
+
+    This runs AFTER the publish stage, as its own step, so it observes
+    publish rather than depending on it. A record that travelled inside the
+    sync leg would be eaten by exactly the publish failure it needs to
+    report, which is the failure shape this whole plan exists to kill.
+
+    Never raises: see record_run.
+    """
+    try:
+        newest = remote_store.get_nightly_runs(limit=1)
+        high_water = newest[0]["started_at"] if newest else None
+        pending = local_store.get_nightly_runs(limit=limit,
+                                               started_after=high_water)
+    except Exception as e:  # noqa: BLE001
+        print(f"run record: push skipped ({type(e).__name__}: {e})", flush=True)
+        return 0
+
+    pushed = 0
+    for row in sorted(pending, key=lambda r: r["started_at"]):
+        try:
+            remote_store.upsert_nightly_run(
+                run_id=row["run_id"], host=row["host"],
+                started_at=row["started_at"], lab_date=row["lab_date"],
+                status=row["status"], finished_at=row.get("finished_at"),
+                stages=row.get("stages"), claims=row.get("claims"),
+                exit_code=row.get("exit_code"))
+            pushed += 1
+        except Exception as e:  # noqa: BLE001
+            print(f"run record: push of {row['run_id']} failed "
+                  f"({type(e).__name__}: {e})", flush=True)
+            break  # remote is unhealthy; the next run retries the whole tail
+    return pushed
+
+
 def machine_host() -> str:
     """This machine's label, shared with the Turso sync so both agree.
 
@@ -276,6 +317,21 @@ def main() -> int:
                         "detail": r.detail} for r in results],
                claims=collect_claims(store),
                exit_code=exit_code)
+
+    # Own step, after publish (see push_runs' docstring). Opened lazily so a
+    # machine with no Turso credentials still completes its local run record.
+    try:
+        from store import get_store as _get_store
+        remote = _get_store("turso")
+        try:
+            n = push_runs(store, remote)
+            print(f"run record: pushed {n} run(s) to Turso", flush=True)
+        finally:
+            remote.close()
+    except Exception as e:  # noqa: BLE001
+        print(f"run record: remote unavailable ({type(e).__name__}: {e})",
+              flush=True)
+
     try:
         store.close()
     except Exception:  # noqa: BLE001
