@@ -2763,7 +2763,7 @@ def _health_env():
     return restore
 
 
-def _health_mod(up=True, hb="fresh", ur="ok"):
+def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
     """Load health_report with targets, joke, send, and the UptimeRobot pull
     stubbed. Returns (mod, sent) where sent collects (subject, html, text)
     tuples. Every poll appends to `mod._polls`, so a test can pin that an
@@ -2772,13 +2772,15 @@ def _health_mod(up=True, hb="fresh", ur="ok"):
 
     `hb` drives the heartbeat (artifact-freshness) stub: fresh / stale /
     never (table empty) / error (Turso unreadable). `ur` drives the uptime
-    pull: ok / error (UptimeRobot unreachable).
+    pull: ok / error (UptimeRobot unreachable). `nr` drives the nightly run
+    record: ok / stage-failed / running / old / never / error / claim-newer /
+    claim-older.
 
-    The turso stub dispatches on the SQL because the endpoint issues three
+    The turso stub dispatches on the SQL because the endpoint issues four
     different kinds of query against the same helper — the pause lookup, the
-    freshness lookups, and the uptime upsert — and they must not be conflated:
-    the pause check fails OPEN, freshness must not, and the uptime write must
-    be separately observable."""
+    freshness lookups, the nightly-run lookup and the uptime upsert — and they
+    must not be conflated: the pause check fails OPEN, freshness and the run
+    record must not, and the uptime write must be separately observable."""
     mod = load_endpoint("web/api/health_report.py", "health_report_test")
     sent = []
     mod._polls = []
@@ -2793,6 +2795,36 @@ def _health_mod(up=True, hb="fresh", ur="ok"):
                 "note": "db ok" if deep else "", "ms": 42}
 
     today = lab_today().isoformat()  # #48: the archive files under the lab day
+    old = (lab_today() - timedelta(days=5)).isoformat()
+    tomorrow = (lab_today() + timedelta(days=1)).isoformat()
+
+    def fake_run_row():
+        """One `nightly_runs` row as Turso hands it back — stages and claims
+        are JSON TEXT columns, not decoded structures."""
+        stages = [{"name": n, "outcome": "ok", "detail": ""} for n in
+                  ("cost-pull", "synthesizer", "review", "publish")]
+        stages.append({"name": "report", "outcome": "not-due", "detail": ""})
+        claims = {label: today for label, _, _ in mod.HEARTBEATS
+                  if label != "uptime archive"}
+        row = {"run_id": "run-1", "host": "laptop",
+               "started_at": f"{today}T09:31:00Z", "lab_date": today,
+               "finished_at": f"{today}T09:34:00Z", "status": "ok",
+               "exit_code": 0}
+        if nr == "stage-failed":
+            stages[1] = {"name": "synthesizer", "outcome": "failed",
+                         "detail": "exit 1"}
+            row["status"] = "partial"
+        elif nr == "running":
+            row.update(status="running", finished_at=None)
+        elif nr == "old":
+            row.update(lab_date=old, started_at=f"{old}T09:31:00Z")
+        elif nr == "claim-newer":
+            claims["review email"] = tomorrow
+        elif nr == "claim-older":
+            claims["review email"] = "2019-01-01"
+        row["stages"] = json.dumps(stages)
+        row["claims"] = json.dumps(claims)
+        return row
 
     def fake_turso(sql, args=None):
         # Match the write on INSERT, not on the table name: the "uptime archive"
@@ -2804,6 +2836,14 @@ def _health_mod(up=True, hb="fresh", ur="ok"):
             return []
         if "health_email_state" in sql:
             return []  # not paused
+        # Its own case, not folded into the freshness branch: the run record is
+        # a self-report graded on lab_date, the heartbeats are artifact ages,
+        # and a test must be able to break one without touching the other.
+        if "FROM nightly_runs" in sql:
+            mod._sql_kinds.append("nightly-run")
+            if nr == "error":
+                raise RuntimeError("turso unreachable")
+            return [] if nr == "never" else [fake_run_row()]
         mod._sql_kinds.append(
             "uptime-freshness" if "uptime_daily" in sql else "freshness")
         if hb == "error":
@@ -2854,7 +2894,7 @@ def _():
                    {"authorization": "Bearer cron-secret"})
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         assert h.body == {"sent": True, "down": [], "stale": [],
-                          "uptime_rows": 2}, h.body
+                          "nightly_run": True, "uptime_rows": 2}, h.body
         assert len(sent) == 1
         subject, html, text = sent[0]
         n = len(mod.TARGETS)  # derived, not pinned — TARGETS grows
@@ -2993,7 +3033,7 @@ def _():
         h = invoke(mod, "/api/health_report", _health_cookie("admin"))
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         assert h.body == {"sent": True, "down": [], "stale": [],
-                          "uptime_rows": 2}, h.body
+                          "nightly_run": True, "uptime_rows": 2}, h.body
         assert len(sent) == 1, f"admin send path broken: {sent}"
     finally:
         restore()
@@ -3222,6 +3262,190 @@ def _():
     shared = {label for label, _, _ in ARTIFACT_CHECKS}
     assert shared <= hb_labels, shared - hb_labels
     assert "uptime archive" in hb_labels
+
+
+# === nightly run record — the second axis (docs/nightly-pipeline-plan.md #3) ===
+#
+# The heartbeats above ask "did the artifact appear". These ask "did the job
+# run, and what does it say happened" — a self-report, which is precisely what
+# #45 says never to trust ALONE. It is added beside the artifact checks, never
+# in place of them; the last test in this block guards that.
+
+@test("nightly run: a fresh all-ok run renders one line and grades ok")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="ok")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["ok"] is True, run
+        assert run["lab_date"] == lab_today().isoformat(), run
+        assert run["age_days"] == 0 and run["host"] == "laptop", run
+        assert run["mismatches"] == [], run
+
+        mod, sent = _health_mod(nr="ok")
+        invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
+        subject, html_body, text = sent[0]
+        line = [x for x in text.splitlines() if x.startswith("nightly run:")]
+        assert len(line) == 1, text
+        assert "ok on laptop" in line[0] and "5 stages" in line[0], line
+        # A good night must not grow the email past that one line: no
+        # indented per-stage or per-mismatch detail.
+        body_lines = text.split("\n\n--\n")[0].splitlines()
+        assert not [x for x in body_lines if x.startswith("  ")], text
+        assert subject.startswith("✅"), subject
+    finally:
+        restore()
+
+
+@test("nightly run: a failed stage grades not-ok and is named")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="stage-failed")
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.body["nightly_run"] is False, h.body
+        subject, html_body, text = sent[0]
+        assert "synthesizer: failed" in text, text
+        assert "synthesizer: failed" in html_body, html_body
+        # Not-due is the report stage's healthy answer and must not be
+        # reported as a failure.
+        assert "not-due" not in text, text
+        # A stage failure must not silence the email.
+        assert len(sent) == 1, sent
+    finally:
+        restore()
+
+
+@test("nightly run: older than the threshold reads 'host has been off'")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="old")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["ok"] is False, run
+        assert run["age_days"] == 5, run
+        assert "host has been off" in run["note"], run
+        # Graded on lab_date — the day the run STARTED. A catch-up push
+        # delivering five days of backlog at once must not read as fresh.
+        assert run["lab_date"] == (lab_today() - timedelta(days=5)).isoformat()
+    finally:
+        restore()
+
+
+@test("nightly run: no rows is 'never produced', not fresh")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="never")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["ok"] is False, run
+        assert "never produced" in run["note"], run
+        assert run["lab_date"] is None, run
+    finally:
+        restore()
+
+
+@test("nightly run: an unreadable table is UNCHECKED, never ok")
+def _():
+    """Mirrors the heartbeats: freshness fails LOUD. The pause lookup in the
+    same module fails open on purpose; a check that goes quiet when it cannot
+    see manufactures the exact confidence #45 exists to destroy."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="error")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["ok"] is None, run
+        assert "could not check" in run["note"], run
+
+        mod, sent = _health_mod(nr="error")
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert len(sent) == 1, "an unreadable run record killed the email"
+        assert h.body["nightly_run"] is None, h.body
+    finally:
+        restore()
+
+
+@test("nightly run: a claim newer than Turso names artifact, claim and remote")
+def _():
+    """What the cross-check buys: 'local has it, the cloud does not' and 'the
+    job never produced it' are different bugs, and until now the email could
+    not tell them apart."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="claim-newer")
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.body["nightly_run"] is False, h.body
+        run = invoke(mod, "/api/health_report?dry=1",
+                     {"authorization": "Bearer cron-secret"}).body["nightly_run"]
+        assert [m["artifact"] for m in run["mismatches"]] == ["review email"], run
+        m = run["mismatches"][0]
+        assert m["claimed"] == (lab_today() + timedelta(days=1)).isoformat(), m
+        assert m["remote"] == lab_today().isoformat(), m
+        text = sent[0][2]
+        assert (f"review email: run claimed {m['claimed']}, Turso has "
+                f"{m['remote']}") in text, text
+    finally:
+        restore()
+
+
+@test("nightly run: a claim at or behind Turso is not a mismatch")
+def _():
+    """The remote legitimately runs ahead after a later sync from another
+    source. Flagging that would make the check cry wolf every such night."""
+    restore = _health_env()
+    try:
+        for variant in ("ok", "claim-older"):  # equal, then strictly older
+            mod, sent = _health_mod(nr=variant)
+            run = invoke(mod, "/api/health_report?dry=1",
+                         {"authorization": "Bearer cron-secret"}).body["nightly_run"]
+            assert run["mismatches"] == [], (variant, run)
+            assert run["ok"] is True, (variant, run)
+    finally:
+        restore()
+
+
+@test("nightly run: HEARTBEATS is untouched — the run record is a SECOND axis")
+def _():
+    """A run record is a self-report, the one thing #45 forbids relying on:
+    it can claim success while the artifact is missing, which is how the
+    review email looked healthy for sixty nights. Replacing any artifact
+    check with it — or dropping one 'now that the pipeline reports' — is the
+    specific mistake this design rejects."""
+    from web.artifact_checks import ARTIFACT_CHECKS
+    mod, _ = _health_mod()
+    assert mod.HEARTBEATS[:len(ARTIFACT_CHECKS)] == ARTIFACT_CHECKS, mod.HEARTBEATS
+    assert len(mod.HEARTBEATS) == len(ARTIFACT_CHECKS) + 1, mod.HEARTBEATS
+    assert mod.HEARTBEATS[-1][0] == "uptime archive", mod.HEARTBEATS[-1]
+    # And the run record must be graded from its own query, not by reading
+    # the heartbeats it is cross-checked against.
+    assert "nightly_runs" in mod.NIGHTLY_RUN_SQL, mod.NIGHTLY_RUN_SQL
+
+
+@test("nightly run: heartbeats are read before the run record is graded")
+def _():
+    """The mismatch is a comparison between the two, so the order is load
+    bearing — grading the claims against an unpopulated list would report
+    every artifact missing from Turso."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
+        kinds = mod._sql_kinds
+        assert "nightly-run" in kinds, kinds
+        assert kinds.index("freshness") < kinds.index("nightly-run"), kinds
+    finally:
+        restore()
 
 
 @test("health_report: no auth + ?dry=1 → 401 and targets never polled")

@@ -20,10 +20,15 @@ suppresses sends for 7 days — state in the Turso `health_email_state` table
 (cloud-direct, no local copy, no sync leg — same class as page_views). The
 pause check fails open: if Turso is unreachable the email still sends.
 
-Two kinds of check. `TARGETS` answers "is this URL up" by polling. `HEARTBEATS`
-answers "did this recurring job run" by measuring the age of the artifact the
-job produces (issue #45) — a URL check can never see a dead cron, and that is
-the failure class that has actually bitten us.
+Three kinds of check. `TARGETS` answers "is this URL up" by polling.
+`HEARTBEATS` answers "did this recurring job run" by measuring the age of the
+artifact the job produces (issue #45) — a URL check can never see a dead cron,
+and that is the failure class that has actually bitten us. `_check_nightly_run`
+adds a SECOND AXIS beside the heartbeats, never a replacement: it reads the
+pipeline's own run record, which is a self-report and therefore exactly what
+#45 says not to rely on alone, but which can say things an artifact age cannot
+— which stage broke, and (by cross-checking its `claims` against Turso)
+whether a missing row means "never produced" or "produced but never synced".
 
 The same cron also archives yesterday's UptimeRobot ratios into `uptime_daily`
 (_archive_uptime, phase 1 of docs/plan-2026-08-01-uptime-dashboard.md). It rides
@@ -314,6 +319,136 @@ def _check_heartbeats():
     return out
 
 
+# Max age in LAB DAYS for the nightly run itself. 2 matches the artifact
+# thresholds: one missed night is quiet (a closed lid is normal and was
+# accepted when the jobs moved to the laptop), two is a breach.
+NIGHTLY_RUN_MAX_AGE_DAYS = 2
+
+# Stage outcomes that mean the stage did not do its work. "not-due" is
+# deliberately absent — the bi-monthly report reporting not-due is the healthy
+# answer on 29 nights out of 30.
+FAILED_OUTCOMES = ("failed", "timeout", "skipped")
+
+NIGHTLY_RUN_SQL = (
+    "SELECT run_id, host, started_at, lab_date, finished_at, status, "
+    "stages, claims, exit_code FROM nightly_runs "
+    "ORDER BY started_at DESC LIMIT 1"
+)
+
+
+def _decode_json_column(value, default):
+    """`stages`/`claims` arrive as JSON text from Turso. Never raises."""
+    if value is None or value == "":
+        return default
+    if isinstance(value, (list, dict)):
+        return value
+    try:
+        decoded = json.loads(value)
+    except (TypeError, ValueError):
+        return default
+    return decoded if isinstance(decoded, type(default)) else default
+
+
+def _claims_vs_remote(claims, heartbeats):
+    """Artifacts the run says it produced that Turso does not have.
+
+    This is what makes the sync leg checkable. Without it, "local has it and
+    the cloud does not" is indistinguishable from "the job never produced
+    it" — different bugs with different fixes, and the health email has never
+    been able to tell them apart.
+
+    Only a claim STRICTLY NEWER than the remote value is a mismatch: the
+    remote being ahead is normal after a later sync from another source, and
+    flagging it would make the check cry wolf.
+    """
+    by_name = {h["name"]: h for h in heartbeats}
+    out = []
+    for label, claimed in (claims or {}).items():
+        remote = (by_name.get(label) or {}).get("last")
+        if claimed and remote and str(claimed) > str(remote):
+            out.append({"artifact": label, "claimed": str(claimed),
+                        "remote": str(remote)})
+        elif claimed and not remote:
+            out.append({"artifact": label, "claimed": str(claimed),
+                        "remote": None})
+    return out
+
+
+def _check_nightly_run(heartbeats=None):
+    """The newest nightly pipeline run, graded and cross-checked.
+
+    A SECOND AXIS, not a replacement. The artifact heartbeats above ask "did
+    the output appear"; this asks "did the job run, and what did it say
+    happened". Both are needed: a run record is a self-report, and #45 exists
+    because self-reports are exactly what failed in all six incidents. Keep
+    HEARTBEATS intact.
+
+    Graded on `lab_date` — the day the run STARTED — never on arrival time.
+    A catch-up push sends several days of backlog at once, and grading on
+    arrival would make three dead nights look like they all happened at 2am
+    today, silently undoing the mechanism.
+
+    Fails loud (ok=None) when unreadable, like _check_heartbeats and unlike
+    the pause lookup.
+    """
+    entry = {"lab_date": None, "host": None, "status": None,
+             "age_days": None, "ok": None, "stages": [], "mismatches": [],
+             "note": ""}
+    try:
+        rows = turso_query(NIGHTLY_RUN_SQL)
+    except Exception as e:
+        entry["note"] = f"could not check ({type(e).__name__})"
+        print(f"health_report: nightly run unreadable: {e}"[:200])
+        return entry
+
+    if not rows:
+        entry["ok"] = False
+        entry["note"] = "no rows — never produced"
+        return entry
+
+    row = rows[0]
+    entry["host"] = row.get("host")
+    entry["status"] = row.get("status")
+    entry["lab_date"] = str(row.get("lab_date") or "")[:10]
+    try:
+        last = datetime.strptime(entry["lab_date"], "%Y-%m-%d").date()
+    except ValueError:
+        entry["ok"] = False
+        entry["note"] = f"unparseable lab_date {entry['lab_date']!r}"
+        return entry
+
+    entry["age_days"] = (lab_today() - last).days
+    if entry["age_days"] > NIGHTLY_RUN_MAX_AGE_DAYS:
+        entry["ok"] = False
+        entry["note"] = (f"no run for {entry['age_days']} days — "
+                         "host has been off")
+        return entry
+
+    entry["stages"] = _decode_json_column(row.get("stages"), [])
+    bad = [s for s in entry["stages"] if s.get("outcome") in FAILED_OUTCOMES]
+    if entry["status"] == "running":
+        entry["ok"] = False
+        entry["note"] = "started but never finished — died mid-run"
+        return entry
+    if bad:
+        entry["ok"] = False
+        entry["note"] = ", ".join(f"{s.get('name')}: {s['outcome']}"
+                                  for s in bad)
+        return entry
+
+    entry["mismatches"] = _claims_vs_remote(
+        _decode_json_column(row.get("claims"), {}), heartbeats or [])
+    if entry["mismatches"]:
+        entry["ok"] = False
+        entry["note"] = ("claimed but not in Turso: "
+                         + ", ".join(m["artifact"]
+                                     for m in entry["mismatches"]))
+        return entry
+
+    entry["ok"] = True
+    return entry
+
+
 def _fetch_uptime_monitors(api_key):
     """One v2 getMonitors call. Module-level so tests can replace it."""
     payload = json.dumps({
@@ -458,7 +593,33 @@ TUNE_PROMPT = (
 )
 
 
-def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None):
+def _nightly_run_headline(nr):
+    """One line for the run record. Terse on a good night, by design."""
+    if not nr.get("lab_date"):
+        return f"nightly run: {nr.get('note') or 'could not check'}"
+    where = f" on {nr['host']}" if nr.get("host") else ""
+    head = f"nightly run: {nr['lab_date']} {nr.get('status') or '?'}{where}"
+    if nr.get("ok"):
+        return f"{head} — {len(nr.get('stages') or [])} stages"
+    return f"{head} — {nr.get('note') or 'not ok'}"
+
+
+def _nightly_run_details(nr):
+    """The lines that only appear when something is wrong: which stage broke,
+    and which artifact the run claims Turso is missing."""
+    out = []
+    for s in nr.get("stages") or []:
+        if s.get("outcome") in FAILED_OUTCOMES:
+            out.append(f"{s.get('name')}: {s.get('outcome')}"
+                       + (f" — {s['detail']}" if s.get("detail") else ""))
+    for m in nr.get("mismatches") or []:
+        out.append(f"{m['artifact']}: run claimed {m['claimed']}, Turso has "
+                   f"{m['remote'] or 'nothing'} — publish is dropping rows")
+    return out
+
+
+def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None,
+             nightly_run=None):
     """Return (subject, text, html)."""
     heartbeats = heartbeats or []
     up = [r for r in results if r["ok"]]
@@ -495,6 +656,17 @@ def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None):
             for h in stale + unknown:
                 lines.append(f"  {h['name']}: {h['note']}"
                              + (f" (last {h['last']})" if h["last"] else ""))
+
+    # The second axis (nightly run record). Sits under the heartbeats because
+    # it answers the other half of the question they ask: they see whether the
+    # artifact appeared, this sees whether the job ran and what it says
+    # happened. Never a substitute for them — a self-report is exactly what
+    # failed in every #45 incident.
+    if nightly_run:
+        lines.append("")
+        lines.append(_nightly_run_headline(nightly_run))
+        if not nightly_run.get("ok"):
+            lines.extend(f"  {d}" for d in _nightly_run_details(nightly_run))
 
     # The archive result must reach the inbox: the JSON response is unread and
     # Vercel logs evaporate in ~an hour, so a 0-row pull is otherwise invisible.
@@ -534,6 +706,19 @@ def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None):
                    f"{len(stale)} stale, {len(unknown)} unchecked</p>"
                    f"<ul style='margin-top:0'>{items}</ul>")
 
+    if not nightly_run:
+        run_html = ""
+    elif nightly_run.get("ok"):
+        run_html = (f"<p style='color:#2e7d32'>"
+                    f"{escape(_nightly_run_headline(nightly_run))}</p>")
+    else:
+        details = "".join(f"<li>{escape(d)}</li>"
+                          for d in _nightly_run_details(nightly_run))
+        run_html = (f"<p style='color:#c62828;margin-bottom:4px'>"
+                    f"{escape(_nightly_run_headline(nightly_run))}</p>"
+                    + (f"<ul style='margin-top:0'>{details}</ul>"
+                       if details else ""))
+
     if uptime_rows is None:
         archive_html = ""
     elif uptime_rows:
@@ -547,6 +732,7 @@ def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None):
         "<div style='font-family:-apple-system,sans-serif;font-size:15px;color:#222'>"
         f"<table style='border-collapse:collapse'>{rows}</table>"
         f"{hb_html}"
+        f"{run_html}"
         f"{archive_html}"
         f"<p><a href='{escape(pause_url, quote=True)}'>Pause these emails for a week</a></p>"
         "<p style='color:#666'>To tune this email, tell the prompt-lab agent:<br>"
@@ -605,10 +791,14 @@ class handler(BaseHTTPRequestHandler):
             paused = bool(paused_until and paused_until > _utc())
 
             results = _check_targets()
+            # Heartbeats first: the run record's claims are graded AGAINST
+            # them, so the comparison needs both halves and this order.
             heartbeats = _check_heartbeats()
+            nightly_run = _check_nightly_run(heartbeats)
 
             if dry:
                 self._json({"targets": results, "heartbeats": heartbeats,
+                            "nightly_run": nightly_run,
                             "paused_until": paused_until,
                             "would_send": not paused})
                 return
@@ -632,11 +822,17 @@ class handler(BaseHTTPRequestHandler):
             pause_url = ("https://prompt-labs.org/api/health_report"
                          f"?action=pause&token={_make_pause_token()}")
             subject, text, html = _compose(results, _joke(), pause_url,
-                                           heartbeats, uptime_rows)
+                                           heartbeats, uptime_rows,
+                                           nightly_run)
             _send_email(subject, html, text)
+            # Summarised here (tri-state ok) rather than returned whole, the
+            # way `stale` reduces the heartbeats: the send path's JSON is a
+            # problem summary. ?dry=1 above carries the full block for
+            # #/health.
             self._json({"sent": True,
                         "down": [r["name"] for r in results if not r["ok"]],
                         "stale": [h["name"] for h in heartbeats if h["ok"] is False],
+                        "nightly_run": nightly_run["ok"],
                         "uptime_rows": uptime_rows})
         except Exception as e:
             print(f"health_report error: {e}"[:300])
