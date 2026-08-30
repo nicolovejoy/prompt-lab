@@ -40,7 +40,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -155,21 +155,234 @@ def run_pipeline(stages: list[Stage], cwd: Path = ROOT) -> list[StageResult]:
     return list(results.values())
 
 
+def run_identity(now_utc: datetime, host: str) -> tuple:
+    """(run_id, started_at, lab_date) for a run starting at `now_utc`.
+
+    run_id is deterministic from the pair that identifies a run, so the start
+    write and the finish write address the same row without carrying state,
+    and a catch-up push cannot mint a second row for a run already sent.
+
+    lab_date is the PACIFIC calendar day (#48). The nightly slot is 02:30
+    Pacific, which is 09:30 UTC — the same date — but a run that starts
+    before 5pm Pacific on the preceding evening is a different UTC day, and
+    grading freshness on a UTC bucket is the phantom-tomorrow bug.
+    """
+    started_at = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    lab_date = now_utc.astimezone(LAB_TZ).date().isoformat()
+    return f"{started_at}|{host}", started_at, lab_date
+
+
+def overall_status(results: list) -> str:
+    """ok when nothing failed, partial when some did, failed when none ran."""
+    if not results:
+        return "failed"
+    bad = {"failed", "timeout", "skipped"}
+    failures = [r for r in results if r.outcome in bad]
+    if not failures:
+        return "ok"
+    return "failed" if len(failures) == len(results) else "partial"
+
+
+def record_run(store, **fields) -> bool:
+    """Write the run record. NEVER raises — returns True if the write landed.
+
+    Same rule as heartbeat.ping and record_login: a monitoring write must not
+    be able to fail the work it monitors. A dropped record costs one false
+    staleness line in the health email; an exception here would cost the
+    night's actual work, which is the wrong trade in every direction.
+    """
+    try:
+        store.upsert_nightly_run(**fields)
+        return True
+    except Exception as e:  # noqa: BLE001 — deliberately swallowed, see above
+        print(f"run record: write failed ({type(e).__name__}: {e})", flush=True)
+        return False
+
+
+def collect_claims(store) -> dict:
+    """Max date per artifact in the LOCAL store, as of end of run.
+
+    Never raises: a claims failure must not lose the run record that carries
+    the stage outcomes, which is the more valuable half.
+    """
+    sys.path.insert(0, str(ROOT / "web"))
+    try:
+        from artifact_checks import ARTIFACT_CHECKS
+    except Exception as e:  # noqa: BLE001
+        print(f"run record: claims unavailable ({type(e).__name__}: {e})",
+              flush=True)
+        return {}
+
+    claims = {}
+    for label, sql, _ in ARTIFACT_CHECKS:
+        try:
+            row = store.conn.execute(sql).fetchone()
+            claims[label] = row[0] if row else None
+        except Exception as e:  # noqa: BLE001
+            print(f"run record: claim {label} failed ({type(e).__name__})",
+                  flush=True)
+    return claims
+
+
+def push_runs(local_store, remote_store, *, limit: int = 30) -> int:
+    """Publish local run records Turso has not seen. Returns rows pushed.
+
+    Stateless catch-up, deliberately: read the remote high-water mark and
+    send everything local holds after it. No `pushed_at` column to keep in
+    sync, no local mutation, and a machine that was offline for days heals on
+    its next run — the same self-healing shape as migrate()'s dedupe.
+
+    This runs AFTER the publish stage, as its own step, so it observes
+    publish rather than depending on it. A record that travelled inside the
+    sync leg would be eaten by exactly the publish failure it needs to
+    report, which is the failure shape this whole plan exists to kill.
+
+    Never raises: see record_run.
+    """
+    try:
+        newest = remote_store.get_nightly_runs(limit=1)
+        high_water = newest[0]["started_at"] if newest else None
+        pending = local_store.get_nightly_runs(limit=limit,
+                                               started_after=high_water)
+    except Exception as e:  # noqa: BLE001
+        print(f"run record: push skipped ({type(e).__name__}: {e})", flush=True)
+        return 0
+
+    pushed = 0
+    for row in sorted(pending, key=lambda r: r["started_at"]):
+        try:
+            remote_store.upsert_nightly_run(
+                run_id=row["run_id"], host=row["host"],
+                started_at=row["started_at"], lab_date=row["lab_date"],
+                status=row["status"], finished_at=row.get("finished_at"),
+                stages=row.get("stages"), claims=row.get("claims"),
+                exit_code=row.get("exit_code"))
+            pushed += 1
+        except Exception as e:  # noqa: BLE001
+            print(f"run record: push of {row['run_id']} failed "
+                  f"({type(e).__name__}: {e})", flush=True)
+            break  # remote is unhealthy; the next run retries the whole tail
+    return pushed
+
+
+def machine_host() -> str:
+    """This machine's label, shared with the Turso sync so both agree.
+
+    Imported lazily: sync_to_turso pulls in the store and env loading, and
+    nightly_pipeline must stay importable by tests without that cost.
+    """
+    from sync_to_turso import machine_label
+    return machine_label()
+
+
+def _finish_run(store, *, run_id, host, started_at, lab_date, results,
+                exit_code) -> None:
+    """The closing half of the bracket: final record, then the Turso push.
+
+    Runs in main()'s `finally` so it happens whatever the stage block did —
+    a raise between the stages and here would otherwise leave the local row
+    reading "running" forever, and the next morning's email would report
+    "died mid-run" about a night that completed every stage.
+    """
+    record_run(store, run_id=run_id, host=host, started_at=started_at,
+               lab_date=lab_date, status=overall_status(results),
+               finished_at=datetime.now(timezone.utc).strftime(
+                   "%Y-%m-%dT%H:%M:%SZ"),
+               stages=[{"name": r.name, "outcome": r.outcome,
+                        "detail": r.detail} for r in results],
+               claims=collect_claims(store),
+               exit_code=exit_code)
+
+    # Own step, after publish (see push_runs' docstring). Opened lazily so a
+    # machine with no Turso credentials still completes its local run record.
+    try:
+        from store import get_store as _get_store
+        remote = _get_store("turso")
+        try:
+            # The remote table is created by TursoKnowledgeStore.migrate(),
+            # whose only other caller in the nightly path is INSIDE the
+            # publish stage — so without this, night one plus a failed
+            # publish means the SELECT in push_runs raises and the record of
+            # the publish failure never leaves the laptop.
+            remote.migrate()
+            n = push_runs(store, remote)
+            print(f"run record: pushed {n} run(s) to Turso", flush=True)
+        finally:
+            remote.close()
+    except Exception as e:  # noqa: BLE001
+        print(f"run record: remote unavailable ({type(e).__name__}: {e})",
+              flush=True)
+
+
 def main() -> int:
-    stages = build_stages()
-    results = run_pipeline(stages)
-    by_name = {r.name: r for r in results}
+    # The run-record PRELUDE is best-effort too, not just the write it sets
+    # up: the import, machine_host() (which pulls in sync_to_turso, the store
+    # layer and env loading) and get_store() (sqlite3.connect) can each
+    # raise, and an unguarded prelude means no stage runs at all — no cost
+    # pull, no synthesizer, no review, no publish. A monitoring write must
+    # never be able to fail the work it monitors, and that includes being
+    # unable to set itself up.
+    store, host = None, "unknown"
+    try:
+        from store import get_store
+        host = machine_host()
+        # "sqlite" pinned, not the GROUND_CONTROL_STORE default: this is
+        # explicitly the LOCAL half of a local -> remote push, and a stray
+        # env var would otherwise make record_run write straight to Turso
+        # and collect_claims fail on the missing .conn.
+        store = get_store("sqlite")
+    except Exception as e:  # noqa: BLE001
+        print(f"run record: setup failed ({type(e).__name__}: {e})", flush=True)
 
-    # Heartbeat only when both legs actually landed (see module docstring).
-    if by_name.get("cost-pull") and by_name["cost-pull"].ok \
-            and by_name.get("publish") and by_name["publish"].ok:
-        subprocess.run([sys.executable, str(ROOT / "heartbeat.py"), "cost-pull"],
-                       cwd=ROOT, timeout=60)
+    run_id, started_at, lab_date = run_identity(
+        datetime.now(timezone.utc), host)
 
-    failed = [r for r in results if r.outcome in ("failed", "timeout", "skipped")]
-    summary = " · ".join(f"{r.name}={r.outcome}" for r in results)
-    print(f"pipeline: {summary}", flush=True)
-    return 1 if failed else 0
+    if store is not None:
+        try:
+            store.migrate()
+        except Exception as e:  # noqa: BLE001
+            print(f"run record: migrate failed ({type(e).__name__}: {e})",
+                  flush=True)
+        # Written before any stage so a host powered off mid-run leaves a
+        # started-never-finished row. "Died mid-run" and "never ran" are
+        # different facts and this is the only thing that tells them apart.
+        record_run(store, run_id=run_id, host=host, started_at=started_at,
+                   lab_date=lab_date, status="running")
+
+    results: list = []
+    exit_code = 1
+    try:
+        results = run_pipeline(build_stages())
+        by_name = {r.name: r for r in results}
+
+        failed = [r for r in results
+                  if r.outcome in ("failed", "timeout", "skipped")]
+        exit_code = 1 if failed else 0
+        summary = " · ".join(f"{r.name}={r.outcome}" for r in results)
+        print(f"pipeline: {summary}", flush=True)
+
+        # Heartbeat only when both legs actually landed (see module
+        # docstring). Guarded for the same reason record_run is — it is
+        # monitoring, and subprocess.run raises TimeoutExpired.
+        if by_name.get("cost-pull") and by_name["cost-pull"].ok \
+                and by_name.get("publish") and by_name["publish"].ok:
+            try:
+                subprocess.run(
+                    [sys.executable, str(ROOT / "heartbeat.py"), "cost-pull"],
+                    cwd=ROOT, timeout=60)
+            except Exception as e:  # noqa: BLE001
+                print(f"cost-pull heartbeat: skipped "
+                      f"({type(e).__name__}: {e})", flush=True)
+    finally:
+        if store is not None:
+            _finish_run(store, run_id=run_id, host=host,
+                        started_at=started_at, lab_date=lab_date,
+                        results=results, exit_code=exit_code)
+            try:
+                store.close()
+            except Exception:  # noqa: BLE001
+                pass
+    return exit_code
 
 
 if __name__ == "__main__":

@@ -13,7 +13,14 @@ plists are parked in `~/Library/LaunchAgents/disabled-promptlab-step2-20260829/`
 The report became artifact-keyed (runs when the current 1st/16th half-month has
 no `monthly_report` snapshot), which is a slice of step 4's catch-up property.
 Step 2's sleeping-host acceptance test pends the first overnight run. **Step 3
-designed 2026-08-29** (below, decided with Nico); steps 3–5 not built.
+DONE 2026-08-29** — `nightly_runs` table (both store backends), the pipeline
+brackets each run (`status="running"` before the first stage, full row after),
+`push_runs` is its own step after publish (stateless catch-up, upsert by
+`run_id`), and the health email cross-checks the run record against the
+artifact list and escalates on a bad run. **Step 5 DONE 2026-08-29** —
+`daily_summaries`/`weekly_rollups` archive the replaced row into
+`*_superseded` before an upsert or repair overwrites it. Step 3's blocked-push
+acceptance test pends staging (see the report). Step 4 remains unbuilt.
 Supersedes the tactical "write the review snapshot straight to Turso" idea,
 which patched a symptom.
 

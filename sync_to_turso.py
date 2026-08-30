@@ -273,6 +273,7 @@ def main():
             session_count=row.get("session_count", 0) or 0,
             commit_count=row.get("commit_count", 0) or 0,
             model=row.get("model", "unknown"),
+            prompt_version=row.get("prompt_version"),
         ),
         dry_run,
     )

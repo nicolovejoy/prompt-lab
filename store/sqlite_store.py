@@ -37,6 +37,18 @@ from .base import (
 DEFAULT_DB_PATH = Path.home() / ".claude" / "prompt-history.db"
 
 
+def _decode_run(row: dict) -> dict:
+    """JSON-decode a nightly_runs row's blob columns in place.
+
+    Shared shape with the Turso store: both return `stages` as a list and
+    `claims` as a dict, so no reader needs to know which backend it holds.
+    """
+    for col in ("stages", "claims"):
+        raw = row.get(col)
+        row[col] = json.loads(raw) if raw else None
+    return row
+
+
 class SqliteKnowledgeStore(KnowledgeStore):
 
     def __init__(self, db_path: Path | str | None = None):
@@ -74,6 +86,34 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 model TEXT,
                 created_at TEXT DEFAULT (datetime('now')),
                 UNIQUE(project, date)
+            );
+
+            -- Append-only history of paid prose that an upsert replaced.
+            -- LOCAL ONLY: never synced, no reader needs it, and it must not
+            -- grow a sync leg. These rows cost real API calls; an upsert
+            -- that overwrote them in place is how a re-run silently
+            -- destroyed a night's work (nightly-pipeline-plan step 5).
+            CREATE TABLE IF NOT EXISTS daily_summaries_superseded (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project TEXT NOT NULL,
+                date TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                key_decisions TEXT,
+                model TEXT,
+                prompt_version TEXT,
+                original_created_at TEXT,
+                superseded_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS weekly_rollups_superseded (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project TEXT NOT NULL,
+                week_start TEXT NOT NULL,
+                narrative TEXT NOT NULL,
+                highlights TEXT,
+                model TEXT,
+                prompt_version TEXT,
+                original_created_at TEXT,
+                superseded_at TEXT DEFAULT (datetime('now'))
             );
 
             CREATE TABLE IF NOT EXISTS themes (
@@ -131,6 +171,21 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 output_tokens INTEGER,
                 created_at TEXT DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS nightly_runs (
+                run_id TEXT PRIMARY KEY,
+                host TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                lab_date TEXT NOT NULL,
+                finished_at TEXT,
+                status TEXT NOT NULL,
+                stages TEXT,
+                claims TEXT,
+                exit_code INTEGER,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_nightly_runs_started
+                ON nightly_runs(started_at);
 
             CREATE TABLE IF NOT EXISTS project_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -292,8 +347,46 @@ class SqliteKnowledgeStore(KnowledgeStore):
         self._add_column_if_missing("prompts", "kind", "TEXT")
         self._add_column_if_missing("projects", "github_url", "TEXT")
         self._add_column_if_missing("projects", "site_url", "TEXT")
+        # Both tables already exist on real machines, so CREATE TABLE IF NOT
+        # EXISTS above never adds this column there — the digest that
+        # identifies which vintage of the synthesizer's prompt produced a
+        # row (see synthesizer.prompt_version).
+        self._add_column_if_missing("daily_summaries", "prompt_version", "TEXT")
+        self._add_column_if_missing("weekly_rollups", "prompt_version", "TEXT")
 
         self._conn.commit()
+
+    # Columns copied to the archive, per live table. The archive keeps the
+    # prose, what produced it, and when — not the counts, which are cheap to
+    # recompute and are not what the API call was spent on.
+    _ARCHIVE_SPEC = {
+        "daily_summaries": ("daily_summaries_superseded",
+                            ("project", "date"), "summary",
+                            ("project", "date", "summary", "key_decisions",
+                             "model", "prompt_version")),
+        "weekly_rollups": ("weekly_rollups_superseded",
+                           ("project", "week_start"), "narrative",
+                           ("project", "week_start", "narrative", "highlights",
+                            "model", "prompt_version")),
+    }
+
+    def _archive_row(self, table, existing, new_content):
+        """Copy `existing` into <table>_superseded when the incoming write
+        carries DIFFERENT content.
+
+        Identical content archives nothing — the nightly pipeline re-runs days
+        routinely, and a re-run that changed nothing should not churn history.
+        Called inside the caller's transaction, so the archive and the replace
+        commit together or not at all.
+        """
+        archive, _key_cols, content_col, cols = self._ARCHIVE_SPEC[table]
+        if existing is None or existing[content_col] == new_content:
+            return
+        placeholders = ", ".join("?" * (len(cols) + 1))
+        self._conn.execute(
+            f"INSERT INTO {archive} ({', '.join(cols)}, original_created_at) "
+            f"VALUES ({placeholders})",
+            tuple(existing[c] for c in cols) + (existing["created_at"],))
 
     def _add_column_if_missing(self, table: str, column: str, decl: str) -> None:
         """Idempotent ADD COLUMN — SQLite has no IF NOT EXISTS for columns.
@@ -330,14 +423,22 @@ class SqliteKnowledgeStore(KnowledgeStore):
         return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
 
     def upsert_daily_summary(self, *, project, date, summary, key_decisions,
-                             prompt_count, session_count, commit_count, model):
+                             prompt_count, session_count, commit_count, model,
+                             prompt_version=None):
+        # Archive first, in the same transaction: this prose cost an API call,
+        # and INSERT OR REPLACE would drop it on the floor (step 5).
+        existing = self._conn.execute(
+            "SELECT * FROM daily_summaries WHERE project = ? AND date = ?",
+            (project, date)).fetchone()
+        self._archive_row("daily_summaries", existing, summary)
         self._conn.execute("""
             INSERT OR REPLACE INTO daily_summaries
                 (project, date, summary, key_decisions, prompt_count,
-                 session_count, commit_count, model)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 session_count, commit_count, model, prompt_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (project, date, summary, json.dumps(key_decisions),
-              prompt_count, session_count, commit_count, model))
+              prompt_count, session_count, commit_count, model,
+              prompt_version))
         self._conn.commit()
 
     # ---- Weekly rollups ----
@@ -359,15 +460,23 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
     def upsert_weekly_rollup(self, *, project, week_start, narrative,
                               highlights, daily_summary_ids,
-                              prompt_count, session_count, commit_count, model):
+                              prompt_count, session_count, commit_count, model,
+                              prompt_version=None):
+        # Archive first, in the same transaction — same reasoning as
+        # upsert_daily_summary: this narrative cost an API call.
+        existing = self._conn.execute(
+            "SELECT * FROM weekly_rollups WHERE project = ? AND week_start = ?",
+            (project, week_start)).fetchone()
+        self._archive_row("weekly_rollups", existing, narrative)
         self._conn.execute("""
             INSERT OR REPLACE INTO weekly_rollups
                 (project, week_start, narrative, highlights, daily_summary_ids,
-                 prompt_count, session_count, commit_count, model)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 prompt_count, session_count, commit_count, model,
+                 prompt_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (project, week_start, narrative, json.dumps(highlights),
               json.dumps(daily_summary_ids), prompt_count, session_count,
-              commit_count, model))
+              commit_count, model, prompt_version))
         self._conn.commit()
 
     # ---- Public summaries ----
@@ -512,6 +621,42 @@ class SqliteKnowledgeStore(KnowledgeStore):
         """, (review_type, date, subject, content_html, content_text,
               content_markdown, model, input_tokens, output_tokens))
         self._conn.commit()
+
+    # ---- Nightly run record ----
+
+    def upsert_nightly_run(self, *, run_id, host, started_at, lab_date, status,
+                           finished_at=None, stages=None, claims=None,
+                           exit_code=None):
+        self._conn.execute("""
+            INSERT INTO nightly_runs
+                (run_id, host, started_at, lab_date, finished_at, status,
+                 stages, claims, exit_code)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
+                host = excluded.host,
+                started_at = excluded.started_at,
+                lab_date = excluded.lab_date,
+                finished_at = excluded.finished_at,
+                status = excluded.status,
+                stages = excluded.stages,
+                claims = excluded.claims,
+                exit_code = excluded.exit_code
+        """, (run_id, host, started_at, lab_date, finished_at, status,
+              json.dumps(stages) if stages is not None else None,
+              json.dumps(claims) if claims is not None else None,
+              exit_code))
+        self._conn.commit()
+
+    def get_nightly_runs(self, *, limit=10, started_after=None):
+        clauses, params = ["1=1"], []
+        if started_after:
+            clauses.append("started_at > ?")
+            params.append(started_after)
+        sql = (f"SELECT * FROM nightly_runs WHERE {' AND '.join(clauses)} "
+               "ORDER BY started_at DESC LIMIT ?")
+        params.append(limit)
+        return [_decode_run(dict(r))
+                for r in self._conn.execute(sql, params).fetchall()]
 
     # ---- Project snapshots ----
 

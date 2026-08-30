@@ -142,6 +142,7 @@ class TursoKnowledgeStore(KnowledgeStore):
                     session_count INTEGER DEFAULT 0,
                     commit_count INTEGER DEFAULT 0,
                     model TEXT,
+                    prompt_version TEXT,
                     created_at TEXT DEFAULT (datetime('now')),
                     UNIQUE(project, date)
                 )
@@ -173,6 +174,7 @@ class TursoKnowledgeStore(KnowledgeStore):
                     session_count INTEGER DEFAULT 0,
                     commit_count INTEGER DEFAULT 0,
                     model TEXT,
+                    prompt_version TEXT,
                     created_at TEXT DEFAULT (datetime('now')),
                     UNIQUE(project, week_start)
                 )
@@ -206,6 +208,24 @@ class TursoKnowledgeStore(KnowledgeStore):
             {"sql": """
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_review_snapshots_key
                     ON review_snapshots(review_type, date)
+            """},
+            {"sql": """
+                CREATE TABLE IF NOT EXISTS nightly_runs (
+                    run_id TEXT PRIMARY KEY,
+                    host TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    lab_date TEXT NOT NULL,
+                    finished_at TEXT,
+                    status TEXT NOT NULL,
+                    stages TEXT,
+                    claims TEXT,
+                    exit_code INTEGER,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            """},
+            {"sql": """
+                CREATE INDEX IF NOT EXISTS idx_nightly_runs_started
+                    ON nightly_runs(started_at)
             """},
             {"sql": """
                 CREATE TABLE IF NOT EXISTS project_snapshots (
@@ -362,6 +382,19 @@ class TursoKnowledgeStore(KnowledgeStore):
             """},
         ])
 
+        # Both tables already exist in production, so CREATE TABLE IF NOT
+        # EXISTS above never adds this column there — same defensive pattern
+        # as the sqlite store's _add_column_if_missing.
+        self._add_column_if_missing("daily_summaries", "prompt_version", "TEXT")
+        self._add_column_if_missing("weekly_rollups", "prompt_version", "TEXT")
+
+    def _add_column_if_missing(self, table: str, column: str, decl: str) -> None:
+        cols_result = self._execute(f"PRAGMA table_info({table})")
+        cols = {r.get("name") for r in self._rows_to_dicts(cols_result)}
+        if not cols or column in cols:
+            return
+        self._execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
     # ---- Daily summaries ----
 
     def get_daily_summaries(self, *, project=None, since=None, until=None,
@@ -384,14 +417,19 @@ class TursoKnowledgeStore(KnowledgeStore):
         return self._rows_to_dicts(self._execute(sql, args))
 
     def upsert_daily_summary(self, *, project, date, summary, key_decisions,
-                             prompt_count, session_count, commit_count, model):
+                             prompt_count, session_count, commit_count, model,
+                             prompt_version=None):
+        # No archive here: superseded prose is local history and must not
+        # gain a sync leg (nightly-pipeline-plan step 5). The archive lives
+        # only in the sqlite store.
         self._execute("""
             INSERT OR REPLACE INTO daily_summaries
                 (project, date, summary, key_decisions, prompt_count,
-                 session_count, commit_count, model)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 session_count, commit_count, model, prompt_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [project, date, summary, json.dumps(key_decisions),
-              prompt_count, session_count, commit_count, model])
+              prompt_count, session_count, commit_count, model,
+              prompt_version])
 
     def upsert_daily_summary_part(self, *, project, date, machine, summary,
                                    key_decisions, prompt_count, session_count,
@@ -433,15 +471,18 @@ class TursoKnowledgeStore(KnowledgeStore):
 
     def upsert_weekly_rollup(self, *, project, week_start, narrative,
                               highlights, daily_summary_ids,
-                              prompt_count, session_count, commit_count, model):
+                              prompt_count, session_count, commit_count, model,
+                              prompt_version=None):
+        # No archive here — same reasoning as upsert_daily_summary.
         self._execute("""
             INSERT OR REPLACE INTO weekly_rollups
                 (project, week_start, narrative, highlights, daily_summary_ids,
-                 prompt_count, session_count, commit_count, model)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 prompt_count, session_count, commit_count, model,
+                 prompt_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [project, week_start, narrative, json.dumps(highlights),
               json.dumps(daily_summary_ids), prompt_count, session_count,
-              commit_count, model])
+              commit_count, model, prompt_version])
 
     # ---- Public summaries ----
 
@@ -585,6 +626,49 @@ class TursoKnowledgeStore(KnowledgeStore):
                 output_tokens = excluded.output_tokens
         """, [review_type, date, subject, content_html, content_text,
               content_markdown, model, input_tokens, output_tokens])
+
+    # ---- Nightly run record ----
+
+    def upsert_nightly_run(self, *, run_id, host, started_at, lab_date, status,
+                           finished_at=None, stages=None, claims=None,
+                           exit_code=None):
+        # Upsert by run_id: the pipeline's catch-up push replays local rows
+        # newer than the remote high-water mark, so re-pushing an already
+        # pushed run must be a no-op rather than a duplicate. created_at is
+        # deliberately not updated on conflict — it records first arrival.
+        self._execute("""
+            INSERT INTO nightly_runs
+                (run_id, host, started_at, lab_date, finished_at, status,
+                 stages, claims, exit_code)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
+                host = excluded.host,
+                started_at = excluded.started_at,
+                lab_date = excluded.lab_date,
+                finished_at = excluded.finished_at,
+                status = excluded.status,
+                stages = excluded.stages,
+                claims = excluded.claims,
+                exit_code = excluded.exit_code
+        """, [run_id, host, started_at, lab_date, finished_at, status,
+              json.dumps(stages) if stages is not None else None,
+              json.dumps(claims) if claims is not None else None,
+              exit_code])
+
+    def get_nightly_runs(self, *, limit=10, started_after=None):
+        clauses, args = ["1=1"], []
+        if started_after:
+            clauses.append("started_at > ?")
+            args.append(started_after)
+        sql = (f"SELECT * FROM nightly_runs WHERE {' AND '.join(clauses)} "
+               "ORDER BY started_at DESC LIMIT ?")
+        args.append(limit)
+        rows = self._rows_to_dicts(self._execute(sql, args))
+        for row in rows:
+            for col in ("stages", "claims"):
+                raw = row.get(col)
+                row[col] = json.loads(raw) if raw else None
+        return rows
 
     # ---- Project snapshots ----
 

@@ -79,7 +79,14 @@ class KnowledgeStore(ABC):
     def upsert_daily_summary(self, *, project: str, date: str, summary: str,
                              key_decisions: list[str], prompt_count: int,
                              session_count: int, commit_count: int,
-                             model: str) -> None: ...
+                             model: str,
+                             prompt_version: str | None = None) -> None:
+        """Insert or replace one (project, date) daily summary.
+
+        Archives the row being replaced into `daily_summaries_superseded`
+        before overwriting it, unless the incoming content is identical to
+        what's already there (nightly-pipeline-plan step 5) — the prose cost
+        an API call and must not be silently destroyed by a re-run."""
 
     # ---- Weekly rollups ----
 
@@ -93,7 +100,14 @@ class KnowledgeStore(ABC):
                               narrative: str, highlights: list[str],
                               daily_summary_ids: list[int],
                               prompt_count: int, session_count: int,
-                              commit_count: int, model: str) -> None: ...
+                              commit_count: int, model: str,
+                              prompt_version: str | None = None) -> None:
+        """Insert or replace one (project, week_start) weekly rollup.
+
+        Archives the row being replaced into `weekly_rollups_superseded`
+        before overwriting it, unless the incoming content is identical to
+        what's already there (nightly-pipeline-plan step 5) — same reasoning
+        as upsert_daily_summary."""
 
     # ---- Public summaries (for external consumers like pianohouse) ----
 
@@ -171,6 +185,27 @@ class KnowledgeStore(ABC):
                               content_markdown: str | None = None,
                               model: str, input_tokens: int,
                               output_tokens: int) -> None: ...
+
+    # ---- Nightly run record (nightly-pipeline-plan step 3) ----
+
+    @abstractmethod
+    def upsert_nightly_run(self, *, run_id: str, host: str, started_at: str,
+                           lab_date: str, status: str,
+                           finished_at: str | None = None,
+                           stages: list | None = None,
+                           claims: dict | None = None,
+                           exit_code: int | None = None) -> None:
+        """Write or update one nightly pipeline run, keyed by run_id.
+
+        Called twice per run: once with status='running' before any stage,
+        once at the end with the full outcome. Upsert rather than insert so a
+        catch-up push of an already-pushed row is a no-op.
+        """
+
+    @abstractmethod
+    def get_nightly_runs(self, *, limit: int = 10,
+                         started_after: str | None = None) -> list[dict]:
+        """Runs newest first. `stages` and `claims` are decoded, or None."""
 
     # ---- Project snapshots ----
 

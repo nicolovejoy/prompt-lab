@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Synthesizer — generates daily summaries, weekly rollups, and project snapshots."""
 
+from __future__ import annotations
+
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -10,6 +13,17 @@ from datetime import datetime
 import heartbeat
 from claude_api import SONNET, call_claude, estimate_cost_cents, get_client, load_env
 from store import get_store
+
+
+def prompt_version(system: str, tool: dict) -> str:
+    """Stable digest of the prompt that produced an artifact.
+
+    `model` alone does not identify a vintage: these prompts get iterated, and
+    without this an old row is indistinguishable from a new one produced by
+    different instructions.
+    """
+    payload = json.dumps({"system": system, "tool": tool}, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()[:12]
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +98,7 @@ Focus on WHAT was done and WHY, not low-level details. Be concise."""
                 session_count=len(data["sessions"]),
                 commit_count=len(data["commits"]),
                 model=result["model"],
+                prompt_version=prompt_version(system, SUMMARY_TOOL),
             )
 
             store.log_synthesis(
@@ -173,6 +188,7 @@ Focus on progress, decisions, and direction — not individual tasks."""
                 session_count=total_sessions,
                 commit_count=total_commits,
                 model=result["model"],
+                prompt_version=prompt_version(system, WEEKLY_ROLLUP_TOOL),
             )
 
             store.log_synthesis(

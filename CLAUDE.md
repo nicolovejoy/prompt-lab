@@ -149,12 +149,41 @@ agents are booted out and parked in
 `workflow/run-cost-pull.sh` and the four old plists are deleted from the repo
 (their coupling/no-`source` lessons live on in `nightly_pipeline.py` and the
 new plist's comments). Tests: `scripts/test_nightly_pipeline.py` (11, real
-subprocesses). **Pending verification: the sleeping-host acceptance test** —
-after the first overnight, check `nightly-pipeline.log` for stage order and
-that Turso's newest `review_snapshots` date equals the run date. Next: step 3
-(`nightly_runs` run record — open design question: cloud-direct write vs.
-synced table; the invariants list must gain it either way), step 4 mostly
-absorbed (report catch-up done; reader catch-up otherwise still optional).
+subprocesses).
+
+**Step 3 DONE 2026-08-29** (decided: local write, pushed to Turso as its own
+step — see the Invariants entry, not a synced table). `nightly_runs` brackets
+every run — a `status="running"` row before the first stage, a full row
+(stages, `overall_status`, `machine_host`) after — and `push_runs` runs after
+publish with stateless catch-up (push local rows newer than the remote's
+newest `started_at`, upsert by `run_id`). The health email's
+`_check_nightly_run`/`_claims_vs_remote` cross-check the run record against
+`HEARTBEATS`; a bad run escalates the subject and a malformed `stages`
+payload can't 500 the email. **Step 5 DONE 2026-08-29** — `daily_summaries`
+and `weekly_rollups` archive the row an upsert or repair is about to replace
+into `*_superseded` (local only) before overwriting, so re-running the
+synthesizer stops destroying prose that cost an API call. One asymmetry
+worth knowing: `weekly_rollups.prompt_version` syncs to Turso but
+`daily_summaries.prompt_version` does not — `merge_summary_parts()` in
+`sync_to_turso.py` builds a fixed dict that omits it, deliberately, since the
+column is local provenance and no cloud reader needs it, so Turso's
+`daily_summaries.prompt_version` stays perpetually NULL. That's accepted,
+not a broken sync leg.
+
+Step 4 remains mostly absorbed (report catch-up done; reader catch-up
+otherwise still optional) and unbuilt beyond that.
+
+**Two acceptance tests are still outstanding and need a real overnight, not
+a healthy awake host** (an awake, online laptop passes both either way,
+which is exactly why they need staging): step 2's sleeping-host test — with
+the machine deliberately asleep across 02:30, confirm one wake produces one
+run in the correct order and Turso's newest `review_snapshots` date equals
+the run date; and step 3's blocked-push test — block the cloud push for two
+consecutive runs and confirm the third backfills all three rows AND that
+freshness reported stale *during* the block, not only after. Also unverified
+until it happens: the health-email changes are Vercel-side code reading
+Turso, so the first real morning email carrying a `nightly_runs` row is
+their acceptance test.
 
 **SPAN outage 2026-08-21 — RESOLVED same day, not our fault, and the cause was
 one toggle.** Cloudflare **Bot Fight Mode** was managed-challenging Vercel's
@@ -1062,6 +1091,19 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
 - **Cloud-direct tables have no leg in `sync_to_turso.py` and must never gain one:**
   `page_views`, `health_email_state`, `project_metadata`, `issue_categories`,
   `uptime_daily`. That absence is what makes drift structurally impossible.
+- **`nightly_runs` is written locally and pushed to Turso as its own step
+  AFTER the publish stage** — never inside the sync leg, or a publish failure
+  eats the record of the publish failure. Catch-up is stateless (push local
+  rows newer than the remote's newest `started_at`, upsert by `run_id`), so
+  drift is impossible without a `run_id` meaning two things. Freshness grades
+  `lab_date` — the day the run STARTED — never arrival time, or a catch-up
+  push makes dead nights look live.
+- **The run record never replaces an artifact heartbeat.** It is a
+  self-report, the exact side-channel claim #45 forbids. `HEARTBEATS` and the
+  run record are two axes and the email reads the combination.
+- **An upsert never destroys paid prose.** `daily_summaries` and
+  `weekly_rollups` archive the replaced row into `*_superseded` first (local
+  only, never synced). Repair scripts archive before deleting.
 - **Nothing automated writes the `public_*` tables.** They are written only by the
   reviewed, git-committed draft-to-artifact flow (`scripts/draft_public_refresh.py` →
   human review → `scripts/publish_public_draft.py`). Never by `/handoff`, the
