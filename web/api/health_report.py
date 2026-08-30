@@ -379,17 +379,32 @@ def _claims_vs_remote(claims, heartbeats):
     because Turso is empty — reading that as "claimed but missing" would turn
     one Turso outage into a fleet of invented publish failures.
 
-    Returns (mismatches, unknown_labels). A claim naming an artifact this
-    email does not grade at all is DRIFT and is reported, not dropped: the
-    two lists match by construction today (web/artifact_checks.py is their
-    one home), and if that ever stops being true the cross-check must
-    complain rather than go quiet — going quiet is the anti-pattern this
-    whole mechanism exists to kill.
+    Returns (mismatches, unknown_labels, missing_labels).
+
+    A claim naming an artifact this email does not grade at all is DRIFT and
+    is reported, not dropped: the two lists match by construction today
+    (web/artifact_checks.py is their one home), and if that ever stops being
+    true the cross-check must complain rather than go quiet — going quiet is
+    the anti-pattern this whole mechanism exists to kill.
+
+    The opposite drift is the likelier one and gets the same treatment. A
+    claims payload with entries MISSING — `{}` because the artifact_checks
+    import failed, or short one label whose local query raised — used to
+    produce zero mismatches and grade the run fully green, so a cross-check
+    that had stopped checking anything read as health. Absence is not
+    nothing.
+
+    Only an absent KEY counts as missing. `collect_claims` writes every
+    label it queries, with None for an artifact that does not exist locally
+    yet, so a healthy run always carries all of them and a None value is a
+    real answer rather than a gap — that is why this cannot fire nightly.
     """
     graded = {h["name"]: h for h in heartbeats if h.get("ok") is not None}
     unchecked = {h["name"] for h in heartbeats if h.get("ok") is None}
+    claims = claims or {}
+    missing = [label for label, _, _ in ARTIFACT_CHECKS if label not in claims]
     out, unknown = [], []
-    for label, claimed in (claims or {}).items():
+    for label, claimed in claims.items():
         if label in unchecked:
             continue
         if label not in graded:
@@ -402,7 +417,7 @@ def _claims_vs_remote(claims, heartbeats):
         elif claimed and not remote:
             out.append({"artifact": label, "claimed": str(claimed),
                         "remote": None})
-    return out, sorted(unknown)
+    return out, sorted(unknown), sorted(missing)
 
 
 def _check_nightly_run(heartbeats=None):
@@ -475,7 +490,7 @@ def _check_nightly_run(heartbeats=None):
             or f"run reported {entry['status'] or 'no status'}")
         return entry
 
-    entry["mismatches"], unknown = _claims_vs_remote(
+    entry["mismatches"], unknown, missing = _claims_vs_remote(
         _decode_json_column(row.get("claims"), {}), heartbeats or [])
     notes = []
     if entry["mismatches"]:
@@ -484,6 +499,8 @@ def _check_nightly_run(heartbeats=None):
     if unknown:
         notes.append("claim names an artifact this email does not grade: "
                      + ", ".join(unknown))
+    if missing:
+        notes.append("run recorded no claim for: " + ", ".join(missing))
     if notes:
         entry["ok"] = False
         entry["note"] = "; ".join(notes)

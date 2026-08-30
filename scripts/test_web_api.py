@@ -2828,6 +2828,15 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
             claims["review email"] = "2019-01-01"
         elif nr == "claim-unknown":
             claims["a label this email does not grade"] = today
+        elif nr == "claim-missing-one":
+            # collect_claims dropped one label whose local query raised.
+            del claims["synthesizer"]
+        elif nr == "claim-missing-all":
+            claims = {}  # the artifact_checks import failed: claimed nothing
+        elif nr == "claim-null":
+            # A local artifact that does not exist YET: a real answer, not a
+            # gap, and it must not fire the missing-claim check.
+            claims["synthesizer"] = None
         row["stages"] = json.dumps(stages)
         row["claims"] = json.dumps(claims)
         if nr == "malformed-stages":
@@ -3489,6 +3498,46 @@ def _():
         assert "does not grade" in run["note"], run
         assert "a label this email does not grade" in run["note"], run
         # A drifted label is not a publish failure, so it is not a mismatch.
+        assert run["mismatches"] == [], run
+    finally:
+        restore()
+
+
+@test("nightly run: a claims payload with entries MISSING is never green")
+def _():
+    """The likelier drift, and the one that used to go quiet: _claims_vs_remote
+    iterated only the claims present, so a run that claimed nothing produced
+    zero mismatches and graded fully ok. A cross-check that has stopped
+    checking anything must not read as health."""
+    restore = _health_env()
+    try:
+        for variant, expected in (("claim-missing-one", "synthesizer"),
+                                  ("claim-missing-all", "review email")):
+            mod, sent = _health_mod(nr=variant)
+            run = invoke(mod, "/api/health_report?dry=1",
+                         {"authorization": "Bearer cron-secret"}
+                         ).body["nightly_run"]
+            assert run["ok"] is False, (variant, run)
+            assert "run recorded no claim for" in run["note"], (variant, run)
+            assert expected in run["note"], (variant, run)
+            # A missing claim is not a publish failure, so it is not a
+            # mismatch — the two answer different questions.
+            assert run["mismatches"] == [], (variant, run)
+    finally:
+        restore()
+
+
+@test("nightly run: a claim present but NULL is an answer, not a gap")
+def _():
+    """collect_claims writes every label it queries, with None for an
+    artifact that does not exist locally yet. Treating that as missing would
+    fire on a healthy run — which is how a check earns being ignored."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="claim-null")
+        run = invoke(mod, "/api/health_report?dry=1",
+                     {"authorization": "Bearer cron-secret"}).body["nightly_run"]
+        assert run["ok"] is True, run
         assert run["mismatches"] == [], run
     finally:
         restore()
