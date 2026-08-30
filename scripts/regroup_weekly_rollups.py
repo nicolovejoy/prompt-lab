@@ -250,10 +250,20 @@ def main(argv: list[str]) -> int:
         if partial:
             ids = sorted({int(i) for r in partial
                           for i in str(r["rollup_ids"]).split(",")})
-            print(f"    repair = delete + let the fixed pipeline regenerate "
-                  f"(destroys existing prose — human call):\n"
-                  f"    DELETE FROM weekly_rollups WHERE id IN "
-                  f"({', '.join(map(str, ids))});")
+            id_list = ", ".join(map(str, ids))
+            # Archive before delete (nightly-pipeline-plan step 5): this
+            # narrative cost an API call, so the doomed rows are copied into
+            # weekly_rollups_superseded (sqlite-local only) before the
+            # DELETE a human runs by hand.
+            print(f"    repair = archive + delete + let the fixed pipeline "
+                  f"regenerate (human call):\n"
+                  f"    INSERT INTO weekly_rollups_superseded\n"
+                  f"      (project, week_start, narrative, highlights, model, "
+                  f"prompt_version, original_created_at)\n"
+                  f"    SELECT project, week_start, narrative, highlights, "
+                  f"model, prompt_version, created_at\n"
+                  f"      FROM weekly_rollups WHERE id IN ({id_list});\n"
+                  f"    DELETE FROM weekly_rollups WHERE id IN ({id_list});")
 
         if not apply:
             print("\ndry run — nothing written. --apply fixes section 1 only.")

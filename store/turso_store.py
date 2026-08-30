@@ -142,6 +142,7 @@ class TursoKnowledgeStore(KnowledgeStore):
                     session_count INTEGER DEFAULT 0,
                     commit_count INTEGER DEFAULT 0,
                     model TEXT,
+                    prompt_version TEXT,
                     created_at TEXT DEFAULT (datetime('now')),
                     UNIQUE(project, date)
                 )
@@ -173,6 +174,7 @@ class TursoKnowledgeStore(KnowledgeStore):
                     session_count INTEGER DEFAULT 0,
                     commit_count INTEGER DEFAULT 0,
                     model TEXT,
+                    prompt_version TEXT,
                     created_at TEXT DEFAULT (datetime('now')),
                     UNIQUE(project, week_start)
                 )
@@ -380,6 +382,19 @@ class TursoKnowledgeStore(KnowledgeStore):
             """},
         ])
 
+        # Both tables already exist in production, so CREATE TABLE IF NOT
+        # EXISTS above never adds this column there — same defensive pattern
+        # as the sqlite store's _add_column_if_missing.
+        self._add_column_if_missing("daily_summaries", "prompt_version", "TEXT")
+        self._add_column_if_missing("weekly_rollups", "prompt_version", "TEXT")
+
+    def _add_column_if_missing(self, table: str, column: str, decl: str) -> None:
+        cols_result = self._execute(f"PRAGMA table_info({table})")
+        cols = {r.get("name") for r in self._rows_to_dicts(cols_result)}
+        if not cols or column in cols:
+            return
+        self._execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
     # ---- Daily summaries ----
 
     def get_daily_summaries(self, *, project=None, since=None, until=None,
@@ -402,14 +417,19 @@ class TursoKnowledgeStore(KnowledgeStore):
         return self._rows_to_dicts(self._execute(sql, args))
 
     def upsert_daily_summary(self, *, project, date, summary, key_decisions,
-                             prompt_count, session_count, commit_count, model):
+                             prompt_count, session_count, commit_count, model,
+                             prompt_version=None):
+        # No archive here: superseded prose is local history and must not
+        # gain a sync leg (nightly-pipeline-plan step 5). The archive lives
+        # only in the sqlite store.
         self._execute("""
             INSERT OR REPLACE INTO daily_summaries
                 (project, date, summary, key_decisions, prompt_count,
-                 session_count, commit_count, model)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 session_count, commit_count, model, prompt_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [project, date, summary, json.dumps(key_decisions),
-              prompt_count, session_count, commit_count, model])
+              prompt_count, session_count, commit_count, model,
+              prompt_version])
 
     def upsert_daily_summary_part(self, *, project, date, machine, summary,
                                    key_decisions, prompt_count, session_count,
@@ -451,15 +471,18 @@ class TursoKnowledgeStore(KnowledgeStore):
 
     def upsert_weekly_rollup(self, *, project, week_start, narrative,
                               highlights, daily_summary_ids,
-                              prompt_count, session_count, commit_count, model):
+                              prompt_count, session_count, commit_count, model,
+                              prompt_version=None):
+        # No archive here — same reasoning as upsert_daily_summary.
         self._execute("""
             INSERT OR REPLACE INTO weekly_rollups
                 (project, week_start, narrative, highlights, daily_summary_ids,
-                 prompt_count, session_count, commit_count, model)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 prompt_count, session_count, commit_count, model,
+                 prompt_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [project, week_start, narrative, json.dumps(highlights),
               json.dumps(daily_summary_ids), prompt_count, session_count,
-              commit_count, model])
+              commit_count, model, prompt_version])
 
     # ---- Public summaries ----
 

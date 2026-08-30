@@ -79,7 +79,14 @@ class KnowledgeStore(ABC):
     def upsert_daily_summary(self, *, project: str, date: str, summary: str,
                              key_decisions: list[str], prompt_count: int,
                              session_count: int, commit_count: int,
-                             model: str) -> None: ...
+                             model: str,
+                             prompt_version: str | None = None) -> None:
+        """Insert or replace one (project, date) daily summary.
+
+        Archives the row being replaced into `daily_summaries_superseded`
+        before overwriting it, unless the incoming content is identical to
+        what's already there (nightly-pipeline-plan step 5) — the prose cost
+        an API call and must not be silently destroyed by a re-run."""
 
     # ---- Weekly rollups ----
 
@@ -93,7 +100,14 @@ class KnowledgeStore(ABC):
                               narrative: str, highlights: list[str],
                               daily_summary_ids: list[int],
                               prompt_count: int, session_count: int,
-                              commit_count: int, model: str) -> None: ...
+                              commit_count: int, model: str,
+                              prompt_version: str | None = None) -> None:
+        """Insert or replace one (project, week_start) weekly rollup.
+
+        Archives the row being replaced into `weekly_rollups_superseded`
+        before overwriting it, unless the incoming content is identical to
+        what's already there (nightly-pipeline-plan step 5) — same reasoning
+        as upsert_daily_summary."""
 
     # ---- Public summaries (for external consumers like pianohouse) ----
 
