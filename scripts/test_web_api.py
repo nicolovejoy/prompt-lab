@@ -3415,6 +3415,95 @@ def _():
         restore()
 
 
+@test("nightly run: a bad run escalates an otherwise-clean subject")
+def _():
+    """A red line in the body under a ✅ subject is this repo's signature
+    failure — the sensor works and the output goes nowhere. The run record
+    escalates on the same axis a stale heartbeat does."""
+    restore = _health_env()
+    try:
+        for variant in ("stage-failed", "old", "running", "claim-newer"):
+            mod, sent = _health_mod(nr=variant)  # up=True, hb="fresh"
+            invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+            subject = sent[0][0]
+            assert subject.startswith("🟡"), (variant, subject)
+            assert "1 stale (nightly run)" in subject, (variant, subject)
+    finally:
+        restore()
+
+
+@test("nightly run: an unchecked run escalates like an unchecked heartbeat")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="error")  # heartbeats all fresh
+        invoke(mod, "/api/health_report",
+               {"authorization": "Bearer cron-secret"})
+        subject = sent[0][0]
+        assert subject.startswith("🟡"), subject
+        assert "1 unchecked" in subject, subject
+        assert "stale" not in subject, subject
+    finally:
+        restore()
+
+
+@test("nightly run: a good run leaves the subject untouched")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="ok")
+        invoke(mod, "/api/health_report",
+               {"authorization": "Bearer cron-secret"})
+        subject = sent[0][0]
+        assert subject.startswith("✅"), subject
+        assert "nightly run" not in subject, subject
+    finally:
+        restore()
+
+
+@test("nightly run: a stale heartbeat still names itself alongside the run")
+def _():
+    """The run record is added to the existing stale list, not substituted for
+    it — the artifacts must keep naming themselves in the subject."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(hb="stale")
+        invoke(mod, "/api/health_report",
+               {"authorization": "Bearer cron-secret"})
+        subject = sent[0][0]
+        assert "review email" in subject, subject
+        assert f"{len(mod.HEARTBEATS) + 1} stale" in subject, subject
+    finally:
+        restore()
+
+
+@test("nightly run: unreadable heartbeats are skipped by the cross-check")
+def _():
+    """`last` is None both when Turso is empty and when the freshness query
+    could not run. Only the first is a publish failure — reading the second
+    that way would turn one Turso outage into a fleet of invented mismatches,
+    and would escalate the subject as 'stale' when the honest answer is
+    'unchecked'."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(hb="error")  # freshness unreadable
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["mismatches"] == [], run
+        assert run["ok"] is True, run
+
+        mod, sent = _health_mod(hb="never")  # Turso genuinely empty
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["mismatches"], run
+        assert all(m["remote"] is None for m in run["mismatches"]), run
+    finally:
+        restore()
+
+
 @test("nightly run: HEARTBEATS is untouched — the run record is a SECOND axis")
 def _():
     """A run record is a self-report, the one thing #45 forbids relying on:

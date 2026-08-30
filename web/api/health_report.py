@@ -360,11 +360,18 @@ def _claims_vs_remote(claims, heartbeats):
     Only a claim STRICTLY NEWER than the remote value is a mismatch: the
     remote being ahead is normal after a later sync from another source, and
     flagging it would make the check cry wolf.
+
+    An artifact whose own heartbeat could not be checked (ok is None) is
+    SKIPPED, not flagged. Its `last` is None for want of an answer, not
+    because Turso is empty — reading that as "claimed but missing" would turn
+    one Turso outage into a fleet of invented publish failures.
     """
-    by_name = {h["name"]: h for h in heartbeats}
+    by_name = {h["name"]: h for h in heartbeats if h.get("ok") is not None}
     out = []
     for label, claimed in (claims or {}).items():
-        remote = (by_name.get(label) or {}).get("last")
+        if label not in by_name:
+            continue
+        remote = by_name[label].get("last")
         if claimed and remote and str(claimed) > str(remote):
             out.append({"artifact": label, "claimed": str(claimed),
                         "remote": str(remote)})
@@ -627,15 +634,27 @@ def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None,
     stale = [h for h in heartbeats if h["ok"] is False]
     unknown = [h for h in heartbeats if h["ok"] is None]
 
+    # The run record escalates the subject on the SAME axis as a stale or
+    # unchecked heartbeat, rather than getting an escalation of its own. A red
+    # line in the body under a green subject is this repo's signature failure
+    # — the sensor works and the output goes nowhere — and shipping that
+    # inside the mechanism built to detect it would be the joke of the year.
+    # Kept out of `stale`/`unknown` themselves: those lists render the
+    # heartbeats block, and the run record has its own line below it.
+    run_ok = nightly_run.get("ok") if nightly_run else True
+    stale_names = ([h["name"] for h in stale]
+                   + (["nightly run"] if run_ok is False else []))
+    unchecked = len(unknown) + (1 if run_ok is None else 0)
+
     if down:
         subject = (f"🔴 ecosystem health: {', '.join(r['name'] for r in down)} DOWN "
                    f"({len(up)}/{len(results)} up)")
-    elif stale:
+    elif stale_names:
         subject = (f"🟡 ecosystem health: {len(up)}/{len(results)} up · "
-                   f"{len(stale)} stale ({', '.join(h['name'] for h in stale)})")
-    elif unknown:
+                   f"{len(stale_names)} stale ({', '.join(stale_names)})")
+    elif unchecked:
         subject = (f"🟡 ecosystem health: {len(up)}/{len(results)} up · "
-                   f"{len(unknown)} unchecked")
+                   f"{unchecked} unchecked")
     else:
         subject = f"✅ ecosystem health: {len(up)}/{len(results)} up"
 
