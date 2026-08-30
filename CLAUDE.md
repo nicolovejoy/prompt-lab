@@ -185,6 +185,24 @@ until it happens: the health-email changes are Vercel-side code reading
 Turso, so the first real morning email carrying a `nightly_runs` row is
 their acceptance test.
 
+**Three of the five live risks WERE closed by hand on merge night
+(2026-08-29), attended rather than at 2:30.** Worth knowing they are facts,
+not hopes: `migrate()` was run against **real Turso** — `nightly_runs` exists
+with all ten columns and `prompt_version` landed on both summary tables, so
+the `ALTER TABLE ADD COLUMN` path **does** work over the libSQL HTTP
+pipeline, which was the branch's biggest unknown. `migrate()` was also run on
+the real local `prompt-history.db` — all three new tables present, both
+columns added, 241 daily summaries intact. And the deployed lambda imports
+cleanly: `/api/health_report` returns **401, not 500**, which is the tell —
+a missing `artifact_checks.py` in `web/vercel.json`'s `includeFiles` would
+fail at import *before* auth ran and would have silently stopped the daily
+health email. Only the two staged-host tests above remain.
+
+The general habit that produced this, worth repeating: when a change ships
+code that will first execute unattended overnight, run the irreversible-ish
+part by hand while awake. It is the same action the job would take, and it
+converts "we'll find out at 2:30" into a fact in about a minute.
+
 **SPAN outage 2026-08-21 — RESOLVED same day, not our fault, and the cause was
 one toggle.** Cloudflare **Bot Fight Mode** was managed-challenging Vercel's
 egress on `influx.pianohouseproject.org/api/v2/query`, so SPAN's health check
