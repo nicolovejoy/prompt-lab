@@ -63,6 +63,67 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**Resend paid→free migration — PLANNED 2026-09-03, execution deferred to
+next week (Nico deciding the final mothball list "after Sunday").** Driver:
+Resend's free plan now allows 3 verified domains (was 1), and Nico is paying
+$20/mo on a plan he no longer needs. Key fact that shaped the plan: Resend
+counts every subdomain as its own domain slot — `span.pianohouseproject.org`,
+`mail.pianohouseproject.org` and `soiree.pianohouseproject.org` are three
+separate entries, not one "pianohouseproject.org" slot — so naive per-project
+counting would have blown the budget.
+
+Decided shape, 3 slots:
+1. `mail.pianohouseproject.org` — shared default sending domain for **five**
+   consumers: piano house project itself, prompt-lab, byside, span, and
+   ibuild4you. Each gets its own from-address on the one verified domain
+   (Resend doesn't care once a domain is verified) — proposed but not yet
+   confirmed: `reviews@`/`health@mail.pianohouseproject.org` for prompt-lab
+   (mirrors its current `@prompt-labs.org` naming), `byside@`/`span@`/`ibuild@`
+   for the other three (those repos pick their own).
+2. `bakerylouise.com` — unchanged, own domain.
+3. `prntd.org` — unchanged, own domain.
+
+Everything else (the other ~37 domains in the account, including
+`prompt-labs.org` itself, `ibuild4you.com`, `by-side.net`,
+`span.pianohouseproject.org`, `soiree.pianohouseproject.org`,
+`free-vite.com`, `send.notemaxxing.net`, `send.anomatom.com`, …) gets deleted
+from Resend — exact final list TBD after Sunday, since some of those map to
+projects Nico is mothballing outright, not just consolidating email for.
+
+**What this means for prompt-lab specifically:** `send-review.py`
+(`REVIEW_FROM_EMAIL`) and the Vercel health-check cron (`HEALTH_FROM_EMAIL`,
+defaulted in `web/api/health_report.py`) both currently send from
+`@prompt-labs.org` — not on Nico's original keep-list, caught only because
+this session cross-checked `.env.tpl` against his stated plan. Once
+`mail.pianohouseproject.org` is verified and can accept prompt-lab as a
+sender, these need to move to the `@mail.pianohouseproject.org` addresses
+above (env var + code-default change, `web/api/health_report.py` +
+`.env.tpl`/`.env.example`). **Not yet done** — deploying it early would break
+current nightly/health email, since prompt-lab's Resend API key can't send
+from that domain until the owning repo adds it as a sender.
+
+**Open questions, unresolved:**
+- Who owns `mail.pianohouseproject.org` today (which repo's Resend config +
+  DNS is authoritative) — needed before byside/span/ibuild4you/prompt-lab can
+  be added as additional senders on it. Not yet identified; out of this
+  repo's visibility.
+- Final mothball list (everything past the 3 kept domains) — Nico deciding
+  after Sunday.
+- Per-repo API key scoping: if byside/span/ibuild4you currently hold
+  domain-scoped Resend keys (rather than full-account keys), those need
+  rotating once their from-address changes — unverified per-repo, not
+  prompt-lab's to check.
+
+**Sequencing when this executes:** delete the unneeded Resend domains first,
+then downgrade the Resend plan (Settings → Billing) — unconfirmed whether
+Resend blocks a downgrade while still over the new domain limit, so don't
+rely on the downgrade doing the cleanup for you. Cross-repo coordination
+(byside, span, ibuild4you, piano house project's own repo) goes through
+`~/src/.handoff` per this repo's own convention, not a PR from prompt-lab —
+this remote session has neither `~/src/.handoff` cloned nor Vercel/Resend
+credentials, so none of the actual execution can happen from a cloud
+container session like this one.
+
 **Public refresh backlog fully cleared 2026-08-27/28 — style guide for future
 drafts now lives in Claude's memory, not here.** Nico reviewed and edited
 drafts for ibuild4you, musicforge, prntd, prompt-lab (24 weeks total across
