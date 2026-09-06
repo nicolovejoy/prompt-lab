@@ -10,7 +10,7 @@ ANTHROPIC_ADMIN_KEY=op://dev-secrets/admin-cost-tracking-2026-05/credential
 RESEND_API_KEY=op://dev-secrets/Resend/api-key
 # Apex, not a subdomain: only prompt-labs.org is verified in Resend. The old
 # send.prompt-labs.org silently 403'd every nightly send from 2026-06-01 to 2026-07-31.
-REVIEW_FROM_EMAIL=reviews@prompt-labs.org
+REVIEW_FROM_EMAIL=reviews@mail.pianohouseproject.org
 REVIEW_TO_EMAIL=nlovejoy@me.com
 
 # Turso remote sync (cloud dashboard and mobile access)
