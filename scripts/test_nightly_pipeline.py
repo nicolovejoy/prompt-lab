@@ -416,19 +416,24 @@ def _():
 def _():
     """The `sleep` here drives a fake monotonic clock directly (patched onto
     the module, the same pattern this file already uses for subprocess.run),
-    while `resolve` separately jumps a real wall-clock stand-in far past the
-    budget on every call — simulating the host sleeping for hours between
-    probes. If the implementation ever budgeted on time.time() instead of
-    time.monotonic(), the very first check would see the huge wall-clock
-    jump and bail after one attempt; because it must use monotonic, sleeping
-    for real hours of wall time changes nothing and it still runs its full
-    complement of attempts."""
+    while `resolve` separately jumps a fake `time.time()` (also patched) far
+    past the budget on every call — simulating the host sleeping for hours
+    between probes. A time.time()-based implementation would read that huge
+    jump on its very first post-probe check and bail after one attempt;
+    because it must budget on monotonic instead, the wall-clock jump changes
+    nothing and it still runs its full, deterministic complement of
+    attempts. Both clocks are patched so a swapped implementation is caught
+    here — immediately, not after a real ~15s busy-loop bounded by
+    budget_s."""
     fake_mono = [0.0]
     wall_jumped = [0.0]
     resolve_calls = {"n": 0}
 
     def fake_monotonic():
         return fake_mono[0]
+
+    def fake_time():
+        return wall_jumped[0]
 
     def fake_sleep(s):
         fake_mono[0] += s
@@ -438,17 +443,22 @@ def _():
         wall_jumped[0] += 999_999  # hours of "real" time, per call
         raise socket.gaierror(8, "nodename nor servname provided")
 
-    saved_monotonic = np.time.monotonic
+    saved_monotonic, saved_time = np.time.monotonic, np.time.time
     np.time.monotonic = fake_monotonic
+    np.time.time = fake_time
     try:
         ok, detail = np.wait_for_network(host="x", budget_s=15, poll_s=5,
                                          resolve=fake_resolve, sleep=fake_sleep)
     finally:
-        np.time.monotonic = saved_monotonic
+        np.time.monotonic, np.time.time = saved_monotonic, saved_time
 
     assert ok is False
     # t=0,5,10,15 each fail the probe; the 15 check meets the budget exactly.
-    assert resolve_calls["n"] == 4, resolve_calls
+    # A time.time()-based implementation would instead see wall_jumped[0]
+    # already >> 15 right after the FIRST failed probe and stop there.
+    assert resolve_calls["n"] == 4, (
+        f"expected 4 attempts from a monotonic budget, got {resolve_calls}; "
+        "an implementation reading time.time() would stop at 1")
     assert wall_jumped[0] > 3_000_000, "the wall clock should have moved a lot"
     assert "gaierror" in detail, detail
 
