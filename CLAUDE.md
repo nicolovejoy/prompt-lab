@@ -237,17 +237,27 @@ not a broken sync leg.
 Step 4 remains mostly absorbed (report catch-up done; reader catch-up
 otherwise still optional) and unbuilt beyond that.
 
-**Two acceptance tests are still outstanding and need a real overnight, not
-a healthy awake host** (an awake, online laptop passes both either way,
-which is exactly why they need staging): step 2's sleeping-host test — with
-the machine deliberately asleep across 02:30, confirm one wake produces one
-run in the correct order and Turso's newest `review_snapshots` date equals
-the run date; and step 3's blocked-push test — block the cloud push for two
-consecutive runs and confirm the third backfills all three rows AND that
-freshness reported stale *during* the block, not only after. Also unverified
-until it happens: the health-email changes are Vercel-side code reading
-Turso, so the first real morning email carrying a `nightly_runs` row is
-their acceptance test.
+**Step 3's blocked-push acceptance test PASSED in the wild 2026-09-06, harder
+than it was specified.** It was never staged — Sep 1-4 failed for real, all
+four could not push, and the Sep 5 run's stateless catch-up backfilled every
+one. Turso holds an unbroken Aug 30 - Sep 6 `nightly_runs` sequence. The half
+of that test about freshness reporting stale *during* the block did NOT pass,
+and that is the wake/DNS entry above: the email stayed green throughout,
+because grading only the newest row cannot see a record that has not arrived.
+
+**Still outstanding: step 2's sleeping-host test**, and it needs a real
+overnight rather than a healthy awake host (an awake, online laptop passes it
+either way, which is exactly why it needs staging). With the machine
+deliberately asleep across 02:30, confirm one wake produces one run in the
+correct order and Turso's newest `review_snapshots` date equals the run date.
+Note the network gate now sits in front of this, so a sleeping-host run should
+show a `--- network: resolved after Ns ---` line rather than a stage dying on
+`gaierror`; that line is itself the evidence the gate is earning its place.
+
+Also still unverified until it happens: the health-email changes are
+Vercel-side code reading Turso, so the first real morning email carrying a
+`nightly_runs` row is their acceptance test — **and it does not run until the
+merge is pushed and deployed.**
 
 **Three of the five live risks WERE closed by hand on merge night
 (2026-08-29), attended rather than at 2:30.** Worth knowing they are facts,
