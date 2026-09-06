@@ -116,6 +116,70 @@ finished 02:32:22, `LastExitStatus = 0`; `pmset -g log` shows the only sleep
 that hour was 02:05–02:21, before the job. The caffeinate wrapper held through
 the run. The sleep fix is no longer a claim.
 
+**The nightly pipeline failed every night the laptop had to WAKE for it —
+FOUND AND FIXED 2026-09-06, and the watchdog that should have said so was
+blind by construction.** A week of real unattended runs produced the evidence
+the two staged-host acceptance tests were waiting for, and one of them passed
+while the other found this.
+
+The correlation was exact. Runs that fired at 02:30:0x on an already-awake
+laptop succeeded (Aug 30, Sep 5, Sep 6). Runs that fired on a scheduled wake
+failed (Sep 1, 2, 3, 4), every one at `socket.gaierror: [Errno 8] nodename nor
+servname provided, or not known`. launchd fires within ~5s of the wake and DNS
+is not up yet. Aug 31 produced no run at all. Four of seven nights sent no
+review email.
+
+Three defects, each an instance of the failure shape at the bottom of this
+file, and they hid each other:
+
+- **`synthesizer.py` swallowed every per-item API error, still pinged its
+  heartbeat, and exited 0.** So the synthesizer artifact looked FRESH on
+  nights when every call had failed. `daily_summaries` shows the damage: 5-7
+  projects/day normally, 1-2 on Aug 31 - Sep 3. Now a total wipeout
+  (`attempted > 0 and errored == attempted`) skips the heartbeat and exits 1;
+  a partial failure still pings and exits 0, because one project failing to
+  summarize is not a dead night.
+- **`nightly_pipeline.py` had no network gate**, so it ran the whole night
+  into a dead resolver. `wait_for_network()` now polls DNS for up to 180s
+  before any stage — **on the monotonic clock**, per the standing rule — and a
+  night that never gets a resolver runs no stages, records a synthetic
+  `StageResult("network", "failed", ...)`, and skips the Turso push that
+  cannot work anyway.
+- **The health email graded only the NEWEST run record** (`ORDER BY
+  started_at DESC LIMIT 1`). A night that dies for lack of network cannot push
+  its own record either, so it arrives days later via catch-up already older
+  than a newer healthy run — and was therefore never graded at all. The
+  catch-up mechanism and the grading mechanism cancelled each other out. Now a
+  7-day window is graded, any bad night in it forces `ok=False` even when the
+  newest run is clean, and `NIGHTLY_RUN_MAX_AGE_DAYS` dropped 2 -> 1.
+
+**The generalizable trap, worth more than the fix: a failure whose own cause
+also blocks its reporting path erases its own evidence.** No amount of care in
+the grader helps, because the grader never receives the row. The fix has to be
+on the reading side — grade a window, not the newest row.
+
+**Two consequences to know, neither a bug:**
+
+- **Escalation is one day late for a single dead night.** The morning after, the
+  record still cannot have been pushed, and the newest remote row is age 1,
+  which passes. The red email arrives the following morning with the catch-up.
+  Two consecutive dead nights escalate on time via the age rule — which is what
+  the 2 -> 1 change is actually for, so do not "simplify" it back.
+- **A bad night stays red for up to 7 days and there is no acknowledgement
+  path.** Re-running that date manually adds a row, it does not clear the old
+  one. Loud-for-a-week was chosen deliberately over silent-forever.
+
+**What passed:** step 3's blocked-push acceptance test, in the wild and harder
+than specified — four consecutive nights could not push, and the Sep 5 run's
+stateless catch-up backfilled all four. Turso holds an unbroken Aug 30 - Sep 6
+sequence. Step 2's sleeping-host test is still outstanding.
+
+Three follow-ups were deliberately deferred, in value order: test the
+`_apply_recent_bad` note-append branch (a failing newest run AND older bad
+rows — the shape a real multi-night outage takes, currently zero coverage);
+pin `NIGHTLY_RUN_WINDOW_DAYS == 7` in a test; add a null-host guard so a
+backfilled row cannot render the literal `None`.
+
 **Next piece of work: `docs/nightly-pipeline-plan.md` — step 1 DONE
 2026-08-29, steps 2–4 remain.** Collapses the racing nightly agents into one
 ordered pipeline, because **a scheduler is not a dependency mechanism** —

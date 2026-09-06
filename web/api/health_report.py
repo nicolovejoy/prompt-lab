@@ -321,8 +321,11 @@ def _check_heartbeats():
 
 # Max age in LAB DAYS for the nightly run itself. Two days of slack on a
 # nightly job means a missed night is invisible until it has been missed
-# twice, so this is 1: the newest run may be yesterday's (the email runs
-# before tonight's job), but the night before that must have landed.
+# twice, so this is 1. A HEALTHY night grades 0, not 1 — the job runs at 02:30
+# and the email at 08:00 on the same lab day, so there is no scheduling offset
+# to absorb. The one day of slack is what covers a night whose record could
+# not be PUSHED (see the day-late escalation note in CLAUDE.md), which is why
+# lowering this to 0 would false-alarm on exactly the outage it exists for.
 NIGHTLY_RUN_MAX_AGE_DAYS = 1
 
 # Stage outcomes that mean the stage did not do its work. "not-due" is
