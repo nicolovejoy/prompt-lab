@@ -103,9 +103,9 @@ class FakeStore:
     def get_recent_synthesis_logs(self):
         if not self.logs:
             return []
-        total_in = sum(l.get("input_tokens", 0) or 0 for l in self.logs)
-        total_out = sum(l.get("output_tokens", 0) or 0 for l in self.logs)
-        total_cost = sum(l.get("cost_cents", 0) or 0 for l in self.logs)
+        total_in = sum(e.get("input_tokens", 0) or 0 for e in self.logs)
+        total_out = sum(e.get("output_tokens", 0) or 0 for e in self.logs)
+        total_cost = sum(e.get("cost_cents", 0) or 0 for e in self.logs)
         return [{
             "run_type": "daily", "calls": len(self.logs),
             "total_in": total_in, "total_out": total_out,
