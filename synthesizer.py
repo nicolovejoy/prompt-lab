@@ -52,13 +52,20 @@ SUMMARY_TOOL = {
 # ---------------------------------------------------------------------------
 
 def synthesize_daily_summaries(store, client, target_date=None):
-    """Generate daily summaries for all unsummarized (project, date) pairs."""
+    """Generate daily summaries for all unsummarized (project, date) pairs.
+
+    Returns (attempted, errored) — counted per (project, date) pair that
+    actually reached the API call, not per pair discovered.
+    """
     pairs = store.get_unsummarized_days(target_date)
     if not pairs:
         print("No unsummarized days found.")
-        return
+        return 0, 0
 
     print(f"Found {len(pairs)} unsummarized day(s).")
+
+    attempted = 0
+    errored = 0
 
     for project, date in pairs:
         print(f"  Summarizing {project} / {date}...", end=" ", flush=True)
@@ -83,6 +90,7 @@ Sessions ({len(data['sessions'])}):
         system = """You summarize a developer's daily work on a project.
 Focus on WHAT was done and WHY, not low-level details. Be concise."""
 
+        attempted += 1
         try:
             result = call_claude(client, model=SONNET, system=system,
                                  user_msg=user_msg, tool=SUMMARY_TOOL)
@@ -111,6 +119,7 @@ Focus on WHAT was done and WHY, not low-level details. Be concise."""
             print(f"OK ({result['input_tokens']}+{result['output_tokens']} tokens, ${cost/100:.4f})")
 
         except Exception as e:
+            errored += 1
             store.log_synthesis(
                 run_type="daily", target_date=date, project=project,
                 model=SONNET, input_tokens=0, output_tokens=0,
@@ -118,6 +127,8 @@ Focus on WHAT was done and WHY, not low-level details. Be concise."""
                 error_message=str(e),
             )
             print(f"ERROR: {e}")
+
+    return attempted, errored
 
 
 WEEKLY_ROLLUP_TOOL = {
@@ -139,13 +150,20 @@ WEEKLY_ROLLUP_TOOL = {
 
 
 def synthesize_weekly_rollups(store, client):
-    """Generate weekly rollups for completed weeks missing them."""
+    """Generate weekly rollups for completed weeks missing them.
+
+    Returns (attempted, errored) — a week skipped for lack of summaries never
+    reaches the API and is not counted as attempted.
+    """
     pairs = store.get_weeks_without_rollups()
     if not pairs:
         print("No weeks need rollups.")
-        return
+        return 0, 0
 
     print(f"Found {len(pairs)} week(s) to roll up.")
+
+    attempted = 0
+    errored = 0
 
     for project, week_start in pairs:
         print(f"  Rollup {project} / week of {week_start}...", end=" ", flush=True)
@@ -172,6 +190,7 @@ Daily summaries:
 Synthesize the daily summaries into a cohesive narrative of what happened that week.
 Focus on progress, decisions, and direction — not individual tasks."""
 
+        attempted += 1
         try:
             result = call_claude(client, model=SONNET, system=system,
                                  user_msg=user_msg, tool=WEEKLY_ROLLUP_TOOL)
@@ -201,6 +220,7 @@ Focus on progress, decisions, and direction — not individual tasks."""
             print(f"OK ({len(summaries)} days, ${cost/100:.4f})")
 
         except Exception as e:
+            errored += 1
             store.log_synthesis(
                 run_type="weekly_rollup", target_date=week_start, project=project,
                 model=SONNET, input_tokens=0, output_tokens=0,
@@ -208,6 +228,8 @@ Focus on progress, decisions, and direction — not individual tasks."""
                 error_message=str(e),
             )
             print(f"ERROR: {e}")
+
+    return attempted, errored
 
 
 PROJECT_STATE_TOOL = {
@@ -227,13 +249,19 @@ PROJECT_STATE_TOOL = {
 
 
 def synthesize_project_states(store, client):
-    """Generate weekly project state summaries. Runs on Sundays."""
+    """Generate weekly project state summaries. Runs on Sundays.
+
+    Returns (attempted, errored) — one attempt per project.
+    """
     projects = store.get_projects_with_recent_summaries(n_days=14)
     if not projects:
         print("No projects with recent activity.")
-        return
+        return 0, 0
 
     print(f"Generating state summaries for {len(projects)} project(s).")
+
+    attempted = 0
+    errored = 0
 
     for project in projects:
         print(f"  State for {project}...", end=" ", flush=True)
@@ -265,6 +293,7 @@ Recent key decisions:
 Describe what this project IS, what's been happening recently, where it's headed, and its current momentum.
 Be direct and specific — no filler. 2-4 sentences max."""
 
+        attempted += 1
         try:
             result = call_claude(client, model=SONNET, system=system,
                                  user_msg=user_msg, tool=PROJECT_STATE_TOOL)
@@ -294,6 +323,7 @@ Be direct and specific — no filler. 2-4 sentences max."""
             print(f"OK (${cost/100:.4f})")
 
         except Exception as e:
+            errored += 1
             store.log_synthesis(
                 run_type="project_state", target_date=None, project=project,
                 model=SONNET, input_tokens=0, output_tokens=0,
@@ -301,6 +331,8 @@ Be direct and specific — no filler. 2-4 sentences max."""
                 error_message=str(e),
             )
             print(f"ERROR: {e}")
+
+    return attempted, errored
 
 
 def generate_project_snapshots(store):
@@ -384,20 +416,29 @@ def main():
     store = get_store()
     store.migrate()
 
+    total_attempted = 0
+    total_errored = 0
+
     if args.all or args.daily:
         print("\n=== Daily Summaries ===")
-        synthesize_daily_summaries(store, client, args.date)
+        attempted, errored = synthesize_daily_summaries(store, client, args.date)
+        total_attempted += attempted
+        total_errored += errored
 
     if args.all or args.weekly:
         print("\n=== Weekly Rollups ===")
-        synthesize_weekly_rollups(store, client)
+        attempted, errored = synthesize_weekly_rollups(store, client)
+        total_attempted += attempted
+        total_errored += errored
 
     if args.all or args.states:
         # Only run states on Sundays (or when explicitly requested)
         is_sunday = datetime.now().weekday() == 6
         if args.states or is_sunday:
             print("\n=== Project State Summaries ===")
-            synthesize_project_states(store, client)
+            attempted, errored = synthesize_project_states(store, client)
+            total_attempted += attempted
+            total_errored += errored
         elif args.all:
             print("\n=== Project State Summaries ===")
             print("Skipped (runs on Sundays only; use --states to force)")
@@ -408,6 +449,12 @@ def main():
 
     # Print totals from this run
     recent_logs = store.get_recent_synthesis_logs()
+
+    # A night with zero successful calls must not read as a quiet night: say
+    # so once, right before the Run Summary, whether or not any calls
+    # succeeded partially.
+    if total_errored > 0:
+        print(f"WARNING: {total_errored}/{total_attempted} synthesis calls failed")
 
     if recent_logs:
         print("\n=== Run Summary ===")
@@ -420,11 +467,21 @@ def main():
 
     store.close()
 
+    # A total wipeout (every attempted call failed) is exactly the case the
+    # heartbeat exists to catch: a night where DNS or the network died must
+    # not report success by pinging. A quiet night (nothing attempted) and a
+    # partial failure (some projects legitimately fail) are not this.
+    if total_attempted > 0 and total_errored == total_attempted:
+        print("FAILED: every synthesis call failed; not pinging the heartbeat")
+        return 1
+
     # Only --all, which is what the LaunchAgent runs. A manual --daily writes
     # real rows but is not the nightly, and must not mask its absence.
     if args.all:
         heartbeat.ping("synthesizer")
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
