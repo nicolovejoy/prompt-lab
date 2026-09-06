@@ -10,6 +10,7 @@ No pytest. Prints PASS/FAIL per test, exits 1 if any fail.
 
 from __future__ import annotations
 
+import socket
 import subprocess
 import sys
 import tempfile
@@ -351,6 +352,107 @@ def _():
     assert np.push_runs(local, _FakeRemote(explode=True)) == 0
 
 
+# === wait_for_network(): the DNS-readiness gate =============================
+#
+# A wake-fired run can start seconds after launchd notices the machine is
+# awake, before the resolver is up (four real nights this month died on
+# socket.gaierror on every network-dependent stage). `resolve` and `sleep`
+# are injected so these make no real network calls and sleep for real zero
+# seconds.
+
+
+@test("wait_for_network: resolves on the first probe")
+def _():
+    calls = {"resolve": 0, "sleep": 0}
+
+    def fake_resolve(host, port):
+        calls["resolve"] += 1
+        return [("fake",)]
+
+    def fake_sleep(s):
+        calls["sleep"] += 1
+
+    ok, detail = np.wait_for_network(host="x", budget_s=180, poll_s=5,
+                                     resolve=fake_resolve, sleep=fake_sleep)
+    assert ok is True
+    assert detail == "resolved immediately", detail
+    assert calls["resolve"] == 1, calls
+    assert calls["sleep"] == 0, "no sleep needed when the first probe works"
+
+
+@test("wait_for_network: resolves on the third probe, sleeping twice")
+def _():
+    attempts = {"n": 0}
+    sleeps: list = []
+
+    def fake_resolve(host, port):
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise socket.gaierror(8, "nodename nor servname provided")
+        return [("fake",)]
+
+    ok, detail = np.wait_for_network(host="x", budget_s=180, poll_s=5,
+                                     resolve=fake_resolve,
+                                     sleep=sleeps.append)
+    assert ok is True
+    assert attempts["n"] == 3, attempts
+    assert sleeps == [5, 5], sleeps
+    assert detail.startswith("resolved after"), detail
+
+
+@test("wait_for_network: budget exhausted returns False with the last error")
+def _():
+    def fake_resolve(host, port):
+        raise socket.gaierror(8, "nodename nor servname provided, or not known")
+
+    ok, detail = np.wait_for_network(host="x", budget_s=0.01, poll_s=0,
+                                     resolve=fake_resolve, sleep=lambda s: None)
+    assert ok is False
+    assert "gaierror" in detail, detail
+    assert "nodename" in detail, detail
+
+
+@test("wait_for_network: the budget is monotonic, not wall-clock")
+def _():
+    """The `sleep` here drives a fake monotonic clock directly (patched onto
+    the module, the same pattern this file already uses for subprocess.run),
+    while `resolve` separately jumps a real wall-clock stand-in far past the
+    budget on every call — simulating the host sleeping for hours between
+    probes. If the implementation ever budgeted on time.time() instead of
+    time.monotonic(), the very first check would see the huge wall-clock
+    jump and bail after one attempt; because it must use monotonic, sleeping
+    for real hours of wall time changes nothing and it still runs its full
+    complement of attempts."""
+    fake_mono = [0.0]
+    wall_jumped = [0.0]
+    resolve_calls = {"n": 0}
+
+    def fake_monotonic():
+        return fake_mono[0]
+
+    def fake_sleep(s):
+        fake_mono[0] += s
+
+    def fake_resolve(host, port):
+        resolve_calls["n"] += 1
+        wall_jumped[0] += 999_999  # hours of "real" time, per call
+        raise socket.gaierror(8, "nodename nor servname provided")
+
+    saved_monotonic = np.time.monotonic
+    np.time.monotonic = fake_monotonic
+    try:
+        ok, detail = np.wait_for_network(host="x", budget_s=15, poll_s=5,
+                                         resolve=fake_resolve, sleep=fake_sleep)
+    finally:
+        np.time.monotonic = saved_monotonic
+
+    assert ok is False
+    # t=0,5,10,15 each fail the probe; the 15 check meets the budget exactly.
+    assert resolve_calls["n"] == 4, resolve_calls
+    assert wall_jumped[0] > 3_000_000, "the wall clock should have moved a lot"
+    assert "gaierror" in detail, detail
+
+
 # === main(): the bracket around a run =======================================
 #
 # The ordering these pin is what the whole run record rests on: a "running"
@@ -406,12 +508,18 @@ class _MainStore:
 
 
 @contextmanager
-def fake_main_env(results, *, prelude_error=None):
+def fake_main_env(results, *, prelude_error=None,
+                  network=(True, "resolved immediately")):
     """Run main() against stubbed stages, stores and machine label.
 
     `store` is replaced in sys.modules because main() imports it lazily, by
     name, exactly as the real pipeline does — stubbing the import is what
     lets this exercise the real bracket rather than a copy of it.
+
+    `wait_for_network` is stubbed too, defaulting to instant success: every
+    main() test here exercises the stage bracket, not DNS, and the real
+    function would otherwise make an actual socket.getaddrinfo() call (and,
+    on a budget exhaustion path, block for real seconds) on every test run.
     """
     events: list = []
     local = _MainStore(events, "local")
@@ -434,14 +542,17 @@ def fake_main_env(results, *, prelude_error=None):
         calls["run_pipeline"] += 1
         return results
 
-    saved = (np.machine_host, np.build_stages, np.run_pipeline)
+    saved = (np.machine_host, np.build_stages, np.run_pipeline,
+              np.wait_for_network)
     np.machine_host = lambda: "testhost"
     np.build_stages = lambda: []
     np.run_pipeline = fake_run_pipeline
+    np.wait_for_network = lambda *a, **kw: network
     try:
         yield events, local, remote, calls
     finally:
-        np.machine_host, np.build_stages, np.run_pipeline = saved
+        (np.machine_host, np.build_stages, np.run_pipeline,
+         np.wait_for_network) = saved
         if saved_mod is None:
             sys.modules.pop("store", None)
         else:
@@ -481,6 +592,46 @@ def _():
     row = local.rows[next(iter(local.rows))]
     assert row["exit_code"] == 1, row
     assert [s["outcome"] for s in row["stages"]] == ["ok", "failed", "ok"], row
+
+
+@test("main skips every stage and skips the Turso push when the network "
+      "gate fails")
+def _():
+    """The whole point of the gate: a wake-fired run must not start into a
+    dead resolver. No stage should run, the local record must still land
+    (that's what makes the failure visible at all), and the push must not
+    even be attempted — it cannot work without DNS."""
+    with fake_main_env(ok_results(),
+                       network=(False, "gaierror: [Errno 8] nodename nor "
+                                        "servname provided, or not known")
+                       ) as (events, local, remote, calls):
+        code = np.main()
+    assert code == 1, code
+    assert calls["run_pipeline"] == 0, "no stage may run when DNS is dead"
+    assert events == [("local", "running"), ("local", "failed")], events
+    assert remote.migrated is False, "the Turso push must not be attempted"
+    row = local.rows[next(iter(local.rows))]
+    assert row["exit_code"] == 1, row
+    assert [s["name"] for s in row["stages"]] == ["network"], row
+    assert row["stages"][0]["outcome"] == "failed", row
+    assert local.closed, "the local store handle leaked"
+
+
+@test("main runs the stages and pushes normally when the network is up")
+def _():
+    with fake_main_env(ok_results(),
+                       network=(True, "resolved after 12.3s")) as (
+            events, local, remote, calls):
+        saved_run = np.subprocess.run
+        np.subprocess.run = lambda *a, **kw: None  # the cost-pull heartbeat
+        try:
+            code = np.main()
+        finally:
+            np.subprocess.run = saved_run
+    assert code == 0, code
+    assert calls["run_pipeline"] == 1
+    assert events == [("local", "running"), ("local", "ok"), ("remote", "ok")], \
+        events
 
 
 @test("a run-record prelude that raises still runs the night's stages")
