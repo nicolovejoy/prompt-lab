@@ -116,6 +116,57 @@ finished 02:32:22, `LastExitStatus = 0`; `pmset -g log` shows the only sleep
 that hour was 02:05–02:21, before the job. The caffeinate wrapper held through
 the run. The sleep fix is no longer a claim.
 
+**Resend paid→free consolidation — NEXT UP, and prompt-lab's own half is
+unblocked and should go FIRST, not last.** Driver: free now allows 3 verified
+domains and Nico is paying $20/mo he does not need. Keep list:
+`mail.pianohouseproject.org` (shared), `bakerylouise.com`, `prntd.org`;
+the other ~37 get deleted from Resend. The fact that shaped it: **Resend counts
+every subdomain as its own domain slot**, so `span.`/`mail.`/`soiree.`
+`pianohouseproject.org` are three entries, not one.
+
+The plan was drafted 2026-09-03 by a cloud session on the unmerged branch
+`origin/claude/resend-free-plan-migration-dcp8gv` (docs-only, CLAUDE.md-only,
+will not merge cleanly now — re-apply, don't merge). **Three of its premises
+were wrong and were corrected 2026-09-06:**
+
+- It treated "who owns `mail.pianohouseproject.org`" as a blocker. It is not:
+  the domain is **already verified and already sending**. Nothing needs
+  establishing, and adding a from-address on a verified domain needs no DNS
+  work.
+- It listed five consumers. There are at least **seven** — it missed
+  **nudge** (`learn@`, `nudge/CLAUDE.md:63`) and **selected-projects**
+  (`connect@`, `selected-projects/.env.tpl:4`). Both found by grep, not by the
+  plan. Note nudge's timers are BOTH disabled, so it sends nothing today and an
+  audit of live traffic finds no trace of it — the breakage would surface only
+  when the timers are re-enabled.
+- It said prompt-lab switches LAST, on the theory our key could not yet send
+  from the shared domain. **Probed 2026-09-06: `send-review.py --test-send`
+  from `reviews@mail.pianohouseproject.org` returned OK, so the key is
+  account-wide.** The ordering therefore INVERTS — moving early means we are
+  off `prompt-labs.org` before it is deleted; moving late opens a window where
+  the domain is gone and our config still points at it.
+
+**What prompt-lab still has to do** (nothing blocks it but Nico's say-so):
+switch `REVIEW_FROM_EMAIL` (env-only, no deploy) and `HEALTH_FROM_EMAIL`
+(**hardcoded default at `web/api/health_report.py:897`** — code change plus a
+deploy, so the two cannot move in one step). Both currently
+`@prompt-labs.org`, which is not on the keep list.
+
+Deleting `prompt-labs.org` **from Resend** does not touch the dashboard at
+https://prompt-labs.org — that is Vercel and DNS, unaffected. Only sending goes.
+
+Sequencing: delete unneeded domains first, THEN downgrade the plan (unconfirmed
+whether Resend blocks a downgrade while over the limit, so do not rely on the
+downgrade to clean up).
+
+Heads-up notes posted 2026-09-06 to byside, span, ibuild4you, selected-projects
+and a new `nudge-prompt-lab.md` channel. Still open: Nico's final mothball list.
+
+Worth weighing before committing: consolidating puts prompt-lab's mail on a
+domain shared with six other consumers. If it is ever removed or re-verified,
+the nightly review and the health email both die — and a dead health email
+degrades to "no email arrived", the weakest signal in this system.
+
 **The nightly pipeline failed every night the laptop had to WAKE for it —
 FOUND AND FIXED 2026-09-06, and the watchdog that should have said so was
 blind by construction.** A week of real unattended runs produced the evidence
