@@ -51,7 +51,7 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlsplit
@@ -319,20 +319,34 @@ def _check_heartbeats():
     return out
 
 
-# Max age in LAB DAYS for the nightly run itself. 2 matches the artifact
-# thresholds: one missed night is quiet (a closed lid is normal and was
-# accepted when the jobs moved to the laptop), two is a breach.
-NIGHTLY_RUN_MAX_AGE_DAYS = 2
+# Max age in LAB DAYS for the nightly run itself. Two days of slack on a
+# nightly job means a missed night is invisible until it has been missed
+# twice, so this is 1. A HEALTHY night grades 0, not 1 — the job runs at 02:30
+# and the email at 08:00 on the same lab day, so there is no scheduling offset
+# to absorb. The one day of slack is what covers a night whose record could
+# not be PUSHED (see the day-late escalation note in CLAUDE.md), which is why
+# lowering this to 0 would false-alarm on exactly the outage it exists for.
+NIGHTLY_RUN_MAX_AGE_DAYS = 1
 
 # Stage outcomes that mean the stage did not do its work. "not-due" is
 # deliberately absent — the bi-monthly report reporting not-due is the healthy
 # answer on 29 nights out of 30.
 FAILED_OUTCOMES = ("failed", "timeout", "skipped")
 
+# How many lab days back to look for OTHER bad runs beside the newest one.
+# This is what stops a backfilled failure from disappearing: the same missing
+# network that fails a run also delays its own push, so its row lands in
+# Turso days later via `push_runs`' catch-up, older than a newer healthy run
+# and therefore never the newest row. Grading only the newest row lets that
+# failure go ungraded forever — the catch-up mechanism and the grading
+# mechanism cancel out. Widening the read to a window (not the write path;
+# `push_runs` catch-up is unchanged) is what closes that gap.
+NIGHTLY_RUN_WINDOW_DAYS = 7
+
 NIGHTLY_RUN_SQL = (
     "SELECT run_id, host, started_at, lab_date, finished_at, status, "
     "stages, claims, exit_code FROM nightly_runs "
-    "ORDER BY started_at DESC LIMIT 1"
+    "WHERE lab_date >= ? ORDER BY started_at DESC LIMIT 50"
 )
 
 
@@ -420,8 +434,56 @@ def _claims_vs_remote(claims, heartbeats):
     return out, sorted(unknown), sorted(missing)
 
 
+def _one_liner(stages, status):
+    """The `name: outcome` summary shared by the newest row and every
+    `recent_bad` entry — one shape, so a backfilled night reads the same as
+    tonight's would have."""
+    bad = [s for s in stages if s.get("outcome") in FAILED_OUTCOMES]
+    return (", ".join(f"{s.get('name')}: {s['outcome']}" for s in bad)
+            or f"run reported {status or 'no status'}")
+
+
+def _build_recent_bad(other_rows):
+    """Every OTHER row in the window that is not a clean run, newest first.
+
+    This is the actual fix: a run that fails for lack of network also fails
+    to push its own record on time, so it arrives via `push_runs`' catch-up
+    days later — older than a run that DID complete that night, and
+    therefore never the newest row `_check_nightly_run` grades. Without this,
+    that failure is graded never. `other_rows` is already bounded to the
+    window and ordered newest-first by NIGHTLY_RUN_SQL.
+    """
+    out = []
+    for r in other_rows:
+        stages = _decode_json_column(r.get("stages"), [])
+        status = r.get("status")
+        bad = [s for s in stages if s.get("outcome") in FAILED_OUTCOMES]
+        if not bad and status == "ok":
+            continue
+        out.append({"lab_date": str(r.get("lab_date") or "")[:10],
+                     "status": status, "host": r.get("host"),
+                     "note": _one_liner(stages, status)})
+    return out
+
+
+def _apply_recent_bad(entry):
+    """Force the entry not-ok when any OTHER run in the window was bad, even
+    though the newest row it was just graded on is fine.
+
+    This is what makes a backfilled failure escalate the email: `_compose`'s
+    subject logic already keys entirely off `entry["ok"]`, so nothing else
+    needs to know a catch-up row ever existed."""
+    if entry.get("recent_bad"):
+        entry["ok"] = False
+        count_note = (f"{len(entry['recent_bad'])} bad night(s) in the last "
+                      f"{NIGHTLY_RUN_WINDOW_DAYS} days")
+        entry["note"] = f"{entry['note']}; {count_note}" if entry["note"] else count_note
+    return entry
+
+
 def _check_nightly_run(heartbeats=None):
-    """The newest nightly pipeline run, graded and cross-checked.
+    """The newest nightly pipeline run, graded and cross-checked — plus every
+    OTHER bad run in the last NIGHTLY_RUN_WINDOW_DAYS lab days.
 
     A SECOND AXIS, not a replacement. The artifact heartbeats above ask "did
     the output appear"; this asks "did the job run, and what did it say
@@ -439,9 +501,10 @@ def _check_nightly_run(heartbeats=None):
     """
     entry = {"lab_date": None, "host": None, "status": None,
              "age_days": None, "ok": None, "stages": [], "mismatches": [],
-             "exit_code": None, "note": ""}
+             "exit_code": None, "note": "", "recent_bad": []}
+    cutoff = (lab_today() - timedelta(days=NIGHTLY_RUN_WINDOW_DAYS)).isoformat()
     try:
-        rows = turso_query(NIGHTLY_RUN_SQL)
+        rows = turso_query(NIGHTLY_RUN_SQL, [cutoff])
     except Exception as e:
         entry["note"] = f"could not check ({type(e).__name__})"
         print(f"health_report: nightly run unreadable: {e}"[:200])
@@ -453,6 +516,7 @@ def _check_nightly_run(heartbeats=None):
         return entry
 
     row = rows[0]
+    entry["recent_bad"] = _build_recent_bad(rows[1:])
     entry["host"] = row.get("host")
     entry["status"] = row.get("status")
     entry["exit_code"] = row.get("exit_code")
@@ -462,21 +526,21 @@ def _check_nightly_run(heartbeats=None):
     except ValueError:
         entry["ok"] = False
         entry["note"] = f"unparseable lab_date {entry['lab_date']!r}"
-        return entry
+        return _apply_recent_bad(entry)
 
     entry["age_days"] = (lab_today() - last).days
     if entry["age_days"] > NIGHTLY_RUN_MAX_AGE_DAYS:
         entry["ok"] = False
         entry["note"] = (f"no run for {entry['age_days']} days — "
                          "host has been off")
-        return entry
+        return _apply_recent_bad(entry)
 
     entry["stages"] = _decode_json_column(row.get("stages"), [])
     bad = [s for s in entry["stages"] if s.get("outcome") in FAILED_OUTCOMES]
     if entry["status"] == "running":
         entry["ok"] = False
         entry["note"] = "started but never finished — died mid-run"
-        return entry
+        return _apply_recent_bad(entry)
     # The run's OWN verdict is graded, not just the stage list it carries.
     # nightly_pipeline.overall_status returns "failed" for an empty results
     # list, so a night that ran no stages at all lands here as
@@ -485,10 +549,8 @@ def _check_nightly_run(heartbeats=None):
     # "failed" must never read as ok.
     if bad or entry["status"] != "ok":
         entry["ok"] = False
-        entry["note"] = (
-            ", ".join(f"{s.get('name')}: {s['outcome']}" for s in bad)
-            or f"run reported {entry['status'] or 'no status'}")
-        return entry
+        entry["note"] = _one_liner(entry["stages"], entry["status"])
+        return _apply_recent_bad(entry)
 
     entry["mismatches"], unknown, missing = _claims_vs_remote(
         _decode_json_column(row.get("claims"), {}), heartbeats or [])
@@ -504,10 +566,10 @@ def _check_nightly_run(heartbeats=None):
     if notes:
         entry["ok"] = False
         entry["note"] = "; ".join(notes)
-        return entry
+        return _apply_recent_bad(entry)
 
     entry["ok"] = True
-    return entry
+    return _apply_recent_bad(entry)
 
 
 def _fetch_uptime_monitors(api_key):
@@ -740,6 +802,12 @@ def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None,
         lines.append(_nightly_run_headline(nightly_run))
         if not nightly_run.get("ok"):
             lines.extend(f"  {d}" for d in _nightly_run_details(nightly_run))
+            # Backfilled failures: other bad nights in the window, which is
+            # the whole point — a run this narrow late (network down, catch-up
+            # push days later) is never the newest row, so without this list
+            # it would never appear in the email at all.
+            lines.extend(f"  {rb['lab_date']} {rb['host']}: {rb['note']}"
+                         for rb in nightly_run.get("recent_bad") or [])
 
     # The archive result must reach the inbox: the JSON response is unread and
     # Vercel logs evaporate in ~an hour, so a 0-row pull is otherwise invisible.
@@ -787,6 +855,10 @@ def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None,
     else:
         details = "".join(f"<li>{escape(d)}</li>"
                           for d in _nightly_run_details(nightly_run))
+        details += "".join(
+            f"<li>{escape(rb['lab_date'])} {escape(str(rb['host']))}: "
+            f"{escape(rb['note'])}</li>"
+            for rb in nightly_run.get("recent_bad") or [])
         run_html = (f"<p style='color:#c62828;margin-bottom:4px'>"
                     f"{escape(_nightly_run_headline(nightly_run))}</p>"
                     + (f"<ul style='margin-top:0'>{details}</ul>"

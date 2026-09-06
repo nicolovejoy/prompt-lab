@@ -36,6 +36,7 @@ lines in the log are what to read first.
 
 from __future__ import annotations
 
+import socket
 import subprocess
 import sys
 import time
@@ -47,6 +48,14 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parent
 
 LAB_TZ = ZoneInfo("America/Los_Angeles")
+
+# A wake-fired run can start seconds after launchd notices the machine is
+# awake again, before the resolver is up — the exact failure that killed
+# four nights this month (every network stage died on socket.gaierror). This
+# is what main() waits on before running anything.
+NETWORK_PROBE_HOST = "api.anthropic.com"
+NETWORK_WAIT_SECONDS = 180
+NETWORK_POLL_SECONDS = 5
 
 
 @dataclass
@@ -153,6 +162,36 @@ def run_pipeline(stages: list[Stage], cwd: Path = ROOT) -> list[StageResult]:
                 continue
         results[stage.name] = run_stage(stage, cwd=cwd)
     return list(results.values())
+
+
+def wait_for_network(host: str = NETWORK_PROBE_HOST,
+                      budget_s: float = NETWORK_WAIT_SECONDS,
+                      poll_s: float = NETWORK_POLL_SECONDS,
+                      resolve=socket.getaddrinfo,
+                      sleep=time.sleep) -> tuple:
+    """Poll DNS resolution of `host` until it succeeds or the budget runs out.
+
+    The budget is measured on time.monotonic(), never time.time() — a host
+    that sleeps mid-wait must not have the sleep counted against it (see the
+    module docstring). `resolve` and `sleep` are injected so tests need no
+    network and no real delay.
+    """
+    start = time.monotonic()
+    attempt = 0
+    last_error: Exception | None = None
+    while True:
+        attempt += 1
+        try:
+            resolve(host, 443)
+        except Exception as e:  # noqa: BLE001 — any resolver failure counts
+            last_error = e
+        else:
+            if attempt == 1:
+                return True, "resolved immediately"
+            return True, f"resolved after {time.monotonic() - start:.1f}s"
+        if time.monotonic() - start >= budget_s:
+            return False, f"{type(last_error).__name__}: {last_error}"
+        sleep(poll_s)
 
 
 def run_identity(now_utc: datetime, host: str) -> tuple:
@@ -276,13 +315,18 @@ def machine_host() -> str:
 
 
 def _finish_run(store, *, run_id, host, started_at, lab_date, results,
-                exit_code) -> None:
+                exit_code, push: bool = True) -> None:
     """The closing half of the bracket: final record, then the Turso push.
 
     Runs in main()'s `finally` so it happens whatever the stage block did —
     a raise between the stages and here would otherwise leave the local row
     reading "running" forever, and the next morning's email would report
     "died mid-run" about a night that completed every stage.
+
+    `push=False` for a network-dead night (wait_for_network exhausted its
+    budget): the local record is the whole point of running at all, but a
+    Turso push cannot work without DNS, so there's no point trying it and
+    logging its inevitable failure.
     """
     record_run(store, run_id=run_id, host=host, started_at=started_at,
                lab_date=lab_date, status=overall_status(results),
@@ -292,6 +336,9 @@ def _finish_run(store, *, run_id, host, started_at, lab_date, results,
                         "detail": r.detail} for r in results],
                claims=collect_claims(store),
                exit_code=exit_code)
+
+    if not push:
+        return
 
     # Own step, after publish (see push_runs' docstring). Opened lazily so a
     # machine with no Turso credentials still completes its local run record.
@@ -406,33 +453,52 @@ def main(argv: list | None = None) -> int:
 
     results: list = []
     exit_code = 1
+    network_up = True
     try:
-        results = run_pipeline(build_stages())
-        by_name = {r.name: r for r in results}
+        # AFTER the guarded prelude above (the record of a network-dead night
+        # is the whole point of that prelude, and it must still land) and
+        # BEFORE any stage: a wake-fired run can start seconds after launchd
+        # notices the machine is awake, before the resolver is up. Four
+        # nights this month started straight into socket.gaierror on every
+        # network-dependent stage.
+        network_up, detail = wait_for_network()
+        if not network_up:
+            print(f"--- network: NOT READY after {NETWORK_WAIT_SECONDS}s "
+                  f"({detail}) ---", flush=True)
+            results = [StageResult("network", "failed", detail)]
+            exit_code = 1
+        else:
+            print(f"--- network: {detail} ---", flush=True)
+            results = run_pipeline(build_stages())
+            by_name = {r.name: r for r in results}
 
-        failed = [r for r in results
-                  if r.outcome in ("failed", "timeout", "skipped")]
-        exit_code = 1 if failed else 0
-        summary = " · ".join(f"{r.name}={r.outcome}" for r in results)
-        print(f"pipeline: {summary}", flush=True)
+            failed = [r for r in results
+                      if r.outcome in ("failed", "timeout", "skipped")]
+            exit_code = 1 if failed else 0
+            summary = " · ".join(f"{r.name}={r.outcome}" for r in results)
+            print(f"pipeline: {summary}", flush=True)
 
-        # Heartbeat only when both legs actually landed (see module
-        # docstring). Guarded for the same reason record_run is — it is
-        # monitoring, and subprocess.run raises TimeoutExpired.
-        if by_name.get("cost-pull") and by_name["cost-pull"].ok \
-                and by_name.get("publish") and by_name["publish"].ok:
-            try:
-                subprocess.run(
-                    [sys.executable, str(ROOT / "heartbeat.py"), "cost-pull"],
-                    cwd=ROOT, timeout=60)
-            except Exception as e:  # noqa: BLE001
-                print(f"cost-pull heartbeat: skipped "
-                      f"({type(e).__name__}: {e})", flush=True)
+            # Heartbeat only when both legs actually landed (see module
+            # docstring). Guarded for the same reason record_run is — it is
+            # monitoring, and subprocess.run raises TimeoutExpired.
+            if by_name.get("cost-pull") and by_name["cost-pull"].ok \
+                    and by_name.get("publish") and by_name["publish"].ok:
+                try:
+                    subprocess.run(
+                        [sys.executable, str(ROOT / "heartbeat.py"), "cost-pull"],
+                        cwd=ROOT, timeout=60)
+                except Exception as e:  # noqa: BLE001
+                    print(f"cost-pull heartbeat: skipped "
+                          f"({type(e).__name__}: {e})", flush=True)
     finally:
         if store is not None:
+            # A network-dead night still gets its local run record — that is
+            # the whole point — but the Turso push cannot work without DNS,
+            # so don't attempt it and log its inevitable failure.
             _finish_run(store, run_id=run_id, host=host,
                         started_at=started_at, lab_date=lab_date,
-                        results=results, exit_code=exit_code)
+                        results=results, exit_code=exit_code,
+                        push=network_up)
             try:
                 store.close()
             except Exception:  # noqa: BLE001
