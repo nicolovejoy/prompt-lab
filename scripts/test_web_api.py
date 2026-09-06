@@ -2773,8 +2773,12 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
     `hb` drives the heartbeat (artifact-freshness) stub: fresh / stale /
     never (table empty) / error (Turso unreadable). `ur` drives the uptime
     pull: ok / error (UptimeRobot unreachable). `nr` drives the nightly run
-    record: ok / stage-failed / running / old / never / error / claim-newer /
-    claim-older.
+    record: ok / stage-failed / running / old / age2 (newest row is exactly 2
+    lab days old) / never / error / claim-newer / claim-older / recent-bad
+    (an older bad row inside the window, beside a clean newest row) /
+    recent-bad-outside (same, but the older row is outside the window and
+    must be dropped by the stub's own cutoff filter, the way the real SQL's
+    WHERE clause would).
 
     The turso stub dispatches on the SQL because the endpoint issues four
     different kinds of query against the same helper — the pause lookup, the
@@ -2796,6 +2800,7 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
 
     today = lab_today().isoformat()  # #48: the archive files under the lab day
     old = (lab_today() - timedelta(days=5)).isoformat()
+    age2 = (lab_today() - timedelta(days=2)).isoformat()
     tomorrow = (lab_today() + timedelta(days=1)).isoformat()
 
     def fake_run_row():
@@ -2818,6 +2823,8 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
             row.update(status="running", finished_at=None)
         elif nr == "old":
             row.update(lab_date=old, started_at=f"{old}T09:31:00Z")
+        elif nr == "age2":
+            row.update(lab_date=age2, started_at=f"{age2}T09:31:00Z")
         elif nr == "status-failed":
             # overall_status() returns "failed" for an empty results list, so
             # this pair is what a night that ran no stages at all looks like.
@@ -2843,6 +2850,19 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
             row["stages"] = json.dumps(["a", "b"])  # a list of NON-dicts
         return row
 
+    def fake_bad_row(days_ago, run_id):
+        """A second, OLDER `nightly_runs` row — the shape a backfilled
+        network failure takes: it failed a stage, its own push was blocked by
+        the same missing network, and it lands via catch-up days later,
+        older than the newest row that DID complete that night."""
+        d = (lab_today() - timedelta(days=days_ago)).isoformat()
+        stages = [{"name": "network", "outcome": "failed", "detail": "dns down"}]
+        return {"run_id": run_id, "host": "laptop",
+                "started_at": f"{d}T02:30:00Z", "lab_date": d,
+                "finished_at": f"{d}T02:31:00Z", "status": "failed",
+                "exit_code": 1, "stages": json.dumps(stages),
+                "claims": json.dumps({})}
+
     def fake_turso(sql, args=None):
         # Match the write on INSERT, not on the table name: the "uptime archive"
         # heartbeat SELECTs from uptime_daily too, and conflating the two would
@@ -2860,7 +2880,21 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
             mod._sql_kinds.append("nightly-run")
             if nr == "error":
                 raise RuntimeError("turso unreachable")
-            return [] if nr == "never" else [fake_run_row()]
+            if nr == "never":
+                return []
+            rows = [fake_run_row()]
+            if nr == "recent-bad":
+                rows.append(fake_bad_row(3, "run-bad-3"))
+            elif nr == "recent-bad-outside":
+                rows.append(fake_bad_row(10, "run-bad-10"))
+            # Mirror the real WHERE lab_date >= ? clause here in the stub, not
+            # in the code under test — a row outside the window must never
+            # reach _check_nightly_run in the first place, exactly like the
+            # real SQL would drop it before Python sees it.
+            if args:
+                cutoff = args[0]
+                rows = [r for r in rows if r["lab_date"] >= cutoff]
+            return rows
         mod._sql_kinds.append(
             "uptime-freshness" if "uptime_daily" in sql else "freshness")
         if hb == "error":
@@ -3661,6 +3695,89 @@ def _():
         kinds = mod._sql_kinds
         assert "nightly-run" in kinds, kinds
         assert kinds.index("freshness") < kinds.index("nightly-run"), kinds
+    finally:
+        restore()
+
+
+@test("nightly run: an older bad night in the window makes a clean newest run not-ok")
+def _():
+    """The actual bug this task fixes: a night that fails for lack of network
+    also fails to push its own record on time, so it arrives via catch-up
+    older than a run that DID complete that night — never the newest row.
+    Without the window, this reads fully green."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="recent-bad")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["ok"] is False, run
+        assert run["lab_date"] == lab_today().isoformat(), run
+        assert len(run["recent_bad"]) == 1, run
+        rb = run["recent_bad"][0]
+        assert rb["lab_date"] == (lab_today() - timedelta(days=3)).isoformat(), rb
+        assert rb["host"] == "laptop", rb
+        assert rb["status"] == "failed", rb
+        assert rb["note"] == "network: failed", rb
+        assert run["note"] == "1 bad night(s) in the last 7 days", run
+
+        mod, sent = _health_mod(nr="recent-bad")
+        invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
+        subject, html_body, text = sent[0]
+        assert subject.startswith("🟡"), subject
+        assert "1 stale (nightly run)" in subject, subject
+        day = (lab_today() - timedelta(days=3)).isoformat()
+        assert f"{day} laptop: network: failed" in text, text
+        assert f"{day} laptop: network: failed" in html_body, html_body
+    finally:
+        restore()
+
+
+@test("nightly run: no bad rows in the window leaves recent_bad empty and the run green")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="ok")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["ok"] is True, run
+        assert run["recent_bad"] == [], run
+        assert run["note"] == "", run
+    finally:
+        restore()
+
+
+@test("nightly run: a bad row outside the window is ignored")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="recent-bad-outside")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["ok"] is True, run
+        assert run["recent_bad"] == [], run
+    finally:
+        restore()
+
+
+@test("nightly run: age threshold now fails at 2 days, where it used to pass")
+def _():
+    """NIGHTLY_RUN_MAX_AGE_DAYS dropped from 2 to 1: two days of slack meant a
+    missed night was invisible until it had been missed twice. A newest row
+    exactly 2 lab days old passed under the old threshold (2 > 2 is false)
+    and must fail under the new one (2 > 1 is true)."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="age2")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert mod.NIGHTLY_RUN_MAX_AGE_DAYS == 1, mod.NIGHTLY_RUN_MAX_AGE_DAYS
+        assert run["age_days"] == 2, run
+        assert run["ok"] is False, run
+        assert "host has been off" in run["note"], run
     finally:
         restore()
 
