@@ -207,11 +207,9 @@ than specified — four consecutive nights could not push, and the Sep 5 run's
 stateless catch-up backfilled all four. Turso holds an unbroken Aug 30 - Sep 6
 sequence. Step 2's sleeping-host test is still outstanding.
 
-Three follow-ups were deliberately deferred, in value order: test the
-`_apply_recent_bad` note-append branch (a failing newest run AND older bad
-rows — the shape a real multi-night outage takes, currently zero coverage);
-pin `NIGHTLY_RUN_WINDOW_DAYS == 7` in a test; add a null-host guard so a
-backfilled row cannot render the literal `None`.
+The three follow-ups deferred from this fix (cover the `_apply_recent_bad`
+note-append branch, pin `NIGHTLY_RUN_WINDOW_DAYS == 7`, null-host guard on
+backfilled rows) all landed 2026-09-07.
 
 **Next piece of work: `docs/nightly-pipeline-plan.md` — step 1 DONE
 2026-08-29, steps 2–4 remain.** Collapses the racing nightly agents into one
