@@ -6,7 +6,19 @@
 set -euo pipefail
 
 DB="$HOME/.claude/prompt-history.db"
-PROJECT="$(basename "$PWD")"
+
+# The project is the REPO, not the cwd basename — see _gc_project.sh for why
+# (worktrees resolved to `agent-<hash>` and every query silently read empty).
+# Sourced from this script's own directory so the repo copy and the installed
+# copy under ~/.claude/bin each use their own sibling. NOTE: that means
+# _gc_project.sh must be installed alongside gc-read.sh; a missing helper fails
+# loudly here rather than falling back, deliberately — a quiet fallback covering
+# a dead primary path is this repo's signature bug.
+GC_BIN_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+# shellcheck source=./_gc_project.sh
+. "$GC_BIN_DIR/_gc_project.sh"
+PROJECT="$(gc_resolve_project "$PWD")"
+
 POINTER="$HOME/.claude/state/current-session-$PROJECT"
 CMD="${1:-}"
 

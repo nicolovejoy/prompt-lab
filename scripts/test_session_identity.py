@@ -52,6 +52,22 @@ CREATE TABLE prompts (
     context TEXT, hostname TEXT
 );
 CREATE TABLE projects (name TEXT PRIMARY KEY);
+CREATE TABLE commits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hash TEXT,
+    message TEXT,
+    timestamp TEXT DEFAULT (datetime('now')),
+    session_id INTEGER REFERENCES sessions(id)
+);
+CREATE TABLE daily_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project TEXT, date TEXT, summary TEXT,
+    prompt_count INTEGER, session_count INTEGER, commit_count INTEGER
+);
+CREATE TABLE weekly_rollups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project TEXT, week_start TEXT, summary TEXT
+);
 """
 
 failures: list[str] = []
@@ -131,12 +147,30 @@ class Env:
         conn.close()
         return rows
 
-    def gc(self, script: Path, *args: str, stdin: str = "") -> str:
+    def gc(self, script: Path, *args: str, stdin: str = "",
+           cwd: Path | None = None) -> str:
+        # cwd overrides the repo root, for the project-resolution cases.
         r = subprocess.run([str(script), *args], input=stdin, text=True,
-                           env=self.env, cwd=str(self.cwd), capture_output=True)
+                           env=self.env, cwd=str(cwd or self.cwd),
+                           capture_output=True)
         if r.returncode != 0:
             return f"<exit {r.returncode}: {r.stderr.strip()}>"
         return r.stdout.strip()
+
+    def make_worktree(self, path: Path, branch: str) -> Path:
+        """A real linked worktree — the only fixture that can catch the bug.
+
+        --show-toplevel names the worktree; only --git-common-dir names the repo,
+        and no amount of directory-shaped faking exercises that difference.
+        """
+        ident = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                 "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "init"],
+                       cwd=str(self.cwd), check=True, capture_output=True,
+                       env={**os.environ, **ident})
+        subprocess.run(["git", "worktree", "add", "-q", str(path), "-b", branch],
+                       cwd=str(self.cwd), check=True, capture_output=True)
+        return path
 
     def pointer(self) -> str:
         p = self.home / ".claude" / "state" / f"current-session-{PROJECT}"
@@ -396,6 +430,85 @@ def test_context_captures_the_whole_last_reply(tmp: Path) -> None:
     check("over-long reply is capped", len(ctx2) <= 2000, True)
 
 
+def test_gc_scripts_resolve_the_repo(tmp: Path) -> None:
+    """gc-read.sh / gc-write.sh must name the REPO, like the hook does.
+
+    Both used to do `basename $PWD`. From an agent worktree under
+    <repo>/.claude/worktrees/agent-<hash>/ that resolved to `agent-<hash>` — a
+    name no row in the DB has ever carried, because the hook files everything
+    under the real repo. So current-session, today-counts and
+    weekly-rollup-check returned nothing/zero on a day full of prompts and
+    commits, and /handoff wrote that emptiness into a summary as fact. Hit for
+    real 2026-08-15.
+    """
+    print("\n13. gc-read.sh/gc-write.sh resolve the repo, not the cwd basename")
+    e = Env(tmp)
+
+    # Real work, recorded by the hook under the real project name.
+    e.submit("some real work happening in this repo today", session_uuid="uuid-w")
+    sid = e.q("SELECT id FROM sessions")[0][0]
+    started = e.q("SELECT started_at FROM sessions")[0][0]
+    conn = sqlite3.connect(e.db)
+    conn.execute("INSERT INTO commits (hash, message, session_id) VALUES "
+                 "('abc1234', 'a commit', ?)", (sid,))
+    conn.commit()
+    conn.close()
+
+    sub = e.cwd / "web" / "api"
+    sub.mkdir(parents=True)
+    wt = e.make_worktree(e.cwd / ".claude" / "worktrees" / "agent-deadbeef", "wt")
+    loose = tmp / "not-a-repo" / "backup"
+    loose.mkdir(parents=True)
+
+    for label, where in (("subdirectory", sub), ("worktree", wt)):
+        check(f"gc-read project from {label}",
+              e.gc(GC_READ, "project", cwd=where), PROJECT)
+        # The payoff: the queries that silently read empty now find the session.
+        check(f"gc-read current-session from {label}",
+              e.gc(GC_READ, "current-session", cwd=where), f"{sid}|{started}")
+        check(f"gc-read today-counts from {label}",
+              e.gc(GC_READ, "today-counts", cwd=where), "1\n1\n1")
+
+    check("gc-read project from a non-repo dir",
+          e.gc(GC_READ, "project", cwd=loose), "scratch")
+
+    # gc-write.sh: register-session from a worktree must file under the repo, or
+    # the hook never adopts the row and one conversation gets two sessions.
+    e.gc(GC_WRITE, "register-session", cwd=wt)
+    check("register-session from a worktree files under the repo",
+          e.q("SELECT project FROM sessions ORDER BY id DESC LIMIT 1")[0][0],
+          PROJECT)
+
+
+def test_gc_project_helper_is_shared(tmp: Path) -> None:
+    """Drift guard: one implementation, sourced by both scripts.
+
+    A second copy of this logic is how the two scripts fell out of step with
+    log-prompt.sh in the first place. If either stops sourcing the helper, or
+    the helper reaches for --show-toplevel, say so here rather than at 2am.
+    """
+    print("\n14. project resolution lives in exactly one place")
+    helper = ROOT / "workflow" / "bin" / "_gc_project.sh"
+    check("helper exists", helper.exists(), True)
+    text = helper.read_text()
+    # Comments are allowed to name --show-toplevel (they explain why it's wrong);
+    # code is not. Grep the code lines only.
+    code = "\n".join(ln for ln in text.splitlines()
+                     if not ln.lstrip().startswith("#"))
+    check("helper uses --git-common-dir", "--git-common-dir" in code, True)
+    check("helper never uses --show-toplevel", "--show-toplevel" in code, False)
+    check("only exit 128 buckets to scratch",
+          text.count('scratch"') == 1 and 'git_rc" -eq 128' in text, True)
+
+    for script in (GC_READ, GC_WRITE):
+        body = script.read_text()
+        check(f"{script.name} sources the helper", "_gc_project.sh" in body, True)
+        check(f"{script.name} calls gc_resolve_project",
+              "gc_resolve_project" in body, True)
+        check(f"{script.name} no longer takes the cwd basename",
+              'basename "$PWD"' in body, False)
+
+
 def main() -> int:
     # The hook is bash and shells out; skip rather than fail red if the runner
     # lacks a dependency. A skip is honest; a red CI for an env reason is noise.
@@ -417,6 +530,8 @@ def main() -> int:
         test_project_is_the_repo,
         test_short_prompts_are_stored_and_labelled,
         test_context_captures_the_whole_last_reply,
+        test_gc_scripts_resolve_the_repo,
+        test_gc_project_helper_is_shared,
     ]
     for t in tests:
         with tempfile.TemporaryDirectory() as d:

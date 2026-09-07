@@ -6,7 +6,16 @@
 set -euo pipefail
 
 DB="$HOME/.claude/prompt-history.db"
-PROJECT="$(basename "$PWD")"
+
+# The project is the REPO, not the cwd basename — see _gc_project.sh for why.
+# register-session is the one that mattered most: from a worktree it minted a
+# session row under `agent-<hash>`, which the hook then never adopted, so the
+# conversation ended up with two rows in two projects.
+GC_BIN_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+# shellcheck source=./_gc_project.sh
+. "$GC_BIN_DIR/_gc_project.sh"
+PROJECT="$(gc_resolve_project "$PWD")"
+
 CMD="${1:-}"
 shift || true
 
