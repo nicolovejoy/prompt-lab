@@ -10,7 +10,7 @@ reconstruct it piecemeal. Both boxes answered same-day (home-assistant
 session's contribution). **phrpi VERIFIED BY SSH 2026-08-13** — the
 second-hand list was incomplete and wrong in one attribution; corrected
 below. homeassistant.local is still second-hand (the laptop's key isn't in
-its SSH add-on). Then consider promoting this to a `docs/` file:
+its SSH add-on).
 - *phrpi* — Raspberry Pi 5 Model B Rev 1.1, Debian 13 (trixie), kernel
   6.12.47, user `nico`, laptop has direct key auth. **Dual-homed on one flat
   /22, deliberately** (2026-08-13, after the closet move): eth0

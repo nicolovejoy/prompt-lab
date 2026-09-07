@@ -611,6 +611,9 @@ in-progress-week admission was systemic, not an edge case. The script prints
 the exact DELETE for the frozen set if regenerate-over-existing-prose is ever
 wanted.
 
+### musicforge Fly uptime line — BUILT 2026-08-29 (note added 2026-09-07)
+`musicforge-fly` → `https://musicforge.fly.dev/api/health?db=1` went live 2026-08-29 as a deep+deep pair with the existing www line, so a Fly outage and a Vercel outage no longer render identically — that closes the ask left open at the foot of the entry below.
+
 ### UptimeRobot alerted nobody for six weeks — FOUND AND FIXED 2026-08-09 (moved 2026-09-07)
 **UptimeRobot alerted nobody for six weeks — FOUND AND FIXED 2026-08-09.**
 `scripts/uptimerobot.py` declared *what* to watch and never *who to tell*, so

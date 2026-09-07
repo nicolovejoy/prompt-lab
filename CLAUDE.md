@@ -445,6 +445,17 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
 - **Any overlay positions against the layout viewport**, so a `position:fixed` sheet
   slides off-screen under pinch-zoom exactly like an absolutely-positioned panel. On a
   phone, prefer a real route over a modal.
+- **`alias.py` takes two arguments and zsh does not word-split unquoted variables**, so
+  a `for pair in "a b"` loop silently writes the whole pair into the alias column. Quote
+  the split, or pass the two names separately.
+- **A full `sync_to_turso.py` runs past 120s.** When you need one upsert-only row (e.g.
+  `project_aliases`), write it straight to Turso instead of waiting on a full sync — and
+  never let a sync leg touch `project_metadata`, which is cloud-direct.
+- **Test UptimeRobot alerting on a throwaway monitor, never by flipping a real one to a
+  failing URL** — that writes a fake outage into that service's permanent uptime ratio,
+  and the archive is never backfilled. Pick a target that returns a real 404
+  (`garm.prompt-labs.org` does): `https://prompt-labs.org/api/<anything>` returns **200**
+  from the SPA catch-all and produces a false UP.
 - **Turso returns `SUM()`/`COUNT()` aggregates as JSON strings.** An explicit `int()`
   coalesce is load-bearing — without it chart math concatenates instead of adding.
 - **UptimeRobot v2's `custom_uptime_ratio` is a string** (`"100.000-99.980-99.990"`,
@@ -558,6 +569,10 @@ the archive write must be separately observable.
   `ANTHROPIC_API_KEY` dependency, which the Todos classifier holds.
 - **Any future account split must *move* `~/.claude/prompt-history.db`, never copy
   it** — a second copy of every raw prompt is a privacy regression.
+- **The recountly.org UptimeRobot monitor stays until raconte posts teardown notice in
+  the handoff channel.** recountly became Raconte (native iOS, no backend ever, slot
+  closed 2026-08-02); the site still answers 307 and the monitor is deliberately kept —
+  do not delete it as cruft.
 - **Machine-voice convention:** any AI-authored text renders italic + muted with a
   `↳ from claude` marker.
 
