@@ -70,7 +70,10 @@ two operational risks, then freeze the rollout until real demand. Posted to
 `~/src/.handoff/garm-prompt-lab.md` 2026-08-27. What that means here:
 
 - **Frozen indefinitely:** `GARM_GATING` stays **off**; `READER_EMAILS`
-  remains the live gate. Grant seeding (Pierre → `prompt-lab.prntd`, the
+  remains the live gate. **"Off" is a Vercel env var, not the code
+  default** — `web/garm_helper.py` defaults to `on`, so an env reset would
+  silently turn gating on and fail closed. Check `vercel env ls` before
+  trusting this line. Grant seeding (Pierre → `prompt-lab.prntd`, the
   brother) is DEFERRED, no longer blocking anything. Task 9 smoke test
   deferred with it. No new consumers, no admin UI (build-plan #8), and the
   2026-08-23 dashboard-panel offers (per-person access lookup, usage panel,
@@ -167,8 +170,7 @@ pushed); roll-your-own (GitLab, no auth) and skitrack-ntzb-poc (third-party
 remote) also deliberately unpushed. Two loose ends from the rescue: the
 agent installed git-lfs globally (Homebrew) to get rock-art-fab pushed, and
 musicforge's lilypond submodule edits went to the shared
-`neonscribe/lilypond-lead-sheets` repo on a rescue branch. Also still to
-delete: the dead-token copy in `~/mini-staging/home/zshrc.mini`.
+`neonscribe/lilypond-lead-sheets` repo on a rescue branch. The dead-token copy in `~/mini-staging/home/zshrc.mini` was deleted 2026-09-07.
 
 **garm hit the same Neon-CU bug as byside — found 2026-08-18, fixed same day
 by the garm side.** Neon alerted that `neon-bole-tree` (garm's DB, project
@@ -233,8 +235,8 @@ directory name, since invitekit deploys to `freevite.vercel.app`; and `spike`
 (4 prompts) has the same shape as the hidden artifacts.
 
 **`ACTIVE · N` counts hidden projects.** `activeCount` is `activeList.length`
-with no `private` filter (`web/index.html:1165-1167`), and it also feeds the
-`active projects` KPI tile (`:1191`), so the home screen read `37` when 16 were
+with no `private` filter (`web/index.html:1308-1310`), and it also feeds the
+`active projects` KPI tile (`:1334`) and the `Active · N` header (`:1421`), so the home screen read `37` when 16 were
 shown and 21 were hidden junk. Chips honor the toggle; the counts don't. The fix
 is one filter, but the semantics are a real choice: excluding private is
 obviously right while `private` holds only artifacts, and wrong the day a
@@ -250,25 +252,26 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   runtime and the network policy blocks it, so every frontend change here is
   verified by `node --check` over the extracted module plus class-usage greps, and
   needs your eyes before it is real. Don't mistake "tests pass" for "it looks right."
-- **Beacon fan-out: `prntd` + `musicforge`** never got the snippet (dirty trees at
-  fan-out time). `page_views` has zero rows ever for either. musicforge is Vite
-  (`frontend/src/main.tsx`), a different injection than the Next.js root layouts.
+- **Beacon fan-out: `prntd`** never got the snippet; `page_views` has zero rows
+  ever for it. (musicforge was believed missing too, but it has been reporting
+  since 2026-08-09 — 676 rows by 2026-09-07 — so only prntd remains.)
 - **Public rollups:** only ibuild4you `2026-05-18` remains unpublished, and that is a
   deliberate skip (cost forensics + internal ops; nothing left after scrubbing). It
   reappears in every future draft by design.
 - **#48 residual:** the "8am" cron is `0 15 * * *`, which is 8am Pacific in summer
   and **7am in winter** — Vercel crons are UTC-only, so this is a choice to make
   (accept the winter hour, or split the schedule), not a bug to fix.
-- Open issues: **#14** design tokens (own session), **#27** Garm rollout, **#43**
-  sign-ins panel (trigger-gated: fires the day a second reader joins
-  `READER_EMAILS`), **#9** beacon fan-out, **#34** health leftovers, **#45** the
-  freshness convention, **#50** preload + locally cache per-day aggregates (the
-  day page fetches cold and feels sluggish on a phone), **#49** copy review across every dashboard page (filed
-  2026-08-02 at Nico's ask — he wants to read it at a computer, not a phone),
-  **#51** unmapped costs, **#52** exclude test-agent traffic from `page_views`
-  (both filed 2026-08-08 off Nico's backlog list; same list also settled: Ask's
-  per-user history is parked with Ask itself, and the selected-projects commit
-  counts wait on *their* repo wiring `lib/history.ts`).
+- Open issues (resynced 2026-09-07): **#14** design tokens (own session; 244
+  font-size declarations now, up from 146 when filed), **#43** sign-ins panel
+  (trigger-gated on a second reader — note readers now also arrive via Garm
+  grants in `web/api/callback.py`, not only `READER_EMAILS`), **#9** beacon
+  fan-out, **#49** copy review (the issue has no comments; this file is the only
+  record of batch progress), **#53** iOS chart-tap zoom, **#55** cloudflared
+  token (owner traced to SPAN 2026-08-29; handoff note unanswered). Closed at
+  that resync: #34 and #45 (leftovers noted on the issues), #27 (frozen).
+  Earlier closes: #50 (day-page cache), #51, #52. Settled off the same list:
+  Ask's per-user history is parked with Ask itself, and the selected-projects
+  commit counts wait on *their* repo wiring `lib/history.ts`.
 - Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
 
 ### The failure shape this repo keeps hitting

@@ -38,7 +38,10 @@ its SSH add-on).
   **`cloudflared` tunnel token is passed as a plaintext CLI arg**,
   visible to anything that can run `docker inspect` — worth moving to a file
   or env, and it means phrpi has an inbound tunnel from the public internet,
-  which is not mentioned anywhere else in these notes.
+  which is not mentioned anywhere else in these notes. **Owner: the SPAN
+  repo** — traced 2026-08-29 to compose project `pi`, working dir
+  `/home/nico/SPAN/pi/docker-compose.yml` (prompt-lab #55); the fix request
+  sits in `~/src/.handoff/span-prompt-lab.md`.
   The mini's old `com.span.bath-detector` LaunchAgent was ruled LEGACY
   2026-08-13 (detection moved to the Docker service; the plist was a
   potential double-writer and is excluded from the mini rebuild).
