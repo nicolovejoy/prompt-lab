@@ -13,6 +13,893 @@ drifts.
 
 ## Build log (newest first)
 
+### The nightly pipeline failed every night the laptop had to WAKE for it (moved 2026-09-07)
+**The nightly pipeline failed every night the laptop had to WAKE for it —
+FOUND AND FIXED 2026-09-06, and the watchdog that should have said so was
+blind by construction.** A week of real unattended runs produced the evidence
+the two staged-host acceptance tests were waiting for, and one of them passed
+while the other found this.
+
+The correlation was exact. Runs that fired at 02:30:0x on an already-awake
+laptop succeeded (Aug 30, Sep 5, Sep 6). Runs that fired on a scheduled wake
+failed (Sep 1, 2, 3, 4), every one at `socket.gaierror: [Errno 8] nodename nor
+servname provided, or not known`. launchd fires within ~5s of the wake and DNS
+is not up yet. Aug 31 produced no run at all. Four of seven nights sent no
+review email.
+
+Three defects, each an instance of the failure shape at the bottom of this
+file, and they hid each other:
+
+- **`synthesizer.py` swallowed every per-item API error, still pinged its
+  heartbeat, and exited 0.** So the synthesizer artifact looked FRESH on
+  nights when every call had failed. `daily_summaries` shows the damage: 5-7
+  projects/day normally, 1-2 on Aug 31 - Sep 3. Now a total wipeout
+  (`attempted > 0 and errored == attempted`) skips the heartbeat and exits 1;
+  a partial failure still pings and exits 0, because one project failing to
+  summarize is not a dead night.
+- **`nightly_pipeline.py` had no network gate**, so it ran the whole night
+  into a dead resolver. `wait_for_network()` now polls DNS for up to 180s
+  before any stage — **on the monotonic clock**, per the standing rule — and a
+  night that never gets a resolver runs no stages, records a synthetic
+  `StageResult("network", "failed", ...)`, and skips the Turso push that
+  cannot work anyway.
+- **The health email graded only the NEWEST run record** (`ORDER BY
+  started_at DESC LIMIT 1`). A night that dies for lack of network cannot push
+  its own record either, so it arrives days later via catch-up already older
+  than a newer healthy run — and was therefore never graded at all. The
+  catch-up mechanism and the grading mechanism cancelled each other out. Now a
+  7-day window is graded, any bad night in it forces `ok=False` even when the
+  newest run is clean, and `NIGHTLY_RUN_MAX_AGE_DAYS` dropped 2 -> 1.
+
+**The generalizable trap, worth more than the fix: a failure whose own cause
+also blocks its reporting path erases its own evidence.** No amount of care in
+the grader helps, because the grader never receives the row. The fix has to be
+on the reading side — grade a window, not the newest row.
+
+**What passed:** step 3's blocked-push acceptance test, in the wild and harder
+than specified — four consecutive nights could not push, and the Sep 5 run's
+stateless catch-up backfilled all four. Turso holds an unbroken Aug 30 - Sep 6
+sequence. Step 2's sleeping-host test is still outstanding.
+
+### Step 3's blocked-push acceptance test PASSED in the wild (moved 2026-09-07)
+**Step 3's blocked-push acceptance test PASSED in the wild 2026-09-06, harder
+than it was specified.** It was never staged — Sep 1-4 failed for real, all
+four could not push, and the Sep 5 run's stateless catch-up backfilled every
+one. Turso holds an unbroken Aug 30 - Sep 6 `nightly_runs` sequence. The half
+of that test about freshness reporting stale *during* the block did NOT pass,
+and that is the wake/DNS entry above: the email stayed green throughout,
+because grading only the newest row cannot see a record that has not arrived.
+
+### Three of the five live risks WERE closed by hand on merge night (moved 2026-09-07)
+**Three of the five live risks WERE closed by hand on merge night
+(2026-08-29), attended rather than at 2:30.** Worth knowing they are facts,
+not hopes: `migrate()` was run against **real Turso** — `nightly_runs` exists
+with all ten columns and `prompt_version` landed on both summary tables, so
+the `ALTER TABLE ADD COLUMN` path **does** work over the libSQL HTTP
+pipeline, which was the branch's biggest unknown. `migrate()` was also run on
+the real local `prompt-history.db` — all three new tables present, both
+columns added, 241 daily summaries intact. And the deployed lambda imports
+cleanly: `/api/health_report` returns **401, not 500**, which is the tell —
+a missing `artifact_checks.py` in `web/vercel.json`'s `includeFiles` would
+fail at import *before* auth ran and would have silently stopped the daily
+health email. Only the two staged-host tests above remain.
+
+The general habit that produced this, worth repeating: when a change ships
+code that will first execute unattended overnight, run the irreversible-ish
+part by hand while awake. It is the same action the job would take, and it
+converts "we'll find out at 2:30" into a fact in about a minute.
+
+### Next piece of work: `docs/nightly-pipeline-plan.md` — step 1 DONE (moved 2026-09-07)
+**Next piece of work: `docs/nightly-pipeline-plan.md` — step 1 DONE
+2026-08-29, steps 2–4 remain.** Collapses the racing nightly agents into one
+ordered pipeline, because **a scheduler is not a dependency mechanism** —
+launchd coalesces missed `StartCalendarInterval`s onto one wake, so two agents
+scheduled 45 minutes apart start simultaneously after a closed-lid night, and
+retiming `api-costs` would look like a fix and not be one. Step 1 (idempotent
+remote writes) shipped and was applied live: remote `save_review_snapshot` is
+now an upsert keyed `(review_type, date)`, `migrate()` dedupes-then-indexes
+(self-healing, safe on every sync), and Turso went **11,848 rows → 78**,
+verified stable across two consecutive syncs with today's row present.
+`project_snapshots` was audited for the same shape and is clean (live UNIQUE
+constraint, 0 dup pairs). Tests in
+`scripts/test_review_snapshot_idempotency.py` run the store's real SQL against
+in-memory sqlite.
+
+### Step 2 DONE 2026-08-29, applied live on the laptop (moved 2026-09-07)
+**Step 2 DONE 2026-08-29, applied live on the laptop.** `nightly_pipeline.py`
+is the single nightly entry point: cost pull → synthesizer → review →
+report-when-due → publish, wrapped by `run-nightly.sh` under one
+`com.promptlab.nightly` agent at 2:30. Per-stage timeouts are MONOTONIC
+(subprocess timeouts stop counting during sleep — no wall-clock deadline, per
+the standing rule). A failed stage skips its dependents (a review over a
+failed synthesis is the "no new work on a busy day" bug), but publish always
+runs; the cost-pull heartbeat fires only after publish lands. The bi-monthly
+report is now artifact-keyed — it runs when the current half-month (1st/16th
+split, Pacific) has no `monthly_report` snapshot — so a closed lid on the 1st
+means a late report, not a skipped one. NOTE: the Aug-16 report never ran
+(laptop jobs were re-enabled the 20th), so the first pipeline night catches it
+up — an extra report around 2026-08-29/30 is correct, not a bug. The four old
+agents are booted out and parked in
+`~/Library/LaunchAgents/disabled-promptlab-step2-20260829/`;
+`workflow/run-cost-pull.sh` and the four old plists are deleted from the repo
+(their coupling/no-`source` lessons live on in `nightly_pipeline.py` and the
+new plist's comments). Tests: `scripts/test_nightly_pipeline.py` (11, real
+subprocesses).
+
+### Step 3 DONE 2026-08-29 (moved 2026-09-07)
+**Step 3 DONE 2026-08-29** (decided: local write, pushed to Turso as its own
+step — see the Invariants entry, not a synced table). `nightly_runs` brackets
+every run — a `status="running"` row before the first stage, a full row
+(stages, `overall_status`, `machine_host`) after — and `push_runs` runs after
+publish with stateless catch-up (push local rows newer than the remote's
+newest `started_at`, upsert by `run_id`). The health email's
+`_check_nightly_run`/`_claims_vs_remote` cross-check the run record against
+`HEARTBEATS`; a bad run escalates the subject and a malformed `stages`
+payload can't 500 the email. **Step 5 DONE 2026-08-29** — `daily_summaries`
+and `weekly_rollups` archive the row an upsert or repair is about to replace
+into `*_superseded` (local only) before overwriting, so re-running the
+synthesizer stops destroying prose that cost an API call. One asymmetry
+worth knowing: `weekly_rollups.prompt_version` syncs to Turso but
+`daily_summaries.prompt_version` does not — `merge_summary_parts()` in
+`sync_to_turso.py` builds a fixed dict that omits it, deliberately, since the
+column is local provenance and no cloud reader needs it, so Turso's
+`daily_summaries.prompt_version` stays perpetually NULL. That's accepted,
+not a broken sync leg.
+
+### Public refresh backlog fully cleared 2026-08-27/28 (moved 2026-09-07)
+**Public refresh backlog fully cleared 2026-08-27/28 — style guide for future
+drafts now lives in Claude's memory, not here.** Nico reviewed and edited
+drafts for ibuild4you, musicforge, prntd, prompt-lab (24 weeks total across
+two rounds); iterated on the narrative style (terser, cut process/debugging
+narrative, active voice, judge redundancy per-entry rather than by a fixed
+phrase list) and had it saved as a standing memory
+(`feedback_public_draft_narrative_style.md` in prompt-lab's Claude memory
+dir) — apply it automatically on future `draft_public_refresh.py` passes,
+don't wait to be told again. All published via `publish_public_draft.py
+--apply` + synced to Turso (`a166082`, `6bd8844`). `--list` now shows 0
+unpublished weeks for every project on the allowlist — nothing pending.
+
+### Not prompt-lab's bug, just diagnosed here 2026-08-23 (moved 2026-09-07)
+**Not prompt-lab's bug, just diagnosed here 2026-08-23:** the `howl@` denial
+digest is Garm's own email (not ours), and a burst of ~35 denials on
+ibuild4you traced to ibuild4you's own liveness probe hammering
+`/gnipahellir` with a synthetic `health-probe@example.com` credential. Garm
+already asked ibuild4you to kill it (`~/src/.handoff/ibuild4you-prompt-lab.md`,
+2026-08-23); nothing to do here unless it recurs.
+
+### VERIFIED 2026-08-22: the first unattended laptop run of the nightly jobs worked (moved 2026-09-07)
+**VERIFIED 2026-08-22: the first unattended laptop run of the nightly jobs
+worked.** `send-review.log`: started 02:30:01, generated in 138.0s, sent,
+finished 02:32:22, `LastExitStatus = 0`; `pmset -g log` shows the only sleep
+that hour was 02:05–02:21, before the job. The caffeinate wrapper held through
+the run. The sleep fix is no longer a claim.
+
+### SPAN outage 2026-08-21 — RESOLVED same day (moved 2026-09-07)
+**SPAN outage 2026-08-21 — RESOLVED same day, not our fault, and the cause was
+one toggle.** Cloudflare **Bot Fight Mode** was managed-challenging Vercel's
+egress on `influx.pianohouseproject.org/api/v2/query`, so SPAN's health check
+503'd and its monitor flapped ~25 times in a day. Nico disabled BFM; verified
+green from both repos. Thread archived in `~/src/.handoff/span-prompt-lab.md`.
+Two residuals, one already closed:
+- ~~UptimeRobot's account display timezone was **UTC-10**, stamping every alert
+  email ten hours behind Pacific~~ — **FIXED 2026-08-21 by Nico.** Kept because
+  of what it cost: two rounds of cross-agent confusion over the incident time,
+  with an authoritative-sounding wrong timestamp handed between repos. When two
+  sources disagree about *when*, suspect a display timezone before suspecting
+  either party's reading.
+- **Load-shedding is not available on our side and never was.** The `deep` flag
+  in `web/api/health_report.py` is *descriptive* — it mirrors `?db=1` in the URL
+  — and `_check_target()` issues the request either way, so flipping it removes
+  zero requests. byside and garm got their reduction by editing the **URL**. Do
+  not offer "flip it to shallow" as a remedy again without checking whether the
+  target's URL actually has a deep variant to drop.
+
+### Decided 2026-08-20 (Nico): the nightly jobs move to the laptop (moved 2026-09-07)
+**Decided 2026-08-20 (Nico): the nightly jobs move to the laptop.** He leaves
+it on and plugged in, and explicitly accepted the limitation that a closed
+lid means a late or missing report. Two things make this better than it
+sounds: launchd re-fires a missed `StartCalendarInterval` on wake, so a
+closed-lid night gets a late email rather than none; and co-locating the
+readers with the capture machine closes the old "laptop synthesizes at 2:00,
+mini reads Turso at 2:30" “Today”-window gap for free. The laptop sleeps too,
+so the caffeinate wrapper is what makes this viable — it is not a
+mini-specific hack.
+
+### What runs where — SETTLED 2026-08-20 (moved 2026-09-07)
+**What runs where — SETTLED 2026-08-20: the nightly jobs run on the LAPTOP,
+and nowhere else. (2026-08-29: the four agents described below were collapsed
+into the single `com.promptlab.nightly` pipeline agent — see the
+nightly-pipeline entry above; the one-sender rule is unchanged.)** Nico's call, on the reasoning that he leaves the laptop on and
+plugged in and accepts that a closed lid means a late or missing report. Applied
+the same day: the mini's four agents are booted out and parked in
+`~/Library/LaunchAgents/disabled-promptlab-20260820/` (reverse: move back +
+`launchctl bootstrap gui/$UID/<plist>`), and all four are rendered and loaded on
+the laptop. **There is exactly one sender — never load the readers on two
+machines at once or Nico gets two emails a night.**
+
+Why this beats the mini-only split it replaces: the mini's raw DB is frozen
+(nothing is captured there), it deep-sleeps through the night so its jobs
+started late and ran for hours of wall clock, and co-locating the readers with
+the capture machine removes the cross-machine "Today"-window gap entirely. The
+laptop sleeps too — `workflow/run-nightly.sh` is what makes this work, and
+launchd re-fires a missed `StartCalendarInterval` on wake, so a closed-lid
+night degrades to a late email rather than none.
+
+The laptop's older `~/Library/LaunchAgents/disabled-readers-20260812/` is now a
+stale backup of the 2026-08-12 parking; the live copies are the rendered ones in
+`~/Library/LaunchAgents/`. The original split, for the record:
+- *Local-data jobs* run on **every** machine, over its own DB, because raw
+  prompts are machine-local by invariant and never leave. That is
+  `com.promptlab.synthesizer`, plus the turso-sync leg. The laptop keeps its
+  copy; this is not duplication, it's the federation working.
+- *Reader/output jobs* run on the **mini only**, because the laptop being closed
+  must mean off. That is `com.promptlab.review`, `com.promptlab.report`,
+  `com.promptlab.api-costs`. **Done 2026-08-12 (Nico triggered it):** all three
+  unloaded on the laptop and parked in
+  `~/Library/LaunchAgents/disabled-readers-20260812/`; only the synthesizer
+  remains loaded there. **Reversed 2026-08-20 — see above; the availability
+  argument lost to the fact that the mini slept through every night anyway.**
+- Vercel crons (the 8am health email) are cloud-side and location-independent —
+  out of scope for any of this, don't move them.
+
+### The nightly review's "3h19m API call" was never an API problem — the Mac was asleep (moved 2026-09-07)
+**The nightly review's "3h19m API call" was never an API problem — the Mac
+was asleep. SOLVED 2026-08-20; do not re-open the timeout theory.** The
+earlier entry here diagnosed a read-timeout that kept resetting on trickled
+data and prescribed a hard wall-clock deadline of ~10 minutes. **That fix
+would have aborted a healthy run every single night.** It was never applied.
+Keep the reasoning below, because the measurement trap it describes will
+recur on any machine that idles.
+
+The evidence, gathered by `pmset -g log` on the mini:
+- The mini deep-sleeps every ~15 minutes with 45-second dark wakes, all
+  night — **19 sleep cycles between 02:00 and 06:00**, 742 sleep/wakes since
+  the Aug 13 boot, each logged `Entering Sleep state due to 'Maintenance
+  Sleep':TCPKeepAlive=active`. `pmset sleep 0` is already set and does not
+  prevent this on Apple silicon.
+- launchd fires `StartCalendarInterval` on the next **wake**, not the
+  scheduled minute. The 02:30 job actually started at **02:42:07**.
+- 02:42 → the log's 06:01 mtime is **exactly the 11,942s** in the log.
+  Summing the sleep intervals across that span: **~11,350s asleep, ~640s
+  awake.** There was no 3h19m call. There was a normal generation (a healthy
+  night is 136s) stretched across a machine powered down for 95% of the
+  wall clock.
+- `time.time()` counts sleep; the monotonic clock httpx uses for its read
+  timeout does not. So the 300s ceiling **correctly** never fired and
+  `duration_ms` **correctly** read 3h19m. Both numbers were right and they
+  measure different things. `TCPKeepAlive=active` is what let the socket
+  survive the sleeps, which is also the better explanation for the Night 2
+  "6-hour silent hang" than a half-open socket.
+
+Confirmed still true from the old entry: the two real bugs found 2026-08-19
+(uncaught `APITimeoutError` with no retry; unbounded client timeout) did not
+recur, so those fixes are genuine. And the `send-review.py` line-257
+traceback **is** a fossil — it matches `86ed77d` (257 lines, Aug 14–19), not
+the current 255-line file.
+
+Fixed same day, all of it machine-agnostic and in git:
+- `workflow/run-nightly.sh` — every nightly plist now runs its job through
+  it. Holds `caffeinate -ims` for exactly the job's lifetime (with a utility
+  argument, `-t`/`-w` are ignored and the assertion cannot orphan; no `-d`,
+  so the display still sleeps), stamps start/finish times into the log, and
+  rotates the log by **copy-truncate** at 256KB. Rotation must not be `mv`:
+  launchd opens `StandardOutPath` before spawning, so renaming leaves the
+  inherited fd on the renamed inode and the whole run lands in the archive.
+- `claude_api.call_claude` logs each attempt's start timestamp and records
+  both wall and monotonic elapsed; `describe_elapsed()` prints
+  `"11942.4s wall / 638.0s awake — HOST SLEPT ~189min mid-call"` instead of a
+  bare duration. `awake_ms` joins `duration_ms` in the returned dict. Five
+  `clocks:` tests pin this, including a grep guard that both readers still
+  call `describe_elapsed` — if one quietly reverts to printing bare
+  `duration_ms`, the next such night is undiagnosable again.
+
+**Do not add a wall-clock deadline.** If a deadline is ever wanted it must be
+enforced on monotonic time, or it will abort healthy runs on any sleeping
+host.
+
+### Found while fixing the above: `com.promptlab.report` has been silently dead on the mini (moved 2026-09-07)
+**Found while fixing the above: `com.promptlab.report` has been silently dead
+on the mini since the 2026-08-13 rebuild.** Its plist ran
+`source $REPO/.env && python generate-report.py 30`, and **the mini has no
+`.env`** (only `.env.local`), so `source` failed, `&&` short-circuited, and
+python never ran — no `generate-report.log` exists there at all. This is the
+identical `&&` short-circuit that killed this same job for four months once
+before. The `source` was always redundant: `generate-report.py:134` calls
+`load_env()` itself, which loads `.env` *and* `.env.local` and tolerates
+either being absent. The plist now invokes python directly through
+`run-nightly.sh`. Next scheduled run is the 1st.
+
+### Also found: the mini's raw prompt DB is frozen (moved 2026-09-07)
+**Also found: the mini's raw prompt DB is frozen** — 11,240 prompts, last
+`2026-08-12 00:35`, i.e. the restored pre-wipe snapshot, while the laptop
+logs 46–198 prompts/day. Nothing is captured on the mini, so its synthesizer
+runs nightly over a dead database and its sync re-pushes identical rows.
+Harmless, but it means the mini's only real contribution was *being awake at
+2:30am* — which it wasn't.
+
+### For the record, 2026-08-17 in one breath (moved 2026-09-07)
+For the record, 2026-08-17 in one breath: turso-readers merged to main
+(direct, per Nico); py3.9 `from __future__ import annotations` fixes in
+`pull_api_costs.py` + `store/__init__.py` + 2 more (repo swept — and note
+the sweep ran pre-merge and missed the file the branch was about to add;
+sweep AFTER merging); mini's four jobs loaded, cost-pull kickstarted clean
+end-to-end, review dry-run composed laptop work from the merged store; #50
+(day-page cache/prefetch) and #52 (write-time `agent` label on
+`page_views`) shipped via parallel worktree agents, deployed, eye-checked
+by Nico; #51 closed (laptop's `project_workspaces` was never seeded —
+seeded both machines, laptop rows UPDATEd, Turso backfilled by re-pull +
+full sync); Turso `_pipeline` got a 60s timeout + one retry after a full
+sync hung 1.5h on a dead connection (0.36s CPU / 89min wall — true
+full-sync time is 2m35s, no perf issue); repo housekeeping: 14 archived,
+`react-firebase-authentication` deleted, all 13 mini-staging repos rescued
+to `~/src/mini-rescue/` with pushed `mini-rescue-20260817` branches.
+
+Turso-readers production leftovers:
+1. ~~Laptop's `.env.local` needs `GROUND_CONTROL_MACHINE=laptop`~~ — **DONE
+   2026-08-20, Nico appended it.** Matters now the laptop is the only machine
+   running jobs, since `daily_summaries_machine` keys on it.
+2. ~~Nothing syncs laptop→Turso between the 2:00am synthesizer write and the
+   mini's 2:30am review read~~ — **MOOT 2026-08-20.** Both now run on the
+   laptop, in sequence, over the same local DB, so there is no cross-machine
+   window to miss. This resolved by co-location rather than by the
+   sync-before-review-vs-retiming decision it was waiting on.
+
+### Public data is stale again (moved 2026-09-07)
+*Public data is stale again* — 9 unpublished weeks for prompt-lab, 4 prntd,
+3 musicforge, 2 ibuild4you (`scripts/draft_public_refresh.py --list`). It goes
+stale silently by design, and sat six weeks before a consumer noticed last
+time. Drafting is cheap; the human review is the expensive part and the actual
+privacy gate, so this waits for Nico to want it.
+
+### `automation-dev` is DELETED (moved 2026-09-07)
+**`automation-dev` is DELETED — Nico did it 2026-08-14, and nothing broke.**
+This closes the only item that carried a live security edge. Verified by SSH
+the same day, and the verification is worth reading because it overturns the
+note it replaces:
+
+- The `lights` container on phrpi still authenticates to HA — **200 from
+  `GET /api/`** with its own credential, tested from inside the container so
+  the value never entered a session.
+- The container has been **up 28 hours without a restart**, so its environment
+  cannot have changed. A still-valid token in an unrestarted container is proof
+  the credential it holds was *never* `automation-dev`.
+- Therefore the **2026-08-13 "correction" was itself wrong**, and the note it
+  overturned was right the first time: **phrpi-lights holds its own separate
+  token.** The HA UI listing one long-lived token was read as "there is only
+  one"; what it actually showed is one token *of the ones created that way*.
+  The lesson to keep: a UI list is evidence about the UI, not about every
+  credential in the system — the authoritative test is whether the consumer
+  still authenticates.
+- Also corrected: the variable is **`HA_TOKEN`**, not `HASS_TOKEN` as this file
+  said for two days. `HASS_TOKEN` is unset in the container. A rotation
+  following the old instructions would have edited a variable nothing reads and
+  "succeeded" while changing nothing.
+
+Residual, both minor now: the plaintext copy in
+`~/mini-staging/home/zshrc.mini` is a **dead** credential rather than a live
+one, so it's cleanup rather than exposure — still delete it. And the mini's old
+consumers (`deploy.py`, `tools/matter_diag.py`, `dashboard/ha_client.py`,
+tests, `phrpi-lights/.env.tpl`) now reference a revoked token; they'll need the
+new one whenever the HA deploy path is re-provisioned.
+
+Separately, the token card was nearly mistaken for the **Refresh tokens**
+card above it — those are login sessions (browser, iOS app), and deleting
+one revokes a session, not an API token. Known consumers of the dead token (mini pre-erase grep): the
+home-assistant repo (`deploy.py`, `tools/matter_diag.py`,
+`dashboard/ha_client.py`, tests), `phrpi-lights/.env.tpl`, and the mini's
+`.zshrc`. Separately, the mini was the HA *deploy machine* — the laptop
+clone lacks `.secrets` and its ssh key isn't in the HA SSH add-on;
+re-provisioning is queued in the home-assistant repo (coordinate there,
+not with the decommission notes).
+
+- ~~Rotate `automation-dev`~~ — **DONE 2026-08-14, deleted by Nico.** lights
+  verified still authenticating (200) afterwards; it holds its own token.
+  Only cleanup left: delete the now-dead plaintext copy in
+  `~/mini-staging/home/zshrc.mini`.
+
+### The nightly review email says "no new work" on days full of work — BOTH BUGS FIXED (moved 2026-09-07)
+**The nightly review email says "no new work" on days full of work — BOTH BUGS
+FIXED 2026-08-12.** Full diagnosis in `docs/history.md` / git history
+(`877ea15`, `c332ac9`); what happened and what remains:
+
+*Bug A, the window — FIXED in code, 2026-08-12; window logic survived the
+2026-08-14 Turso refactor below, raw-session selection did not.* The job
+fires at 2:30am and asked for **today**, structurally empty at that hour, so
+`review_windows()` in `send-review.py` makes "Today" mean **yesterday's
+completed lab-day** (Pacific) — that part is unchanged today. What's gone:
+`send-review.py` no longer selects raw sessions at all (Task 2 of the Turso
+refactor removed the read entirely; it composes from `daily_summaries`/
+`weekly_rollups` instead — see the "Turso refactor DONE" line below). The
+overlap-by-time-range logic that originally fixed raconte's 31-hour session
+(`get_raw_sessions(overlap_utc=…)` + `day_helper.lab_day_bounds_utc`,
+DST-correct) still exists and is still tested, but only at the store layer
+(`scripts/test_send_review.py`, 7 tests) — nothing above it calls it anymore.
+
+*Bug B, delivery — RESOLVED by unloading, not by repairing the sender.* The
+laptop's 33 Resend 403s came from its stale Jun 6 `.env.local` using the
+unverified `send.` subdomain. Per Nico's call 2026-08-12: the laptop's three
+reader plists (`review`, `report`, `api-costs`) are **unloaded and parked in
+`~/Library/LaunchAgents/disabled-readers-20260812/`** (reverse: move back +
+`launchctl bootstrap gui/$UID/<plist>`), and the mini's current `.env.local`
+was scp'd over (laptop's old copy at `.env.local.bak-20260812`). The mini is
+now the only sender, which was the proposed split — accepted cost: nights the
+mini is down (e.g. wipe day) get no review email. Still open, low priority:
+a failed send still writes `review_snapshots` (the row records *composition*,
+not *delivery* — nothing distinguishes them), and the #45 heartbeat
+structurally can't see a last-step delivery failure because the artifact is
+upstream of it. Also never explained: the laptop wrote no `review_snapshots`
+rows for Aug 10-11 despite its job running — academic now the readers are
+unloaded, but if it recurs on the mini, dig.
+
+### Turso refactor DONE 2026-08-14 (moved 2026-09-07)
+**Turso refactor DONE 2026-08-14** (tracked in the DB-ownership bullet below):
+`send-review.py` no longer reads its **local** `sessions` table, so laptop
+session detail reaches the Today section. `generate-report.py` was covered by
+the same change.
+
+### The trajectory heatmap's month labels were on a different scale than the grid (moved 2026-09-07)
+**The trajectory heatmap's month labels were on a different scale than the grid
+— FIXED 2026-08-14** (diagnosed 2026-08-12; Nico re-reported it from a
+musicforge screenshot, which is what got it built). The data was always fine;
+only the axis lied. `.heatmap-labels` was `justify-content: space-between`,
+spreading 13 month labels across the **container's full width** (~1050px),
+while `.heatmap` was 53 fixed columns of 8px + 2px gap = **530px**, left-aligned
+and never stretched. The grid's right edge (today) therefore landed at ~50% of
+the label row — the 7th of 13 labels, **Feb**. Six months of continuous work
+read as "dead since March." The smoking gun: the renderer computed
+`monthLabels.push({ idx: weeks.length, … })` and then rendered
+`<span>${m.label}</span>`, throwing `idx` away — alignment was never
+implemented. Second defect, same cause: the label row sat *outside* the
+`overflow-x:auto` container, so on a phone it didn't scroll with the grid.
+
+Fixed as agreed, and **the coloring stays on prompt count**: both rows now live
+inside one `.heatmap-scroll` container wrapping a `.heatmap-track`
+(`width:max-content`), and the label row carries the **same flex geometry as
+the grid** — one 8px `.heatmap-labelslot` per week column, `gap:2px`, labelled
+slots holding absolutely-positioned text plus a dot at the true column centre,
+the convention `DateAxis` already established for the other six charts. `idx`
+is finally read (`labelAt[i]`). Alignment is now **structural**: a label is
+positioned by occupying its own week's slot, so there is no pitch constant to
+keep in sync. `.heatmap-track` carries 16px of horizontal padding so the first
+and last labels, which overhang their 8px slots, aren't clipped — applied to
+both rows at once, so it can't pull them out of register.
+
+`ActivityHeatmap` has exactly one call site (the project page), so this covers
+every project at once. Verified by `node --check` over the extracted module
+plus a class-defined/class-used sweep, then **confirmed by eye on prod
+2026-08-14** (musicforge): month labels sit over their own columns in both
+directions, dots line up, and the six months that read as "dead since March"
+now read as the continuous work they were. Note that the sandbox cannot render
+the app, so the eye check is not optional here.
+
+### Prompt ratings: ABANDONED 2026-08-14 (moved 2026-09-07)
+**Prompt ratings: ABANDONED 2026-08-14, don't revive it without a new idea.**
+The live `prompts` table carries `utility`, `tags`, `notes`, `outcome` and an
+`idx_prompts_utility` index; **0 of 1318 rows have ever been rated**, and the
+columns are not even declared in `store/` (they exist only in the live DB and
+in two test fixtures). Correcting the record: earlier notes claimed `/handoff`
+offers rating and `/readup` surfaces utility-4+ prompts — **neither has ever
+existed**. `grep -rn "utility" workflow/` returns exactly one hit, a comment in
+`log-prompt.sh`. So this was never dead code over an empty column; it was an
+empty column with no code at all, and the same claim is in the *global*
+`~/.claude/CLAUDE.md` (lines 22, 27-29) describing `/prompts` and rating flows
+that don't exist. The columns stay (harmless, indexed); the aspiration is
+dropped. If it ever returns, the two ideas worth starting from are a one-word
+in-the-moment marker (a `/good` command stamping the previous prompt — slash
+commands are already filtered out of the table, so it can't pollute its own
+data) or deriving utility from outcome rather than asking a human at all.
+
+### The raw tier undercounted prompts by design — FIXED 2026-08-14 (moved 2026-09-07)
+**The raw tier undercounted prompts by design — FIXED 2026-08-14.** The old
+guess (that `log-prompt.sh` only sees turn-initial prompts) was **wrong**: it
+runs on `UserPromptSubmit`, which fires per submitted message, mid-turn
+interjections included. The real cause was a write-time filter,
+`[ ${#PROMPT} -lt 20 ] && exit 0`. Every prompt under 20 characters was
+silently dropped — "yes", "go ahead", "ship it". The fingerprint was exact:
+`min(length(prompt))` over the whole table was **20**, with **zero** rows
+below. That is a filter, not a distribution.
+
+The damage was never the missing rows, it was the **shape** of the loss: a day
+spent steering is mostly short prompts and rendered as a quiet day, while a day
+spent writing specs rendered as busy. `daily_summaries.prompt_count` feeds the
+trajectory heatmap and the KPI tiles, so the charts presented a filtered signal
+as an activity record — the repo's signature failure again. It is also what
+made "1 prompt for prompt-lab" on a six-turn day look like a lag.
+
+Now: **store everything, label it, select at read time.** `prompts.kind` is
+written by the hook from `scripts/prompt_kind.py` — the single implementation,
+shared with `scripts/backfill_prompt_kind.py` so live rules and backfill rules
+can't drift. Five kinds: `approval`, `correction`, `question`, `command` (a
+bare `/slash` invocation), `spec` (everything else). **No rule consults
+length**, pinned by a test that pads a prompt and asserts the label doesn't
+move. A label is recomputable; a discarded row is not — that asymmetry is the
+whole design, so misclassification is cheap and `--all --apply` relabels
+everything.
+
+Backfill applied to all 1353 existing rows: 81% spec, 17% question, 2%
+correction, and — the diagnosis confirming itself — **0 approvals**, because
+approvals were exactly what the filter had been deleting.
+
+Three things fell out of the same change:
+- **`prompts.context` now holds the whole last assistant message, trailing 2000
+  chars** (was `head -1 | head -c 500` — the first *line*, averaging 124 chars,
+  usually a lead-in rather than the proposal). Paired with `kind='approval'`
+  this is what answers "what did I actually say yes to?". `base64` in the jq
+  pipeline is load-bearing: `tail -r` makes the first *record* the most recent,
+  but a message spans lines, so encoding each to one line makes "first record"
+  and "first line" agree again.
+- **A failed insert is no longer silent.** It used to go to `/dev/null`; it now
+  appends to `~/.claude/hooks/log-prompt-errors.log`. The hook also ALTERs
+  `prompts` defensively, because the table predates `store/`'s migrate path
+  (the retired Flask dashboard created it) and bash never calls `migrate()` —
+  without that, a DB lacking `kind` would fail *every* insert silently.
+- `printf` replaced `echo` when escaping, since a prompt can now legitimately
+  be exactly `-n` or `-e`.
+
+**The discontinuity is annotated, not smoothed.** Counts before 2026-08-14 are
+filtered and counts after are not, so every prompt-count series steps up once
+on that date. `CAPTURE_FIX_DAY` + a `.heatmap-note` caption say so on the
+chart. Backfill is impossible — the dropped prompts were never stored.
+Deployed and confirmed on prod 2026-08-14.
+
+The step won't actually be visible until enough post-cutover days accumulate,
+so if a future session finds prompt counts jumping around mid-August and starts
+hunting a bug, this is the answer. That is what the caption is for.
+
+### DB ownership: DECIDED 2026-08-10 — Option B, federated (moved 2026-09-07)
+**DB ownership: DECIDED 2026-08-10 — Option B, federated.** Raw stays
+machine-local per the invariant; each machine synthesizes its own prompts and
+pushes processed rows to Turso; the merge happens there; the always-on mini
+keeps the reader jobs (review email, report, cost pull) because the laptop
+being off must mean off. Nico ruled out running nightly work on the laptop
+explicitly. The build-out this implies:
+- Laptop gets its own `com.promptlab.synthesizer` + turso-sync LaunchAgents
+  (its `/handoff` already covers most days inline).
+- **FIXED 2026-08-14**: `send-review.py` and `generate-report.py` both used to
+  read `get_raw_sessions()` — raw-tier, local-only, so the mini's review email
+  missed laptop session detail and read "no new work" on busy days. Both now
+  call `get_store("turso")` directly and read only
+  `daily_summaries`/`weekly_rollups`, so the env-var-ordering trap
+  (`store/turso_store.py:736` raises `NotImplementedError` on every raw
+  method, e.g. `get_raw_sessions`) no longer applies. Residual risk, not a
+  current state (see the what-runs-where entry above — only the synthesizer
+  is loaded on the laptop today): if the laptop's readers are ever
+  re-enabled without the mini also carrying this refactor, two machines
+  would again compose nightly reviews from two different DBs.
+- `daily_summaries` clobber — **FIXED 2026-08-14**: per-machine parts table
+  (`daily_summaries_machine`) + deterministic merge at sync time
+  (`merge_summary_parts`/`sync_daily_summaries` in `sync_to_turso.py`);
+  `weekly_rollups` still has the same clobber shape, deferred until it bites;
+  machine labels come from `GROUND_CONTROL_MACHINE` in each `.env.local` (not
+  yet set on any real machine — that's a follow-up, not done by this commit).
+
+### The week-grouping SQL filed every Monday under the previous week (moved 2026-09-07)
+**The week-grouping SQL filed every Monday under the previous week —
+EXPRESSION FIXED 2026-08-08; DATA REPAIR APPLIED 2026-08-10.** The 207
+audited-bad rollups (23 folded Mondays + 184 frozen partial rows) were deleted
+(backup: `~/.claude/prompt-history.db.bak-20260809`) and regenerated from the
+intact daily summaries by the fixed synthesizer, then full-synced to Turso —
+regenerated rows overwrite stale cloud copies via same-key upserts. Verify
+anytime with `scripts/regroup_weekly_rollups.py` (dry-run). The trap,
+keep it: SQLite's `weekday N` means next-or-**SAME** day, so
+`date(<d>,'weekday 1','-7 days')` returned the *previous* Monday when `<d>`
+was already a Monday. The correct bucket is `date(<d>,'weekday 0','-6 days')`
+— next-or-same **Sunday**, minus 6 — verified for all seven weekdays. Fixed at
+all four homes (`store/sqlite_store.py`, `store/turso_store.py`,
+`web/api/private_history.py` `WEEK_EXPR`, `workflow/bin/gc-read.sh`); a
+`clocks:` test now runs the expression for a full Mon–Sun week and greps
+`'weekday 1'` out of all four files.
+
+The second bug was broader than gc-read.sh: its completed-weeks filter
+`date < date('now','weekday 1')` resolved to NEXT Monday on Tue–Sun (fixed to
+`'weekday 0','-6 days'`), but the stores' `get_weeks_without_rollups` had **no
+completed-week guard at all** (`date < today`), so the synthesizer wrote
+mid-week rollups constantly and the never-revisit join froze them. Both stores
+now cut at the current week's Monday.
+
+Stored damage — audited read-only by `scripts/regroup_weekly_rollups.py`
+(dry-run by default, `--apply` fixes only unambiguous non-Monday week keys;
+Turso via `GROUND_CONTROL_STORE=turso`, and it mirrors local anyway):
+**0 mis-keyed rows** (the buggy expression still emitted Mondays), so nothing
+mechanical to apply. What it found instead, all needing human judgment because
+rollup prose can't be regenerated mechanically: 23 rollups with the next
+Monday folded into their prose/counts (14 of those Mondays also counted in
+their own week = double-counted); 21 Monday-only weeks with summaries but no
+rollup (the fixed pipeline will now generate these on its own); and 182
+project-weeks whose frozen rollup is missing later-in-week summaries — the
+in-progress-week admission was systemic, not an edge case. The script prints
+the exact DELETE for the frozen set if regenerate-over-existing-prose is ever
+wanted.
+
+### UptimeRobot alerted nobody for six weeks — FOUND AND FIXED 2026-08-09 (moved 2026-09-07)
+**UptimeRobot alerted nobody for six weeks — FOUND AND FIXED 2026-08-09.**
+`scripts/uptimerobot.py` declared *what* to watch and never *who to tell*, so
+every monitor it created carried an empty `assignedAlertContacts`. **7 of 8
+notified nobody**; only garm had one, because garm's monitor was made by hand
+in the UI before the script existed. Caught because musicforge asked whether
+anything fired during their 2026-08-09 Fly outage: the monitor detected it
+exactly as designed (DOWN 17:35:14 PDT → UP 17:45:51, 637s, cause 333333) and
+sent no mail. The repo's recurring shape in a new place — the sensor worked,
+the output went nowhere, and eight green monitors read as health.
+
+Fixed: contacts declared by **email, not id** (the id is account state, the
+address is the intent; resolved against `/alert-contacts` at run time, a
+missing address is fatal), reconciled as a **union** so a hand-added contact
+survives, all 7 backfilled live, and `list` now prints
+`alerts=** NOBODY **` — the state was invisible because nothing rendered it.
+Two bugs fell out: the documented **10 req/min free-tier limit was never
+respected**, so the first `--apply` patched 2 of 7 and 429'd on the rest,
+reporting five real changes as failures (now 6.5s pacing + one 429 backoff).
+
+Still open from that thread: **musicforge asked for the Fly backend as its own
+uptime line, and it cannot be done with the current monitor** — the deep check
+reaches Fly *through* the Vercel rewrite, so a Vercel outage and a Fly outage
+render identically. Needs the direct Fly hostname and a decision on whether the
+frontend line stays deep; both asked in the handoff channel, nothing built.
+**Delivery verified end-to-end 2026-08-09**, not merely sent: a throwaway
+monitor pointed at a real 404 went DOWN (incident `cause 404` at 02:00:09Z)
+and the mail landed in Nico's inbox. Two deliberate choices worth keeping if
+this is ever repeated — **test on a disposable monitor, never by flipping a
+real one to a failing URL**, because that writes a fake outage into that
+service's true uptime ratio and the archive is never backfilled; and pick the
+404 target carefully, since `https://prompt-labs.org/api/<anything>` returns
+**200** from the SPA catch-all (bug #40, re-confirmed live) and would have
+produced a false UP. `garm.prompt-labs.org` returns a real 404. And the 4
+HEARTBEAT creates still fail on every `--apply` (3× 403 paid-plan, 1× 400
+`gracePeriod must not be greater than 86400` — a real declaration bug in the
+bi-monthly report's 5-day grace, harmless only because the plan blocks it
+first), so `--apply` always exits 1. Cosmetic, but it trains you to ignore the
+exit code.
+
+### Mini → headless (closet) migration (moved 2026-09-07)
+**Mini → headless (closet) migration — switch (TP-Link TL-SG116, unmanaged)
+arrives Mon 2026-08-11.** **Settled 2026-08-09: the current laptop IS the new
+MacBook Pro and the new primary — no third machine is coming**, so this is one
+migration to absorb, not two. Design was started as a brainstorm and **parked
+mid-questioning**; nothing is decided beyond that. Full audit 2026-08-08 lives
+in memory `project_mini_headless.md` — **on the mini, and memory does not sync
+between machines**, so it is unreadable from the laptop; re-read it there or
+redo the audit. **Both boot blockers cleared 2026-08-10 on the mini:**
+Remote Login is ON (port 22 verified listening) and FileVault is OFF.
+Still pending: enable auto-login (System Settings → Users & Groups, greyed out
+until FileVault reported Off) and the proof — one reboot with the display
+attached that lands on the desktop with no password and answers
+`ssh nico@<mini>` from the laptop. Before the move: DHCP-reserve en0 MAC
+`d0:11:e5:b5:74:41`. All six custom LaunchAgents (4× promptlab nightly,
+rockart backup, SPAN bath detector) stay on the mini — note they're **user**
+agents, so they need a logged-in session. mDNS must survive the move (bath
+detector → `phrpi.local`, Time Machine → Time Capsule); the unmanaged switch
+keeps one subnet, so it does.
+
+Added to the list 2026-08-10, deliberately scoped small: **disconnect Dropbox
+from the mini and delete local files it doesn't need** — but only after
+confirming each has a copy in iCloud/Dropbox (Nico believes everything
+important is in one of those, possibly a third place; verifying that fully is
+its own project, not this one). The mini also ends up wired to both Raspberry
+Pis (one runs Home Assistant) — parked thought: that adjacency may help
+developing the Pi tools later.
+
+### The wipe HAPPENED 2026-08-13 (moved 2026-09-07)
+**The wipe HAPPENED 2026-08-13 — the mini is being re-purposed, and
+RECONSTITUTING prompt-lab's services on the new mini is part of the plan**
+(Nico's direction, same day: the wipe plan isn't done until the services are
+back). The **mini-decommission agent/repo owns the checklist**; prompt-lab
+owns its reconstitution spec, sent to them 2026-08-13: clone repo + venv →
+copy staged `.env.local` → **MOVE** (not copy, then delete staging) the
+frozen `prompt-history.db` back → restore the 39 memory dirs (478 files;
+"44" in earlier notes counted project dirs without memory) → install
+`workflow/` from the **fresh clone, never from pre-wipe backups** (repo
+copies carry fixes the mini never had) → restore + bootstrap the 4 plists
+(check hardcoded paths first) → verify **by artifact** after first overnight
+(email arrives + `review_snapshots` row + heartbeats green). Sequencing
+deliberately requested: land the `send-review.py` → Turso refactor *before*
+the review plist is bootstrapped, so the reconstituted mini's first email
+already sees both machines' work. **The full implementation plan is
+`docs/turso-readers-plan.md`** — 5 TDD tasks for an Opus session: explicit
+store backend, both readers onto processed tables, gate release, plus the
+same-day clobber fix via a per-machine parts table (Nico's "simple is
+better" call 2026-08-13 after weighing and rejecting mini-as-central-DB;
+capture stays local-first, Turso stays the merge point). Execute AFTER the
+mini reset, per Nico. **Until reconstitution, prompt-lab is
+laptop-only** and the readers run nowhere (see the what-runs-where entry
+below). Everything the mini held is staged on the laptop under
+`~/mini-staging/`: the final `prompt-history.db` (frozen 2026-08-13 07:20,
+11,240 prompts, taken after the LaunchAgents were unloaded and drift-checked),
+all 39 claude-memory dirs (478 files), plists, job logs, zshrc/ssh config, SPAN env
+files, and a 13-repo sweep of dirty/unpushed working trees (`repo-sweep/` —
+sorting those is open curation work, worst case notemaxxing with 24 unpushed
+commits). The relocate-don't-wipe debate is preserved in git
+(`77dd316`/`d50c14b`/`55488f0`). Worth keeping from it: any future account split must *move* `~/.claude/prompt-history.db`,
+never copy it — a second copy of every raw prompt is a privacy regression.
+And the process lesson stands: *agreeing with an idea is not the same as the
+idea being chosen* — this entry records a decision only because Nico stated
+one.
+
+### Copy review (#49) — batch 1 of ~4 DONE 2026-08-05 (moved 2026-09-07)
+**Copy review (#49) is IN PROGRESS — batch 1 of ~4 DONE 2026-08-05.**
+The review runs page by page at a computer, 3-5 items at a time. Nico answers by
+number and often stops mid-batch, so **track which items were actually answered,
+not which batch was sent** — the first pass through this lost two items by
+recording the batch as finished.
+
+Answered and settled: the primary nav labels passed. The More panel failed
+("a bit incoherent") and was rebuilt in `5b53f01` — labeled `BUILT` stamp
+leading instead of a bare timestamp trailing, theme promoted to the primary row
+as an icon, Log out last, close-on-outside-click. All five smoke-test items on
+the rework then passed live on prod in both themes.
+
+The two items the first pass dropped — the KPI tile labels (do they state what
+is counted and over what window, consistently?) and the "Today, so far" banner
+— were reviewed 2026-08-05 and **both passed**, so batch 1 is closed.
+
+**Ask is mothballed, not deleted** — it was the only *action* in a panel of
+destinations and settings and went unused; `web/api/ask.py` and the modal are
+untouched, reachable from `#/about` and the `/` shortcut. Deleting it would not
+even drop the `ANTHROPIC_API_KEY` dependency, which the Todos classifier holds.
+
+One open question the rework raised, still unsettled: with Ask gone, `More`
+guards a single destination plus your identity, so a plain `About` button in the
+primary row may be simpler than the panel. Then batch 2 (Activity + the day
+page), batch 3 (Costs, Visitors, Todos), batch 4 (Health, About, project pages).
+
+*Note: no usage data exists for Ask and none can be recovered — its history is
+`localStorage`-only and its spend is indistinguishable from the Todos
+classifier's, since both draw on the same key.*
+
+### The 80-name project list — CLEANED UP 2026-08-05 (moved 2026-09-07)
+**The 80-name project list — CLEANED UP 2026-08-05.** Most names weren't
+projects. **Root cause, now fixed:** `log-prompt.sh` derived the project from
+the cwd *basename*, so every directory ever worked in minted one — `web`, `src`,
+`public`, `utils`, `mockups` are subdirectories of real repos. It now resolves
+the cwd to its **repo** via `git rev-parse --git-common-dir` (not
+`--show-toplevel`: a linked worktree's toplevel is the worktree, which is how
+two `agent-<hash>` projects appeared; the common dir is always the main repo).
+
+Three deliberate properties of that hook change:
+- **Only exit code 128 ("not a git repository") buckets to `scratch`.** Any
+  other git failure falls back to the old basename behavior. This is not
+  paranoia — the Xcode license prompt broke every git call on the laptop earlier
+  that same day, and a broken git must never silently relabel real project work.
+- `scratch` is pre-hidden, so the one bucket never surfaces in the picker.
+- Three cases are pinned in `test_session_identity.py` (#10): subdirectory →
+  repo, non-repo → `scratch`, worktree → main repo. The fixture had to become a
+  real `git init` repo, since a bare directory now takes the scratch path.
+
+Cleanup applied: **8 aliases** folded duplicates into their canonical project
+(`recountly`→`raconte` — one project, the web app became a native iOS app,
+`docs/history.md:39`; `skitrack` + `skitrack-ntzb-poc`→`person-tracking`;
+`bakerylouise_v1` + `bakerylouise-v1`→`bakerylouise`; `audio_journal`→
+`audio-journal`; `invitekit-prep`→`invitekit`; `byside-research`→`byside`).
+**23 artifacts hidden** via `scripts/hide_scratch_projects.py` — sets
+`private=1`, does not delete, and `--unhide <name> --apply` reverses it. Real
+but dormant projects (`mars-rover-example`, `roll-your-own`, `djembe`, …) were
+left alone; that's what the Dormant section is for.
+
+### Don't reach for a read-time exclusion list (moved 2026-09-07)
+**Don't reach for a read-time exclusion list** — read-time allowlists were tried
+twice in this repo and deleted both times for drifting; `private` on the row is
+the equivalent that can't drift. Two gotchas hit while doing this: `alias.py`
+takes two arguments and **zsh does not word-split unquoted variables**, so a
+`for pair in "a b"` loop silently wrote the whole pair into the alias column;
+and a full `sync_to_turso.py` runs past 120s, so the alias rows were written
+straight to Turso (safe — `project_aliases` is upsert-only, unlike
+`project_metadata`, which is cloud-direct and must never gain a sync leg).
+
+### The uptime archive wrote on 2026-08-01 and not on 2026-08-02 — DIAGNOSED 2026-08-02 (moved 2026-09-07)
+**The uptime archive wrote on 2026-08-01 and not on 2026-08-02 — DIAGNOSED
+2026-08-02.** `uptime_daily` held 9 rows for Aug 1 and none for Aug 2. **The Aug 2
+health email arrived**, which settles it: the cron fired, and the pull failed
+silently in production. Not cron-dead.
+
+The mechanism, and it is the interesting part: `_archive_uptime`
+(`web/api/health_report.py:322`) returns `0` on every failure path — unset key, pull
+exception, per-row write failure — logs to stdout and lets the email send. The row
+count goes into `uptime_rows` in the **JSON response**, which only the cron's HTTP
+caller ever sees, and **Vercel log retention is ~1 hour**. So a totally failed pull
+is indistinguishable from a good one in the inbox. Aug 1 wrote 9 rows and nothing
+deployed between the two days, so the key was live and this was transient —
+plausibly the 8-second `FETCH_TIMEOUT` on the v2 call.
+
+**Fixed 2026-08-02:** the row count now lands in the email body — `9 monitors
+archived` normally, a loud red `uptime archive: 0 rows written` when the pull
+failed (`_compose` takes `uptime_rows`; dry runs pass None and show nothing).
+Same-morning and thresholdless. The `uptime archive` heartbeat from `b179cc1`
+remains the backstop for "cron alive, pull broken" at a 2-day threshold.
+
+### Phase 3 of the uptime plan — COMPLETE 2026-08-02 (moved 2026-09-07)
+- **Phase 3 of the uptime plan — COMPLETE 2026-08-02.** musicforge, bakerylouise and
+  prntd all shipped `/api/health` and every monitor is repointed off its homepage
+  (musicforge's lives only on `www.musicforge.org` — the `.app` domain 404s the path;
+  bakerylouise skips the deep Sanity variant on purpose, ISR-cached; prntd is deep
+  `?db=1`). raconte is settled: no backend ever, slot closed, the recountly.org
+  monitor stays until they post teardown notice.
+
+### Phase 5 — COMPLETE 2026-08-02 (moved 2026-09-07)
+- **Phase 5 — COMPLETE 2026-08-02.** `TARGETS` now carries all 8 HTTP monitors, and
+  a test pins `TARGETS` ⊆ `HTTP_MONITORS` (subset, not equality — paging may
+  legitimately cover more than the daily email). Two things fell out of the growth:
+  the deep parser knew only `db`/`howl` and rendered ibuild4you, byside and
+  pianohouse note-less, since those return the convention's other shape, a
+  `checks[]` array — it now summarizes `n/m checks ok` and names only the failures;
+  and the poll fans out over a thread pool (`_check_targets`), because sequential
+  polling is ~8s at eight targets and `#/health` pays it on every load. 1.6s
+  measured. Four older tests that pinned the literal 2-target set now derive from
+  `TARGETS`.
+- **garm #7 denial-count line** in the health email (`GARM_REPORTING_KEY` shipped on
+  garm's side; the garm handoff channel will post the shape).
+
+### `/api/private_history` Tier 1 — SHIPPED 2026-08-02 (moved 2026-09-07)
+- **`/api/private_history` Tier 1 — SHIPPED 2026-08-02**, deployed and verified live
+  end-to-end (auth'd smoke test passed). `SERVICE_HISTORY_KEY` in Vercel Production,
+  value at `op://dev-secrets/prompt-lab-service-history-key/password`. Ball is in
+  selected-projects' court to wire `lib/history.ts`. Tier 2 (narrative behind Garm)
+  remains unbuilt by agreement. historyKey settled as `bakerylouise` (alias from
+  `bakerylouise-v1`). **This endpoint has no allowlist of its own** — it accepts any
+  project and is gated solely by the service key, so don't go looking for one. The
+  8-key allowlist is the *public* tier's write gate (see the `public_history` bullet
+  above); `bakerylouise` and `songscribe` were added to it alongside this work.
+
+### #48 time localization — POLICY SET AND INSTANCES FIXED 2026-08-02 (moved 2026-09-07)
+- **#48 time localization — POLICY SET AND INSTANCES FIXED 2026-08-02.** The policy,
+  now in the shared-conventions block so every repo carries it: **timestamps are UTC
+  at rest, calendar days are `America/Los_Angeles` on display.** Storage in local
+  time was rejected — it cannot be migrated across a DST boundary without loss — and
+  UTC-on-display was rejected because it makes Nico's day roll over at 5pm.
+
+  What was actually wrong was subtler than the issue described: the raw tier is
+  **UTC**, not local, because SQLite's `datetime('now')` is UTC. So three clocks
+  disagreed — UTC raw rows, Pacific summary writers, UTC frontend axes — and the
+  dashboard drew an `Aug 3` column at 5:30pm on Aug 2 with 13 real prompts in it.
+
+  Fixed: `web/day_helper.py` (`lab_today`/`lab_days_ago`/`lab_window`, in
+  `includeFiles`, `tzdata` declared in `web/requirements.txt` — unpinned, but present
+  so a missing tzdb can't silently degrade the lambda to UTC); `labDay`/`labDayOf`/`labStamp` in `web/index.html`
+  replacing all 14 `toISOString().slice(0,10)` axis builders plus the Ask-history
+  stamp; lab-day windows in `activity_timeline`, `overview`, `uptime_overview`; the
+  heartbeat freshness grader and the uptime-archive date key in `health_report`; 8
+  `date(<ts>)` → `date(<ts>, 'localtime')` bucketings in `store/sqlite_store.py`; and
+  `today-counts` in `workflow/bin/gc-read.sh`, which now reads 14/4/5 for an evening
+  that used to read 0/0/0. **`daily_summaries.date` deliberately did NOT get
+  `'localtime'`** — it is already a calendar day, and shifting it would be the same
+  bug pointed the other way. Four existing tests derived their own expectations in
+  UTC and so passed by day and failed by night; they now go through `lab_today()`.
+  Four `clocks:` drift guards were added — two are greps over the source, because
+  the failure is invisible to a test that computes its own date.
+
+
+### Mobile pass, 2026-08-02 (moved 2026-09-07)
+**Mobile pass, 2026-08-02.** Four things, all from the same phone session:
+`DateAxis` replaced six copy-pasted axes (tick count from measured width, labels
+absolutely positioned inside a clipped box, plus a dot under each labelled
+column so the label maps to a bar without counting); the home chart's tap now
+navigates to a real `#/day/<date>` page rather than opening a panel that lands
+off-screen when pinch-zoomed — **any overlay positions against the layout
+viewport, so a "fixed" sheet fails under zoom exactly like the panel did**, which
+is why this is a route and not a modal; `/api/day` backs it so a cold-opened link
+to any date works; the nav collapses behind one button below 640px (both markups
+always render, CSS picks — no viewport state in JS to desync on rotate); and 7d
+joined the window toggles. Home offers 7|30 only, because it reads `overview`,
+which is capped at 30 days and stays lean on purpose.
+
+Round two, same evening, all three from one phone screenshot. **The wide nav and
+the hamburger both rendered at once** because `display:contents` was set INLINE on
+the wrapper — an inline style outranks every selector, so the media query could
+never hide it. Moved to CSS. **Every chart now navigates to the day page** and all
+four below-chart panels are gone; `/api/day` grew spend/visitors/uptime sections
+so nothing was lost with them. **Today's column is drawn as a dashed outline and
+the day page carries a "Today, so far" banner** — counts come from
+`daily_summaries`, written at `/handoff` time, so a live session isn't in them and
+a short solid bar read as "a quiet day" instead of "not tallied yet." That is this
+repo's recurring failure shape rendered as a chart.
+
+Round three: the nav is two tiers. PRIMARY is the five views; everything else —
+Ask (an action, not a destination), About, theme, email, log out, build stamp —
+sits behind **More**, because mixing them put "Log out" the same distance from a
+thumb as "Costs". One declaration renders both navs. The header's built/synced
+sub-line is gone; that detail lives on the new `#/about` page and as a terse
+stamp at the foot of the More panel. **Not yet verified by eye** — shipped after
+Nico signed off for the night.
+
 ### Cross-repo work goes through `~/src/.handoff` — NOT a PR from here (corrected 2026-07-31)
 This session dispatched sub-agents straight into `byside` and `selected-projects` to write their `/api/health` endpoints, because `docs/plan-2026-08-01-uptime-dashboard.md` phrased Phase 3 as "one small PR per repo, one sub-agent each." That was the wrong call and the plan's phrasing is the trap — **the repo boundary is the ownership boundary**, and each repo's agent owns its own conventions. Nico: *"put an action in the .handoff place for them to do the work, listen for their response. is that not clearly our way?"*
 - **The practical tell, worth recognising early:** agents working in a sibling repo run from a cold permission slate — there is no `additionalDirectories` in `~/.claude/settings.json`, and that repo's own `settings.local.json` only loads in a session started there. A wall of permission prompts mid-task is the convention signalling it's being bypassed, not a config annoyance to route around.
