@@ -461,7 +461,10 @@ def _build_recent_bad(other_rows):
         if not bad and status == "ok":
             continue
         out.append({"lab_date": str(r.get("lab_date") or "")[:10],
-                     "status": status, "host": r.get("host"),
+                     # A backfilled row from a host that never stamped one
+                     # renders straight into the email, so the fallback is
+                     # here rather than at each of the render sites.
+                     "status": status, "host": r.get("host") or "unknown host",
                      "note": _one_liner(stages, status)})
     return out
 

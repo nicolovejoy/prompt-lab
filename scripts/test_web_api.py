@@ -2778,13 +2778,19 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
     (an older bad row inside the window, beside a clean newest row) /
     recent-bad-outside (same, but the older row is outside the window and
     must be dropped by the stub's own cutoff filter, the way the real SQL's
-    WHERE clause would).
+    WHERE clause would) / recent-bad-nullhost (an older bad row whose `host`
+    is NULL, as a backfilled row from a host that never stamped one). Two
+    scenarios that legitimately co-occur can be joined with `+`, e.g.
+    "stage-failed+recent-bad".
 
     The turso stub dispatches on the SQL because the endpoint issues four
     different kinds of query against the same helper — the pause lookup, the
     freshness lookups, the nightly-run lookup and the uptime upsert — and they
     must not be conflated: the pause check fails OPEN, freshness and the run
     record must not, and the uptime write must be separately observable."""
+    # `nr` may be a `+`-joined set of scenarios, so a test can combine two
+    # that legitimately co-occur (a failing newest run AND an older bad row).
+    nr_set = set((nr or "").split("+"))
     mod = load_endpoint("web/api/health_report.py", "health_report_test")
     sent = []
     mod._polls = []
@@ -2815,38 +2821,38 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
                "started_at": f"{today}T09:31:00Z", "lab_date": today,
                "finished_at": f"{today}T09:34:00Z", "status": "ok",
                "exit_code": 0}
-        if nr == "stage-failed":
+        if "stage-failed" in nr_set:
             stages[1] = {"name": "synthesizer", "outcome": "failed",
                          "detail": "exit 1"}
             row["status"] = "partial"
-        elif nr == "running":
+        elif "running" in nr_set:
             row.update(status="running", finished_at=None)
-        elif nr == "old":
+        elif "old" in nr_set:
             row.update(lab_date=old, started_at=f"{old}T09:31:00Z")
-        elif nr == "age2":
+        elif "age2" in nr_set:
             row.update(lab_date=age2, started_at=f"{age2}T09:31:00Z")
-        elif nr == "status-failed":
+        elif "status-failed" in nr_set:
             # overall_status() returns "failed" for an empty results list, so
             # this pair is what a night that ran no stages at all looks like.
             stages, row["status"], row["exit_code"] = [], "failed", 1
-        elif nr == "claim-newer":
+        elif "claim-newer" in nr_set:
             claims["review email"] = tomorrow
-        elif nr == "claim-older":
+        elif "claim-older" in nr_set:
             claims["review email"] = "2019-01-01"
-        elif nr == "claim-unknown":
+        elif "claim-unknown" in nr_set:
             claims["a label this email does not grade"] = today
-        elif nr == "claim-missing-one":
+        elif "claim-missing-one" in nr_set:
             # collect_claims dropped one label whose local query raised.
             del claims["synthesizer"]
-        elif nr == "claim-missing-all":
+        elif "claim-missing-all" in nr_set:
             claims = {}  # the artifact_checks import failed: claimed nothing
-        elif nr == "claim-null":
+        elif "claim-null" in nr_set:
             # A local artifact that does not exist YET: a real answer, not a
             # gap, and it must not fire the missing-claim check.
             claims["synthesizer"] = None
         row["stages"] = json.dumps(stages)
         row["claims"] = json.dumps(claims)
-        if nr == "malformed-stages":
+        if "malformed-stages" in nr_set:
             row["stages"] = json.dumps(["a", "b"])  # a list of NON-dicts
         return row
 
@@ -2878,15 +2884,19 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
         # and a test must be able to break one without touching the other.
         if "FROM nightly_runs" in sql:
             mod._sql_kinds.append("nightly-run")
-            if nr == "error":
+            if "error" in nr_set:
                 raise RuntimeError("turso unreachable")
-            if nr == "never":
+            if "never" in nr_set:
                 return []
             rows = [fake_run_row()]
-            if nr == "recent-bad":
+            if "recent-bad" in nr_set:
                 rows.append(fake_bad_row(3, "run-bad-3"))
-            elif nr == "recent-bad-outside":
+            elif "recent-bad-outside" in nr_set:
                 rows.append(fake_bad_row(10, "run-bad-10"))
+            if "recent-bad-nullhost" in nr_set:
+                bad = fake_bad_row(3, "run-bad-nullhost")
+                bad["host"] = None   # a backfilled row from a host that never stamped one
+                rows.append(bad)
             # Mirror the real WHERE lab_date >= ? clause here in the stub, not
             # in the code under test — a row outside the window must never
             # reach _check_nightly_run in the first place, exactly like the
@@ -3778,6 +3788,59 @@ def _():
         assert run["age_days"] == 2, run
         assert run["ok"] is False, run
         assert "host has been off" in run["note"], run
+    finally:
+        restore()
+
+
+@test("nightly run: a failing newest run AND an older bad row append the count to the failure note")
+def _():
+    # The shape a real multi-night outage takes: tonight failed, and the
+    # night before failed too and only just arrived via catch-up. Both facts
+    # must be in the note; the first must not erase the second.
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="stage-failed+recent-bad")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["ok"] is False, run
+        assert "synthesizer" in run["note"], run["note"]          # the newest run's own failure
+        assert "1 bad night(s) in the last 7 days" in run["note"], run["note"]
+        assert run["note"].index("synthesizer") < run["note"].index("bad night"), run["note"]
+        assert len(run["recent_bad"]) == 1, run
+    finally:
+        restore()
+
+
+@test("nightly run: the window is 7 days — a change here silently changes what a red email means")
+def _():
+    # NIGHTLY_RUN_MAX_AGE_DAYS=1 escalates two consecutive dead nights on
+    # time; the 7-day window is what keeps a single backfilled dead night
+    # red long enough to be seen. Both numbers are decisions, not tuning.
+    restore = _health_env()
+    try:
+        mod = _health_mod()[0]
+        assert mod.NIGHTLY_RUN_WINDOW_DAYS == 7, mod.NIGHTLY_RUN_WINDOW_DAYS
+        assert mod.NIGHTLY_RUN_MAX_AGE_DAYS == 1, mod.NIGHTLY_RUN_MAX_AGE_DAYS
+    finally:
+        restore()
+
+
+@test("nightly run: a backfilled row with no host never renders the literal None")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="recent-bad-nullhost")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["recent_bad"][0]["host"] == "unknown host", run["recent_bad"]
+
+        mod, sent = _health_mod(nr="recent-bad-nullhost")
+        invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
+        _subject, html_body, text = sent[0]
+        assert "None" not in text, text
+        assert "None" not in html_body, html_body
     finally:
         restore()
 
