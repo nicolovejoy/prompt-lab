@@ -102,9 +102,8 @@ emails a day; Pro is 10 domains, no daily cap, 50k/month account-wide).
 Applied 2026-09-07: four dead domains deleted by hand (`free-vite.com`,
 `send.anomatom.com`, `soiree.pianohouseproject.org`, `send.notemaxxing.net` —
 the last confirmed dead by notemaxxing's own "daily-send shutdown" commit and
-zero sends since Aug 15; three verified gone via the API, the fourth was
-Nico's stated next click). Seven remain, three under Pro's ten, with room for
-`musicforge.org`. Nothing moves: `prompt-labs.org` keeps sending the health
+zero sends since Aug 15; all four confirmed gone by Nico the same day).
+Seven remain, three under Pro's ten, with room for `musicforge.org`. Nothing moves: `prompt-labs.org` keeps sending the health
 email (`HEALTH_FROM_EMAIL` default at `web/api/health_report.py:897`); the
 review email stays on `reviews@mail.pianohouseproject.org` where it landed
 2026-09-06, because moving it back buys nothing.
