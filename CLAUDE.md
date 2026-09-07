@@ -1245,16 +1245,14 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
 
 ### Traps that cost real time
 
-- **`gc-read.sh`/`gc-write.sh` derive project via `basename($PWD)`, not the
-  git-common-dir fix `log-prompt.sh` got 2026-08-05.** Run either from a
-  worktree under `.claude/worktrees/<name>/` and `PROJECT` resolves to
-  `<name>`, not the real repo — `current-session`, `today-counts`, and
-  `weekly-rollup-check` all silently return nothing/zero even when the real
-  session (found under the correct project via the hook's own resolution)
-  has real prompts and commits. Hit during `/handoff` from a worktree
-  2026-08-15. Workaround: query `sessions`/`prompts`/`commits` directly by
-  id when this happens; the actual fix (mirror `log-prompt.sh`'s
-  `git rev-parse --git-common-dir` resolution in both scripts) is unstarted.
+- **`workflow/bin/_gc_project.sh` is the ONE project-resolution implementation
+  for `gc-read.sh`/`gc-write.sh`** (landed 2026-09-07; both used to take
+  `basename $PWD`, so from an agent worktree `current-session`/`today-counts`
+  silently read empty and `/handoff` wrote that emptiness into a summary). It
+  mirrors `log-prompt.sh`: `--git-common-dir` (never `--show-toplevel`), only
+  git exit 128 buckets to `scratch`, never an empty name. A drift-guard test
+  greps both scripts for the `source`. **The mini still has the old copies** —
+  next time anyone is on it, copy all three files into `~/.claude/bin/`.
 
 - **`workflow/bin/*` and `workflow/commands/*` run from installed copies under
   `~/.claude/`, not from the repo.** A fix committed to the repo is not live
