@@ -102,7 +102,8 @@ emails a day; Pro is 10 domains, no daily cap, 50k/month account-wide).
 Applied 2026-09-07: four dead domains deleted by hand (`free-vite.com`,
 `send.anomatom.com`, `soiree.pianohouseproject.org`, `send.notemaxxing.net` —
 the last confirmed dead by notemaxxing's own "daily-send shutdown" commit and
-zero sends since Aug 15). Seven remain, three under Pro's ten, with room for
+zero sends since Aug 15; three verified gone via the API, the fourth was
+Nico's stated next click). Seven remain, three under Pro's ten, with room for
 `musicforge.org`. Nothing moves: `prompt-labs.org` keeps sending the health
 email (`HEALTH_FROM_EMAIL` default at `web/api/health_report.py:897`); the
 review email stays on `reviews@mail.pianohouseproject.org` where it landed
@@ -120,9 +121,6 @@ that domain carries Nico's iCloud mail, so its SPF must be **extended**
 (`include:icloud.com` plus Resend's include), never replaced. Cancellation
 notes went to byside, span, ibuild4you, selected-projects and nudge the same
 day; the 2026-09-03 cloud-drafted plan branch is deleted.
-
-Heads-up notes posted 2026-09-06 to byside, span, ibuild4you, selected-projects
-and a new `nudge-prompt-lab.md` channel. Still open: Nico's final mothball list.
 
 **The nightly pipeline's wake/DNS failure was found and fixed 2026-09-06** —
 narrative in `docs/history.md`, the generalizable trap in Traps below.
@@ -362,7 +360,7 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
   fix landed in `workflow/bin/gc-read.sh` while the installed copy kept the
   buggy SQL, and `/handoff`'s rollup check invented two phantom missing weeks
   from Monday-dated summaries. After fixing anything under `workflow/`,
-  diff-sweep: `for f in workflow/bin/* ; do diff -q "$f" ~/.claude/bin/$(basename "$f"); done`
+  diff-sweep: `for f in workflow/bin/*.sh ; do diff -q "$f" ~/.claude/bin/$(basename "$f"); done`
   (and the same for commands) — on BOTH machines.
 
 - **`tail -r` is BSD-only; CI is Linux.** `log-prompt.sh` reversed the
