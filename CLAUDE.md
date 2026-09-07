@@ -116,56 +116,38 @@ finished 02:32:22, `LastExitStatus = 0`; `pmset -g log` shows the only sleep
 that hour was 02:05–02:21, before the job. The caffeinate wrapper held through
 the run. The sleep fix is no longer a claim.
 
-**Resend paid→free consolidation — NEXT UP, and prompt-lab's own half is
-unblocked and should go FIRST, not last.** Driver: free now allows 3 verified
-domains and Nico is paying $20/mo he does not need. Keep list:
-`mail.pianohouseproject.org` (shared), `bakerylouise.com`, `prntd.org`;
-the other ~37 get deleted from Resend. The fact that shaped it: **Resend counts
-every subdomain as its own domain slot**, so `span.`/`mail.`/`soiree.`
-`pianohouseproject.org` are three entries, not one.
+**Resend: STAYING ON PRO — Nico's decision 2026-09-07, consolidation
+CANCELLED. Don't re-litigate.** The paid→free plan was built on a wrong
+count: the account had **11 domains, not ~37**, and `musicforge.org` — which
+Nico wants as its own sending domain ("my most popular app") — was never on
+Resend at all, so free's 3-domain cap would have needed a fourth slot on day
+one. $20/mo Pro is the cheapest paid tier (Free is $0 / 3 domains / 100
+emails a day; Pro is 10 domains, no daily cap, 50k/month account-wide).
 
-The plan was drafted 2026-09-03 by a cloud session on the unmerged branch
-`origin/claude/resend-free-plan-migration-dcp8gv` (docs-only, CLAUDE.md-only,
-will not merge cleanly now — re-apply, don't merge). **Three of its premises
-were wrong and were corrected 2026-09-06:**
+Applied 2026-09-07: four dead domains deleted by hand (`free-vite.com`,
+`send.anomatom.com`, `soiree.pianohouseproject.org`, `send.notemaxxing.net` —
+the last confirmed dead by notemaxxing's own "daily-send shutdown" commit and
+zero sends since Aug 15). Seven remain, three under Pro's ten, with room for
+`musicforge.org`. Nothing moves: `prompt-labs.org` keeps sending the health
+email (`HEALTH_FROM_EMAIL` default at `web/api/health_report.py:897`); the
+review email stays on `reviews@mail.pianohouseproject.org` where it landed
+2026-09-06, because moving it back buys nothing.
 
-- It treated "who owns `mail.pianohouseproject.org`" as a blocker. It is not:
-  the domain is **already verified and already sending**. Nothing needs
-  establishing, and adding a from-address on a verified domain needs no DNS
-  work.
-- It listed five consumers. There are at least **seven** — it missed
-  **nudge** (`learn@`, `nudge/CLAUDE.md:63`) and **selected-projects**
-  (`connect@`, `selected-projects/.env.tpl:4`). Both found by grep, not by the
-  plan. Note nudge's timers are BOTH disabled, so it sends nothing today and an
-  audit of live traffic finds no trace of it — the breakage would surface only
-  when the timers are re-enabled.
-- It said prompt-lab switches LAST, on the theory our key could not yet send
-  from the shared domain. **Probed 2026-09-06: `send-review.py --test-send`
-  from `reviews@mail.pianohouseproject.org` returned OK, so the key is
-  account-wide.** The ordering therefore INVERTS — moving early means we are
-  off `prompt-labs.org` before it is deleted; moving late opens a window where
-  the domain is gone and our config still points at it.
+Two facts worth keeping from the cancelled plan, both verified against the
+API: a return-path `send.` subdomain does NOT consume a domain slot (it is a
+record inside the parent's entry); and the key is account-wide, so any
+consumer can send from any verified domain with no DNS work. The
+"subdomains are separate slots" finding is also true — `span.` and `mail.`
+`pianohouseproject.org` are two entries — it just no longer matters.
 
-**What prompt-lab still has to do** (nothing blocks it but Nico's say-so):
-switch `REVIEW_FROM_EMAIL` (env-only, no deploy) and `HEALTH_FROM_EMAIL`
-(**hardcoded default at `web/api/health_report.py:897`** — code change plus a
-deploy, so the two cannot move in one step). Both currently
-`@prompt-labs.org`, which is not on the keep list.
-
-Deleting `prompt-labs.org` **from Resend** does not touch the dashboard at
-https://prompt-labs.org — that is Vercel and DNS, unaffected. Only sending goes.
-
-Sequencing: delete unneeded domains first, THEN downgrade the plan (unconfirmed
-whether Resend blocks a downgrade while over the limit, so do not rely on the
-downgrade to clean up).
+musicforge verifies `musicforge.org` itself. The one trap, flagged to them:
+that domain carries Nico's iCloud mail, so its SPF must be **extended**
+(`include:icloud.com` plus Resend's include), never replaced. Cancellation
+notes went to byside, span, ibuild4you, selected-projects and nudge the same
+day; the 2026-09-03 cloud-drafted plan branch is deleted.
 
 Heads-up notes posted 2026-09-06 to byside, span, ibuild4you, selected-projects
 and a new `nudge-prompt-lab.md` channel. Still open: Nico's final mothball list.
-
-Worth weighing before committing: consolidating puts prompt-lab's mail on a
-domain shared with six other consumers. If it is ever removed or re-verified,
-the nightly review and the health email both die — and a dead health email
-degrades to "no email arrived", the weakest signal in this system.
 
 **The nightly pipeline failed every night the laptop had to WAKE for it —
 FOUND AND FIXED 2026-09-06, and the watchdog that should have said so was
