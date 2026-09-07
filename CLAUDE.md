@@ -267,9 +267,10 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   grants in `web/api/callback.py`, not only `READER_EMAILS`), **#9** beacon
   fan-out, **#49** copy review (the issue has no comments; this file is the only
   record of batch progress), **#53** iOS chart-tap zoom, **#55** cloudflared
-  token (owner traced to SPAN 2026-08-29; handoff note unanswered). Closed at
-  that resync: #34 and #45 (leftovers noted on the issues), #27 (frozen).
-  Earlier closes: #50 (day-page cache), #51, #52. Settled off the same list:
+  token (owner traced to SPAN 2026-08-29; handoff note unanswered), **#51**
+  unmapped costs (reopened at the resync: the close rested on an attribution
+  guess, never a measurement). Closed at that resync: #34 and #45 (leftovers
+  noted on the issues), #27 (frozen). Earlier closes: #50 (day-page cache), #52. Settled off the same list:
   Ask's per-user history is parked with Ask itself, and the selected-projects
   commit counts wait on *their* repo wiring `lib/history.ts`.
 - Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
