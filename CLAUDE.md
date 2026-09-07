@@ -350,8 +350,8 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
   silently read empty and `/handoff` wrote that emptiness into a summary). It
   mirrors `log-prompt.sh`: `--git-common-dir` (never `--show-toplevel`), only
   git exit 128 buckets to `scratch`, never an empty name. A drift-guard test
-  greps both scripts for the `source`. **The mini still has the old copies** —
-  next time anyone is on it, copy all three files into `~/.claude/bin/`.
+  greps both scripts for the `source`. Installed on both machines 2026-09-07
+  (mini verified by diff-sweep over `ssh mini.local`).
 
 - **`workflow/bin/*` and `workflow/commands/*` run from installed copies under
   `~/.claude/`, not from the repo.** A fix committed to the repo is not live
