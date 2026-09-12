@@ -20,7 +20,7 @@ If `$ARGUMENTS` contains `--light`, run in light mode; otherwise deep.
 3. Recent commits: `git log --oneline -40` (deep) or `-20` (light)
 4. Read CLAUDE.md "Next Steps" section in full
 5. **Light mode only:** filter the verification set to items whose CLAUDE.md line was modified in the last 7 days (`git log --since='7 days ago' --name-only -- CLAUDE.md`) or whose issue `updatedAt` is within 7 days. Skip the rest.
-6. Launch 2-3 Explore agents IN PARALLEL, each owning a cluster of items. Each must report **DONE / PARTIAL / TODO** with **commit SHA + file:line** as evidence. No CLAUDE.md citations.
+6. If your tool supports spawning parallel research subagents, launch 2-3 of them, each owning a cluster of items; otherwise work through the clusters yourself, one at a time. Each cluster must report **DONE / PARTIAL / TODO** with **commit SHA + file:line** as evidence. No CLAUDE.md citations.
 7. Stale remote branches: `git for-each-ref refs/remotes/origin --format='%(refname:short)'` + `git cherry origin/main origin/<branch>` to detect merged-but-undeleted.
 8. Flag duplicate issues (same bug, two numbers).
 9. Touch the marker: `mkdir -p ~/.claude/state && touch ~/.claude/state/resync-$(basename "$PWD").touch`
