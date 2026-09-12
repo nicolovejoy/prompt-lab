@@ -63,6 +63,14 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**Dual-agent commands landed in code, not yet installed.** `workflow/install.sh`
+now also writes `~/.codex/prompts/*`, but nobody has run it since — do that, then
+verify `~/.codex/prompts/readup.md` has no `allowed-tools:` line and actually try
+`/prompts:readup` from Codex in songpath or musicforge once. That first real
+`/handoff` run from Codex is what actually gets songpath onto the dashboard (see
+`docs/superpowers/specs/2026-09-12-dual-agent-commands-design.md` — no separate
+registration step exists).
+
 **Garm: HARDEN-THEN-FREEZE — Nico's decision 2026-08-27, don't re-litigate
 the unwind question.** He seriously considered unwinding Garm ecosystem-wide
 (triggered by the grant-seeding lockout gap) and chose: keep it, harden the
@@ -576,8 +584,18 @@ the archive write must be separately observable.
   do not delete it as cruft.
 - **Machine-voice convention:** any AI-authored text renders italic + muted with a
   `↳ from claude` marker.
+- **Dual-agent commands (Claude Code + Codex) — 2026-09-12.** `workflow/commands/*.md`
+  is the single source for both; `install.sh` distributes to `~/.claude/commands/`
+  (unchanged) and `~/.codex/prompts/` (allowed-tools stripped). Codex has no
+  SessionStart-hook equivalent, so `/readup` falls back to running
+  `workflow/bin/session-context.sh` directly — extracted from the hook for exactly
+  this reuse. `sync-claude-md.sh` was renamed `sync-shared-md.sh` (it was already
+  target-path-agnostic) so the same shared-conventions source compiles into both
+  CLAUDE.md and AGENTS.md. Codex sessions always branch as `codex/<desc>`, the one
+  signal a Claude session can check for since `ListAgents` doesn't cross tool
+  boundaries. Full design: `docs/superpowers/specs/2026-09-12-dual-agent-commands-design.md`.
 
-<!-- SHARED-CONVENTIONS:BEGIN v=e5fb79b2ef4d — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->
+<!-- SHARED-CONVENTIONS:BEGIN v=a203b3e87f6b — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->
 ## Shared conventions
 
 <!-- These are Nico's cross-repo output rules. They're materialized into each repo's
@@ -593,4 +611,6 @@ of truth: prompt-lab/workflow/claude-md-shared.md — edit there and re-sync, ne
 - **UTC at rest, Pacific on display.** Timestamps are stored in UTC, always. A *calendar day* shown to a human is `America/Los_Angeles` — Nico's day, and the clock the work actually happened on. The two rules that follow are the ones that get broken: never form a date bucket with `new Date(…).toISOString().slice(0,10)` (that is UTC, so every chart axis and "today" silently rolls over at 5pm Pacific — it put a phantom tomorrow bar on the Prompt Lab dashboard), and never bucket UTC-stamped rows with a bare `date(col)` in SQL. Use `Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' })` in JS and an explicit zone in SQL/Python. Storage in local time is also wrong — it can't be migrated across a DST boundary without loss.
 
 - **No marker before a copy-paste command block.** Nico's terminal renders markdown bullets (`-`, `*`, `•`) as `●`, which breaks paste into zsh. The line directly above a fenced command block must be a plain-text label ending in a colon — never a bullet, dash, asterisk, or number. For loud copy targets, lead the label with `📋` + bold `COPY THE BELOW`, then a colon, then the block.
+
+- **Codex branches are named `codex/<description>`.** When working in this repo via Codex CLI, always create a working branch under the `codex/` prefix (e.g. `codex/fix-flaky-test`) rather than working directly on `main` or an unprefixed branch. Claude Code has no visibility into other tools' running sessions (`ListAgents` only sees Claude sessions), so this prefix is the one signal a Claude session can check for — a local or remote `codex/*` branch means Codex has touched or is touching this repo, even though its session itself is invisible. Claude branches keep whatever naming they already use; only Codex adopts this new prefix.
 <!-- SHARED-CONVENTIONS:END -->
