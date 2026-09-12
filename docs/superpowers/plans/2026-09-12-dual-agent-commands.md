@@ -230,7 +230,14 @@ set -u
 # Read stdin (hook gets a JSON payload, but we don't need any of its fields)
 cat >/dev/null 2>&1 || true
 
-CTX="$("$HOME/.claude/bin/session-context.sh")"
+# Resolve our own real location so we can find the sibling bin script
+# in-repo — this hook runs from $REPO_DIR/workflow/hooks/ (registered by
+# absolute repo path in settings.json, never copied to ~/.claude/hooks/),
+# same idiom log-prompt.sh uses for its own sibling script (HOOK_REAL).
+HOOK_REAL=$(readlink -f "$0" 2>/dev/null || echo "$0")
+SESSION_CONTEXT="$(dirname "$HOOK_REAL")/../bin/session-context.sh"
+
+CTX="$("$SESSION_CONTEXT")"
 
 if [ -n "$CTX" ]; then
   CTX+="
@@ -250,7 +257,7 @@ print(json.dumps({
 " <<< "$CTX"
 ```
 
-Note this calls `$HOME/.claude/bin/session-context.sh` (the *installed* copy, matching how every other cross-referenced bin script in this repo's hooks/commands is called — see `workflow/install.sh`), not the in-repo copy. `workflow/install.sh` already copies everything in `workflow/bin/` to `~/.claude/bin/` (no change needed there for this task — Task 4 adds the *Codex* distribution separately).
+Note this resolves the sibling script relative to the hook's own real location, not the installed `~/.claude/bin/` copy — hooks in this repo run from their in-repo path (`install.sh`'s printed settings.json registers `$REPO_DIR/workflow/hooks/session-start.sh`, never a copied path), and `log-prompt.sh:186-187` already establishes this exact idiom (`HOOK_REAL=$(readlink -f "$0" ...)` + a relative path to a sibling script) for the same reason. Commands are different — they run from `~/.claude/commands/` invoked from an arbitrary cwd, so `readup.md` (Task 5) correctly references `~/.claude/bin/session-context.sh`, the installed copy. `workflow/install.sh` already copies everything in `workflow/bin/` to `~/.claude/bin/` for that purpose (no change needed there for this task — Task 4 adds the *Codex* distribution separately).
 
 - [ ] **Step 4: Write the regression test**
 
