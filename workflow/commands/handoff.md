@@ -66,6 +66,8 @@ Using what you know from this session, write a daily summary to `/tmp/gc-daily-<
 }
 ```
 
+Replace `<claude-code|codex>` with whichever you are running as (or the specific Codex model id, e.g. `gpt-6-astra`, if you want finer-grained attribution) — same substitution convention as `<project>`/`<session_id>` above.
+
 IMPORTANT: use these exact command forms to persist the daily summary:
 
 ```bash
@@ -74,7 +76,7 @@ import json, sys, os; sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.pat
 from store import get_store
 d = json.load(open('/tmp/gc-daily-<project>-<session_id>.json'))
 s = get_store(); s.migrate()
-s.upsert_daily_summary(model='claude-code', **d)
+s.upsert_daily_summary(model='<claude-code|codex>', **d)
 s.close()
 print('Daily summary saved for', d['project'], d['date'])
 "
@@ -111,7 +113,7 @@ import json, sys, os; sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.pat
 from store import get_store
 d = json.load(open('/tmp/gc-weekly-<project>-<session_id>-<week_start>.json'))
 s = get_store(); s.migrate()
-s.upsert_weekly_rollup(model='claude-code', **d)
+s.upsert_weekly_rollup(model='<claude-code|codex>', **d)
 s.close()
 print('Weekly rollup saved for', d['project'], d['week_start'])
 "
