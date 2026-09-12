@@ -72,7 +72,13 @@ mkdir -p "$CODEX_PROMPTS_DIR"
 for cmd in "$REPO_DIR/workflow/commands/"*.md; do
     name=$(basename "$cmd")
     rendered=$(mktemp -t "codex-prompt.XXXXXX")
-    grep -v '^allowed-tools:' "$cmd" > "$rendered"
+    # `grep -v` exits 1 if EVERY line matches (i.e. it produces zero output) —
+    # unreachable for any real command file today (all have well over 1 line
+    # of prose beyond frontmatter), but a future command file consisting
+    # solely of an allowed-tools line would trip `set -e` and abort the whole
+    # install. `|| true` keeps that theoretical case from taking down every
+    # other command's install.
+    grep -v '^allowed-tools:' "$cmd" > "$rendered" || true
     install_file "$rendered" "$CODEX_PROMPTS_DIR/$name" "codex prompt $name"
     rm -f "$rendered"
     echo "Copied codex prompt: $name → $CODEX_PROMPTS_DIR/"

@@ -32,7 +32,11 @@ with open(PATH) as f:
 check("no reference to the old script name remains", "sync-claude-md.sh" not in content)
 check("references the renamed sync script", "sync-shared-md.sh" in content)
 check("references session-context.sh", "session-context.sh" in content)
-check("checks for codex/* branches", "codex/*" in content or "codex/" in content)
+check(
+    "checks for codex/* branches",
+    "git branch --list 'codex/*'" in content
+    and "git branch -r --list 'origin/codex/*'" in content,
+)
 check("still checks CLAUDE.md drift", "CLAUDE.md" in content)
 check("also checks AGENTS.md drift", "AGENTS.md" in content)
 check("frontmatter still has a name: line", content.startswith("---\nname: readup"))

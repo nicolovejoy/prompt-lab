@@ -5,6 +5,8 @@ session-start.sh agree, and that session-context.sh's own guard clauses work.
 Standalone runner (this repo doesn't use pytest — see CLAUDE.md Testing section).
 """
 import json
+import os
+import pathlib
 import subprocess
 import sys
 
@@ -13,6 +15,18 @@ REPO_DIR = subprocess.run(
 ).stdout.strip()
 
 failures = []
+
+# The "neglected custom commands" nudge in session-context.sh is
+# self-extinguishing: if the nudge stamp is >7 days stale and a command
+# qualifies, whichever of the two invocations below runs first emits the
+# nudge text AND touches the stamp, so the second invocation won't see it —
+# making the two outputs differ and flaking the startswith assertion below
+# about once a week. Freshen (or create) the stamp right before both
+# invocations so they see identical "not yet due" nudge-eligibility state.
+NUDGE_STAMP = pathlib.Path.home() / ".claude" / "state" / "commands-nudge.touch"
+NUDGE_STAMP.parent.mkdir(parents=True, exist_ok=True)
+NUDGE_STAMP.touch(exist_ok=True)
+os.utime(NUDGE_STAMP, None)
 
 
 def check(name, condition, detail=""):
