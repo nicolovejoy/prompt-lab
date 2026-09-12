@@ -1,5 +1,5 @@
 #!/bin/bash
-# sync-claude-md.sh — materialize the shared-conventions block into a repo's CLAUDE.md.
+# sync-shared-md.sh — materialize the shared-conventions block into a repo's CLAUDE.md or AGENTS.md.
 #
 # The shared block (prompt-lab/workflow/claude-md-shared.md) is the single source of
 # truth for Nico's cross-repo output rules. This script writes it verbatim between
@@ -9,8 +9,8 @@
 # third-party consumers see the literal @path), so it would not reach every environment.
 #
 # Usage:
-#   sync-claude-md.sh --check  [TARGET]   # exit 0 in sync, 1 drift/absent, 2 no CLAUDE.md
-#   sync-claude-md.sh --apply  [TARGET]   # write/refresh the block (creates CLAUDE.md if absent)
+#   sync-shared-md.sh --check  [TARGET]   # exit 0 in sync, 1 drift/absent, 2 no CLAUDE.md
+#   sync-shared-md.sh --apply  [TARGET]   # write/refresh the block (creates CLAUDE.md if absent)
 #
 # TARGET defaults to ./CLAUDE.md. Canonical source defaults to ~/.claude/claude-md-shared.md
 # (installed copy); falls back to the in-repo copy next to this script. Override with
@@ -35,7 +35,7 @@ if [ -z "$CANONICAL" ]; then
 fi
 
 if [ ! -f "$CANONICAL" ]; then
-    echo "sync-claude-md: canonical source not found: $CANONICAL" >&2
+    echo "sync-shared-md: canonical source not found: $CANONICAL" >&2
     exit 3
 fi
 
@@ -70,7 +70,7 @@ case "$MODE" in
         ;;
     --apply)
         # Build the replacement block: BEGIN marker (with hash) + canonical body + END marker.
-        block="$(mktemp -t sync-claude-md.XXXXXX)"
+        block="$(mktemp -t sync-shared-md.XXXXXX)"
         trap 'rm -f "$block"' EXIT
         {
             printf '<!-- %s v=%s — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->\n' "$BEGIN_TOKEN" "$HASH"
@@ -128,7 +128,7 @@ case "$MODE" in
         exit 0
         ;;
     *)
-        echo "usage: sync-claude-md.sh [--check|--apply] [TARGET]" >&2
+        echo "usage: sync-shared-md.sh [--check|--apply] [TARGET]" >&2
         exit 64
         ;;
 esac
