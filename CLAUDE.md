@@ -65,13 +65,13 @@ The full chronological log lives in `docs/history.md`.
 
 **Dual-agent commands landed in code, not yet installed.** `workflow/install.sh`
 now also writes `~/.codex/prompts/*`, but nobody has run it since — do that on
-**both machines** (mini and laptop — see the diff-sweep trap below;
-`workflow/bin/*` and `workflow/commands/*` are per-machine installed copies),
-then verify `~/.codex/prompts/readup.md` has no `allowed-tools:` line and
-actually try `/prompts:readup` from Codex in songpath or musicforge once. Also
-run `rm -f ~/.claude/bin/sync-claude-md.sh` on each machine — `install_file`
-only ever copies, never removes, so the pre-rename script (now
-`sync-shared-md.sh`) would otherwise sit there orphaned forever, and it's
+the **laptop** (Nico's only active coding machine now; mini is a closet server
+and isn't coded on, so the diff-sweep trap's "check both machines" guidance
+doesn't apply here), then verify `~/.codex/prompts/readup.md` has no
+`allowed-tools:` line and actually try `/prompts:readup` from Codex in
+songpath or musicforge once. Also run `rm -f ~/.claude/bin/sync-claude-md.sh`
+— `install_file` only ever copies, never removes, so the pre-rename script
+(now `sync-shared-md.sh`) would otherwise sit there orphaned forever, and it's
 invisible to the diff-sweep loop since that iterates repo files and has no
 counterpart to compare it against. That first real `/handoff` run from Codex
 is what actually gets songpath onto the dashboard (see
