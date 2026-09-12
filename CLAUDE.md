@@ -63,20 +63,16 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
-**Dual-agent commands landed in code, not yet installed.** `workflow/install.sh`
-now also writes `~/.codex/prompts/*`, but nobody has run it since — do that on
-the **laptop** (Nico's only active coding machine now; mini is a closet server
-and isn't coded on, so the diff-sweep trap's "check both machines" guidance
-doesn't apply here), then verify `~/.codex/prompts/readup.md` has no
-`allowed-tools:` line and actually try `/prompts:readup` from Codex in
-songpath or musicforge once. Also run `rm -f ~/.claude/bin/sync-claude-md.sh`
-— `install_file` only ever copies, never removes, so the pre-rename script
-(now `sync-shared-md.sh`) would otherwise sit there orphaned forever, and it's
-invisible to the diff-sweep loop since that iterates repo files and has no
-counterpart to compare it against. That first real `/handoff` run from Codex
-is what actually gets songpath onto the dashboard (see
-`docs/superpowers/specs/2026-09-12-dual-agent-commands-design.md` — no separate
-registration step exists).
+**Dual-agent commands installed 2026-09-12 — one thing left, a real Codex
+try.** `workflow/install.sh` ran on the laptop: `~/.codex/prompts/readup.md`
+verified with zero `allowed-tools:` lines, `session-context.sh` and
+`sync-shared-md.sh` confirmed installed, the orphaned pre-rename
+`~/.claude/bin/sync-claude-md.sh` deleted. Still open: actually run
+`/prompts:readup` then `/prompts:handoff` from Codex in songpath or
+musicforge once (Codex needs a session restart to pick up new prompt files)
+— that first real `/handoff` from Codex is what gets that project onto the
+dashboard, no separate registration step (see
+`docs/superpowers/specs/2026-09-12-dual-agent-commands-design.md`).
 
 **Garm: HARDEN-THEN-FREEZE — Nico's decision 2026-08-27, don't re-litigate
 the unwind question.** He seriously considered unwinding Garm ecosystem-wide
