@@ -2,187 +2,38 @@
 # SessionStart hook — inject lightweight readup-style context at session start.
 #
 # Output: a single JSON object with hookSpecificOutput.additionalContext.
-# Silent (no JSON) if cwd doesn't look like a real project — avoids noise on
-# quick `claude` launches in ~ or /tmp.
+# Context-gathering logic lives in workflow/bin/session-context.sh (shared
+# with agents that have no hook mechanism, e.g. Codex — see /readup step 0).
+# This wrapper's only job is invoking that script and JSON-wrapping its
+# output for the Claude Code hook protocol.
 #
 # Does NOT register a session row or run `git pull` — those stay behind the
-# explicit /readup command. To upgrade to a full readup hook, add a call to
-# `~/.claude/bin/gc-write.sh register-session` before the JSON emit (and accept
-# that every Claude launch will create a session row).
+# explicit /readup command.
 
 set -u
 
 # Read stdin (hook gets a JSON payload, but we don't need any of its fields)
 cat >/dev/null 2>&1 || true
 
-CWD="$(pwd)"
-HOME_SRC="$HOME/src"
+# Resolve our own real location so we can find the sibling bin script
+# in-repo — this hook runs from $REPO_DIR/workflow/hooks/ (registered by
+# absolute repo path in settings.json, never copied to ~/.claude/hooks/),
+# same idiom log-prompt.sh uses for its own sibling script (HOOK_REAL).
+HOOK_REAL=$(readlink -f "$0" 2>/dev/null || echo "$0")
+SESSION_CONTEXT="$(dirname "$HOOK_REAL")/../bin/session-context.sh"
 
-# Guard: only run in real project dirs under ~/src/ that are git repos
-case "$CWD" in
-  "$HOME_SRC"/*) ;;
-  *) exit 0 ;;
-esac
-git -C "$CWD" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
+CTX="$("$SESSION_CONTEXT")"
 
-PROJECT="$(basename "$CWD")"
-TODAY="$(date "+%A, %B %-d, %Y")"
+# Guard: if context is empty (cwd guard failed), exit with no output
+if [ -z "$CTX" ]; then
+  exit 0
+fi
 
-# Machine label, derived from hostname. Update the case below if you rename a host.
-HOSTNAME_SHORT="$(hostname -s)"
-case "$HOSTNAME_SHORT" in
-  *[Mm]ini*) MACHINE="mini" ;;
-  *[Mm][Bb][Pp]*|*[Mm]ac[Bb]ook*) MACHINE="laptop" ;;
-  *) MACHINE="$HOSTNAME_SHORT" ;;
-esac
-
-# Last ended session for this project
-LAST_SUMMARY="$(sqlite3 "$HOME/.claude/prompt-history.db" \
-  "SELECT substr(summary, 1, 400) || '|' || ended_at FROM sessions WHERE project='$PROJECT' AND ended_at IS NOT NULL ORDER BY started_at DESC LIMIT 1;" 2>/dev/null)"
-
-# Recent commits + working tree
-RECENT_COMMITS="$(git -C "$CWD" log --oneline -5 2>/dev/null)"
-DIRTY="$(git -C "$CWD" status --short 2>/dev/null)"
-
-# Bulletin headlines (skip silently if file missing)
-BULLETIN="$(grep -E '^## ' "$HOME/src/prompt-lab/BULLETIN.md" 2>/dev/null | head -5)"
-
-# Assemble context
-CTX="Session-start context (auto-injected, not a /readup invocation):
-
-Today: $TODAY
-Machine: $MACHINE
-Project: $PROJECT
-Working dir: $CWD
-"
-
-if [ -n "$LAST_SUMMARY" ]; then
+if [ -n "$CTX" ]; then
   CTX+="
-Last session: $LAST_SUMMARY
-"
-fi
 
-if [ -n "$RECENT_COMMITS" ]; then
-  CTX+="
-Recent commits:
-$RECENT_COMMITS
-"
-fi
-
-if [ -n "$DIRTY" ]; then
-  CTX+="
-Uncommitted:
-$DIRTY
-"
-fi
-
-if [ -n "$BULLETIN" ]; then
-  CTX+="
-Cross-project bulletin (/bulletin for details):
-$BULLETIN
-"
-fi
-
-# --- Cross-repo handoff channel (issue #7) ------------------------------------
-# If this project participates in a handoff channel (its name is in a file's
-# `repos:` manifest), do a time-boxed best-effort pull then inject that file's
-# ## Active section so the agent sees pending cross-repo notes immediately.
-HANDOFF_DIR="$HOME/src/.handoff"
-HANDOFF_BIN="$HOME/.claude/bin/handoff.sh"
-if [ -d "$HANDOFF_DIR/.git" ]; then
-  # Pull BEFORE scanning. Gating the pull on having already matched a file is a
-  # chicken-and-egg: a channel created by the other side does not exist in this
-  # clone yet, so it can never match, so the pull never runs, so the file never
-  # arrives. Hit for real 2026-08-21 — prompt-lab opened span-prompt-lab.md and
-  # pushed it; the SPAN agent's hook reported "no span-* file exists, nothing
-  # waiting for you" while the file sat on origin. That is this repo's signature
-  # failure shape wearing a new hat: the check never looked, and reported
-  # nothing found. Best-effort and time-boxed (handoff.sh pull always exits 0
-  # and never blocks), so the cost of doing it unconditionally is a short
-  # network call in repos that turn out to have no channel.
-  [ -x "$HANDOFF_BIN" ] && "$HANDOFF_BIN" pull >/dev/null 2>&1
-  MATCHED=""
-  for f in "$HANDOFF_DIR"/*-*.md; do
-    [ -e "$f" ] || continue
-    # Case-sensitive by design: PROJECT is the cwd basename, so a repo living at
-    # ~/src/SPAN matches `repos: [SPAN, …]` and not `[span, …]`.
-    if head -5 "$f" | grep '^repos:' | grep -qw "$PROJECT"; then
-      MATCHED="$MATCHED $f"
-    fi
-  done
-  if [ -n "$MATCHED" ]; then
-    for f in $MATCHED; do
-      # ## Active section = lines between '## Active' and the next '## ' header.
-      ACTIVE="$(awk '/^## Active/{a=1;next} /^## /{a=0} a' "$f")"
-      if printf '%s' "$ACTIVE" | grep -q '[^[:space:]]'; then
-        CTX+="
-Cross-repo handoff — $(basename "$f") (## Active; reply via 'handoff.sh append'):
-$ACTIVE
-"
-      fi
-    done
-  fi
-fi
-
-# Turso staleness check. The async sync runs at most once per 8h and only when
-# the machine is in use, and it runs AFTER this hook — so a merely-old stamp
-# usually means "machine was idle" and the sync is about to catch up (a >24h
-# mtime check here warned on exactly that, falsely). Real breakage = attempts
-# are happening and failing: the newest log line isn't an ok. Warn only when
-# the stamp is ≥48h old AND the most recent logged attempt didn't succeed.
-TURSO_STAMP="$HOME/.claude/.turso-last-sync"
-TURSO_LOG="$HOME/.claude/.turso-last-sync.log"
-if [ -f "$TURSO_STAMP" ] && [ -z "$(find "$TURSO_STAMP" -mmin -2880 2>/dev/null)" ] \
-   && [ -f "$TURSO_LOG" ]; then
-  TURSO_LAST_LINE="$(tail -1 "$TURSO_LOG" 2>/dev/null)"
-  case "$TURSO_LAST_LINE" in
-    *" ok: "*) : ;;  # newest attempt succeeded — stale stamp is just idle time
-    "") : ;;         # empty log — nothing attempted, nothing to diagnose
-    *)
-      LAST_SYNC="$(stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$TURSO_STAMP" 2>/dev/null || stat -c '%y' "$TURSO_STAMP" 2>/dev/null | cut -d. -f1)"
-      CTX+="
-⚠️ Turso sync last succeeded $LAST_SYNC on this machine and the most recent attempt did NOT succeed: [$TURSO_LAST_LINE] — check ~/.claude/.turso-last-sync.log. The async sync hook retries each session, but it keeps failing.
-"
-      ;;
-  esac
-fi
-
-# Neglected custom commands nudge — at most once per 7 days, only if any
-# user-installed slash command has gone unused for 30+ days.
-NUDGE_STAMP="$HOME/.claude/state/commands-nudge.touch"
-NUDGE_FRESH="$(find "$NUDGE_STAMP" -mmin -10080 2>/dev/null)"
-if [ -z "$NUDGE_FRESH" ] && [ -d "$HOME/.claude/commands" ]; then
-  CUTOFF="$(date -v-30d '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -d '30 days ago' '+%Y-%m-%d %H:%M:%S')"
-  NEGLECTED=""
-  for cmd_file in "$HOME/.claude/commands/"*.md; do
-    [ -f "$cmd_file" ] || continue
-    cmd="$(basename "$cmd_file" .md)"
-    case "$cmd" in *.bak.*) continue ;; esac
-    last="$(sqlite3 "$HOME/.claude/prompt-history.db" \
-      "SELECT MAX(timestamp) FROM prompts WHERE prompt = '/$cmd' OR prompt LIKE '/$cmd %' OR prompt LIKE '/$cmd' || x'0a' || '%';" 2>/dev/null)"
-    if [ -z "$last" ] || [ "$last" \< "$CUTOFF" ]; then
-      desc="$(awk -F': *' '/^description:/{sub(/^[ \t]+/, "", $2); print $2; exit}' "$cmd_file")"
-      [ -z "$desc" ] && desc="(no description)"
-      if [ -z "$last" ]; then
-        NEGLECTED+="   /$cmd — $desc (never used)
-"
-      else
-        NEGLECTED+="   /$cmd — $desc (last used $last)
-"
-      fi
-    fi
-  done
-  if [ -n "$NEGLECTED" ]; then
-    CTX+="
-Custom commands you haven't used in 30+ days (weekly reminder):
-$NEGLECTED"
-    mkdir -p "$(dirname "$NUDGE_STAMP")"
-    touch "$NUDGE_STAMP"
-  fi
-fi
-
-CTX+="
 The user has NOT run /readup yet — they may or may not. Do not preemptively summarize. Use this context to answer their first message in an informed way."
+fi
 
 # Emit hook output JSON. Python handles the escaping cleanly.
 python3 -c "
