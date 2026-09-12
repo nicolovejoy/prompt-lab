@@ -83,10 +83,22 @@ fi
 HANDOFF_DIR="$HOME/src/.handoff"
 HANDOFF_BIN="$HOME/.claude/bin/handoff.sh"
 if [ -d "$HANDOFF_DIR/.git" ]; then
+  # Pull BEFORE scanning. Gating the pull on having already matched a file is a
+  # chicken-and-egg: a channel created by the other side does not exist in this
+  # clone yet, so it can never match, so the pull never runs, so the file never
+  # arrives. Hit for real 2026-08-21 — prompt-lab opened span-prompt-lab.md and
+  # pushed it; the SPAN agent's hook reported "no span-* file exists, nothing
+  # waiting for you" while the file sat on origin. That is this repo's signature
+  # failure shape wearing a new hat: the check never looked, and reported
+  # nothing found. Best-effort and time-boxed (handoff.sh pull always exits 0
+  # and never blocks), so the cost of doing it unconditionally is a short
+  # network call in repos that turn out to have no channel.
   [ -x "$HANDOFF_BIN" ] && "$HANDOFF_BIN" pull >/dev/null 2>&1
   MATCHED=""
   for f in "$HANDOFF_DIR"/*-*.md; do
     [ -e "$f" ] || continue
+    # Case-sensitive by design: PROJECT is the cwd basename, so a repo living at
+    # ~/src/SPAN matches `repos: [SPAN, …]` and not `[span, …]`.
     if head -5 "$f" | grep '^repos:' | grep -qw "$PROJECT"; then
       MATCHED="$MATCHED $f"
     fi
@@ -104,15 +116,20 @@ $ACTIVE
   fi
 fi
 
-# Turso staleness check.
+# Turso staleness check. The async sync runs at most once per 8h and only when
+# the machine is in use, and it runs AFTER this hook — so a merely-old stamp
+# usually means "machine was idle" and the sync is about to catch up (a >24h
+# mtime check here warned on exactly that, falsely). Real breakage = attempts
+# are happening and failing: the newest log line isn't an ok. Warn only when
+# the stamp is ≥48h old AND the most recent logged attempt didn't succeed.
 TURSO_STAMP="$HOME/.claude/.turso-last-sync"
 TURSO_LOG="$HOME/.claude/.turso-last-sync.log"
 if [ -f "$TURSO_STAMP" ] && [ -z "$(find "$TURSO_STAMP" -mmin -2880 2>/dev/null)" ] \
    && [ -f "$TURSO_LOG" ]; then
   TURSO_LAST_LINE="$(tail -1 "$TURSO_LOG" 2>/dev/null)"
   case "$TURSO_LAST_LINE" in
-    *" ok: "*) : ;;
-    "") : ;;
+    *" ok: "*) : ;;  # newest attempt succeeded — stale stamp is just idle time
+    "") : ;;         # empty log — nothing attempted, nothing to diagnose
     *)
       LAST_SYNC="$(stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$TURSO_STAMP" 2>/dev/null || stat -c '%y' "$TURSO_STAMP" 2>/dev/null | cut -d. -f1)"
       CTX+="

@@ -29,11 +29,9 @@ if [ -z "$CTX" ]; then
   exit 0
 fi
 
-if [ -n "$CTX" ]; then
-  CTX+="
+CTX+="
 
 The user has NOT run /readup yet — they may or may not. Do not preemptively summarize. Use this context to answer their first message in an informed way."
-fi
 
 # Emit hook output JSON. Python handles the escaping cleanly.
 python3 -c "
