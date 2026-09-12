@@ -152,7 +152,7 @@ Then stop and hand it to the user for review. **Never run the publish step yours
 
 ## 5. Commit doc changes if any
 
-Note: Turso sync used to run here. It now runs automatically via the async SessionStart hook (`~/.claude/bin/turso-sync-maybe.sh`) at most once per 8h on each machine. If you need to force a sync right now: `~/src/prompt-lab/.venv/bin/python ~/src/prompt-lab/sync_to_turso.py --days 1`.
+Note: Turso sync used to run here. It now runs automatically via the async SessionStart hook (`~/.claude/bin/turso-sync-maybe.sh`) at most once per 8h on each machine. If you need to force a sync right now: `~/src/prompt-lab/.venv/bin/python ~/src/prompt-lab/sync_to_turso.py --days 1`. This is Claude-Code-only — `turso-sync-maybe.sh` is a hook script with no Codex equivalent, so a Codex-authored `/handoff` still writes its rows to the local store as always, but they wait for a Claude Code session (or the nightly pipeline) to actually push them to Turso.
 
 GitHub URL upsert used to live here too — moved to a one-time script at `scripts/backfill_project_urls.py`. Re-run it if you add a new project or rename a remote.
 

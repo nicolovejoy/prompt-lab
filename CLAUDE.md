@@ -64,10 +64,17 @@ The full chronological log lives in `docs/history.md`.
 ### Open
 
 **Dual-agent commands landed in code, not yet installed.** `workflow/install.sh`
-now also writes `~/.codex/prompts/*`, but nobody has run it since — do that, then
-verify `~/.codex/prompts/readup.md` has no `allowed-tools:` line and actually try
-`/prompts:readup` from Codex in songpath or musicforge once. That first real
-`/handoff` run from Codex is what actually gets songpath onto the dashboard (see
+now also writes `~/.codex/prompts/*`, but nobody has run it since — do that on
+**both machines** (mini and laptop — see the diff-sweep trap below;
+`workflow/bin/*` and `workflow/commands/*` are per-machine installed copies),
+then verify `~/.codex/prompts/readup.md` has no `allowed-tools:` line and
+actually try `/prompts:readup` from Codex in songpath or musicforge once. Also
+run `rm -f ~/.claude/bin/sync-claude-md.sh` on each machine — `install_file`
+only ever copies, never removes, so the pre-rename script (now
+`sync-shared-md.sh`) would otherwise sit there orphaned forever, and it's
+invisible to the diff-sweep loop since that iterates repo files and has no
+counterpart to compare it against. That first real `/handoff` run from Codex
+is what actually gets songpath onto the dashboard (see
 `docs/superpowers/specs/2026-09-12-dual-agent-commands-design.md` — no separate
 registration step exists).
 
@@ -587,9 +594,12 @@ the archive write must be separately observable.
 - **Dual-agent commands (Claude Code + Codex) — 2026-09-12.** `workflow/commands/*.md`
   is the single source for both; `install.sh` distributes to `~/.claude/commands/`
   (unchanged) and `~/.codex/prompts/` (allowed-tools stripped). Codex has no
-  SessionStart-hook equivalent, so `/readup` falls back to running
-  `workflow/bin/session-context.sh` directly — extracted from the hook for exactly
-  this reuse. `sync-claude-md.sh` was renamed `sync-shared-md.sh` (it was already
+  SessionStart-hook equivalent, so `/readup` falls back to running the
+  *installed* `~/.claude/bin/session-context.sh` — extracted from the hook for
+  exactly this reuse (a command runs from an arbitrary cwd via
+  `~/.claude/commands/`, so it needs the installed path; only the hook itself
+  uses the in-repo relative path, since it runs from its registered in-repo
+  location). `sync-claude-md.sh` was renamed `sync-shared-md.sh` (it was already
   target-path-agnostic) so the same shared-conventions source compiles into both
   CLAUDE.md and AGENTS.md. Codex sessions always branch as `codex/<desc>`, the one
   signal a Claude session can check for since `ListAgents` doesn't cross tool
