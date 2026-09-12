@@ -1,19 +1,25 @@
 ---
 name: readup
 description: Start a session — register a session row, sync to remote, read project context
-allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(~/.claude/bin/sync-claude-md.sh:*), Bash(~/.claude/bin/handoff.sh:*), Bash(stat:*), Bash(date:*), Bash(basename:*), Bash(mkdir:*), Bash(touch:*), Bash(gh issue list:*), Bash(gh pr list:*), Bash(gh run list:*), Bash(gh run view:*), Bash(.venv/bin/python scripts/check_public_allowlist.py:*), Bash(python3 scripts/check_public_allowlist.py:*), Read, Write, Edit, Glob, Agent, ListAgents
+allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(~/.claude/bin/sync-shared-md.sh:*), Bash(~/.claude/bin/session-context.sh:*), Bash(~/.claude/bin/handoff.sh:*), Bash(stat:*), Bash(date:*), Bash(basename:*), Bash(mkdir:*), Bash(touch:*), Bash(gh issue list:*), Bash(gh pr list:*), Bash(gh run list:*), Bash(gh run view:*), Bash(.venv/bin/python scripts/check_public_allowlist.py:*), Bash(python3 scripts/check_public_allowlist.py:*), Read, Write, Edit, Glob, Agent, ListAgents
 ---
 
 Start a session. Be concise.
 
-Note: the SessionStart hook already injected today's date, last-session summary, recent commits, working-tree state, and bulletin headlines. **Do not re-fetch any of that.** This command exists for the side effects (session row, remote check, full CLAUDE.md read) that the hook deliberately skips.
+Note: a SessionStart hook usually already injected today's date, last-session summary, recent commits, working-tree state, and bulletin headlines (Claude Code sessions get this automatically). **If you already have that context, do not re-fetch it.** If you don't — Codex and any other agent without an equivalent hook won't — run this first:
+
+```bash
+~/.claude/bin/session-context.sh
+```
+
+and read its output before continuing. Either way, this command exists for the side effects (session row, remote check, full CLAUDE.md read) that the hook deliberately skips.
 
 ## Do (in parallel)
 
 1. Register session: `~/.claude/bin/gc-write.sh register-session` (this will prompt — writes aren't auto-allowed)
 2. Remote check (no pull): `git fetch --quiet --all --prune && git status -sb` for the current branch, then `git for-each-ref --format='%(refname:short) %(upstream:short) %(upstream:track)' refs/heads | awk '$3 != ""'` to catch other local branches that are ahead/behind their upstream (useful when work happened on another machine). Also list remote branches with no local tracking: `git branch -r --no-merged | grep -v HEAD`. Fetch is cheap, never modifies the tree. If anything is behind/ahead or there are unfamiliar remote branches, flag them in the summary so the user can decide whether to `git pull --rebase` or `git checkout` manually. If everything is clean, say nothing.
 3. Read CLAUDE.md in full (focus on Next Steps + project conventions). The hook's injected context covers recent activity, but not project intent.
-4. Other agents on this repo: `git worktree list` — a linked worktree besides the main checkout means another agent may be mid-task here; flag it with its branch. If the `ListAgents` tool is available, also call it and flag any other local or cloud session whose name/task suggests this repo (a cloud agent's work won't show in `git status` at all until it pushes). Remote branches with no local tracking (item 2) are the third tell. Only the main worktree and no other sessions → say nothing. `ListAgents` missing or erroring → skip silently, never block session start.
+4. Other agents on this repo: `git worktree list` — a linked worktree besides the main checkout means another agent may be mid-task here; flag it with its branch. If the `ListAgents` tool is available, also call it and flag any other local or cloud session whose name/task suggests this repo (a cloud agent's work won't show in `git status` at all until it pushes). Remote branches with no local tracking (item 2) are the third tell. Also check for Codex activity, which `ListAgents` cannot see: `git branch --list 'codex/*'` and `git branch -r --list 'origin/codex/*'` — by convention Codex always works on a `codex/<desc>` branch, so a match means Codex has touched or is touching this repo even with no visible session. Only the main worktree, no `codex/*` branches, and no other sessions → say nothing. `ListAgents` missing or erroring → skip silently, never block session start.
 
 ## 4. Backfill recent unsummarized days (lazy synthesis)
 
@@ -77,17 +83,18 @@ If `age_h >= 48` AND `commits_since > 3`, invoke `/resync --light` inline. Fold 
 
 ## 6. Check shared-conventions drift (check only — never auto-write)
 
-Verify this repo's CLAUDE.md carries the current shared-conventions block:
+Verify this repo's CLAUDE.md and AGENTS.md (whichever exist) carry the current shared-conventions block:
 
 ```bash
-~/.claude/bin/sync-claude-md.sh --check ./CLAUDE.md
+~/.claude/bin/sync-shared-md.sh --check ./CLAUDE.md
+~/.claude/bin/sync-shared-md.sh --check ./AGENTS.md
 ```
 
 - `in sync` → say nothing.
-- `missing` / `drift` → flag one line in the summary and offer the exact fix: `~/.claude/bin/sync-claude-md.sh --apply ./CLAUDE.md` (review the `git diff`, then commit). Never apply automatically — materializing into a checked-in file is the user's call.
-- `absent` (no CLAUDE.md) → skip silently; not every repo warrants one.
+- `missing` / `drift` → flag one line per file in the summary and offer the exact fix: `~/.claude/bin/sync-shared-md.sh --apply ./<file>` (review the `git diff`, then commit). Never apply automatically — materializing into a checked-in file is the user's call.
+- `absent` (that file doesn't exist in this repo) → skip silently; not every repo warrants a CLAUDE.md or an AGENTS.md.
 
-The block is auto-managed between `SHARED-CONVENTIONS` markers; the source of truth is `prompt-lab/workflow/claude-md-shared.md`.
+The block is auto-managed between `SHARED-CONVENTIONS` markers; the source of truth is `prompt-lab/workflow/claude-md-shared.md`. A repo's AGENTS.md may carry other auto-managed blocks under different markers (e.g. songpath's `next dev`-generated `BEGIN:nextjs-agent-rules`) — those are untouched, since the sentinel tokens differ.
 
 ## 7. Flush the cross-repo handoff channel
 
