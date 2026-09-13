@@ -4,7 +4,7 @@
 # Pick any directory under ~/src (menu, argument, or tab
 # completion) and open a new iTerm2 window with three panes,
 # all cd'd into the project folder:
-#   - top (full width, ~80% height) : Claude Code
+#   - top (full width, ~80% height) : Claude Code or Codex
 #   - bottom left/right (~20%)       : two shells
 # The tab color is derived from the project name (same name ->
 # same color, always), so no per-project config is needed.
@@ -17,6 +17,7 @@
 # USE:      `work`            -> shows a numbered menu
 #           `work musicforge` -> opens that project directly
 #           `work mus<TAB>`   -> completes from ~/src
+#           `cx prompt-lab` -> same layout, running Codex
 # ============================================================
 
 WORK_SRC_DIR="$HOME/src"
@@ -72,7 +73,12 @@ _work_color() {
 
 
 # --- 2. THE LAUNCHER ---------------------------------------
-work() {
+work() { _work_launch claude "$@"; }
+cx() { _work_launch codex "$@"; }
+
+_work_launch() {
+  local agent="$1"
+  shift
   local name="${1%/}"   # tolerate a trailing slash from completion
 
   # If no project was named, show a numbered menu of ~/src dirs.
@@ -94,49 +100,57 @@ work() {
   local r g b
   read r g b <<< "$(_work_color "$name")"
 
-  # Bottom strip gets ~15% of the rows; the top Claude pane keeps
-  # the rest (~85%).
+  local agent_label="Claude"
+  [[ "$agent" == codex ]] && agent_label="Codex"
+  local title="${(U)name[1]}${name[2,-1]} -- $agent_label"
+  # Quote shell arguments before passing commands as AppleScript argv.
+  # Project names may contain spaces, quotes, or shell metacharacters.
+  local shell_cmd="cd -- ${(q)proj_dir}"
+  local agent_cmd="claude --name ${(q)title}"
+  [[ "$agent" == codex ]] && agent_cmd="codex"
+  local top_cmd="$shell_cmd && iterm_tab_color $r $g $b && iterm_badge ${(q)title} && clear && $agent_cmd"
   local bottom_rows=$(( WORK_ROWS * 15 / 100 ))
 
-  # Drive iTerm2 with AppleScript. The zsh variables above
-  # ($proj_dir, $r, $g, $b, $bottom_rows) are substituted into
-  # the script text.
-  osascript <<EOF
-tell application "iTerm"
-  activate
-  set w to (create window with default profile)
-  tell w
-    set s1 to current session
-    tell s1
-      set columns to $WORK_COLS
-      set rows to $WORK_ROWS
-      set s2 to (split horizontally with default profile) -- bottom strip
+  osascript - "$title" "$top_cmd" "$shell_cmd" "$WORK_COLS" "$WORK_ROWS" "$bottom_rows" <<'APPLESCRIPT'
+on run argv
+  set windowTitle to item 1 of argv
+  set topCommand to item 2 of argv
+  set shellCommand to item 3 of argv
+  set windowColumns to (item 4 of argv) as integer
+  set windowRows to (item 5 of argv) as integer
+  set bottomRows to (item 6 of argv) as integer
+  tell application "iTerm"
+    activate
+    set w to (create window with default profile)
+    tell w
+      -- A tab title override also supplies the default window title.
+      -- Unlike OSC titles from shells/agents, it survives pane switches.
+      set title of current tab to windowTitle
+      set s1 to current session
+      tell s1
+        set columns to windowColumns
+        set rows to windowRows
+        set s2 to (split horizontally with default profile)
+      end tell
+      tell s2
+        set s3 to (split vertically with default profile)
+        set rows to bottomRows
+      end tell
+      tell s1 to write text topCommand
+      tell s2 to write text shellCommand
+      tell s3 to write text shellCommand
+      tell s1 to select
     end tell
-    tell s2
-      set s3 to (split vertically with default profile)   -- bottom-right
-      set rows to $bottom_rows                             -- shrink to ~20%
-    end tell
-
-    -- top pane (full width): cd, color the tab, badge it with the
-    -- project name, then launch Claude. --name pre-names the session
-    -- so the tab/window title reads "· <project>" from the first
-    -- moment instead of a generic "Claude Code" (title = session name).
-    tell s1 to write text "cd '$proj_dir' && iterm_tab_color $r $g $b && iterm_badge '$name' && clear && claude --name '$name'"
-    -- the two bottom shells: just cd into the project
-    tell s2 to write text "cd '$proj_dir'"
-    tell s3 to write text "cd '$proj_dir'"
-
-    tell s1 to select   -- leave focus on the Claude pane
   end tell
-end tell
-EOF
+end run
+APPLESCRIPT
 }
 
 
 # --- 3. TAB COMPLETION -------------------------------------
 # Complete `work <TAB>` with the directories in ~/src.
 _work() { compadd -- $WORK_SRC_DIR/*(/N:t) }
-if (( $+functions[compdef] )); then compdef _work work; fi
+if (( $+functions[compdef] )); then compdef _work work cx; fi
 
 # ============================================================
 # TWEAKS:
@@ -147,7 +161,7 @@ if (( $+functions[compdef] )); then compdef _work work; fi
 #   horizontally" in section 2 to rearrange the splits.
 # - Two tabs instead of panes? Replace the split lines with
 #   `tell w to create tab with default profile`.
-# - Run something other than claude: edit the s1 write line.
+# - Agent command: edit agent_cmd in _work_launch.
 # - No project badge: drop the iterm_badge call from the s1 line
 #   (or run iterm_badge_reset in a pane to clear it live).
 # - Different color feel: tweak s (saturation) / v (brightness)

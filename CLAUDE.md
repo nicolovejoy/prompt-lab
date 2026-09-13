@@ -63,6 +63,29 @@ The full chronological log lives in `docs/history.md`.
 
 ### Open
 
+**Codex workflow checkpoint — 2026-09-13, branch `codex/agent-work-launchers`.**
+`work <project>` keeps Claude; `cx <project>` launches Codex with the same
+three-pane layout. The tab-title override is intended to make the window read
+`Prompt-lab -- Claude` / `Prompt-lab -- Codex`; shell syntax and generated
+commands pass, but live iTerm rendering is still unverified. Nico stays in CLI/iTerm (not the Codex app) and runs the
+installer himself. The existing uncommitted `workflow/install.sh` prompt-layout
+edit predates this session and was left alone; review it BEFORE installing
+(it changes top-level prompt files to nested SKILL.md files).
+
+Next session, keep scope here: (1) finish and test Codex secret protection while
+preserving `.env.tpl`, (2) fix session identity, (3) verify readup/handoff end to
+end. Investigation and accepted preferences: `docs/codex-workflow-checkpoint.md`.
+No Codex permission profile is installed or claimed safe. **Do not trust
+`gc-read.sh current-session` from Codex yet:** this readup created row 574, but
+the shared project pointer returned Claude row 573. Handoff explicitly used 574.
+
+**1Password preference:** when Nico requests a new item, create its secret field
+with the literal placeholder `replace-this-value`; Nico pastes the real value
+into 1Password. `.env.tpl` files contain references and should remain readable.
+Do not infer that arbitrary agent-selected commands can use secrets without
+being able to expose them. Start with human-run secret operations; proposed
+first protected helper is read-only operational status, deployment later.
+
 **Dual-agent commands installed 2026-09-12 — one thing left, a real Codex
 try.** `workflow/install.sh` ran on the laptop: `~/.codex/prompts/readup.md`
 verified with zero `allowed-tools:` lines, `session-context.sh` and
