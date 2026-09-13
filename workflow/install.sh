@@ -64,9 +64,10 @@ for cmd in "$REPO_DIR/workflow/commands/"*.md; do
 done
 
 # --- Codex custom prompts (same source, allowed-tools stripped) ---
-# Codex CLI's equivalent of Claude commands lives in ~/.codex/prompts/<name>.md,
-# invoked as /prompts:<name>. It has no allowed-tools frontmatter field, so we
-# strip that one line rather than maintain a second copy of each command body.
+# Custom prompts must be top-level ~/.codex/prompts/<name>.md files,
+# invoked as /prompts:<name>. Nested <name>/SKILL.md files are not discovered.
+# Strip allowed-tools rather than maintain a second command body. Migration
+# to explicit-only skills is separate work; do not mix the two layouts.
 CODEX_PROMPTS_DIR="$HOME/.codex/prompts"
 mkdir -p "$CODEX_PROMPTS_DIR"
 for cmd in "$REPO_DIR/workflow/commands/"*.md; do
@@ -81,7 +82,7 @@ for cmd in "$REPO_DIR/workflow/commands/"*.md; do
     grep -v '^allowed-tools:' "$cmd" > "$rendered" || true
     install_file "$rendered" "$CODEX_PROMPTS_DIR/$name" "codex prompt $name"
     rm -f "$rendered"
-    echo "Copied codex prompt: $name → $CODEX_PROMPTS_DIR/"
+    echo "Copied codex prompt: $name → $CODEX_PROMPTS_DIR/$name"
 done
 
 # --- bin scripts (everything in workflow/bin/) ---

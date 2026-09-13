@@ -14,16 +14,22 @@ assume both apply.
 `workflow/shell/work.zsh` now exposes `work` (Claude) and `cx` (Codex), sharing
 the menu, completion, project color, badge and three-pane layout. Titles are
 `Prompt-lab -- Claude` and `Prompt-lab -- Codex`. Commands travel as AppleScript
-argv with zsh-quoted arguments. A tab title override supplies the default
-window title, instead of relying on transient OSC titles from an agent.
+argv with zsh-quoted arguments.
 
-Verified: zsh syntax, generated commands and titles, git diff whitespace.
-Not verified: actual iTerm rendering, pane switching, or agent-driven title
-updates. Nico installs via `workflow/install.sh`; do not run it on his behalf.
-The pre-existing uncommitted installer change is NOT part of this launcher
-change. It switches custom prompts to `~/.codex/prompts/<name>/SKILL.md`, which
-conflicts with the official top-level-only custom-prompt discovery docs.
-The installer test passes despite that change; it doesn't test discovery.
+Follow-up: the AppleScript tab-title setter crashed on iTerm 3.6.11 before
+launching the agent. Removed it; Nico confirmed `cx songpath` works. Added a
+standard OSC title at launch and a per-pane `precmd` that restores it at shell
+prompts. Agent-driven title updates may still replace the top pane's title;
+there is no permanent title override and no new dependency.
+
+Verified: zsh/bash syntax, generated commands, actual OSC bytes, live launcher
+success confirmed by Nico, and isolated execution of the real Codex prompt
+installation block. Nico installs via `workflow/install.sh` himself.
+
+Nico authorized reviewing and committing the previous Claude session's installer
+edit. Corrected its nested SKILL.md destination back to supported top-level
+custom-prompt files, and added a behavior test that checks actual output paths
+and contents in a temporary directory without invoking the full installer.
 
 ## Secret handling: agreed requirements and proposed rollout
 

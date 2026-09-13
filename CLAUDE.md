@@ -65,12 +65,13 @@ The full chronological log lives in `docs/history.md`.
 
 **Codex workflow checkpoint — 2026-09-13, branch `codex/agent-work-launchers`.**
 `work <project>` keeps Claude; `cx <project>` launches Codex with the same
-three-pane layout. The tab-title override is intended to make the window read
-`Prompt-lab -- Claude` / `Prompt-lab -- Codex`; shell syntax and generated
-commands pass, but live iTerm rendering is still unverified. Nico stays in CLI/iTerm (not the Codex app) and runs the
-installer himself. The existing uncommitted `workflow/install.sh` prompt-layout
-edit predates this session and was left alone; review it BEFORE installing
-(it changes top-level prompt files to nested SKILL.md files).
+three-pane layout. The first tab-title setter crashed on iTerm 3.6.11; it was removed and Nico
+confirmed `cx songpath` launches successfully. A standard OSC title now sets
+`Prompt-lab -- Claude` / `Prompt-lab -- Codex`, restored by the helper-shell
+prompts; agents may subsequently replace their pane title. Nico stays in CLI/iTerm (not the Codex app) and runs the
+installer himself. The older `workflow/install.sh` edit was reviewed with Nico’s authorization:
+restored top-level custom-prompt files and added an isolated distribution test
+that verifies actual output paths. Nested SKILL.md files are not custom prompts.
 
 Next session, keep scope here: (1) finish and test Codex secret protection while
 preserving `.env.tpl`, (2) fix session identity, (3) verify readup/handoff end to

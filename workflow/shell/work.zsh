@@ -105,7 +105,9 @@ _work_launch() {
   local title="${(U)name[1]}${name[2,-1]} -- $agent_label"
   # Quote shell arguments before passing commands as AppleScript argv.
   # Project names may contain spaces, quotes, or shell metacharacters.
-  local shell_cmd="cd -- ${(q)proj_dir}"
+  local title_cmd="printf '\\033]0;%s\\a' ${(q)title}"
+  # Each helper shell restores the project/agent title at its prompt.
+  local shell_cmd="cd -- ${(q)proj_dir} && precmd() { $title_cmd; } && precmd"
   local agent_cmd="claude --name ${(q)title}"
   [[ "$agent" == codex ]] && agent_cmd="codex"
   local top_cmd="$shell_cmd && iterm_tab_color $r $g $b && iterm_badge ${(q)title} && clear && $agent_cmd"
@@ -123,9 +125,6 @@ on run argv
     activate
     set w to (create window with default profile)
     tell w
-      -- A tab title override also supplies the default window title.
-      -- Unlike OSC titles from shells/agents, it survives pane switches.
-      set title of current tab to windowTitle
       set s1 to current session
       tell s1
         set columns to windowColumns
