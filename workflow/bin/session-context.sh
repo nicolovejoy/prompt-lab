@@ -80,8 +80,14 @@ $BULLETIN
 fi
 
 # --- Cross-repo handoff channel (issue #7) ------------------------------------
-HANDOFF_DIR="$HOME/src/.handoff"
-HANDOFF_BIN="$HOME/.claude/bin/handoff.sh"
+HANDOFF_DIR="${HANDOFF_DIR:-$HOME/src/.handoff}"
+HANDOFF_BIN="${HANDOFF_BIN:-$HOME/.claude/bin/handoff.sh}"
+# Headline-only injection (2026-09-13). Full `## Active` bodies were 193 KB /
+# ~48K tokens across 14 channels at every session start — 99% of the hook's
+# output — because entries are appended far more often than they are archived.
+# Inject the dated `### ` headlines newer than HANDOFF_HEADLINE_DAYS plus a
+# count; the body is one `cat` away when a headline matters.
+HANDOFF_HEADLINE_DAYS="${HANDOFF_HEADLINE_DAYS:-30}"
 if [ -d "$HANDOFF_DIR/.git" ]; then
   # Pull BEFORE scanning. Gating the pull on having already matched a file is a
   # chicken-and-egg: a channel created by the other side does not exist in this
@@ -104,14 +110,20 @@ if [ -d "$HANDOFF_DIR/.git" ]; then
     fi
   done
   if [ -n "$MATCHED" ]; then
+    HANDOFF_CUTOFF="$(date -v-"${HANDOFF_HEADLINE_DAYS}"d '+%Y-%m-%d' 2>/dev/null \
+      || date -d "${HANDOFF_HEADLINE_DAYS} days ago" '+%Y-%m-%d')"
     for f in $MATCHED; do
-      ACTIVE="$(awk '/^## Active/{a=1;next} /^## /{a=0} a' "$f")"
-      if printf '%s' "$ACTIVE" | grep -q '[^[:space:]]'; then
-        CTX+="
-Cross-repo handoff — $(basename "$f") (## Active; reply via 'handoff.sh append'):
-$ACTIVE
+      # Only `### ` lines inside `## Active`; date is the first token after `### `.
+      HEADLINES="$(awk '/^## Active/{a=1;next} /^## /{a=0} a && /^### /' "$f")"
+      [ -n "$HEADLINES" ] || continue
+      TOTAL="$(printf '%s\n' "$HEADLINES" | wc -l | tr -d ' ')"
+      FRESH="$(printf '%s\n' "$HEADLINES" | awk -v c="$HANDOFF_CUTOFF" 'substr($0,5,10) >= c')"
+      FRESH_N="$(printf '%s' "$FRESH" | grep -c '^### ' || true)"
+      CTX+="
+Cross-repo handoff — $(basename "$f"): $TOTAL active entries, $FRESH_N newer than ${HANDOFF_HEADLINE_DAYS}d (bodies: cat ~/src/.handoff/$(basename "$f"); reply via 'handoff.sh append'):
 "
-      fi
+      [ -n "$FRESH" ] && CTX+="$FRESH
+"
     done
   fi
 fi

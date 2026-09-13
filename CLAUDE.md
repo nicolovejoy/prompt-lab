@@ -43,7 +43,7 @@ The SessionStart hook (`workflow/hooks/session-start.sh`) injects a `Machine:` l
 
 ## Cross-agent handoff
 
-This repo coordinates with peer repos (selected-projects, prntd) via an append-only shared log living in the **standalone private git repo `nicolovejoy/handoff`**, cloned to `~/src/.handoff` (synced across mini + laptop). One file per pairing, each with a `repos: [a, b]` front-matter manifest. The SessionStart hook auto-injects the matching file's `## Active` section after a time-boxed best-effort pull, so you see pending notes without reading the file manually.
+This repo coordinates with peer repos (selected-projects, prntd) via an append-only shared log living in the **standalone private git repo `nicolovejoy/handoff`**, cloned to `~/src/.handoff` (synced across mini + laptop). One file per pairing, each with a `repos: [a, b]` front-matter manifest. The SessionStart hook auto-injects, per matching file, the dated `### ` headlines newer than 30 days plus an active-entry count (`HANDOFF_HEADLINE_DAYS` overrides the window). Bodies are not injected — `cat` the file when a headline matters. Full bodies used to be injected and reached 193 KB per session start (2026-09-13).
 
 **Writing a cross-repo note** — never hand-edit + manually `git push`; use the wrapper so the pull-rebase/commit/push is atomic and conflicts surface loudly:
 

@@ -100,6 +100,56 @@ hook_outside_result = subprocess.run(
 check("session-start.sh produces zero stdout outside ~/src/*", hook_outside_result.stdout == "")
 check("session-start.sh exits 0 outside ~/src/*", hook_outside_result.returncode == 0)
 
+# 5. Handoff channel injection is headline-only and age-capped. Build a fake
+#    ~/src/.handoff with one channel matching this repo's basename and three
+#    entries: fresh, stale, and fresh-with-a-multiline-body. Bodies must never
+#    reach the output (they were 99% of a 194 KB injection on 2026-09-13).
+import datetime
+import tempfile
+
+project = os.path.basename(REPO_DIR)
+fresh = (datetime.date.today() - datetime.timedelta(days=3)).isoformat()
+stale = (datetime.date.today() - datetime.timedelta(days=90)).isoformat()
+with tempfile.TemporaryDirectory() as td:
+    hd = pathlib.Path(td) / ".handoff"
+    (hd / ".git").mkdir(parents=True)
+    channel = hd / f"peer-{project}.md"
+    channel.write_text(
+        "---\n"
+        f"repos: [peer, {project}]\n"
+        "---\n"
+        "## Active\n\n"
+        f"### {fresh} peer → {project}: FRESH_HEADLINE_ONE\n\n"
+        "BODY_LINE_MUST_NOT_APPEAR_ONE\n\n"
+        f"### {stale} peer → {project}: STALE_HEADLINE\n\n"
+        "BODY_LINE_MUST_NOT_APPEAR_TWO\n\n"
+        f"### {fresh} {project} → peer: FRESH_HEADLINE_TWO\n\n"
+        "BODY_LINE_MUST_NOT_APPEAR_THREE\nsecond body line\n\n"
+        "## Archived\n\n"
+        f"### {fresh} peer → {project}: ARCHIVED_HEADLINE\n"
+    )
+    env = dict(os.environ, HANDOFF_DIR=str(hd), HANDOFF_BIN="/nonexistent/handoff.sh")
+    r = subprocess.run(
+        ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True, env=env
+    )
+    out = r.stdout
+    check("handoff: script exits 0 with fake channel", r.returncode == 0, r.stderr[-300:])
+    check("handoff: fresh headline one listed", "FRESH_HEADLINE_ONE" in out)
+    check("handoff: fresh headline two listed", "FRESH_HEADLINE_TWO" in out)
+    check("handoff: stale headline NOT listed", "STALE_HEADLINE" not in out)
+    check("handoff: archived headline NOT listed", "ARCHIVED_HEADLINE" not in out)
+    check("handoff: no body text leaks", "BODY_LINE_MUST_NOT_APPEAR" not in out and "second body line" not in out)
+    check("handoff: counts in header", f"peer-{project}.md: 3 active entries, 2 newer than 30d" in out)
+    check("handoff: points at the file for bodies", f"cat ~/src/.handoff/peer-{project}.md" in out)
+
+    # Window is overridable (so a repo can widen it) — with 100 days the stale one shows.
+    env2 = dict(env, HANDOFF_HEADLINE_DAYS="100")
+    out2 = subprocess.run(
+        ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True, env=env2
+    ).stdout
+    check("handoff: HANDOFF_HEADLINE_DAYS widens the window", "STALE_HEADLINE" in out2)
+    check("handoff: widened header counts", "3 active entries, 3 newer than 100d" in out2)
+
 print()
 if failures:
     print(f"{len(failures)} FAILURE(S): {failures}")
