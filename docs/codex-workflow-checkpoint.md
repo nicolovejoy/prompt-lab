@@ -1,5 +1,68 @@
 # Codex workflow checkpoint — 2026-09-13
 
+## Latest session — 577
+
+**Final blocker:** after opting to run installation himself, Nico tried
+`cx musicforge-505-drive-oauth` and received
+`518:557: execution error: iTerm got an error: AppleEvent handler failed. (-10000)`.
+Installed work.zsh is byte-identical to the repo. The active shell's function
+definition was not inspected, and no root cause or fix was established before
+Nico invoked handoff. Start with identifying the failing AppleScript statement
+and verifying whether the existing terminal needs to source the updated launcher.
+Do not treat the earlier successful `cx songpath` as acceptance for this failure.
+The assistant's full installer invocation was aborted when Nico said "i do that";
+do not rerun installation on his behalf.
+
+Nico asked to continue the roadmap using GPT-5.5/5.6 child agents, then asked to
+close soon. The phased plan and remaining gates are in
+`docs/codex-workflow-roadmap.md`.
+
+Nico explicitly chose a new naming convention if safe template exceptions could
+not be made reliable. Fresh fake-only probes confirmed the issue: a single
+negated character works, but a multi-character negated class blocks templates;
+exact template allows still do not reopen a matching deny glob. Renamed this
+repo's `.env.tpl` / `.env.example` to `env.tpl` / `env.example` and updated current
+setup references. No other repositories were changed.
+
+The new `workflow/codex-permissions.candidate.toml` passed 72/72 fake-file checks
+via `scripts/probe_codex_permissions.py`, using CLI 0.154.0 on macOS. It remains
+uninstalled and unselected. It requires Homebrew runtime reads, and its minimal
+read boundary currently blocks the private DB helpers. Installed launch-path,
+environment inheritance and escalation behavior still need testing. A GPT-5.5
+review independently agreed it is not ready as the default profile.
+
+Two GPT-5.6 reviews confirmed session identity and whole-day handoff bugs, with
+isolated implementation patches preserved in the repo, NOT applied:
+
+- `drafts/codex-session-identity.patch`: scoped/idempotent registration,
+  CODEX_THREAD_ID priority, fail-closed scoped lookups, Claude adoption isolation,
+  launcher scope, 20 passing identity scenarios and passing shell syntax checks.
+- `drafts/codex-whole-day-context.patch`: whole-day helper, bounded context with
+  exact counts and truncation metadata, readup/handoff contracts, CI additions.
+  New day-context test, lint, and existing structure/artifact tests passed in the
+  isolated copy.
+
+Before applying, review both patches and reconcile their interface:
+the command docs require `current-session <session_id>` validation; the identity
+patch must be checked/extended to implement that contract. Integrate
+`today-context` into `gc-read.sh` (invoke sibling `_gc_day_context.py` with the
+resolved project using the project venv), and add it to the usage string.
+Then run combined tests in the actual checkout. Neither patch has had that
+combined integration review. Temporary trees also remain at
+`/private/tmp/prompt-lab-identity.t7F6Q3` and
+`/private/tmp/prompt-lab-day-context.uDKeFH`, but the tracked draft paths above are
+the durable copies once committed.
+
+The earlier statement below about CI
+omitting the identity and prompt-installation tests was stale: both already run
+in CI. The whole-day context and dual-agent regression cases still need coverage.
+
+Session 577 was registered by this readup. Do not close Claude row 573 or trust
+the old shared project pointer. Nothing has been installed or pushed in this
+session.
+
+## Earlier checkpoint (retained investigation)
+
 Nico wants this work scoped to Prompt Lab. Customer-facing project workflows
 belong in their own repos. The aim here is convenient Claude/Codex launchers,
 reliable session bookkeeping, and tested secret protection. Nico explicitly wants

@@ -49,7 +49,7 @@ The public endpoint has **no read-time allowlist** — it serves whatever rows e
 
 ## How access is granted (secrets)
 
-- **Local dev:** 1Password `dev-secrets` vault → `op://` refs in `.env.tpl` → `op inject` → gitignored `.env.local`. Keys: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `AUTH_SECRET`, `BEACON_SALT`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ADMIN_EMAILS`, `READER_EMAILS`, `ANTHROPIC_API_KEY`.
+- **Local dev:** 1Password `dev-secrets` vault → `op://` refs in `env.tpl` → `op inject` → gitignored `.env.local`. Keys: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `AUTH_SECRET`, `BEACON_SALT`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ADMIN_EMAILS`, `READER_EMAILS`, `ANTHROPIC_API_KEY`.
 - **Production:** Vercel env vars on the `prompt-lab` Vercel project.
 - **No separate dev/prod DB** — both point at the one `promptlab`-group Turso DB; the boundary is the credential, not the database.
 

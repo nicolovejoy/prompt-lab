@@ -1,0 +1,329 @@
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+index 25e97f7..b7cc305 100644
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -38,6 +38,14 @@ jobs:
+       - name: Session identity tests
+         run: python scripts/test_session_identity.py
+ 
++      - name: Whole-day workflow tests
++        run: |
++          python scripts/test_day_context.py
++          python scripts/test_readup_md_structure.py
++          python scripts/test_handoff_md_structure.py
++          python scripts/test_paid_artifacts.py
++          python scripts/test_sync_clobber.py
++
+       - name: Codex prompt installation tests
+         run: python scripts/test_install_codex_prompts.py
+ 
+@@ -82,4 +90,3 @@ jobs:
+ 
+       - name: Deploy to Vercel
+         run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+-
+diff --git a/scripts/test_day_context.py b/scripts/test_day_context.py
+new file mode 100644
+index 0000000..339fe77
+--- /dev/null
++++ b/scripts/test_day_context.py
+@@ -0,0 +1,112 @@
++"""Behavior tests for the whole-day /handoff synthesis context."""
++
++from __future__ import annotations
++
++import importlib.util
++import os
++import sys
++import tempfile
++import time
++from datetime import datetime, timezone
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parent.parent
++sys.path.insert(0, str(ROOT))
++HELPER = ROOT / "workflow" / "bin" / "_gc_day_context.py"
++spec = importlib.util.spec_from_file_location("gc_day_context", HELPER)
++module = importlib.util.module_from_spec(spec)
++assert spec.loader
++spec.loader.exec_module(module)
++
++from store.sqlite_store import SqliteKnowledgeStore  # noqa: E402
++
++failures = []
++
++
++def check(label, condition):
++    print(("PASS  " if condition else "FAIL  ") + label)
++    if not condition:
++        failures.append(label)
++
++
++check(
++    "Pacific date remains the prior day just before Pacific midnight",
++    module.lab_date(datetime(2026, 9, 14, 6, 59, tzinfo=timezone.utc)) == "2026-09-13",
++)
++check(
++    "Pacific date advances at Pacific midnight",
++    module.lab_date(datetime(2026, 9, 14, 7, 0, tzinfo=timezone.utc)) == "2026-09-14",
++)
++
++# SQLite's established local store intentionally uses the host timezone for
++# timestamp bucketing. Pin this disposable test process to the lab timezone.
++os.environ["TZ"] = "America/Los_Angeles"
++if hasattr(time, "tzset"):
++    time.tzset()
++
++with tempfile.TemporaryDirectory(prefix="day-context-") as tmp:
++    store = SqliteKnowledgeStore(Path(tmp) / "history.db")
++    store.migrate()
++    conn = store.conn
++    conn.executescript("""
++        CREATE TABLE sessions (
++            id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL,
++            started_at TEXT, ended_at TEXT, summary TEXT, utility INTEGER,
++            hostname TEXT
++        );
++        CREATE TABLE prompts (
++            id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, project TEXT,
++            prompt TEXT NOT NULL, outcome TEXT, utility INTEGER, tags TEXT,
++            context TEXT, hostname TEXT, session_id INTEGER
++        );
++        CREATE TABLE commits (
++            id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT, message TEXT,
++            timestamp TEXT, prompt_id INTEGER, session_id INTEGER
++        );
++    """)
++    sessions = [
++        ("prompt-lab", "2026-09-14 06:30:00", "Claude completed alpha", "mini"),
++        ("prompt-lab", "2026-09-14 06:45:00", "Codex completed beta", "laptop"),
++    ]
++    conn.executemany(
++        "INSERT INTO sessions(project, started_at, summary, hostname) VALUES(?,?,?,?)",
++        sessions,
++    )
++    session_ids = [r[0] for r in conn.execute("SELECT id FROM sessions ORDER BY id")]
++    prompts = [
++        ("2026-09-14 06:40:00", "prompt-lab", f"prompt {i} " + "x" * 600,
++         session_ids[i % 2])
++        for i in range(60)
++    ]
++    conn.executemany(
++        "INSERT INTO prompts(timestamp, project, prompt, session_id) VALUES(?,?,?,?)",
++        prompts,
++    )
++    commits = [
++        (f"hash{i}", f"commit {i}", "2026-09-14 06:50:00", session_ids[i % 2])
++        for i in range(3)
++    ]
++    conn.executemany(
++        "INSERT INTO commits(hash, message, timestamp, session_id) VALUES(?,?,?,?)",
++        commits,
++    )
++    conn.commit()
++
++    result = module.build_context(store, "prompt-lab", "2026-09-13")
++    check("whole-day context contains both agent session summaries",
++          [s["summary"] for s in result["sessions"]]
++          == ["Claude completed alpha", "Codex completed beta"])
++    check("counts include every row despite bounded prompt output",
++          result["counts"] == {"prompts": 60, "sessions": 2, "commits": 3})
++    check("prompt output is bounded", len(result["prompts"]) == module.MAX_PROMPTS)
++    check("row truncation is reported honestly",
++          result["truncation"]["prompts_omitted"] == 10)
++    check("text clipping is reported honestly",
++          result["truncation"]["prompts_clipped"] == module.MAX_PROMPTS)
++    check("all session summaries are prioritized",
++          result["truncation"]["session_summaries_omitted"] == 0)
++    store.close()
++
++if failures:
++    raise SystemExit(f"{len(failures)} failure(s): {failures}")
++print("All day-context tests passed.")
+diff --git a/workflow/bin/_gc_day_context.py b/workflow/bin/_gc_day_context.py
+new file mode 100644
+index 0000000..9612818
+--- /dev/null
++++ b/workflow/bin/_gc_day_context.py
+@@ -0,0 +1,112 @@
++#!/usr/bin/env python3
++"""Emit bounded, whole-day synthesis input for /handoff.
++
++Counts describe every row returned by the store.  The prose-bearing arrays are
++bounded, and their metadata says explicitly when text or rows were omitted.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import os
++import sys
++from datetime import datetime
++from pathlib import Path
++from zoneinfo import ZoneInfo
++
++LAB_TZ = ZoneInfo("America/Los_Angeles")
++MAX_PROMPTS = 50
++MAX_PROMPT_CHARS = 500
++MAX_COMMITS = 100
++MAX_COMMIT_CHARS = 500
++MAX_SESSION_SUMMARY_CHARS = 1_000
++
++
++def lab_date(now: datetime | None = None) -> str:
++    now = now or datetime.now(tz=LAB_TZ)
++    if now.tzinfo is None:
++        now = now.replace(tzinfo=LAB_TZ)
++    return now.astimezone(LAB_TZ).date().isoformat()
++
++
++def _clip(value: str, limit: int) -> tuple[str, bool]:
++    if len(value) <= limit:
++        return value, False
++    return value[:limit], True
++
++
++def build_context(store, project: str, date: str) -> dict:
++    data = store.get_day_data(project, date)
++    raw_prompts = data.get("prompts", [])
++    raw_sessions = data.get("sessions", [])
++    raw_commits = data.get("commits", [])
++
++    # Keep every available session summary: these are the highest-signal record
++    # of work in parallel agent sessions. Bound each value, never their count.
++    sessions = []
++    clipped_sessions = 0
++    for row in raw_sessions:
++        summary = row.get("summary") or ""
++        if not summary:
++            continue
++        summary, clipped = _clip(summary, MAX_SESSION_SUMMARY_CHARS)
++        clipped_sessions += int(clipped)
++        sessions.append({"id": row.get("id"), "summary": summary})
++
++    prompts = []
++    clipped_prompts = 0
++    for row in raw_prompts[:MAX_PROMPTS]:
++        prompt, clipped = _clip(row.get("prompt") or "", MAX_PROMPT_CHARS)
++        clipped_prompts += int(clipped)
++        prompts.append(prompt)
++
++    commits = []
++    clipped_commits = 0
++    for row in raw_commits[:MAX_COMMITS]:
++        message, clipped = _clip(row.get("message") or "", MAX_COMMIT_CHARS)
++        clipped_commits += int(clipped)
++        commits.append({"hash": (row.get("hash") or "")[:8], "message": message})
++
++    return {
++        "project": project,
++        "date": date,
++        "counts": {
++            "prompts": len(raw_prompts),
++            "sessions": len(raw_sessions),
++            "commits": len(raw_commits),
++        },
++        "sessions": sessions,
++        "prompts": prompts,
++        "commits": commits,
++        "truncation": {
++            "prompts_omitted": max(0, len(raw_prompts) - len(prompts)),
++            "prompts_clipped": clipped_prompts,
++            "session_summaries_omitted": 0,
++            "session_summaries_clipped": clipped_sessions,
++            "commits_omitted": max(0, len(raw_commits) - len(commits)),
++            "commits_clipped": clipped_commits,
++        },
++    }
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("project")
++    parser.add_argument("--date", default=None)
++    args = parser.parse_args()
++
++    prompt_lab_dir = Path(os.environ.get("PROMPT_LAB_DIR", "~/src/prompt-lab")).expanduser()
++    sys.path.insert(0, str(prompt_lab_dir))
++    from store import get_store
++
++    store = get_store()
++    try:
++        print(json.dumps(build_context(store, args.project, args.date or lab_date())))
++    finally:
++        store.close()
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/workflow/commands/handoff.md b/workflow/commands/handoff.md
+index a5c5187..165d6a2 100644
+--- a/workflow/commands/handoff.md
++++ b/workflow/commands/handoff.md
+@@ -18,10 +18,17 @@ If there are uncommitted changes, list the changed files and ask the user whethe
+ 
+ ## 1. Get session info
+ 
++Use the authoritative `<session_id>|<started_at>` returned by `/readup`. Verify
++that exact identity still exists before writing anything:
++
+ ```bash
+-~/.claude/bin/gc-read.sh current-session
++~/.claude/bin/gc-read.sh current-session <session_id>
+ ```
+ 
++The returned ID must equal the retained ID. If it is missing or differs, STOP
++and report the identity mismatch; never fall back to another open session for
++the project.
++
+ ## 2. Do in parallel
+ 
+ - **Capture commits** since session start (the `Z` suffix is load-bearing: `started_at` is stored UTC, and without it `git log` reads the timestamp as local time and silently finds zero commits — issue #48):
+@@ -46,13 +53,20 @@ If there are uncommitted changes, list the changed files and ask the user whethe
+ 
+ ## 3. Synthesize daily summary
+ 
+-Get today's counts:
++Get the whole lab day as bounded JSON:
+ 
+ ```bash
+-~/.claude/bin/gc-read.sh today-counts
++~/.claude/bin/gc-read.sh today-context
+ ```
+ 
+-Using what you know from this session, write a daily summary to `/tmp/gc-daily-<project>-<session_id>.json` (substitute the actual project basename and session_id from step 1 — this avoids races when handoff runs in multiple repos concurrently) with this structure:
++Synthesize from all `sessions`, `prompts`, and `commits` in that output, together
++with what you know from this session. Session summaries are the prioritized
++record of parallel Claude and Codex work. The `counts` object is authoritative
++even when `truncation` reports omitted or clipped narrative input; copy those
++exact counts into the result. Write the daily summary to
++`/tmp/gc-daily-<project>-<session_id>.json` (substitute the actual project and
++authoritative session ID from step 1 — this avoids races when handoff runs in
++multiple repos concurrently) with this structure:
+ 
+ ```json
+ {
+diff --git a/workflow/commands/readup.md b/workflow/commands/readup.md
+index 953ecdc..4c7ad26 100644
+--- a/workflow/commands/readup.md
++++ b/workflow/commands/readup.md
+@@ -16,7 +16,16 @@ and read its output before continuing. Either way, this command exists for the s
+ 
+ ## Do (in parallel)
+ 
+-1. Register session: `~/.claude/bin/gc-write.sh register-session` (this will prompt — writes aren't auto-allowed)
++1. Register session and retain its authoritative identity for this conversation:
++   ```bash
++   SESSION_INFO="$(~/.claude/bin/gc-write.sh register-session)"
++   SESSION_ID="${SESSION_INFO%%|*}"
++   printf '%s\n' "$SESSION_INFO"
++   ```
++   This will prompt because writes aren't auto-allowed. The output contract is
++   `<session_id>|<started_at>`. Keep both values in session context and use this
++   exact ID for `/handoff`; a project-level "current session" can belong to a
++   parallel Claude or Codex window.
+ 2. Remote check (no pull): `git fetch --quiet --all --prune && git status -sb` for the current branch, then `git for-each-ref --format='%(refname:short) %(upstream:short) %(upstream:track)' refs/heads | awk '$3 != ""'` to catch other local branches that are ahead/behind their upstream (useful when work happened on another machine). Also list remote branches with no local tracking: `git branch -r --no-merged | grep -v HEAD`. Fetch is cheap, never modifies the tree. If anything is behind/ahead or there are unfamiliar remote branches, flag them in the summary so the user can decide whether to `git pull --rebase` or `git checkout` manually. If everything is clean, say nothing.
+ 3. Read CLAUDE.md in full (focus on Next Steps + project conventions). The hook's injected context covers recent activity, but not project intent.
+ 4. Other agents on this repo: `git worktree list` — a linked worktree besides the main checkout means another agent may be mid-task here; flag it with its branch. If the `ListAgents` tool is available, also call it and flag any other local or cloud session whose name/task suggests this repo (a cloud agent's work won't show in `git status` at all until it pushes). Remote branches with no local tracking (item 2) are the third tell. Also check for Codex activity, which `ListAgents` cannot see: `git branch --list 'codex/*'` and `git branch -r --list 'origin/codex/*'` — by convention Codex always works on a `codex/<desc>` branch, so a match means Codex has touched or is touching this repo even with no visible session. Only the main worktree, no `codex/*` branches, and no other sessions → say nothing. `ListAgents` missing or erroring → skip silently, never block session start.

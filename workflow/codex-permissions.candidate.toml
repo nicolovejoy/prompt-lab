@@ -1,0 +1,30 @@
+# Candidate only: not installed or selected by work.zsh/install.sh.
+# Use env.tpl / env.example for references and placeholders; .env* is denied.
+# Profiles cover command execution, not approved escalation or external tools.
+default_permissions = "prompt-lab"
+approval_policy = "on-request"
+
+[permissions.prompt-lab]
+extends = ":workspace"
+
+[permissions.prompt-lab.filesystem]
+":root" = "deny"
+":minimal" = "read"
+"/opt/homebrew" = "read"
+"~/.ssh" = "deny"
+"~/.aws" = "deny"
+"~/.config/gcloud" = "deny"
+"~/.config/gh" = "deny"
+"~/.codex/auth.json" = "deny"
+"~/.netrc" = "deny"
+"~/.npmrc" = "deny"
+
+[permissions.prompt-lab.filesystem.":workspace_roots"]
+"**/.[eE][nN][vV]*" = "deny"
+"**/*.[eE][nN][vV]" = "deny"
+"**/*.[eE][nN][vV].*" = "deny"
+"**/*.pem" = "deny"
+"**/*.key" = "deny"
+
+[permissions.prompt-lab.network]
+enabled = true

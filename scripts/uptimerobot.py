@@ -161,7 +161,7 @@ def _key():
     load_env()
     k = os.environ.get("UPTIMEROBOT_API_KEY")
     if not k:
-        sys.exit("UPTIMEROBOT_API_KEY not set (see .env.tpl)")
+        sys.exit("UPTIMEROBOT_API_KEY not set (see env.tpl)")
     return k
 
 
@@ -359,7 +359,7 @@ def cmd_sync(args):
     if ping_urls:
         print("\nHeartbeat ping URLs — store these in 1Password as item")
         print("'Prompt Lab Heartbeats' (vault dev-secrets), one field per job,")
-        print("then declare HEARTBEAT_URL_<JOB> in .env.tpl:\n")
+        print("then declare HEARTBEAT_URL_<JOB> in env.tpl:\n")
         for job, url in ping_urls.items():
             print(f"  {job:12} {url}")
     if failed:

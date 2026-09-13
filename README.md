@@ -36,7 +36,7 @@ Then add the printed snippet to `~/.claude/settings.json` and restart Claude Cod
 Copy the example and fill in your values:
 
 ```bash
-cp .env.example .env
+cp env.example .env
 ```
 
 Edit `.env` with your keys and email addresses. See [Configuration](#configuration) below for details on each variable.
@@ -51,7 +51,7 @@ cp workflow/CLAUDE.md.template ~/.claude/CLAUDE.md
 
 ## Configuration
 
-All configuration lives in `.env` (gitignored — never committed). See `.env.example` for the template.
+All configuration lives in `.env` (gitignored — never committed). See `env.example` for the template.
 
 ### Required
 
@@ -176,7 +176,7 @@ prompt-lab/
 ├── generate-report.py     # Bi-monthly report generator (optional)
 ├── sync_to_turso.py       # Push processed tables to Turso (no raw prompts)
 ├── todos.py               # Shared todo scanner (currently unwired)
-├── .env.example           # Configuration template
+├── env.example           # Configuration template
 └── README.md
 ```
 

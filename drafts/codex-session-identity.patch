@@ -1,0 +1,357 @@
+diff -ruN a/scripts/test_session_identity.py b/scripts/test_session_identity.py
+--- a/scripts/test_session_identity.py	2026-09-13 11:05:52
++++ b/scripts/test_session_identity.py	2026-09-13 11:05:52
+@@ -114,6 +114,9 @@
+     def env(self) -> dict:
+         e = dict(os.environ)
+         e["HOME"] = str(self.home)
++        # The test runner may itself be Codex. Tests opt into identity explicitly.
++        e.pop("CODEX_THREAD_ID", None)
++        e.pop("GC_SESSION_SCOPE", None)
+         return e
+ 
+     def transcript(self, session_uuid: str, reply: str = "prior reply") -> Path:
+@@ -127,7 +130,8 @@
+ 
+     def submit(self, prompt: str, *, session_uuid: str | None = None,
+                include_session_id: bool = True, transcript: bool = True,
+-               cwd: Path | None = None, reply: str = "prior reply") -> None:
++               cwd: Path | None = None, reply: str = "prior reply",
++               scope: str | None = None) -> None:
+         # cwd overrides the repo root, for the project-resolution cases.
+         where = cwd or self.cwd
+         payload = {"prompt": prompt, "cwd": str(where)}
+@@ -137,8 +141,11 @@
+                     self.transcript(session_uuid, reply))
+             if include_session_id:
+                 payload["session_id"] = session_uuid
++        env = self.env
++        if scope:
++            env["GC_SESSION_SCOPE"] = scope
+         subprocess.run([str(HOOK)], input=json.dumps(payload), text=True,
+-                       env=self.env, cwd=str(where),
++                       env=env, cwd=str(where),
+                        capture_output=True, check=True)
+ 
+     def q(self, sql: str, params: tuple = ()):
+@@ -148,10 +155,16 @@
+         return rows
+ 
+     def gc(self, script: Path, *args: str, stdin: str = "",
+-           cwd: Path | None = None) -> str:
++           cwd: Path | None = None, scope: str | None = None,
++           codex_thread: str | None = None) -> str:
+         # cwd overrides the repo root, for the project-resolution cases.
++        env = self.env
++        if scope:
++            env["GC_SESSION_SCOPE"] = scope
++        if codex_thread:
++            env["CODEX_THREAD_ID"] = codex_thread
+         r = subprocess.run([str(script), *args], input=stdin, text=True,
+-                           env=self.env, cwd=str(cwd or self.cwd),
++                           env=env, cwd=str(cwd or self.cwd),
+                            capture_output=True)
+         if r.returncode != 0:
+             return f"<exit {r.returncode}: {r.stderr.strip()}>"
+@@ -509,6 +522,100 @@
+               'basename "$PWD"' in body, False)
+ 
+ 
++def test_scoped_registration_and_resolution(tmp: Path) -> None:
++    print("\n15. scoped sessions are idempotent and isolated")
++    e = Env(tmp)
++    first = e.gc(GC_WRITE, "register-session", scope="window-one")
++    again = e.gc(GC_WRITE, "register-session", scope="window-one")
++    second = e.gc(GC_WRITE, "register-session", scope="window-two")
++
++    check("same scope returns same session", again, first)
++    check("different scope gets different session",
++          second.split("|", 1)[0] != first.split("|", 1)[0], True)
++    check("two scoped rows only", len(e.q("SELECT id FROM sessions")), 2)
++    check("first scope resolves itself", e.gc(GC_READ, "current-session",
++          scope="window-one"), first)
++    check("second scope resolves itself", e.gc(GC_READ, "current-session",
++          scope="window-two"), second)
++    bindings = {r[0] for r in e.q("SELECT claude_session_id FROM sessions")}
++    check("scoped rows are non-null and namespaced",
++          bindings, {"launch:window-one", "launch:window-two"})
++
++
++def test_scoped_resolution_fails_closed(tmp: Path) -> None:
++    print("\n16. scoped lookup never falls back to a shared/newest row")
++    e = Env(tmp)
++    legacy = e.gc(GC_WRITE, "register-session")
++    check("missing scoped pointer returns empty",
++          e.gc(GC_READ, "current-session", scope="unknown"), "")
++
++    # Even a syntactically valid scoped pointer cannot cross project bounds.
++    e.gc(GC_WRITE, "register-session", scope="wrong-project")
++    helper = ROOT / "workflow" / "bin" / "_gc_session_identity.sh"
++    cmd = (f'. "{helper}"; gc_session_pointer "{PROJECT}" "launch:wrong-project"')
++    env = e.env
++    pointer = subprocess.run(["bash", "-c", cmd], env=env, text=True,
++                             capture_output=True, check=True).stdout
++    sid = legacy.split("|", 1)[0]
++    Path(pointer).write_text(sid + "\n")
++    conn = sqlite3.connect(e.db)
++    conn.execute("UPDATE sessions SET project='elsewhere' WHERE id=?", (sid,))
++    conn.commit(); conn.close()
++    check("pointer row must belong to resolved project",
++          e.gc(GC_READ, "current-session", scope="wrong-project"), "")
++
++
++def test_codex_identity_precedes_launcher_scope(tmp: Path) -> None:
++    print("\n17. Codex thread identity precedes launcher scope")
++    e = Env(tmp)
++    row = e.gc(GC_WRITE, "register-session", scope="launch-a",
++               codex_thread="thread-7")
++    check("Codex binding used",
++          e.q("SELECT claude_session_id FROM sessions")[0][0],
++          "codex:thread-7")
++    check("same thread resolves after launcher scope changes",
++          e.gc(GC_READ, "current-session", scope="launch-b",
++               codex_thread="thread-7"), row)
++
++
++def test_claude_hook_adopts_launcher_row(tmp: Path) -> None:
++    print("\n18. Claude hook converts launcher binding to durable UUID")
++    e = Env(tmp)
++    registered = e.gc(GC_WRITE, "register-session", scope="claude-window")
++    sid = int(registered.split("|", 1)[0])
++    e.submit("first Claude prompt after scoped readup", session_uuid="uuid-launch",
++             scope="claude-window")
++    check("no duplicate row", len(e.q("SELECT id FROM sessions")), 1)
++    check("launcher binding replaced by Claude UUID",
++          e.q("SELECT claude_session_id FROM sessions WHERE id=?", (sid,))[0][0],
++          "uuid-launch")
++    check("scoped pointer still resolves adopted row",
++          e.gc(GC_READ, "current-session", scope="claude-window").split("|", 1)[0],
++          str(sid))
++    check("repeat readup remains idempotent after UUID adoption",
++          e.gc(GC_WRITE, "register-session", scope="claude-window").split("|", 1)[0],
++          str(sid))
++
++
++def test_invalid_scope_is_rejected(tmp: Path) -> None:
++    print("\n19. unsafe identity text cannot become a pointer path")
++    e = Env(tmp)
++    check("path traversal scope rejected",
++          e.gc(GC_WRITE, "register-session", scope="../../shared").startswith("<exit 2"),
++          True)
++    check("rejected scope creates no row", len(e.q("SELECT id FROM sessions")), 0)
++
++
++def test_launcher_exports_unique_scope(tmp: Path) -> None:
++    print("\n20. launcher gives every top pane an inherited scope")
++    body = (ROOT / "workflow" / "shell" / "work.zsh").read_text()
++    check("scope includes agent and fresh UUID",
++          'local session_scope="${agent}-$(uuidgen)"' in body, True)
++    check("scope exported before agent command",
++          body.index("export GC_SESSION_SCOPE") < body.index("&& clear && $agent_cmd"),
++          True)
++
++
+ def main() -> int:
+     # The hook is bash and shells out; skip rather than fail red if the runner
+     # lacks a dependency. A skip is honest; a red CI for an env reason is noise.
+@@ -532,6 +639,12 @@
+         test_context_captures_the_whole_last_reply,
+         test_gc_scripts_resolve_the_repo,
+         test_gc_project_helper_is_shared,
++        test_scoped_registration_and_resolution,
++        test_scoped_resolution_fails_closed,
++        test_codex_identity_precedes_launcher_scope,
++        test_claude_hook_adopts_launcher_row,
++        test_invalid_scope_is_rejected,
++        test_launcher_exports_unique_scope,
+     ]
+     for t in tests:
+         with tempfile.TemporaryDirectory() as d:
+diff -ruN a/workflow/bin/_gc_session_identity.sh b/workflow/bin/_gc_session_identity.sh
+--- a/workflow/bin/_gc_session_identity.sh	1969-12-31 16:00:00
++++ b/workflow/bin/_gc_session_identity.sh	2026-09-13 11:05:52
+@@ -0,0 +1,40 @@
++#!/bin/bash
++# Shared invocation identity for gc-read/gc-write and the Claude prompt hook.
++
++gc_session_identity() {
++  if [ -n "${CODEX_THREAD_ID:-}" ]; then
++    printf 'codex:%s' "$CODEX_THREAD_ID"
++  elif [ -n "${GC_SESSION_SCOPE:-}" ]; then
++    printf 'launch:%s' "$GC_SESSION_SCOPE"
++  fi
++}
++
++gc_session_pointer() {
++  local project="$1" identity="${2:-}" suffix=""
++  if [ -n "$identity" ]; then
++    # Native thread ids and launcher UUIDs use this alphabet. Reject anything
++    # else instead of allowing traversal or mapping distinct identities onto
++    # one lossy sanitized filename.
++    case "$identity" in *[!A-Za-z0-9:._-]*) return 2 ;; esac
++    [ "${#identity}" -le 160 ] || return 2
++    suffix="-$identity"
++  fi
++  printf '%s/.claude/state/current-session-%s%s' "$HOME" "$project" "$suffix"
++}
++
++gc_read_session_pointer() {
++  local db="$1" project="$2" pointer="$3" sid=""
++  [ -f "$pointer" ] || return 0
++  sid="$(tr -dc '0-9' < "$pointer" 2>/dev/null || true)"
++  [ -n "$sid" ] || return 0
++  # A pointer is valid only for its resolved project.
++  sqlite3 "$db" "SELECT id FROM sessions WHERE id=$sid AND project='$(printf '%s' "$project" | sed "s/'/''/g")';"
++}
++
++gc_write_session_pointer() {
++  local pointer="$1" sid="$2" tmp
++  mkdir -p "$(dirname "$pointer")"
++  tmp="${pointer}.tmp.$$"
++  printf '%s\n' "$sid" > "$tmp"
++  mv "$tmp" "$pointer"
++}
+diff -ruN a/workflow/bin/gc-read.sh b/workflow/bin/gc-read.sh
+--- a/workflow/bin/gc-read.sh	2026-09-13 11:05:52
++++ b/workflow/bin/gc-read.sh	2026-09-13 11:05:52
+@@ -17,9 +17,11 @@
+ GC_BIN_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+ # shellcheck source=./_gc_project.sh
+ . "$GC_BIN_DIR/_gc_project.sh"
++. "$GC_BIN_DIR/_gc_session_identity.sh"
+ PROJECT="$(gc_resolve_project "$PWD")"
+ 
+-POINTER="$HOME/.claude/state/current-session-$PROJECT"
++IDENTITY="$(gc_session_identity)"
++POINTER="$(gc_session_pointer "$PROJECT" "$IDENTITY")"
+ CMD="${1:-}"
+ 
+ # The prompt hook writes the resolved session row id to POINTER on every prompt.
+@@ -28,14 +30,10 @@
+ # brand-new session that hasn't submitted a prompt yet.
+ resolve_session_id() {
+   local sid=""
+-  if [ -f "$POINTER" ]; then
+-    sid="$(tr -dc '0-9' < "$POINTER" 2>/dev/null || true)"
+-    # Ignore a pointer to a row that no longer exists (e.g. a restored DB).
+-    if [ -n "$sid" ] && [ -z "$(sqlite3 "$DB" "SELECT 1 FROM sessions WHERE id=$sid;")" ]; then
+-      sid=""
+-    fi
+-  fi
+-  if [ -z "$sid" ]; then
++  sid="$(gc_read_session_pointer "$DB" "$PROJECT" "$POINTER")"
++  # A scoped caller must never adopt a shared/newest row. Missing or invalid
++  # scoped state is an error-shaped empty result, not permission to guess.
++  if [ -z "$sid" ] && [ -z "$IDENTITY" ]; then
+     sid="$(sqlite3 "$DB" "SELECT id FROM sessions WHERE project='$PROJECT' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;")"
+   fi
+   printf '%s' "$sid"
+diff -ruN a/workflow/bin/gc-write.sh b/workflow/bin/gc-write.sh
+--- a/workflow/bin/gc-write.sh	2026-09-13 11:05:52
++++ b/workflow/bin/gc-write.sh	2026-09-13 11:05:52
+@@ -14,14 +14,33 @@
+ GC_BIN_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+ # shellcheck source=./_gc_project.sh
+ . "$GC_BIN_DIR/_gc_project.sh"
++. "$GC_BIN_DIR/_gc_session_identity.sh"
+ PROJECT="$(gc_resolve_project "$PWD")"
++PROJECT_ESCAPED="$(printf '%s' "$PROJECT" | sed "s/'/''/g")"
++IDENTITY="$(gc_session_identity)"
++POINTER="$(gc_session_pointer "$PROJECT" "$IDENTITY")"
+ 
+ CMD="${1:-}"
+ shift || true
+ 
+ case "$CMD" in
+   register-session)
+-    sqlite3 "$DB" "INSERT INTO sessions (project) VALUES ('$PROJECT');"
++    SID="$(gc_read_session_pointer "$DB" "$PROJECT" "$POINTER")"
++    if [ -z "$SID" ] && [ -n "$IDENTITY" ]; then
++      IDENTITY_ESCAPED="$(printf '%s' "$IDENTITY" | sed "s/'/''/g")"
++      SID="$(sqlite3 "$DB" "BEGIN IMMEDIATE;
++        INSERT INTO sessions (project, claude_session_id, hostname)
++        SELECT '$PROJECT_ESCAPED', '$IDENTITY_ESCAPED', '$(hostname -s)'
++        WHERE NOT EXISTS (SELECT 1 FROM sessions
++          WHERE project='$PROJECT_ESCAPED' AND claude_session_id='$IDENTITY_ESCAPED');
++        SELECT id FROM sessions WHERE project='$PROJECT_ESCAPED'
++          AND claude_session_id='$IDENTITY_ESCAPED' ORDER BY id DESC LIMIT 1;
++        COMMIT;")"
++    elif [ -z "$SID" ]; then
++      SID="$(sqlite3 "$DB" "INSERT INTO sessions (project, hostname) VALUES ('$PROJECT_ESCAPED', '$(hostname -s)'); SELECT last_insert_rowid();")"
++    fi
++    gc_write_session_pointer "$POINTER" "$SID"
++    sqlite3 "$DB" "SELECT id, started_at FROM sessions WHERE id=$SID;"
+     ;;
+   update-session-summary)
+     # args: <session_id>; summary read from stdin. Uses python sqlite param
+diff -ruN a/workflow/hooks/log-prompt.sh b/workflow/hooks/log-prompt.sh
+--- a/workflow/hooks/log-prompt.sh	2026-09-13 11:05:52
++++ b/workflow/hooks/log-prompt.sh	2026-09-13 11:05:52
+@@ -75,6 +75,10 @@
+ 
+ DB=~/.claude/prompt-history.db
+ PROJECT_ESCAPED=$(echo "$PROJECT" | sed "s/'/''/g")
++HOOK_REAL=$(readlink -f "$0" 2>/dev/null || echo "$0")
++# shellcheck source=../bin/_gc_session_identity.sh
++. "$(dirname "$HOOK_REAL")/../bin/_gc_session_identity.sh"
++IDENTITY=$(gc_session_identity)
+ 
+ # === Session identity ===
+ # Bind this prompt to the REAL Claude Code conversation. The old resolver took
+@@ -97,6 +101,17 @@
+         sqlite3 "$DB" "ALTER TABLE sessions ADD COLUMN claude_session_id TEXT;" 2>/dev/null
+     fi
+ 
++    # /readup in a launcher-scoped Claude process registered this row under a
++    # temporary launch identity. Replace that binding with Claude's durable
++    # conversation UUID. Codex identities can never enter this adoption path.
++    if [[ "$IDENTITY" == launch:* ]]; then
++        IDENTITY_ESCAPED=$(printf '%s' "$IDENTITY" | sed "s/'/''/g")
++        sqlite3 "$DB" "UPDATE sessions SET claude_session_id='$CSID'
++          WHERE project='$PROJECT_ESCAPED' AND claude_session_id='$IDENTITY_ESCAPED'
++            AND NOT EXISTS (SELECT 1 FROM sessions WHERE project='$PROJECT_ESCAPED'
++                              AND claude_session_id='$CSID');" 2>/dev/null
++    fi
++
+     # Upsert by claude_session_id. The UPDATE adopts the unbound row /readup's
+     # register-session just created (recent, still open, no prompts yet) so the
+     # hook and /readup don't each create a row for one conversation.
+@@ -133,8 +148,8 @@
+ # through the model. gc-read.sh / gc-write.sh read it, falling back to the old
+ # query when it's absent.
+ if [ -n "$SESSION_ID" ]; then
+-    mkdir -p ~/.claude/state 2>/dev/null
+-    echo "$SESSION_ID" > ~/.claude/state/current-session-"$PROJECT" 2>/dev/null
++    POINTER=$(gc_session_pointer "$PROJECT" "$IDENTITY")
++    gc_write_session_pointer "$POINTER" "$SESSION_ID" 2>/dev/null
+ fi
+ 
+ # Extract the last assistant response as context. Paired with kind='approval'
+@@ -183,7 +198,6 @@
+ # scripts/backfill_prompt_kind.py, so the live rules and the backfill rules
+ # cannot drift apart. This file is normally reached through a symlink in
+ # ~/.claude/hooks, so resolve to the real repo before looking for it.
+-HOOK_REAL=$(readlink -f "$0" 2>/dev/null || echo "$0")
+ KIND_PY="$(dirname "$HOOK_REAL")/../../scripts/prompt_kind.py"
+ KIND=""
+ if [ -f "$KIND_PY" ]; then
+diff -ruN a/workflow/shell/work.zsh b/workflow/shell/work.zsh
+--- a/workflow/shell/work.zsh	2026-09-13 11:05:52
++++ b/workflow/shell/work.zsh	2026-09-13 11:05:52
+@@ -103,6 +103,7 @@
+   local agent_label="Claude"
+   [[ "$agent" == codex ]] && agent_label="Codex"
+   local title="${(U)name[1]}${name[2,-1]} -- $agent_label"
++  local session_scope="${agent}-$(uuidgen)"
+   # Quote shell arguments before passing commands as AppleScript argv.
+   # Project names may contain spaces, quotes, or shell metacharacters.
+   local title_cmd="printf '\\033]0;%s\\a' ${(q)title}"
+@@ -110,7 +111,7 @@
+   local shell_cmd="cd -- ${(q)proj_dir} && precmd() { $title_cmd; } && precmd"
+   local agent_cmd="claude --name ${(q)title}"
+   [[ "$agent" == codex ]] && agent_cmd="codex"
+-  local top_cmd="$shell_cmd && iterm_tab_color $r $g $b && iterm_badge ${(q)title} && clear && $agent_cmd"
++  local top_cmd="$shell_cmd && export GC_SESSION_SCOPE=${(q)session_scope} && iterm_tab_color $r $g $b && iterm_badge ${(q)title} && clear && $agent_cmd"
+   local bottom_rows=$(( WORK_ROWS * 15 / 100 ))
+ 
+   osascript - "$title" "$top_cmd" "$shell_cmd" "$WORK_COLS" "$WORK_ROWS" "$bottom_rows" <<'APPLESCRIPT'

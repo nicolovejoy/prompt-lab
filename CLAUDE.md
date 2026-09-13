@@ -73,16 +73,28 @@ installer himself. The older `workflow/install.sh` edit was reviewed with Nicoâ€
 restored top-level custom-prompt files and added an isolated distribution test
 that verifies actual output paths. Nested SKILL.md files are not custom prompts.
 
-Next session, keep scope here: (1) finish and test Codex secret protection while
-preserving `.env.tpl`, (2) fix session identity, (3) verify readup/handoff end to
-end. Investigation and accepted preferences: `docs/codex-workflow-checkpoint.md`.
+**Immediate blocker at handoff:** Nico ran `cx musicforge-505-drive-oauth` and got
+`518:557: execution error: iTerm got an error: AppleEvent handler failed. (-10000)`.
+The installed `~/.claude/shell/work.zsh` matches the repo, but the currently loaded
+shell function has not been compared. Diagnose the actual AppleScript failing
+operation and verify a live launch before claiming the launcher works. Nico runs
+the installer himself; the assistant's install invocation was aborted.
+
+Next session, keep scope here: (1) fix the iTerm launch, then finish permission-profile rollout checks,
+(2) fix session identity, (3) verify readup/handoff end to end. Phases and
+acceptance gates: `docs/codex-workflow-roadmap.md`. Nico approved renaming safe
+templates to `env.tpl` / `env.example` after runtime template exceptions failed.
+The rename and a candidate profile are in the working tree; 72 fake-only sandbox
+checks passed on CLI 0.154.0. The profile is NOT installed: final launch-path,
+environment inheritance, escalation behavior and private DB helper access remain
+unverified. Investigation and accepted preferences: `docs/codex-workflow-checkpoint.md`.
 No Codex permission profile is installed or claimed safe. **Do not trust
 `gc-read.sh current-session` from Codex yet:** this readup created row 574, but
 the shared project pointer returned Claude row 573. Handoff explicitly used 574.
 
 **1Password preference:** when Nico requests a new item, create its secret field
 with the literal placeholder `replace-this-value`; Nico pastes the real value
-into 1Password. `.env.tpl` files contain references and should remain readable.
+into 1Password. `env.tpl` files contain references and should remain readable.
 Do not infer that arbitrary agent-selected commands can use secrets without
 being able to expose them. Start with human-run secret operations; proposed
 first protected helper is read-only operational status, deployment later.
