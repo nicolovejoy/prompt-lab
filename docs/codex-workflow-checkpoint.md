@@ -2,6 +2,14 @@
 
 ## Latest session — 577
 
+**Closing request:** reduce excessive Codex permission prompts, ideally through
+`cx`. Audit the source of each prompt before choosing defaults: ordinary network
+access, protected Git metadata, and the private DB outside the workspace are
+different boundaries. Make cx select a tested named profile; retain on-request
+approval for actual boundary crossings. Do not mix legacy sandbox flags with the
+candidate permission profile or enable unrestricted bypass. User wants fewer
+routine prompts without abandoning the secret-protection roadmap.
+
 **Final blocker:** after opting to run installation himself, Nico tried
 `cx musicforge-505-drive-oauth` and received
 `518:557: execution error: iTerm got an error: AppleEvent handler failed. (-10000)`.
