@@ -150,6 +150,18 @@ with tempfile.TemporaryDirectory() as td:
     check("handoff: HANDOFF_HEADLINE_DAYS widens the window", "STALE_HEADLINE" in out2)
     check("handoff: widened header counts", "3 active entries, 3 newer than 100d" in out2)
 
+    # M == 0: a channel with only stale entries still prints its header (with
+    # count) so an old-but-unarchived backlog stays visible — just no headlines.
+    env3 = dict(env, HANDOFF_HEADLINE_DAYS="1")
+    out3 = subprocess.run(
+        ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True, env=env3
+    ).stdout
+    check("handoff: M==0 header still prints", f"peer-{project}.md: 3 active entries, 0 newer than 1d" in out3)
+    check(
+        "handoff: M==0 no headlines listed",
+        "FRESH_HEADLINE_ONE" not in out3 and "FRESH_HEADLINE_TWO" not in out3 and "STALE_HEADLINE" not in out3,
+    )
+
 print()
 if failures:
     print(f"{len(failures)} FAILURE(S): {failures}")

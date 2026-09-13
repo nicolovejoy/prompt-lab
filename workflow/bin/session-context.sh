@@ -117,6 +117,9 @@ if [ -d "$HANDOFF_DIR/.git" ]; then
       HEADLINES="$(awk '/^## Active/{a=1;next} /^## /{a=0} a && /^### /' "$f")"
       [ -n "$HEADLINES" ] || continue
       TOTAL="$(printf '%s\n' "$HEADLINES" | wc -l | tr -d ' ')"
+      # substr($0,5,10) assumes `### YYYY-MM-DD …`; a `### ` line that doesn't
+      # start with a date there is compared as raw text against HANDOFF_CUTOFF
+      # and may be silently included or excluded rather than erroring.
       FRESH="$(printf '%s\n' "$HEADLINES" | awk -v c="$HANDOFF_CUTOFF" 'substr($0,5,10) >= c')"
       FRESH_N="$(printf '%s' "$FRESH" | grep -c '^### ' || true)"
       CTX+="
