@@ -1,5 +1,7 @@
 # Phase 2 — Google OAuth implementation plan
 
+Status reviewed 2026-09-14: Historical design: implemented. Current authentication and access behavior is documented in data-and-access.md.
+
 Written 2026-07-21 (mini). Execution plan for §2.1–§2.4, grounded in a fresh read of the actual code (`web/auth_helper.py`, `web/api/login.py`, `web/index.html`, `web/vercel.json`, `scripts/test_web_api.py`). §2.0 (beacon salt) already shipped (`70ec871`).
 
 Companion to `docs/roadmap-2026-07.md` Phase 2 — that has the *why* (option A vs B/C/D, the "no signature verification" insight). This has the *what*, file by file, with the four open decisions now settled.

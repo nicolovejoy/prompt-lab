@@ -1,5 +1,7 @@
 # Dashboard redesign plan — hybrid "triage-over-stream"
 
+Status reviewed 2026-09-14: Historical design: Phase 1 shipped. Later proposals are not an active task list; current-work.md owns current UI follow-ups.
+
 Status: **Phase 1 shipped 2026-06-24** (home stream, Now/Trajectory/Cost/History project pages, machine-voice markers, project picker, cost states, 4 dead endpoints deleted; plus a follow-on perf commit — SWR/memo/prefetch). Phase 2 (triage band, admin-only) and Phase 3 (ops/health signals) still pending. Superseded the ad-hoc "header + heatmap + cost + timeline + intentions stack."
 
 ## Problem

@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from .base import (
@@ -565,31 +566,34 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
     def get_weeks_without_rollups(self):
         """Find (project, week_start) pairs with daily summaries for a
-        completed week (Mon-Sun, all 7 days past) but no rollup yet.
+        completed week (Mon-Sun, all 7 days past) with a missing or stale rollup.
 
         Canonicalizes project on both sides so aliased rows don't generate
         duplicate weekly rollups that already exist under the canonical name.
         """
-        # Cut at the current week's Monday, not today: a rollup written for the
-        # in-progress week is never revisited (the EXCEPT), so it would freeze
-        # a partial week permanently.
-        now = datetime.now()
+        # Only roll up completed Pacific weeks; refresh them when daily prose
+        # changes after the previous rollup.
+        now = datetime.now(ZoneInfo("America/Los_Angeles"))
         monday = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
         rows = self._conn.execute("""
-            SELECT COALESCE(cd.canonical, ds.project) AS project,
-                   -- 'weekday N' is next-or-SAME day, so 'weekday 1','-7 days'
-                   -- sent Mondays a week back; next-or-same Sunday minus 6 is
-                   -- the containing week's Monday for all seven weekdays.
-                   date(ds.date, 'weekday 0', '-6 days') as week_start
-            FROM daily_summaries ds
-            LEFT JOIN project_aliases cd ON cd.alias = ds.project
-            WHERE ds.date < ?
-            GROUP BY COALESCE(cd.canonical, ds.project), week_start
-            HAVING COUNT(DISTINCT ds.date) >= 1
-            EXCEPT
-            SELECT COALESCE(cw.canonical, wr.project), wr.week_start
-            FROM weekly_rollups wr
-            LEFT JOIN project_aliases cw ON cw.alias = wr.project
+            WITH days AS (
+                SELECT COALESCE(pa.canonical, ds.project) AS project,
+                       date(ds.date, 'weekday 0', '-6 days') AS week_start,
+                       MAX(datetime(ds.created_at)) AS changed
+                FROM daily_summaries ds
+                LEFT JOIN project_aliases pa ON pa.alias=ds.project
+                WHERE ds.date < ? GROUP BY 1, 2
+            ), weeks AS (
+                SELECT COALESCE(pa.canonical, wr.project) AS project, wr.week_start,
+                       MAX(datetime(wr.created_at)) AS created_at
+                FROM weekly_rollups wr
+                LEFT JOIN project_aliases pa ON pa.alias=wr.project
+                GROUP BY 1, 2
+            )
+            SELECT d.project, d.week_start FROM days d
+            LEFT JOIN weeks w ON w.project=d.project AND w.week_start=d.week_start
+            WHERE w.created_at IS NULL OR d.changed > w.created_at
+            ORDER BY d.week_start, d.project
         """, (monday,)).fetchall()
         return [(r["project"], r["week_start"]) for r in rows]
 
@@ -726,25 +730,58 @@ class SqliteKnowledgeStore(KnowledgeStore):
     # ---- Pipeline input (raw data) ----
 
     def get_unsummarized_days(self, target_date=None):
-        date_filter, params = "", []
-        if target_date:
-            date_filter = "AND date(p.timestamp, 'localtime') = ?"
-            params.append(target_date)
-        # Canonicalize project on both sides of the EXCEPT so prompts under an
-        # alias don't generate duplicate summaries that already exist under the
-        # canonical name.
+        """Missing or stale completed Pacific days, including prompt-free sessions."""
+        zone = ZoneInfo("America/Los_Angeles")
+
+        def lab_day(stamp):
+            if not stamp:
+                return None
+            value = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            return value.astimezone(zone).date().isoformat()
+
+        self._conn.create_function("lab_day", 1, lab_day, deterministic=True)
+        # A session that closes after midnight changes both its start day's
+        # account and its closing day's account. Never require a prompt hook.
+        sources = [
+            "SELECT project, timestamp AS stamp, timestamp AS changed FROM prompts",
+            """SELECT project, started_at, COALESCE(ended_at, started_at)
+               FROM sessions WHERE summary IS NOT NULL""",
+            """SELECT project, ended_at, ended_at FROM sessions
+               WHERE summary IS NOT NULL AND ended_at IS NOT NULL""",
+        ]
+        tables = {r[0] for r in self._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        if "commits" in tables:
+            sources += [
+                """SELECT s.project, c.timestamp, c.timestamp FROM commits c
+                   JOIN sessions s ON s.id=c.session_id""",
+                """SELECT p.project, c.timestamp, c.timestamp FROM commits c
+                   JOIN prompts p ON p.id=c.prompt_id""",
+            ]
+        day_filter = "a.day = ?" if target_date else "a.day < ?"
+        date_arg = target_date or datetime.now(zone).date().isoformat()
         rows = self._conn.execute(f"""
-            SELECT COALESCE(cp.canonical, p.project) AS project, date(p.timestamp, 'localtime') AS day
-            FROM prompts p
-            LEFT JOIN project_aliases cp ON cp.alias = p.project
-            WHERE p.project IS NOT NULL {date_filter}
-            GROUP BY COALESCE(cp.canonical, p.project), day
-            HAVING COUNT(*) > 0
-            EXCEPT
-            SELECT COALESCE(cd.canonical, ds.project) AS project, ds.date
-            FROM daily_summaries ds
-            LEFT JOIN project_aliases cd ON cd.alias = ds.project
-        """, params).fetchall()
+            WITH activity AS ({' UNION ALL '.join(sources)}),
+            days AS (
+                SELECT COALESCE(pa.canonical, a.project) AS project,
+                       lab_day(a.stamp) AS day, MAX(datetime(a.changed)) AS changed
+                FROM activity a LEFT JOIN project_aliases pa ON pa.alias=a.project
+                WHERE a.project IS NOT NULL AND a.stamp IS NOT NULL
+                GROUP BY 1, 2
+            ), saved AS (
+                SELECT COALESCE(pa.canonical, ds.project) AS project, ds.date,
+                       MAX(datetime(ds.created_at)) AS created_at
+                FROM daily_summaries ds
+                LEFT JOIN project_aliases pa ON pa.alias=ds.project
+                GROUP BY 1, 2
+            )
+            SELECT a.project, a.day FROM days a
+            LEFT JOIN saved d ON d.project=a.project AND d.date=a.day
+            WHERE {day_filter} AND (d.created_at IS NULL OR a.changed > d.created_at)
+            ORDER BY a.day, a.project
+        """, (date_arg,)).fetchall()
         return [(r["project"], r["day"]) for r in rows]
 
     def get_day_data(self, project, date):

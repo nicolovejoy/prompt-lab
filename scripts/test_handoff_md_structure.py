@@ -28,28 +28,21 @@ def check(name, condition, detail=""):
 with open(PATH) as f:
     content = f.read()
 
-check("no hardcoded model='claude-code'", "model='claude-code'" not in content)
-check(
-    "daily-summary persist uses the agent-choice placeholder",
-    '"model": "<claude-code|codex>"' in content,
-)
-check(
-    "weekly-rollup persist uses the agent-choice placeholder",
-    content.count("model='<claude-code|codex>'") == 1,
-)
-
+full = open(os.path.join(REPO_DIR, "workflow/commands/handoff-full.md")).read()
+maintenance = open(os.path.join(REPO_DIR, "workflow/commands/workflow-maintenance.md")).read()
 check("handoff validates the retained session ID", "current-session <session_id>" in content)
-check("handoff gathers whole-day context", "gc-read.sh today-context" in content)
-check("handoff uses guarded daily persistence", "gc-write.sh save-daily-summary" in content)
-check("handoff retains context revision", "context_revision" in content)
-check("handoff preserves earlier daily prose", "existing_daily" in content)
-
-check("handoff has the weekly CLAUDE.md size check", "## 2.5 CLAUDE.md size check" in content)
-check("size check uses the state marker", "claude-trim-" in content)
-check("size check names the history file", "docs/history.md" in content)
-check("size check has a GNU stat fallback", "stat -c %Y" in content)
-check("size check protects the conventions block", "SHARED-CONVENTIONS" in content)
-check("size check runs before daily summary", content.index("## 2.5 CLAUDE.md size check") < content.index("## 3. Synthesize daily summary"))
+check("handoff saves continuity before closing",
+      content.index("update-session-summary") < content.index("gc-write.sh end-session"))
+check("routine handoff does not synthesize", "gc-read.sh today-context" not in content)
+check("routine handoff does not check rollups", "weekly-rollup-check" not in content)
+check("routine handoff does not trim docs", "claude-trim-" not in content)
+check("routine handoff does not delegate", "Do not delegate" in content)
+check("full handoff gathers whole-day context", "gc-read.sh today-context" in full)
+check("full handoff uses guarded persistence", "gc-write.sh save-daily-summary" in full)
+check("full handoff preserves revision and prose", "context_revision" in full and "existing_daily" in full)
+check("full handoff attributes the actual agent", '"model": "<claude-code|codex>"' in full)
+check("maintenance retains protected size trim", "SHARED-CONVENTIONS" in maintenance and "stat -c %Y" in maintenance)
+check("maintenance preserves public review gate", "Never run the publish step yourself" in maintenance)
 
 print()
 if failures:

@@ -30,7 +30,7 @@ Three layers, all holding as of 2026-06-13:
 
 1. **Raw text never syncs** — it can't leak from the cloud because it was never uploaded.
 2. **Processed summaries are auth-gated** — synced, but only visible after login.
-3. **Public tables are scrubbed-by-construction.** Written ONLY by the reviewed, git-committed `scripts/backfill_public_*.py` one-shots — never by `/handoff` (its public-write steps were removed 2026-06-13), the synthesizer, or sync (`sync_to_turso.py` only propagates existing rows). The safety property is not "human-authored" (backfill text is Claude-authored too) but "**reviewed, git-committed literal, published by a deliberate per-project one-shot**."
+3. **Public tables are scrubbed-by-construction.** Written ONLY through reviewed, git-committed drafts and the deliberate `scripts/publish_public_draft.py` publish step (plus the historical `scripts/backfill_public_*.py` one-shots) — never by `/handoff` (its public-write steps were removed 2026-06-13), the synthesizer, or sync (`sync_to_turso.py` only propagates existing rows). The safety property is not "human-authored" (backfill text is Claude-authored too) but "**reviewed, git-committed literal, published by a deliberate per-project one-shot**."
 
 The public endpoint has **no read-time allowlist** — it serves whatever rows exist. Safety therefore rests entirely on the write-time discipline above, plus two curation gates with no third drifting copy:
 
@@ -43,7 +43,7 @@ The public endpoint has **no read-time allowlist** — it serves whatever rows e
 
 ## Who accesses each store, and how
 
-1. **You, locally** — full read of the SQLite DB on mini/laptop (`sqlite3` is allow-listed in `~/.claude/settings.json`). The pipeline scripts (synthesizer, sync, review email) run on mini via launchd.
+1. **You, locally** — full read of the SQLite DB on mini/laptop (`sqlite3` is allow-listed in `~/.claude/settings.json`). The nightly pipeline runs on the laptop via launchd; the mini does not run a second sender.
 2. **Cloud dashboard (https://prompt-labs.org)** — cookie auth (`web/auth_helper.py`): an HMAC-SHA256-signed token carrying `{exp, role, email}`, 30-day expiry, `HttpOnly` + `SameSite=Lax` + `Secure` in prod. **Production is Google OAuth exclusive** (`web/api/login.py` + `callback.py`): `ADMIN_EMAILS` → `admin` (full access incl. Ask/LLM), `READER_EMAILS` → `reader` (browse-only, no Ask, no metadata edits), admin wins on overlap, any other verified Google account → readable 403. **Previews keep a password login** as break-glass (`AUTH_SECRET`, admin only — `AUTH_READ_SECRET`/reader password was deleted from Vercel in §2.3), since Google won't register a wildcard `*.vercel.app` redirect URI; the unauthenticated `GET /api/login` 401 body's `password_login`/`google_login` flags tell the frontend which form to render, so a preview never shows a Google button that would silently log you into prod (issue #30). Every `/api/*` route requires a valid cookie (401 otherwise) EXCEPT `public_history`.
 3. **Public endpoint** (`GET /api/public_history?project=<name>`, `web/api/public_history.py`) — unauthenticated, anyone, alias-aware, 1-hour cache, serves only the two public tables. Sole consumer: `selected-projects` (https://PianoHouseProject.org).
 
@@ -58,7 +58,7 @@ The public endpoint has **no read-time allowlist** — it serves whatever rows e
 ```
 Claude Code hooks ─→ local SQLite (raw: prompts/sessions/commits)
                          │
-   synthesizer / handoff ─→ processed tables (summaries, rollups, costs)
+   synthesizer / handoff-full ─→ processed tables (summaries, rollups, costs)
                          │
         sync_to_turso.py ─→ Turso  (processed + public; NEVER raw prompts/sessions)
                          │                    │

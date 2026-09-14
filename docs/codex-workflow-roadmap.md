@@ -4,6 +4,24 @@ Scope: Prompt Lab's CLI/iTerm launchers, secret protection, session bookkeeping,
 and installed readup/handoff commands. Nico installs locally; implementation and
 fixture tests happen before that step. No live secret reads are used for testing.
 
+## Current status — 2026-09-14
+
+The installed `f5cb2cf` workflow passed the paired Songpath identity and full
+handoff exercise. Results and repeatable smoke steps live in
+[codex-workflow-validation.md](codex-workflow-validation.md).
+
+The lean follow-up is implemented in source: routine handoff captures continuity
+and closes its own row; `handoff-full` explicitly adds recaps;
+`workflow-maintenance` owns docs and backlog work. Readup no longer backfills.
+Nightly discovers prompt-free sessions and stale completed days, uses bounded
+whole-day input and guarded daily saves, and refreshes stale completed weeks.
+Nico must reinstall and smoke-test this follow-up. No permission profile is installed.
+
+Remaining gates: lean installed-command smoke, actual before/after usage
+measurement, fresh-launcher resume/fork, permission-profile acceptance, and the
+separate sleeping-host nightly test. No overnight or API-cost result is claimed
+by the isolated local tests.
+
 ## Phase 1 — secret protection
 
 Nico approved moving safe templates to a separate naming convention if the
@@ -88,13 +106,9 @@ quality of model-written prose; the live two-session smoke test must check it.
 
 ## Phase 4 — installation and live validation
 
-Local checks and review are complete; Nico runs the installer next. Follow
-`docs/codex-workflow-validation.md` for exact installation and live acceptance steps. Start fresh `work` and
-`cx` windows in Prompt Lab, run readup in each, and verify distinct stable session
-IDs. Perform one small distinct task in each, hand off both, and verify each
-summary and closure affects only its own row. The resulting daily account should
-include both tasks without duplicated counts. Verify a resumed conversation
-still resolves its own row.
+The earlier paired installation test passed. Follow
+`docs/codex-workflow-validation.md` for the lean follow-up installation and smoke
+steps. Keep implementation, installation and live validation separate.
 
 Install/select the permission candidate separately only after Phase 1's remaining
 gates pass. Repeat the fake-file probe through the final launch path. A passing

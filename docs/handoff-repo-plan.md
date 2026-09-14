@@ -1,5 +1,16 @@
 # Cross-repo handoff → standalone synced git repo
 
+Current usage: pairings may be different repos or two checkouts of the same repo.
+The `repos: [a, b]` manifest matches checkout directory basenames, so a separate
+`musicforge-codex` clone needs that name in the manifest. Two sessions in one
+checkout share the same channel; address them by tool and session ID. Supply the
+complete dated `###` heading to `handoff.sh append`. Claude startup injects
+headlines; Codex readup uses `session-context.sh` as its fallback. A file entry
+does not wake an idle conversation: direct discussion needs active polling or a
+human nudge. Stop polling once a DONE message arrives.
+
+The original design follows.
+
 Status: **SHIPPED 2026-06-29** (issue #7). Repo `nicolovejoy/handoff` created + baseline
 imported; wrapper `workflow/bin/handoff.sh` (append/sync/pull) installed to
 `~/.claude/bin/`; SessionStart hook injects the matching file's `## Active` section

@@ -2,13 +2,10 @@
 
 **Prompt Lab** — overview dashboard for tracking agent sessions, todos, and themes across projects. Data from `~/.claude/prompt-history.db`.
 
-## Run
+## Start here
 
-```bash
-.venv/bin/python mobile/serve.py  # local mobile PWA → localhost:8080
-```
-
-The Flask local dashboard (`dashboard/`) was retired 2026-05-28 — it had gone ~3 months stale and none of the cost-tracking work landed there. The cloud dashboard (`web/`) is the single canonical UI. `todos.py` is kept as the shared scanner but is currently unwired (its only consumer was the local dashboard); rewire it into `web/` when todos return to the UI.
+`README.md` covers setup; `docs/README.md` is the documentation index.
+The canonical UI is `web/`. Former local UI/scanner source is in `archive/`.
 
 ## Deploy (cloud dashboard)
 
@@ -29,8 +26,8 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 - `generate-report.py` — bi-monthly markdown report; reads processed tables from Turso (`get_store("turso")`); snapshot writes stay local and sync as before
 - `sync_to_turso.py` — pushes processed tables to Turso (no raw prompts)
 - `web/` — cloud dashboard (Preact+HTM + Vercel Python serverless), auth-protected, reads from Turso
-- `mobile/` — legacy local mobile PWA, reads from Turso directly
-- `/handoff` generates daily summaries + weekly rollups inline (no API call)
+- `/handoff` saves session continuity; `/handoff-full` adds immediate recaps.
+- `/workflow-maintenance` handles explicit docs/memory maintenance; nightly owns backfill.
 - `/ask` queries the knowledge store with natural language
 - `workflow/` — slash commands (`commands/`), hooks, and `statusline-command.sh` (copy to `~/.claude/`)
 - **Data & access model: see `docs/data-and-access.md`** — the single coherent description of the three storage tiers (raw/private, processed/private, public), how public vs private is differentiated, the two-tier cloud auth, and how secrets grant access. Read it first when reasoning about what's stored where or who can see it.
@@ -64,113 +61,10 @@ The full chronological log — and the narrative behind everything below, under 
 
 ### Open
 
-**Session-context diet — shipped and installed 2026-09-13, branch `codex/agent-work-launchers`.**
-SessionStart injection went from 194 KB to 8.5 KB (handoff headlines newer than 30d + counts,
-`HANDOFF_HEADLINE_DAYS` overrides), readup's seven probes run as one `readup-checks.sh` call, CLAUDE.md
-is 33 KB (was 49; rule-floor is ~30 KB, so the weekly `/handoff` §2.5 trim fires only above 35 KB).
-The 2026-09-14 follow-up adds AGENTS.md, distinguishes audit crashes/incomplete
-checks from confirmed drift, and fixes the stale Testing inventory below.
-Left: Nico's installer + real readup/handoff acceptance; archive sweep of 127
-active handoff entries across 14 channels (unhurried, needs Nico's memory);
-§2.5 still checks CLAUDE.md only. Original plan:
-`docs/superpowers/plans/2026-09-13-session-context-diet.md`.
-
-**Codex workflow checkpoint — 2026-09-13, branch `codex/agent-work-launchers`.** `work` keeps
-Claude, `cx` launches Codex with the same three-pane layout. **iTerm blocker diagnosed and
-verified 2026-09-14:** the `-10000` failure on `cx musicforge-505-drive-oauth` was a stale
-shell function, not live code — commit `eab5b13` (2026-09-13 10:11am) had already removed the
-crashing AppleScript line (`set title of current tab to windowTitle`, the same iTerm 3.6.11
-incompatibility fixed earlier for `cx songpath`); any tab opened before that fix+reinstall
-kept the old in-memory function. Verified with a real `cx musicforge-codex` launch in a fresh
-shell today: window + all 3 panes created, no error. Session identity and whole-day handoff are now integrated in source (2026-09-14):
-`_gc_session_identity.py` owns native/scoped registration, lookup, summary/end
-writes and Claude hook binding; local `session_identity_bindings` preserves
-launcher ownership after UUID adoption. Pointer files do not confer scoped
-ownership. `today-context` includes the whole Pacific day and existing daily
-prose; `save-daily-summary` checks revision/counts under a write lock before
-archiving/replacing. Isolated identity, day, and temporary-installation tests
-pass. Nico still runs the installer and live paired-conversation acceptance:
-`docs/codex-workflow-validation.md`. Until then, installed helpers remain old;
-do not trust the legacy shared project pointer from Codex. Permission-profile
-rollout remains separate and uninstalled. `docs/codex-workflow-roadmap.md`
-tracks its gates; `docs/codex-workflow-checkpoint.md` retains the investigation.
-
-**1Password preference:** when Nico requests a new item, create its secret field with the
-literal placeholder `replace-this-value`; Nico pastes the real value into 1Password. `env.tpl`
-files contain references and should remain readable. Do not infer that arbitrary
-agent-selected commands can use secrets without being able to expose them. Start with
-human-run secret operations; proposed first protected helper is read-only operational
-status, deployment later.
-
-**Dual-agent commands — one thing left.** Run `/prompts:readup` then `/prompts:handoff` from
-Codex once, in songpath or musicforge (Codex needs a session restart to see new prompt files).
-That first Codex `/handoff` registers the project on the dashboard; there is no separate step.
-
-**Garm: HARDEN-THEN-FREEZE — Nico's decision 2026-08-27, don't re-litigate the unwind
-question.** `GARM_GATING` stays **off**, `READER_EMAILS` is the live gate — "off" is a Vercel
-env var, not the code default, so check `vercel env ls` before trusting this line. Grant
-seeding (Pierre → `prompt-lab.prntd`) is deferred and blocks nothing. Revisit trigger: a real
-second user who needs actual access management, not "might someday."
-
-**`docs/nightly-pipeline-plan.md`: steps 1, 2, 3 and 5 are DONE (2026-08-29).** Step 4 is
-mostly absorbed (report catch-up done, reader catch-up optional) and unbuilt beyond that.
-
-**Still outstanding: step 2's sleeping-host test**, and it needs a real overnight, not a
-healthy awake host (an awake laptop passes either way — that is why it needs staging). With
-the machine deliberately asleep across 02:30, confirm one wake produces one run in the correct
-order and Turso's newest `review_snapshots` date equals the run date. The network gate sits in
-front of it now, so the run should print `--- network: resolved after Ns ---` rather than dying
-on `gaierror` — that line is itself the evidence the gate earns its place.
-
-Also unverified until it happens: the health-email changes are Vercel-side code reading Turso,
-so the first real morning email carrying a `nightly_runs` row is their acceptance test — **and
-it does not run until the merge is pushed and deployed.**
-
-**mini-rescue curation — open, unhurried.** `~/src/mini-rescue/` holds 13 rescued repos; walk
-them at leisure, merge-or-discard, delete each folder as judged (the dir emptying is the
-meter). Settled 2026-08-17, don't revisit: freevite (= invitekit under its old name),
-roll-your-own and skitrack-ntzb-poc are deliberately unpushed.
-
-**Check the September Neon CU numbers for garm (`neon-bole-tree`) and byside.** Both were
-burned by prompt-lab's own 5-min deep health poll never letting Neon's free tier autosuspend;
-fixed 2026-08-14 (byside) and 2026-08-18 (garm). Nothing alarms on the number.
-
-**Per-Pi service inventory: `docs/pi-inventory.md`** — prompt-lab owns it; read it before
-touching phrpi or homeassistant.local. Three leftovers from the 2026-08-13 closet move, none
-of them our code, all filed in `~/src/.handoff`: a laptop SSH key into HA's add-on (highest
-leverage), repointing hardcoded `192.168.5.34` → `homeassistant.local`, and getting
-`cloudflared`'s token out of argv on phrpi.
-
-**Copy review (#49) — batches 2–4 remain**, batch 1 closed 2026-08-05. **Track which items
-were actually answered, not which batch was sent** — Nico answers by number and often stops
-mid-batch; the first pass lost two items that way. Left: batch 2 (Activity + day page), batch
-3 (Costs, Visitors, Todos), batch 4 (Health, About, project pages). Open question: a plain
-`About` button in the primary row may beat the `More` panel.
-
-**Project-name follow-ups from the 2026-08-05 cleanup, all unconfirmed** — they need Nico's
-memory of which directory he was in; the names alone aren't evidence. `koma_art`/`koma-launch`
-look like the underscore/dash pair fixed elsewhere; `freevite` (167 prompts) may be `invitekit`
-under an older directory name; `spike` (4 prompts) has the shape of the hidden artifacts.
-
-**`ACTIVE · N` counts hidden projects.** `activeCount` is `activeList.length` with no `private`
-filter (`web/index.html:1308-1310`), and it feeds the KPI tile (`:1334`) and the `Active · N`
-header (`:1421`) — the home screen read `37` with 16 shown. One filter fixes it, but the
-semantics are a real choice: excluding private is wrong the day a genuine project is marked
-private. Alternative is `37 · 16 shown`. Undecided.
-
-Open, from the 2026-08-02 uptime/health thread and the issue backlog:
-- **`#/health` has never been visually verified** (contrast computed, not seen), nor has the
-  nav below 640px. https://prompt-labs.org/#/health needs your eyes, not a green test.
-- **Beacon fan-out: `prntd`** never got the snippet; `page_views` has zero rows ever for it.
-- **Public rollups:** only ibuild4you `2026-05-18` is unpublished — a deliberate skip that
-  reappears in every future draft by design.
-- **#48 residual:** the "8am" cron is `0 15 * * *` — 8am Pacific in summer, 7am in winter.
-  Vercel crons are UTC-only, so this is a choice to make, not a bug to fix.
-- Open issues (2026-09-07): **#14** design tokens, **#43** sign-ins panel (gated on a second
-  reader), **#9** beacon fan-out, **#49** copy review (this file is the only record of batch
-  progress), **#53** iOS chart-tap zoom, **#55** cloudflared token (owner SPAN), **#51**
-  unmapped costs (the close rested on a guess).
-- Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
+Read `docs/current-work.md` for the current backlog and deferred decisions.
+For workflow work, start with `docs/codex-workflow-roadmap.md`; for operations,
+use `docs/data-and-access.md` and the invariants below. Do not re-open decisions
+marked settled without new evidence or Nico's instruction.
 
 ### The failure shape this repo keeps hitting
 
@@ -387,9 +281,9 @@ the archive write must be separately observable.
   machine pushes processed rows to Turso, the merge point. `daily_summaries` clobber is solved
   by the per-machine parts table across MACHINES; `weekly_rollups` still isn't, deferred until
   it bites. For two agents on one machine, the new handoff source uses whole-day context
-  and revision-checked saves (2026-09-14). Until installed and live-verified,
-  Nico's workaround remains: run `/handoff` from Claude only. Other writers
-  (including nightly synthesis) keep their existing behavior.
+  and revision-checked saves (2026-09-14). The paired live check passed. Routine
+  handoff now saves session summaries; explicit full handoff and nightly daily
+  synthesis use revision-checked whole-day saves. See the validation doc for gates.
 - **Prompt ratings are abandoned (2026-08-14)** — columns exist, 0 rows ever rated, no code
   ever wrote them. They stay (harmless); don't revive without a new idea.
 - **Ask is mothballed, not deleted** — `web/api/ask.py` and the modal are reachable from

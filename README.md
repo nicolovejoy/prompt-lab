@@ -1,6 +1,8 @@
 # prompt-lab / Ground Control
 
-Workflow tools and dashboards for tracking Claude Code sessions across projects.
+Workflow tools and dashboards for tracking Claude Code and Codex sessions across projects.
+
+[Documentation index](docs/README.md) · [Workflow smoke tests](docs/codex-workflow-validation.md)
 
 Every session is logged, summarized, and surfaced in a cloud dashboard. Slash commands handle session start/end and review. Nightly synthesis generates daily summaries, weekly rollups, and project snapshots. Optional email reviews and bi-monthly reports via the Anthropic API and Resend.
 
@@ -25,7 +27,7 @@ cd ~/src/prompt-lab
 
 This will:
 - Create a Python virtualenv and install dependencies
-- Copy slash commands to `~/.claude/commands/`
+- Copy slash commands to `~/.claude/commands/` and Codex prompts to `~/.codex/prompts/`
 - Generate and load launchd plists (macOS scheduled jobs)
 - Print the `~/.claude/settings.json` snippet to add manually
 
@@ -115,7 +117,16 @@ All commands live in `~/.claude/commands/` and work across every repo. Source of
 
 `/readup` — start a session: registers it in DB, reads CLAUDE.md, shows recent git log
 
-`/handoff` — end a session: logs commits, writes summary, updates CLAUDE.md Next Steps
+`/handoff` — save findings, decisions and next steps, capture commits, close only this session
+
+`/handoff-full` — also refresh the whole-day summary and due weekly rollups now
+
+`/workflow-maintenance` — explicitly review project docs, memory and maintenance backlog
+
+Codex uses `/prompts:readup`, `/prompts:handoff`, `/prompts:handoff-full` and
+`/prompts:workflow-maintenance`. Readup does no summary backfill; nightly handles
+completed Pacific days, including sessions without prompt logs. Recaps reach the
+cloud after a successful nightly synthesis and sync.
 
 `/review [N] [project] [-v]` — session review across projects for last N days (default: 7), optional verbose mode for non-technical audience
 
@@ -154,10 +165,8 @@ prompt-lab/
 │   ├── auth_helper.py     # Cookie-based auth
 │   ├── turso_helper.py    # Turso HTTP client
 │   ├── vercel.json        # Vercel config
-│   └── api/               # Python serverless functions (9 endpoints)
-├── mobile/
-│   ├── index.html         # Legacy PWA (reads from Turso)
-│   └── serve.py           # Local dev server
+│   └── api/               # Python serverless functions
+├── archive/              # Historical UI and utilities; not active entry points
 ├── workflow/
 │   ├── commands/          # Slash command source of truth
 │   │   ├── readup.md
@@ -175,7 +184,6 @@ prompt-lab/
 ├── send-review.py         # Daily review email (optional)
 ├── generate-report.py     # Bi-monthly report generator (optional)
 ├── sync_to_turso.py       # Push processed tables to Turso (no raw prompts)
-├── todos.py               # Shared todo scanner (currently unwired)
 ├── env.example           # Configuration template
 └── README.md
 ```

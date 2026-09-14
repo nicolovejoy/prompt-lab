@@ -1,5 +1,7 @@
 # Nightly pipeline: one ordered run, not four racing agents
 
+Status reviewed 2026-09-14: Mostly shipped: steps 1, 2, 3 and 5 are complete. Sleeping-host acceptance remains outstanding; see current-work.md. The original plan below is retained for context.
+
 Status: planned 2026-08-20. **Step 1 DONE 2026-08-29** — remote
 `save_review_snapshot` is an upsert, `migrate()` dedupes then adds a unique
 index on `(review_type, date)`, applied live (11,848 rows → 78, verified

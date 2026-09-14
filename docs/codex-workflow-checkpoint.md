@@ -1,5 +1,11 @@
 # Codex workflow checkpoint — 2026-09-13
 
+
+Historical investigation. Current status is maintained only in
+[the roadmap](codex-workflow-roadmap.md); acceptance evidence and smoke steps are
+in [validation](codex-workflow-validation.md). The installation-pending statements
+below describe the earlier checkpoint, not the current rollout.
+
 ## Readup and session bookkeeping — source integrated 2026-09-14
 
 The launcher failure remains closed. This pass fixed readup's false drift alarm

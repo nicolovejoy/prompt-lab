@@ -44,6 +44,8 @@ jobs:
           python scripts/test_public_allowlist.py
           python scripts/test_day_context.py
           python scripts/test_workflow_roundtrip.py
+          python scripts/test_lean_nightly.py
+          python scripts/test_synthesizer_outcome.py
           python scripts/test_readup_md_structure.py
           python scripts/test_handoff_md_structure.py
           python scripts/test_paid_artifacts.py

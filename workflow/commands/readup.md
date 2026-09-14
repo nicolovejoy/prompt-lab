@@ -25,47 +25,8 @@ Read its output, then continue: registration, remote checks and the full CLAUDE.
 3. Read CLAUDE.md in full (focus on Next Steps + project conventions). The hook's injected context covers recent activity, but not project intent.
 4. Other agents on this repo: if the `ListAgents` tool is available, call it and flag any other local or cloud session whose name/task suggests this repo (a cloud agent's work won't show in `git status` at all until it pushes). `ListAgents` missing or erroring → skip silently, never block session start.
 
-## 4. Backfill recent unsummarized days (lazy synthesis)
-
-Pull recent unsummarized days for this project:
-
-```bash
-~/.claude/bin/gc-read.sh unsummarized-context
-```
-
-The output is `{"total": N, "days": [...]}`. Behavior:
-
-- `total == 0` → skip silently.
-- `total > 5` → print one line ("N unsummarized days; nightly synthesizer will catch them") and skip. Avoids piling a long batch into a session-start command.
-- `total ∈ [1, 5]` → for each entry in `days`, synthesize a daily summary from its `prompts`/`commits`/`sessions` (focus on WHAT was done and WHY, 2-4 sentences, 1-3 key decisions). Write to `/tmp/gc-daily-<project>-<session_id>-<date>.json` with shape:
-
-```json
-{
-  "project": "<basename of pwd>",
-  "date": "<the day from the helper>",
-  "summary": "<2-4 sentence summary>",
-  "key_decisions": ["<decision 1>", "<decision 2>"],
-  "prompt_count": <len(day.prompts)>,
-  "session_count": <len(day.sessions)>,
-  "commit_count": <len(day.commits)>
-}
-```
-
-Persist each via:
-
-```bash
-python3 -c "
-import json, sys, os; sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.path.expanduser('~/src/prompt-lab')))
-from store import get_store
-d = json.load(open('/tmp/gc-daily-<project>-<session_id>-<date>.json'))
-s = get_store(); s.migrate()
-s.upsert_daily_summary(model='claude-code', **d)
-s.close()
-print('Daily summary saved for', d['project'], d['date'])
-"
-```
-
-This saves the nightly synthesizer from running for these days (~$0.02-0.04 each at Sonnet rates). The nightly remains as safety net for projects you don't open via /readup.
+Nightly synthesis owns summary backfill. Do not synthesize days during readup.
+Use the recent session summaries in startup context for continuity.
 
 ## 5. Interpreting readup-checks
 
@@ -92,4 +53,6 @@ If the CI check found broken CI or the public-drift check found public-data drif
 
 If the user passed arguments with this command, address those — don't suggest a separate task.
 
-If this session's work turns out to be executing a written plan (or the user hands you a multi-task todo), invoke `superpowers:subagent-driven-development` (if available) before starting implementation — per-task subagents keep the main context lean for the long sessions readup starts. This is a conditional pointer, not a step: sessions that are discussion, ops, or a single fix skip it entirely.
+Delegate only when the user requests it or an applicable instruction requires it.
+For a bounded task that benefits from delegation, use a narrowly scoped prompt
+and a cheaper model when authorized; do not fork the full conversation by default.

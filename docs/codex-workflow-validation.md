@@ -3,9 +3,96 @@
 The source changes are exercised against temporary databases and temporary
 installed helper copies. They do not install a permission profile, change
 launchd, or repair existing session rows. The remaining acceptance check is a
-real Claude/Codex conversation pair after Nico installs the updated workflow.
+real Claude/Codex conversation pair after Nico installs the updated workflow;
+that paired check passed on 2026-09-14 as recorded below.
+
+## Live results — 2026-09-14
+
+Nico reports installing the workflow containing `f5cb2cf`. The paired exercise
+uses Songpath with distinct read-only audits: Claude reviews Notes completion
+rules; Codex reviews Wild Flowers derivation readiness. Coordination is recorded
+in `~/src/.handoff/songpath-prompt-lab.md`.
+
+- Both sessions reported stable repeated registration: Claude `596`, Codex `595`.
+- Claude's handoff saved its summary and closed only `596` at 08:28:02 Pacific.
+  A read-only database check confirmed `595` remained open with no session summary.
+  The daily account retained both audits, with two sessions and zero commits.
+- Codex's ordered handoff closed `595` at 11:15:49 Pacific, leaving Claude's
+  closure unchanged. The final daily row retained both audits and prior decisions,
+  with 15 prompts, two sessions and zero commits. Both agents reported successful
+  guarded saves without revision conflicts. Read-only database verification found
+  Claude's previous prose and the initial readup prose in the superseded archive.
+  The paired exercise passed; both sessions received a DONE message.
+- Fresh-launcher resume/fork acceptance and permission-profile installation remain
+  separate, unverified gates.
+
+Readup also created an initial daily summary before either handoff. Its stored
+session count was zero despite the two open sessions; Claude's guarded handoff
+subsequently wrote two. Track that older readup synthesis path separately from
+the new handoff path when simplifying the commands.
+
+## Lean follow-up smoke test
+
+Source verification: all 18 CI script suites passed locally, including the new
+nightly coverage regression. Ruff, installer shell syntax and changed-document
+links passed. Heartbeat tests required permission to bind a local test server.
+Installed lean-command and live nightly acceptance remain pending.
+
+Run the automated tests from `/Users/nico/src/prompt-lab`. They use disposable
+local databases and a stubbed model response; no live API calls or history edits:
+
+```bash
+cd /Users/nico/src/prompt-lab
+.venv/bin/python scripts/test_lean_nightly.py
+.venv/bin/python scripts/test_workflow_roundtrip.py
+.venv/bin/python scripts/test_install_codex_prompts.py
+.venv/bin/python scripts/test_handoff_md_structure.py
+.venv/bin/python scripts/test_readup_md_structure.py
+```
+
+Pass: each command exits zero. The nightly test deliberately prints one
+`ERROR: Day context changed` before its final PASS: that proves a concurrent
+peer save is preserved rather than overwritten. Any assertion/traceback is a fail.
+
+Nico installs the updated commands, then opens fresh terminal/agent windows:
+
+```bash
+cd /Users/nico/src/prompt-lab
+./workflow/install.sh
+```
+
+Use `work songpath` for Claude and `cx songpath` for Codex. In each session:
+
+1. Run `/readup` (Codex: `/prompts:readup`). Retain the returned ID. Repeat once:
+   pass means the ID stays the same, differs from the other session's ID, and
+   readup does not generate any daily summary.
+2. Ask for a tiny read-only audit: Claude describes Notes full-song versus loop
+   credit; Codex describes Wild Flowers derivation readiness. No code/doc edits,
+   services, or new child agents.
+3. Run `/handoff` (Codex: `/prompts:handoff`), Claude first then Codex. Pass means
+   each writes a useful session summary and closes only its own ID, leaves the
+   repository unchanged, and does not synthesize daily/weekly recaps or trim docs.
+4. For the explicit full path, reopen either conversation and run `/handoff-full`
+   (Codex: `/prompts:handoff-full`). Pass means fresh whole-day input includes both
+   session summaries, the guarded daily save retains both audits/decisions, and
+   prior changed prose remains archived. No project-doc maintenance should run.
+5. Resume that same Codex conversation in a fresh launcher. Readup must retain
+   its ID; a new/forked conversation must get a distinct ID. This fresh-launcher
+   check remains a live acceptance gate, separate from fixture coverage.
+
+Ask the verifying agent to read only the two recorded session rows, the Songpath
+Pacific-day daily summary and its superseded rows. A missing/wrong identity,
+missing contribution, unintended doc edit, or routine recap write is a failure.
+Do not repair live rows to make the test pass.
+
+For nightly acceptance, leave one ordinary session with only a lean handoff and
+check the next successful night's artifact: its completed Pacific day must
+include that session's findings. Check `nightly-pipeline.log` for stage failures.
+Do not manually trigger the full pipeline just for this smoke test: it can send
+review email. The live nightly/API-cost check is still pending.
 
 ## Local checks
+
 
 From `/Users/nico/src/prompt-lab`:
 
@@ -30,7 +117,7 @@ preserves the prior prose in the archive, and closes only the intended row.
 The day tests cover Pacific midnight, DST, a host in another timezone, sessions
 crossing midnight, exact counts despite truncation, and changes during synthesis.
 
-## Installation and real conversation check
+## Full handoff identity regression (optional repeat)
 
 Nico runs the installer from the source checkout:
 
@@ -50,7 +137,7 @@ fresh Claude window with `work prompt-lab` and a fresh Codex window with
 3. Give each a distinct read-only task: Claude describes the audit result states;
    Codex describes the whole-day revision check. These give the summaries two
    recognizable contributions without concurrent repository edits.
-4. Run Claude's `/handoff`, then Codex's `/prompts:handoff`. Each must update and
+4. Run Claude's `/handoff-full`, then Codex's `/prompts:handoff-full`. Each must update and
    close only its retained session row. The second daily account must retain
    both contributions and use the exact counts supplied by `today-context`.
 5. Resume the same Codex conversation in a fresh launcher window and repeat
@@ -72,3 +159,10 @@ Stop and report a missing/different session ID or lost contribution. Do not fix
 the test by selecting whichever row is newest. This live check evaluates the
 agent-written prose as well as the deterministic helpers; automated tests cannot
 judge whether the synthesis faithfully describes both conversations.
+
+
+Nightly discovery uses prompt/commit timestamps and saved session start/close
+timestamps. A prompt-free conversation needs a saved session summary to contribute
+recoverable findings. A successful lean handoff always saves then closes. A manual
+in-place summary edit without refreshing the close timestamp is not an automatic
+backfill signal; use explicit full handoff in that case.

@@ -1,224 +1,70 @@
 ---
 name: handoff
-description: End a session by updating docs and prepping for next time
-allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(python3:*), Bash(pwd), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Read, Write, Edit, Glob
+description: Save session findings and next steps, capture commits, and close this session
+allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(python3:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(~/.claude/bin/handoff.sh:*), Read
 ---
 
-Close out this session. Be concise.
+Close out this session briefly. Do not delegate. Routine handoff saves local session
+continuity; nightly synthesis produces daily and weekly recaps. For an immediate
+recap use `/handoff-full` (Codex: `/prompts:handoff-full`). Document and memory
+maintenance belongs to explicit `/workflow-maintenance`, not routine closeout.
 
-**If any Python step prints a Python traceback (e.g. `TypeError`, `ImportError`, `KeyError`), STOP. Surface the full traceback to the user before continuing to subsequent steps. The persistence python3 one-liners below silently fail to write rows on traceback — do not pretend success.**
+Stop on any failed write or Python traceback and report the error. Never claim
+success or close the session after a failed required save.
 
-## 0. Check for uncommitted changes
+## 1. Validate identity and inspect the working tree
 
-```bash
-git status --porcelain
-```
-
-If there are uncommitted changes, list the changed files and ask the user whether to continue the handoff or stop so they can commit first. If clean, proceed silently.
-
-## 1. Get session info
-
-Use the authoritative `<session_id>|<started_at>` retained from `/readup`.
-Validate that exact ID before writing anything:
+Use the authoritative `<session_id>|<started_at>` retained from readup:
 
 ```bash
 ~/.claude/bin/gc-read.sh current-session <session_id>
+git status --short
 ```
 
-If the ID is missing, differs, or validation fails, stop and report it. Never
-fall back to another open project session. If readup has not run in this
-conversation, register it first and retain the returned identity.
+If readup has not run, register with `~/.claude/bin/gc-write.sh register-session`
+and retain its result. A missing or different validated ID is an error; never
+choose another window's row. Report uncommitted files in the final handoff;
+leave them intact and continue saving the session. Handoff does not commit files.
 
-## 2. Do in parallel
+## 2. Capture commits and session continuity
 
-- **Capture commits** since session start (the `Z` suffix is load-bearing: `started_at` is stored UTC, and without it `git log` reads the timestamp as local time and silently finds zero commits — issue #48):
-  ```bash
-  git log --since="<started_at>Z" --format="%H|%ct|%s"
-  ```
-  Insert each hash, message and session ID with the commit's actual UTC timestamp:
-  `INSERT OR IGNORE INTO commits (hash, message, timestamp, session_id) VALUES (..., ..., datetime(<unix_seconds>, 'unixepoch'), ...);`
-  `%ct` supplies Unix seconds. Do not use insertion time: a handoff after midnight
-  would otherwise move yesterday's commits into today's counts. Bind text values
-  as SQL parameters rather than interpolating commit messages.
-
-- **Write session summary** (50 words max): what was done, what's next. Pipe the summary via stdin so single quotes / metacharacters don't break escaping:
-  ```bash
-  ~/.claude/bin/gc-write.sh update-session-summary <session_id> <<'SUMMARY'
-  <your 50-word summary here>
-  SUMMARY
-  ```
-  This writes the summary only — it does NOT end the session. Step 7 does that,
-  last, so that work continuing after a mid-session `/handoff` still logs to the
-  right row.
-
-- **Update CLAUDE.md** Next Steps: remove done items, add new ones (3-5 max)
-
-- **Update MEMORY.md** if anything changed worth remembering
-
-## 2.5 CLAUDE.md size check (weekly)
-
-CLAUDE.md is loaded into every session; narrative that has settled belongs in `docs/history.md`, not in the brief. Check whether a trim is due (oversized AND not trimmed in the last 7 days):
+Capture commits since session start using actual UTC commit timestamps:
 
 ```bash
-f=CLAUDE.md; m=~/.claude/state/claude-trim-$(basename "$PWD").touch
-size=$(wc -c < "$f" 2>/dev/null | tr -d ' ' || echo 0)
-mt=$(stat -f %m "$m" 2>/dev/null || stat -c %Y "$m" 2>/dev/null || echo 0)
-echo "claude_md_bytes=${size:-0} trim_age_d=$(( ($(date +%s) - mt) / 86400 ))"
+git log --since="<started_at>Z" --format="%H|%ct|%s"
 ```
 
-- No `CLAUDE.md` in this repo, or `claude_md_bytes <= 35000` → skip silently.
-- `claude_md_bytes > 35000` and `trim_age_d < 7` → skip silently (trimmed recently; let it settle).
-- `claude_md_bytes > 35000` and `trim_age_d >= 7` → trim now, then touch the marker:
-  1. Move settled narrative out: any paragraph in Next Steps / Traps / Settled that explains *how something came to be* (a fix's story, an incident timeline, rejected alternatives) goes verbatim into `docs/history.md` under a heading `### <its lead-in> (moved YYYY-MM-DD)` at the top of the build log, newest first. Create `docs/history.md` with a one-paragraph intro if the repo has none.
-  2. Keep in CLAUDE.md, each at ≤ 3 lines: what is still open, the decision made (with date), invariants, traps as rule + one-line reason, file pointers.
-  3. Never edit between the `SHARED-CONVENTIONS` markers; never remove an open item, an invariant, or a trap — compress, don't delete.
-  4. `mkdir -p ~/.claude/state && touch "$m"`, then tell the user in one line what moved and the before/after byte counts. The doc commit in step 5 carries it.
-  5. If nothing qualifies (every item is already at its ≤3-line floor), say so in one line, touch the marker anyway, and do not force a trim.
+Insert each hash, message and validated session ID into the local database at
+`~/.claude/prompt-history.db` with Python sqlite3 parameter bindings:
+`INSERT OR IGNORE INTO commits (hash, message, timestamp, session_id) VALUES (?, ?, datetime(?, 'unixepoch'), ?)`.
+Use `%ct` for Unix seconds; never substitute insertion time. Zero commits is normal.
 
-## 3. Synthesize daily summary
-
-After the session summary and commits in step 2 have been saved, get the whole
-Pacific calendar day as bounded JSON:
+Save a concise session summary via stdin, usually 50–100 words. Include findings,
+key decisions, unresolved questions and the next concrete step. Preserve details
+needed to resume; reference existing files rather than writing new documentation.
 
 ```bash
-~/.claude/bin/gc-read.sh today-context
+~/.claude/bin/gc-write.sh update-session-summary <session_id> <<'SUMMARY'
+<session findings, decisions, open questions, next step>
+SUMMARY
 ```
 
-Synthesize from every session summary, the prompts and commits, and
-`existing_daily` (the prior daily prose and decisions), together with this
-conversation. Preserve the other agents' work; do not replace the day with an
-account of only this session. Copy the exact `counts`, `project`, `date`, and
-`context_revision` and `synthesis_session_id` from the output, even if `truncation` reports clipped or
-omitted input. Sessions include those that started, ended, or recorded work
-that day, plus this conversation if it continued past midnight without a prompt
-hook; commits are deduplicated by hash. Raw context is machine-local.
+## 3. Coordinate only when needed
 
-Write `/tmp/gc-daily-<project>-<session_id>.json` using the validated ID:
+If a peer needs an actionable result and the user authorized messaging, post a
+short note through `~/.claude/bin/handoff.sh append <file>` with a complete dated
+`### YYYY-MM-DD <from> → <to>: <subject>` heading. Otherwise skip. Do not reread
+channel history, poll for replies, or start extra investigations during closeout.
 
-```json
-{
-  "project": "<project from today-context>",
-  "date": "<date from today-context>",
-  "context_revision": "<context_revision from today-context>",
-  "synthesis_session_id": <synthesis_session_id from today-context>,
-  "model": "<claude-code|codex>",
-  "summary": "<2-4 sentence summary of today's work — WHAT was done and WHY>",
-  "key_decisions": ["<decision 1>", "<decision 2>"],
-  "prompt_count": <n>,
-  "session_count": <n>,
-  "commit_count": <n>
-}
-```
+## 4. Close and report
 
-Replace `<claude-code|codex>` with whichever you are running as (or the specific Codex model id, e.g. `gpt-6-astra`, if you want finer-grained attribution) — same substitution convention as `<project>`/`<session_id>` above.
-
-IMPORTANT: use these exact command forms to persist the daily summary:
-
-```bash
-~/.claude/bin/gc-write.sh save-daily-summary /tmp/gc-daily-<project>-<session_id>.json
-```
-
-This checks the context revision and counts under a write lock, then archives
-replaced prose before saving. If it reports that the day context changed, fetch
-`today-context` again and revise the synthesis using the new input and revision.
-Do not bypass the check or merely replace the revision in an old draft. If the
-day rolled over, regenerate the draft for the date the new context reports.
-
-## 4. Check for weekly rollup
-
-Check if any completed weeks for this project need a rollup:
-
-```bash
-~/.claude/bin/gc-read.sh weekly-rollup-check
-```
-
-If results come back, generate a weekly rollup for each week. Write to `/tmp/gc-weekly-<project>-<session_id>-<week_start>.json` (substitute actual values — one file per week if multiple):
-
-```json
-{
-  "project": "<project>",
-  "week_start": "<YYYY-MM-DD monday>",
-  "narrative": "<3-5 sentence synthesis of the week's work>",
-  "highlights": ["<highlight 1>", "<highlight 2>"],
-  "daily_summary_ids": [<id1>, <id2>],
-  "prompt_count": <sum>,
-  "session_count": <sum>,
-  "commit_count": <sum>
-}
-```
-
-IMPORTANT: use these exact command forms to persist:
-
-```bash
-python3 -c "
-import json, sys, os; sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.path.expanduser('~/src/prompt-lab')))
-from store import get_store
-d = json.load(open('/tmp/gc-weekly-<project>-<session_id>-<week_start>.json'))
-s = get_store(); s.migrate()
-s.upsert_weekly_rollup(model='<claude-code|codex>', **d)
-s.close()
-print('Weekly rollup saved for', d['project'], d['week_start'])
-"
-```
-
-If no weeks need rollups, skip silently.
-
-> **Note:** `/handoff` deliberately does NOT write the public `public_session_summaries` / `public_weekly_rollups` tables. It may only ever *draft* into a reviewable file (step 4.5). Public portfolio data is a deliberate, per-project publish action — never an automatic per-session write.
-
-## 4.5 Offer a public-refresh draft (prompt-lab repo only, opt-in)
-
-Public data does not refresh itself by design, so it goes stale silently — it sat six weeks stale before a consumer repo noticed. Surface the backlog here, but never act on it unprompted.
-
-Run (prompt-lab repo only; skip silently elsewhere):
-
-```bash
-.venv/bin/python scripts/draft_public_refresh.py --list
-```
-
-If every project reads `0 unpublished week(s)`, say nothing. Otherwise mention the backlog in one line and offer to draft — do **not** generate a draft unless the user asks. Drafting is cheap; reviewing it is the expensive part, and it's the user's time.
-
-If asked, generate the draft for that project:
-
-```bash
-.venv/bin/python scripts/draft_public_refresh.py <project>
-```
-
-Then fill in each `### PUBLIC` block in the generated `drafts/public-<project>-<date>.md`. Write each one **from scratch** against the private text as source material — do not lightly edit the private prose. It is unscrubbed synthesizer output over raw prompts and routinely names clients and collaborators, quotes absolute paths, and describes unreleased plans. Target what a stranger reading a portfolio should see: what was built and why it mattered, no issue numbers, no people, no infrastructure specifics. Leave a block as `TODO` to skip that week.
-
-Then stop and hand it to the user for review. **Never run the publish step yourself** — the human review of the committed file *is* the privacy gate. The user runs:
-
-```bash
-.venv/bin/python scripts/publish_public_draft.py drafts/public-<project>-<date>.md --apply
-.venv/bin/python sync_to_turso.py
-```
-
-## 5. Commit doc changes if any
-
-Note: Turso sync used to run here. It now runs automatically via the async SessionStart hook (`~/.claude/bin/turso-sync-maybe.sh`) at most once per 8h on each machine. If you need to force a sync right now: `~/src/prompt-lab/.venv/bin/python ~/src/prompt-lab/sync_to_turso.py --days 1`. This is Claude-Code-only — `turso-sync-maybe.sh` is a hook script with no Codex equivalent, so a Codex-authored `/handoff` still writes its rows to the local store as always, but they wait for a Claude Code session (or the nightly pipeline) to actually push them to Turso.
-
-GitHub URL upsert used to live here too — moved to a one-time script at `scripts/backfill_project_urls.py`. Re-run it if you add a new project or rename a remote.
-
-## 6. Cross-repo handoff channel
-
-If this session produced anything a peer repo (selected-projects, prntd) needs to know — a question, a change to a shared contract, a follow-up — post it to the handoff log instead of letting it evaporate:
-
-```
-~/.claude/bin/handoff.sh append <file> "### YYYY-MM-DD prompt-lab → <peer>: <subject>
-
-<body>"
-```
-
-Files: `selected-projects-prompt-lab.md`, `prntd-prompt-lab.md` (in `~/src/.handoff`). The wrapper inserts at the top of `## Active` and pushes atomically. If you instead hand-edited a handoff file (e.g. moved an acted-on entry to `## Archived`), flush it with `~/.claude/bin/handoff.sh sync`. Non-zero exit means the note was kept locally but not pushed (3 = conflict, resolve in `~/src/.handoff`; 4 = offline, re-run `sync` later) — surface it, don't ignore it. Nothing to coordinate → skip silently.
-
-## 7. End the session
-
-Last step, after everything else has been written:
+After required saves succeed, close only the validated session:
 
 ```bash
 ~/.claude/bin/gc-write.sh end-session <session_id>
 ```
 
-Use the same `<session_id>` from step 1. This stamps `ended_at`. It is safe to run
-`/handoff` again later in the same conversation — prompts are bound to the real
-Claude Code session id, so a closed row keeps receiving them and re-running just
-refreshes the summary and end time.
+Report the saved result, next step and any uncommitted work in a few lines.
+Daily/weekly recaps arrive after the next successful nightly run; no recap is
+written by this command. Do not run API synthesis, backlog checks, document
+trimming, public refresh, or remote synchronization as extra closeout steps.
