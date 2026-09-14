@@ -26,6 +26,22 @@ in `~/src/.handoff/songpath-prompt-lab.md`.
 - Fresh-launcher resume/fork acceptance and permission-profile installation remain
   separate, unverified gates.
 
+### Codex command-interface follow-up
+
+The first installed lean-command smoke later on 2026-09-14 found a separate
+interface failure: Codex CLI 0.154.0 did not register the correctly installed
+`~/.codex/prompts/readup.md`, and both `/readup` and `/prompts:readup` were rejected.
+Plain-text and misspelled attempts caused the model to improvise only
+`readup-checks.sh`; the absence of the required `<session_id>|<started_at>` proved
+that readup had not run. The desktop Claude importer had created a discoverable
+`source-command-readup` skill, but corrupted its body by rewriting
+`~/.claude/bin` to nonexistent `~/.Codex/bin` and `CLAUDE.md` to `AGENTS.md`.
+
+The source installer now renders the canonical command files directly to
+explicit-only `~/.agents/skills/source-command-*/` skills. Reinstall and validate
+that path with `$source-command-readup`; the result is pending and must report the
+authoritative session identity before any later smoke step counts.
+
 Readup also created an initial daily summary before either handoff. Its stored
 session count was zero despite the two open sessions; Claude's guarded handoff
 subsequently wrote two. Track that older readup synthesis path separately from
@@ -33,10 +49,13 @@ the new handoff path when simplifying the commands.
 
 ## Lean follow-up smoke test
 
-Source verification: all 18 CI script suites passed locally, including the new
-nightly coverage regression. Ruff, installer shell syntax and changed-document
-links passed. Heartbeat tests required permission to bind a local test server.
-Installed lean-command and live nightly acceptance remain pending.
+Source verification after the command-interface follow-up: all 26 standalone
+script suites passed locally, including exact rendering of every command into a
+skill and its explicit-only policy. Ruff, installer shell syntax and whitespace
+checks passed. Heartbeat tests required permission to bind a local test server;
+session-context tests required access to their installed-state marker. Reinstall
+is still required before installed lean-command acceptance can resume. Live
+nightly acceptance remains pending.
 
 Run the automated tests from `/Users/nico/src/prompt-lab`. They use disposable
 local databases and a stubbed model response; no live API calls or history edits:
@@ -63,17 +82,17 @@ cd /Users/nico/src/prompt-lab
 
 Use `work songpath` for Claude and `cx songpath` for Codex. In each session:
 
-1. Run `/readup` (Codex: `/prompts:readup`). Retain the returned ID. Repeat once:
+1. Run `/readup` (Codex: `$source-command-readup`). Retain the returned ID. Repeat once:
    pass means the ID stays the same, differs from the other session's ID, and
    readup does not generate any daily summary.
 2. Ask for a tiny read-only audit: Claude describes Notes full-song versus loop
    credit; Codex describes Wild Flowers derivation readiness. No code/doc edits,
    services, or new child agents.
-3. Run `/handoff` (Codex: `/prompts:handoff`), Claude first then Codex. Pass means
+3. Run `/handoff` (Codex: `$source-command-handoff`), Claude first then Codex. Pass means
    each writes a useful session summary and closes only its own ID, leaves the
    repository unchanged, and does not synthesize daily/weekly recaps or trim docs.
 4. For the explicit full path, reopen either conversation and run `/handoff-full`
-   (Codex: `/prompts:handoff-full`). Pass means fresh whole-day input includes both
+   (Codex: `$source-command-handoff-full`). Pass means fresh whole-day input includes both
    session summaries, the guarded daily save retains both audits/decisions, and
    prior changed prose remains archived. No project-doc maintenance should run.
 5. Resume that same Codex conversation in a fresh launcher. Readup must retain
@@ -131,13 +150,13 @@ Open a **new terminal window** afterwards. An existing terminal retains the old
 fresh Claude window with `work prompt-lab` and a fresh Codex window with
 `cx prompt-lab`. Do not run simultaneous code edits in this shared checkout.
 
-1. Run `/readup` in Claude and `/prompts:readup` in Codex. Each must report its
+1. Run `/readup` in Claude and `$source-command-readup` in Codex. Each must report its
    authoritative `id|started_at`; record the two IDs. They must differ.
 2. Repeat readup in each conversation. Each must retain its own original ID.
 3. Give each a distinct read-only task: Claude describes the audit result states;
    Codex describes the whole-day revision check. These give the summaries two
    recognizable contributions without concurrent repository edits.
-4. Run Claude's `/handoff-full`, then Codex's `/prompts:handoff-full`. Each must update and
+4. Run Claude's `/handoff-full`, then Codex's `$source-command-handoff-full`. Each must update and
    close only its retained session row. The second daily account must retain
    both contributions and use the exact counts supplied by `today-context`.
 5. Resume the same Codex conversation in a fresh launcher window and repeat

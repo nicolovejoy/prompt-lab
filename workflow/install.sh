@@ -64,10 +64,9 @@ for cmd in "$REPO_DIR/workflow/commands/"*.md; do
 done
 
 # --- Codex custom prompts (same source, allowed-tools stripped) ---
-# Custom prompts must be top-level ~/.codex/prompts/<name>.md files,
-# invoked as /prompts:<name>. Nested <name>/SKILL.md files are not discovered.
-# Strip allowed-tools rather than maintain a second command body. Migration
-# to explicit-only skills is separate work; do not mix the two layouts.
+# Custom prompts are deprecated but retained for compatibility with older Codex
+# releases. Current Codex installs use the explicit-only skills rendered below.
+# Strip allowed-tools rather than maintain a second command body.
 CODEX_PROMPTS_DIR="$HOME/.codex/prompts"
 mkdir -p "$CODEX_PROMPTS_DIR"
 for cmd in "$REPO_DIR/workflow/commands/"*.md; do
@@ -83,6 +82,39 @@ for cmd in "$REPO_DIR/workflow/commands/"*.md; do
     install_file "$rendered" "$CODEX_PROMPTS_DIR/$name" "codex prompt $name"
     rm -f "$rendered"
     echo "Copied codex prompt: $name → $CODEX_PROMPTS_DIR/$name"
+done
+
+# --- Codex user skills (primary Codex command interface) ---
+# Codex discovers user skills under ~/.agents/skills/<name>/SKILL.md. Keep the
+# source-command-* names chosen by Codex's Claude-import migration so existing
+# installations are repaired in place. Unlike that automatic migration, this
+# renderer changes only the frontmatter name and removes Claude's allowed-tools;
+# paths and project-document instructions in the canonical command body remain
+# byte-for-byte intact. Explicit-only policy preserves slash-command semantics:
+# these workflows run when selected, never merely because prose resembles them.
+CODEX_SKILLS_DIR="$HOME/.agents/skills"
+for cmd in "$REPO_DIR/workflow/commands/"*.md; do
+    command_name=$(basename "$cmd" .md)
+    skill_name="source-command-$command_name"
+    skill_dir="$CODEX_SKILLS_DIR/$skill_name"
+    mkdir -p "$skill_dir/agents"
+
+    rendered=$(mktemp -t "codex-skill.XXXXXX")
+    awk -v skill_name="$skill_name" '
+        NR == 1 && $0 == "---" { in_frontmatter = 1; print; next }
+        in_frontmatter && $0 == "---" { in_frontmatter = 0; print; next }
+        in_frontmatter && /^allowed-tools:/ { next }
+        in_frontmatter && /^name:/ { print "name: \"" skill_name "\""; next }
+        { print }
+    ' "$cmd" > "$rendered"
+    install_file "$rendered" "$skill_dir/SKILL.md" "codex skill $skill_name"
+    rm -f "$rendered"
+
+    policy=$(mktemp -t "codex-skill-policy.XXXXXX")
+    printf 'policy:\n  allow_implicit_invocation: false\n' > "$policy"
+    install_file "$policy" "$skill_dir/agents/openai.yaml" "codex skill policy $skill_name"
+    rm -f "$policy"
+    echo "Copied codex skill: $skill_name → $skill_dir/"
 done
 
 # --- bin scripts (everything in workflow/bin/) ---
@@ -218,3 +250,4 @@ EOF
 
 echo ""
 echo "Done. Restart Claude Code for hook changes to take effect."
+echo "Codex skills update automatically; if they do not appear, start a new Codex session."

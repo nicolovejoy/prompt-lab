@@ -15,7 +15,12 @@ and closes its own row; `handoff-full` explicitly adds recaps;
 `workflow-maintenance` owns docs and backlog work. Readup no longer backfills.
 Nightly discovers prompt-free sessions and stale completed days, uses bounded
 whole-day input and guarded daily saves, and refreshes stale completed weeks.
-Nico must reinstall and smoke-test this follow-up. No permission profile is installed.
+The first live Codex smoke exposed that CLI 0.154.0 rejected the deprecated
+`/prompts:*` interface despite correctly installed files; plain-text attempts merely
+improvised a partial readup and never registered a session. The installer now also
+renders the canonical commands as explicit-only `$source-command-*` user skills,
+repairing the desktop migrator's incorrect `~/.Codex/bin` and `AGENTS.md` rewrites.
+Nico must reinstall and smoke-test this skill path. No permission profile is installed.
 
 Remaining gates: lean installed-command smoke, actual before/after usage
 measurement, fresh-launcher resume/fork, permission-profile acceptance, and the

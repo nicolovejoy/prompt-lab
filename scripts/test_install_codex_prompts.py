@@ -1,6 +1,6 @@
 """
-scripts/test_install_codex_prompts.py — verify install.sh's Codex-prompt
-distribution step exists and that its frontmatter transform is correct.
+scripts/test_install_codex_prompts.py — verify install.sh's Codex prompt and
+user-skill distribution steps and their frontmatter transforms.
 
 Does NOT run install.sh (it writes into the real $HOME and loads a real
 launchd job — see plan Global Constraints). Instead: (1) a structural check
@@ -31,7 +31,7 @@ def check(name, condition, detail=""):
         failures.append(name)
 
 
-# 1. Structural: install.sh must reference ~/.codex/prompts and strip allowed-tools.
+# 1. Structural: retain legacy prompts and install current explicit-only skills.
 with open(os.path.join(REPO_DIR, "workflow", "install.sh")) as f:
     install_src = f.read()
 
@@ -42,6 +42,14 @@ check(
 check(
     "install.sh strips allowed-tools when writing Codex prompts",
     "allowed-tools" in install_src and "grep -v" in install_src,
+)
+check(
+    "install.sh references $HOME/.agents/skills",
+    ".agents/skills" in install_src,
+)
+check(
+    "installed Codex skills are explicit-only",
+    "allow_implicit_invocation: false" in install_src,
 )
 
 # 2. Functional: the transform must drop exactly the allowed-tools line (when
@@ -83,9 +91,12 @@ for path in command_files:
         any(line.startswith("description:") for line in transformed_lines),
     )
 
-# Run the real distribution block against a disposable destination. This catches
-# wrong installation layouts that the frontmatter-only checks above cannot.
-block = install_src.split('# --- Codex custom prompts', 1)[1].split('# --- bin scripts', 1)[0]
+# Run the real legacy-prompt distribution block against a disposable destination.
+# This catches wrong installation layouts that the frontmatter-only checks above
+# cannot.
+block = install_src.split('# --- Codex custom prompts', 1)[1].split(
+    '# --- Codex user skills', 1
+)[0]
 block = '# --- Codex custom prompts' + block
 block = block.replace('CODEX_PROMPTS_DIR="$HOME/.codex/prompts"',
                       'CODEX_PROMPTS_DIR="$CODEX_TEST_DEST"')
@@ -107,6 +118,71 @@ with tempfile.TemporaryDirectory(prefix='codex-prompt-install-') as dest:
                 actual = f.read()
         check(f'{os.path.basename(path)}: installed body matches source transform',
               actual == expected)
+
+# Run the real skill distribution block too. The skill renderer must preserve the
+# canonical command body and paths, changing only the frontmatter name and removing
+# Claude's allowed-tools line. Codex's automatic Claude importer rewrote both and
+# produced unusable ~/.Codex/bin paths; this test pins the narrower transform.
+skill_block = install_src.split('# --- Codex user skills', 1)[1].split(
+    '# --- bin scripts', 1
+)[0]
+skill_block = '# --- Codex user skills' + skill_block
+skill_block = skill_block.replace(
+    'CODEX_SKILLS_DIR="$HOME/.agents/skills"',
+    'CODEX_SKILLS_DIR="$CODEX_TEST_DEST"',
+)
+with tempfile.TemporaryDirectory(prefix='codex-skill-install-') as dest:
+    env = dict(os.environ, REPO_DIR=REPO_DIR, CODEX_TEST_DEST=dest)
+    run = subprocess.run(
+        ['bash', '-e', '-c', 'install_file() { cp "$1" "$2"; }\n' + skill_block],
+        env=env, capture_output=True, text=True)
+    check('real Codex skill distribution block succeeds', run.returncode == 0, run.stderr)
+
+    expected_dirs = sorted(
+        f"source-command-{os.path.splitext(os.path.basename(path))[0]}"
+        for path in command_files
+    )
+    check('installed skills use source-command-* directories',
+          sorted(os.listdir(dest)) == expected_dirs)
+
+    for path in command_files:
+        command_name = os.path.splitext(os.path.basename(path))[0]
+        skill_name = f"source-command-{command_name}"
+        skill_dir = os.path.join(dest, skill_name)
+        skill_path = os.path.join(skill_dir, 'SKILL.md')
+        policy_path = os.path.join(skill_dir, 'agents', 'openai.yaml')
+
+        with open(path) as f:
+            expected_lines = []
+            in_frontmatter = False
+            for line_number, line in enumerate(f, start=1):
+                if line_number == 1 and line.rstrip('\n') == '---':
+                    in_frontmatter = True
+                    expected_lines.append(line)
+                elif in_frontmatter and line.rstrip('\n') == '---':
+                    in_frontmatter = False
+                    expected_lines.append(line)
+                elif in_frontmatter and line.startswith('allowed-tools:'):
+                    continue
+                elif in_frontmatter and line.startswith('name:'):
+                    expected_lines.append(f'name: "{skill_name}"\n')
+                else:
+                    expected_lines.append(line)
+        expected = ''.join(expected_lines)
+
+        actual = None
+        if os.path.isfile(skill_path):
+            with open(skill_path) as f:
+                actual = f.read()
+        check(f'{skill_name}: installed body matches narrow source transform',
+              actual == expected)
+
+        policy = None
+        if os.path.isfile(policy_path):
+            with open(policy_path) as f:
+                policy = f.read()
+        check(f'{skill_name}: explicit-only policy installed',
+              policy == 'policy:\n  allow_implicit_invocation: false\n')
 
 print()
 if failures:

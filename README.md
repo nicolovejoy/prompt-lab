@@ -27,11 +27,14 @@ cd ~/src/prompt-lab
 
 This will:
 - Create a Python virtualenv and install dependencies
-- Copy slash commands to `~/.claude/commands/` and Codex prompts to `~/.codex/prompts/`
+- Copy slash commands to `~/.claude/commands/` and explicit-only Codex skills to
+  `~/.agents/skills/source-command-*/` (deprecated prompt copies are retained for
+  compatibility)
 - Generate and load launchd plists (macOS scheduled jobs)
 - Print the `~/.claude/settings.json` snippet to add manually
 
 Then add the printed snippet to `~/.claude/settings.json` and restart Claude Code.
+Codex skills update automatically; start a new Codex session if they do not appear.
 
 ### 2. Configure environment
 
@@ -123,10 +126,12 @@ All commands live in `~/.claude/commands/` and work across every repo. Source of
 
 `/workflow-maintenance` — explicitly review project docs, memory and maintenance backlog
 
-Codex uses `/prompts:readup`, `/prompts:handoff`, `/prompts:handoff-full` and
-`/prompts:workflow-maintenance`. Readup does no summary backfill; nightly handles
-completed Pacific days, including sessions without prompt logs. Recaps reach the
-cloud after a successful nightly synthesis and sync.
+Codex uses `$source-command-readup`, `$source-command-handoff`,
+`$source-command-handoff-full` and `$source-command-workflow-maintenance`. Select a
+skill by typing `$` in Codex; these skills are explicit-only and never run merely
+because prose resembles their description. Readup does no summary backfill; nightly
+handles completed Pacific days, including sessions without prompt logs. Recaps reach
+the cloud after a successful nightly synthesis and sync.
 
 `/review [N] [project] [-v]` — session review across projects for last N days (default: 7), optional verbose mode for non-technical audience
 

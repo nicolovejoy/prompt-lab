@@ -298,8 +298,10 @@ the archive write must be separately observable.
   `send.` subdomains consume no slot; `span.`/`mail.` subdomains are separate entries.
   `musicforge.org`'s SPF must be **extended** (`include:icloud.com`), never replaced.
 - **Dual-agent commands (Claude Code + Codex) — 2026-09-12.** `workflow/commands/*.md` is the
-  single source; `install.sh` distributes to `~/.claude/commands/` and `~/.codex/prompts/`
-  (allowed-tools stripped); Codex `/readup` falls back to the installed `session-context.sh`.
+  single source; `install.sh` distributes to `~/.claude/commands/` and renders
+  explicit-only `~/.agents/skills/source-command-*/` skills (deprecated
+  `~/.codex/prompts/` copies remain for compatibility). Codex readup falls back to the
+  installed `session-context.sh`.
   Design: `docs/superpowers/specs/2026-09-12-dual-agent-commands-design.md`.
 
 <!-- SHARED-CONVENTIONS:BEGIN v=a203b3e87f6b — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->

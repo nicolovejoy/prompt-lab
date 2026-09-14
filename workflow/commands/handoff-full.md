@@ -4,7 +4,7 @@ description: Close a session and refresh the whole-day summary and weekly rollup
 allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(python3:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Read, Write
 ---
 
-Use only when explicitly requested. Follow `/handoff` (Codex: `/prompts:handoff`)
+Use only when explicitly requested. Follow `/handoff` (Codex: `$source-command-handoff`)
 through saving the session summary and capturing commits, but defer its final
 `end-session` until the synthesis below is saved. Do not run document maintenance.
 Stop and report any failed operation or traceback; never claim a failed save succeeded.

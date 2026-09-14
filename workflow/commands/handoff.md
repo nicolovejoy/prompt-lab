@@ -6,7 +6,7 @@ allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(python3:*), Bash(~/.claude/bin
 
 Close out this session briefly. Do not delegate. Routine handoff saves local session
 continuity; nightly synthesis produces daily and weekly recaps. For an immediate
-recap use `/handoff-full` (Codex: `/prompts:handoff-full`). Document and memory
+recap use `/handoff-full` (Codex: `$source-command-handoff-full`). Document and memory
 maintenance belongs to explicit `/workflow-maintenance`, not routine closeout.
 
 Stop on any failed write or Python traceback and report the error. Never claim
