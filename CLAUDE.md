@@ -381,7 +381,10 @@ the archive write must be separately observable.
   (2026-08-20) — two loaded readers means two emails a night. The mini runs nothing.
 - **DB ownership is federated — Option B, 2026-08-10.** Raw prompts stay machine-local; each
   machine pushes processed rows to Turso, the merge point. `daily_summaries` clobber is solved
-  by the per-machine parts table; `weekly_rollups` still isn't, deferred until it bites.
+  by the per-machine parts table across MACHINES; `weekly_rollups` still isn't, deferred until
+  it bites. That parts table doesn't cover two AGENTS on the SAME machine (e.g. Claude + Codex
+  both on musicforge) — `daily_summaries` is last-write-wins there too (confirmed 2026-09-14,
+  not yet hit). Nico's workaround: run `/handoff` from Claude only when both agents are active.
 - **Prompt ratings are abandoned (2026-08-14)** — columns exist, 0 rows ever rated, no code
   ever wrote them. They stay (harmless); don't revive without a new idea.
 - **Ask is mothballed, not deleted** — `web/api/ask.py` and the modal are reachable from
