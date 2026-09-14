@@ -2,11 +2,11 @@
 
 **Workflow status:** `docs/codex-workflow-roadmap.md` is authoritative for current
 implementation and remaining gates; `docs/codex-workflow-validation.md` holds
-smoke tests/results. The paired Songpath test passed. The lean-command follow-up
-needs Nico's reinstall and smoke test through the explicit
-`$source-command-readup` / `$source-command-handoff` skills; the deprecated
-`/prompts:*` interface failed its first live check. Permission-profile rollout is
-separate.
+smoke tests/results. The paired Songpath test passed. After reinstalling, the
+explicit `$source-command-readup` skill passed its live invocation and stable-ID
+checks; `$source-command-handoff`, `$source-command-handoff-full`, and the
+fresh-launcher resume/fork checks remain. The deprecated `/prompts:*` interface
+failed its live check. Permission-profile rollout is separate.
 
 **1Password preference:** when Nico requests a new item, create its secret field with the
 literal placeholder `replace-this-value`; Nico pastes the real value into 1Password. `env.tpl`

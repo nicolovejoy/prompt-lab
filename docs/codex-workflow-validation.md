@@ -38,9 +38,11 @@ that readup had not run. The desktop Claude importer had created a discoverable
 `~/.claude/bin` to nonexistent `~/.Codex/bin` and `CLAUDE.md` to `AGENTS.md`.
 
 The source installer now renders the canonical command files directly to
-explicit-only `~/.agents/skills/source-command-*/` skills. Reinstall and validate
-that path with `$source-command-readup`; the result is pending and must report the
-authoritative session identity before any later smoke step counts.
+explicit-only `~/.agents/skills/source-command-*/` skills. After reinstalling,
+the `$source-command-readup` live smoke passed in a fresh Codex session. Two
+successive invocations reported the same authoritative identity,
+`610|2026-09-14 22:50:41`. A read-only database check confirmed that row `610`
+belongs to Songpath, remained open, and had no session summary after readup.
 
 Readup also created an initial daily summary before either handoff. Its stored
 session count was zero despite the two open sessions; Claude's guarded handoff
@@ -53,9 +55,9 @@ Source verification after the command-interface follow-up: all 26 standalone
 script suites passed locally, including exact rendering of every command into a
 skill and its explicit-only policy. Ruff, installer shell syntax and whitespace
 checks passed. Heartbeat tests required permission to bind a local test server;
-session-context tests required access to their installed-state marker. Reinstall
-is still required before installed lean-command acceptance can resume. Live
-nightly acceptance remains pending.
+session-context tests required access to their installed-state marker. The
+installed readup and repeated-identity checks now pass. Handoff, full handoff,
+fresh-launcher resume/fork, and live nightly acceptance remain pending.
 
 Run the automated tests from `/Users/nico/src/prompt-lab`. They use disposable
 local databases and a stubbed model response; no live API calls or history edits:
