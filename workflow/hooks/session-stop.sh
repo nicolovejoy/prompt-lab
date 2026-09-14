@@ -7,7 +7,11 @@ INPUT=$(cat)
 
 # Get transcript path and project
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty')
-PROJECT=$(echo "$INPUT" | jq -r '.cwd // empty' | xargs basename)
+HOOK_REAL=$(readlink -f "$0" 2>/dev/null || echo "$0")
+HOOK_BIN="$(dirname "$HOOK_REAL")/../bin"
+. "$HOOK_BIN/_gc_project.sh"
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+PROJECT=$(gc_resolve_project "$CWD")
 
 if [[ -z "$TRANSCRIPT_PATH" || ! -f "$TRANSCRIPT_PATH" ]]; then
     exit 0
@@ -47,17 +51,8 @@ if [[ -n "$PROJECT" && -n "$TOKENS" ]]; then
     if [[ -z "$CLAUDE_SESSION_ID" ]]; then
         CLAUDE_SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl)
     fi
-    SESSION_ID=""
-    if [[ -n "$CLAUDE_SESSION_ID" ]]; then
-        CSID=$(echo "$CLAUDE_SESSION_ID" | sed "s/'/''/g")
-        SESSION_ID=$(sqlite3 ~/.claude/prompt-history.db "SELECT id FROM sessions WHERE claude_session_id='$CSID' ORDER BY id DESC LIMIT 1;" 2>/dev/null)
-    fi
-    if [[ -z "$SESSION_ID" ]]; then
-        SESSION_ID=$(sqlite3 ~/.claude/prompt-history.db "SELECT id FROM sessions WHERE project='$PROJECT' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;" 2>/dev/null)
-    fi
-    if [[ -n "$SESSION_ID" ]]; then
-        sqlite3 ~/.claude/prompt-history.db "UPDATE sessions SET token_count=$TOKENS WHERE id=$SESSION_ID;" 2>/dev/null
-    fi
+    python3 "$HOOK_BIN/_gc_session_identity.py" tokens "$PROJECT" "$CLAUDE_SESSION_ID" "$TOKENS" || exit $?
+
 fi
 
 printf '\nSession ended — final context: %d%% (%d tokens)\n' "$PCT" "$TOKENS" >&2

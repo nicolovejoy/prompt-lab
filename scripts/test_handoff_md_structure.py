@@ -31,12 +31,18 @@ with open(PATH) as f:
 check("no hardcoded model='claude-code'", "model='claude-code'" not in content)
 check(
     "daily-summary persist uses the agent-choice placeholder",
-    "model='<claude-code|codex>'" in content,
+    '"model": "<claude-code|codex>"' in content,
 )
 check(
     "weekly-rollup persist uses the agent-choice placeholder",
-    content.count("model='<claude-code|codex>'") == 2,
+    content.count("model='<claude-code|codex>'") == 1,
 )
+
+check("handoff validates the retained session ID", "current-session <session_id>" in content)
+check("handoff gathers whole-day context", "gc-read.sh today-context" in content)
+check("handoff uses guarded daily persistence", "gc-write.sh save-daily-summary" in content)
+check("handoff retains context revision", "context_revision" in content)
+check("handoff preserves earlier daily prose", "existing_daily" in content)
 
 check("handoff has the weekly CLAUDE.md size check", "## 2.5 CLAUDE.md size check" in content)
 check("size check uses the state marker", "claude-trim-" in content)

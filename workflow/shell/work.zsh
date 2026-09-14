@@ -103,6 +103,7 @@ _work_launch() {
   local agent_label="Claude"
   [[ "$agent" == codex ]] && agent_label="Codex"
   local title="${(U)name[1]}${name[2,-1]} -- $agent_label"
+  local session_scope="${agent}-$(uuidgen)"
   # Quote shell arguments before passing commands as AppleScript argv.
   # Project names may contain spaces, quotes, or shell metacharacters.
   local title_cmd="printf '\\033]0;%s\\a' ${(q)title}"
@@ -110,7 +111,7 @@ _work_launch() {
   local shell_cmd="cd -- ${(q)proj_dir} && precmd() { $title_cmd; } && precmd"
   local agent_cmd="claude --name ${(q)title}"
   [[ "$agent" == codex ]] && agent_cmd="codex"
-  local top_cmd="$shell_cmd && iterm_tab_color $r $g $b && iterm_badge ${(q)title} && clear && $agent_cmd"
+  local top_cmd="$shell_cmd && export GC_SESSION_SCOPE=${(q)session_scope} && iterm_tab_color $r $g $b && iterm_badge ${(q)title} && clear && $agent_cmd"
   local bottom_rows=$(( WORK_ROWS * 15 / 100 ))
 
   osascript - "$title" "$top_cmd" "$shell_cmd" "$WORK_COLS" "$WORK_ROWS" "$bottom_rows" <<'APPLESCRIPT'

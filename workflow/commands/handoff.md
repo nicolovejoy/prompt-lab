@@ -18,17 +18,28 @@ If there are uncommitted changes, list the changed files and ask the user whethe
 
 ## 1. Get session info
 
+Use the authoritative `<session_id>|<started_at>` retained from `/readup`.
+Validate that exact ID before writing anything:
+
 ```bash
-~/.claude/bin/gc-read.sh current-session
+~/.claude/bin/gc-read.sh current-session <session_id>
 ```
+
+If the ID is missing, differs, or validation fails, stop and report it. Never
+fall back to another open project session. If readup has not run in this
+conversation, register it first and retain the returned identity.
 
 ## 2. Do in parallel
 
 - **Capture commits** since session start (the `Z` suffix is load-bearing: `started_at` is stored UTC, and without it `git log` reads the timestamp as local time and silently finds zero commits — issue #48):
   ```bash
-  git log --oneline --since="<started_at>Z" --format="%H|%s"
+  git log --since="<started_at>Z" --format="%H|%ct|%s"
   ```
-  Insert each: `INSERT OR IGNORE INTO commits (hash, message, session_id) VALUES (...);`
+  Insert each hash, message and session ID with the commit's actual UTC timestamp:
+  `INSERT OR IGNORE INTO commits (hash, message, timestamp, session_id) VALUES (..., ..., datetime(<unix_seconds>, 'unixepoch'), ...);`
+  `%ct` supplies Unix seconds. Do not use insertion time: a handoff after midnight
+  would otherwise move yesterday's commits into today's counts. Bind text values
+  as SQL parameters rather than interpolating commit messages.
 
 - **Write session summary** (50 words max): what was done, what's next. Pipe the summary via stdin so single quotes / metacharacters don't break escaping:
   ```bash
@@ -66,18 +77,31 @@ echo "claude_md_bytes=${size:-0} trim_age_d=$(( ($(date +%s) - mt) / 86400 ))"
 
 ## 3. Synthesize daily summary
 
-Get today's counts:
+After the session summary and commits in step 2 have been saved, get the whole
+Pacific calendar day as bounded JSON:
 
 ```bash
-~/.claude/bin/gc-read.sh today-counts
+~/.claude/bin/gc-read.sh today-context
 ```
 
-Using what you know from this session, write a daily summary to `/tmp/gc-daily-<project>-<session_id>.json` (substitute the actual project basename and session_id from step 1 — this avoids races when handoff runs in multiple repos concurrently) with this structure:
+Synthesize from every session summary, the prompts and commits, and
+`existing_daily` (the prior daily prose and decisions), together with this
+conversation. Preserve the other agents' work; do not replace the day with an
+account of only this session. Copy the exact `counts`, `project`, `date`, and
+`context_revision` and `synthesis_session_id` from the output, even if `truncation` reports clipped or
+omitted input. Sessions include those that started, ended, or recorded work
+that day, plus this conversation if it continued past midnight without a prompt
+hook; commits are deduplicated by hash. Raw context is machine-local.
+
+Write `/tmp/gc-daily-<project>-<session_id>.json` using the validated ID:
 
 ```json
 {
-  "project": "<basename of pwd>",
-  "date": "<today YYYY-MM-DD>",
+  "project": "<project from today-context>",
+  "date": "<date from today-context>",
+  "context_revision": "<context_revision from today-context>",
+  "synthesis_session_id": <synthesis_session_id from today-context>,
+  "model": "<claude-code|codex>",
   "summary": "<2-4 sentence summary of today's work — WHAT was done and WHY>",
   "key_decisions": ["<decision 1>", "<decision 2>"],
   "prompt_count": <n>,
@@ -91,16 +115,14 @@ Replace `<claude-code|codex>` with whichever you are running as (or the specific
 IMPORTANT: use these exact command forms to persist the daily summary:
 
 ```bash
-python3 -c "
-import json, sys, os; sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.path.expanduser('~/src/prompt-lab')))
-from store import get_store
-d = json.load(open('/tmp/gc-daily-<project>-<session_id>.json'))
-s = get_store(); s.migrate()
-s.upsert_daily_summary(model='<claude-code|codex>', **d)
-s.close()
-print('Daily summary saved for', d['project'], d['date'])
-"
+~/.claude/bin/gc-write.sh save-daily-summary /tmp/gc-daily-<project>-<session_id>.json
 ```
+
+This checks the context revision and counts under a write lock, then archives
+replaced prose before saving. If it reports that the day context changed, fetch
+`today-context` again and revise the synthesis using the new input and revision.
+Do not bypass the check or merely replace the revision in an old draft. If the
+day rolled over, regenerate the draft for the date the new context reports.
 
 ## 4. Check for weekly rollup
 

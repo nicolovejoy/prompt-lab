@@ -47,6 +47,9 @@ check("readup keeps the CI error rule", "couldn't read CI status" in content)
 check("readup keeps the public-drift fix pointer", "unpublish_public.py" in content)
 check("readup keeps ListAgents", "ListAgents" in content)
 check("readup keeps lazy synthesis", "unsummarized-context" in content)
+check("readup retains authoritative registration identity", "<session_id>|<started_at>" in content)
+check("readup reports incomplete public audit", "`incomplete`" in content)
+check("readup reports failed remote fetch", "REMOTE=error" in content)
 check("readup is materially smaller", len(content) < 9000, f"{len(content)} bytes")
 
 # Table-drift guard: every KEY the script can emit must be named in readup.md's

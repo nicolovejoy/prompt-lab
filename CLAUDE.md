@@ -68,13 +68,12 @@ The full chronological log — and the narrative behind everything below, under 
 SessionStart injection went from 194 KB to 8.5 KB (handoff headlines newer than 30d + counts,
 `HANDOFF_HEADLINE_DAYS` overrides), readup's seven probes run as one `readup-checks.sh` call, CLAUDE.md
 is 33 KB (was 49; rule-floor is ~30 KB, so the weekly `/handoff` §2.5 trim fires only above 35 KB).
-Left open: (1) the first real `/readup` on both tools is the acceptance test; (2) **AGENTS.md gap
-fixed 2026-09-14** — `readup.md` step 5 no longer treats `CONVENTIONS_AGENTS=absent` as fine; it now
-offers `sync-shared-md.sh --apply ./AGENTS.md` plus a "read CLAUDE.md first" preamble line, per repo.
-Needs `./workflow/install.sh` (Nico runs it) to reach `~/.claude/commands/` and `~/.codex/prompts/`
-before it's live; (3) archive sweep of 127 active handoff entries across 14 channels (ibuild4you 44) —
-unhurried, needs Nico's memory; (4) §2.5 checks CLAUDE.md only, not AGENTS.md; (5) Testing section's
-"~243 tests across 7 files" is stale — 22 files now. Plan: `docs/superpowers/plans/2026-09-13-session-context-diet.md`.
+The 2026-09-14 follow-up adds AGENTS.md, distinguishes audit crashes/incomplete
+checks from confirmed drift, and fixes the stale Testing inventory below.
+Left: Nico's installer + real readup/handoff acceptance; archive sweep of 127
+active handoff entries across 14 channels (unhurried, needs Nico's memory);
+§2.5 still checks CLAUDE.md only. Original plan:
+`docs/superpowers/plans/2026-09-13-session-context-diet.md`.
 
 **Codex workflow checkpoint — 2026-09-13, branch `codex/agent-work-launchers`.** `work` keeps
 Claude, `cx` launches Codex with the same three-pane layout. **iTerm blocker diagnosed and
@@ -83,14 +82,18 @@ shell function, not live code — commit `eab5b13` (2026-09-13 10:11am) had alre
 crashing AppleScript line (`set title of current tab to windowTitle`, the same iTerm 3.6.11
 incompatibility fixed earlier for `cx songpath`); any tab opened before that fix+reinstall
 kept the old in-memory function. Verified with a real `cx musicforge-codex` launch in a fresh
-shell today: window + all 3 panes created, no error. Remaining scope, in order: (1)
-permission-profile rollout checks (no profile is installed or claimed safe), (2) session
-identity, (3) readup/handoff end to end. **Don't trust `gc-read.sh
-current-session` from Codex yet** — this readup made row 574, the pointer returned row 573.
-Nico runs the installer himself. Nico approved renaming safe templates to `env.tpl` /
-`env.example`; the rename and a candidate profile are in the working tree, profile NOT
-installed. `docs/codex-workflow-roadmap.md` (gates), `docs/codex-workflow-checkpoint.md`
-(investigation).
+shell today: window + all 3 panes created, no error. Session identity and whole-day handoff are now integrated in source (2026-09-14):
+`_gc_session_identity.py` owns native/scoped registration, lookup, summary/end
+writes and Claude hook binding; local `session_identity_bindings` preserves
+launcher ownership after UUID adoption. Pointer files do not confer scoped
+ownership. `today-context` includes the whole Pacific day and existing daily
+prose; `save-daily-summary` checks revision/counts under a write lock before
+archiving/replacing. Isolated identity, day, and temporary-installation tests
+pass. Nico still runs the installer and live paired-conversation acceptance:
+`docs/codex-workflow-validation.md`. Until then, installed helpers remain old;
+do not trust the legacy shared project pointer from Codex. Permission-profile
+rollout remains separate and uninstalled. `docs/codex-workflow-roadmap.md`
+tracks its gates; `docs/codex-workflow-checkpoint.md` retains the investigation.
 
 **1Password preference:** when Nico requests a new item, create its secret field with the
 literal placeholder `replace-this-value`; Nico pastes the real value into 1Password. `env.tpl`
@@ -349,9 +352,10 @@ Run each directly:
 for f in scripts/test_*.py; do .venv/bin/python "$f"; done
 ```
 
-~243 tests across 7 files as of 2026-08-04 (162 in `test_web_api.py`, plus alias-layer
-22, cost-pipeline 22, public-draft 21, session-identity 9, heartbeat 7, and
-`test_imports.py`, which is an import smoke script with no test cases).
+The standalone suites live in `scripts/test_*.py`; `.github/workflows/test.yml`
+lists the CI gate. Workflow changes additionally exercise isolated session
+identity, readup error states, whole-day context, and a temporary installation
+roundtrip. No test should use the real history database or publish data.
 `_health_mod(up=, hb=, ur=)` stubs the health endpoint; its Turso stub dispatches on
 the SQL because the pause lookup, the freshness lookups and the uptime upsert share
 `turso_query` and must not be conflated — pause fails open, freshness fails loud, and
@@ -382,9 +386,10 @@ the archive write must be separately observable.
 - **DB ownership is federated — Option B, 2026-08-10.** Raw prompts stay machine-local; each
   machine pushes processed rows to Turso, the merge point. `daily_summaries` clobber is solved
   by the per-machine parts table across MACHINES; `weekly_rollups` still isn't, deferred until
-  it bites. That parts table doesn't cover two AGENTS on the SAME machine (e.g. Claude + Codex
-  both on musicforge) — `daily_summaries` is last-write-wins there too (confirmed 2026-09-14,
-  not yet hit). Nico's workaround: run `/handoff` from Claude only when both agents are active.
+  it bites. For two agents on one machine, the new handoff source uses whole-day context
+  and revision-checked saves (2026-09-14). Until installed and live-verified,
+  Nico's workaround remains: run `/handoff` from Claude only. Other writers
+  (including nightly synthesis) keep their existing behavior.
 - **Prompt ratings are abandoned (2026-08-14)** — columns exist, 0 rows ever rated, no code
   ever wrote them. They stay (harmless); don't revive without a new idea.
 - **Ask is mothballed, not deleted** — `web/api/ask.py` and the modal are reachable from

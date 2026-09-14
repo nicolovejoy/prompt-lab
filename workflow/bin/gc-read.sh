@@ -19,26 +19,11 @@ GC_BIN_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
 . "$GC_BIN_DIR/_gc_project.sh"
 PROJECT="$(gc_resolve_project "$PWD")"
 
-POINTER="$HOME/.claude/state/current-session-$PROJECT"
 CMD="${1:-}"
 
-# The prompt hook writes the resolved session row id to POINTER on every prompt.
-# Prefer it: "newest open row for this project" mis-resolves as soon as a
-# mid-session /handoff has closed the row. Falls back to the old query for a
-# brand-new session that hasn't submitted a prompt yet.
+# Scoped ownership is resolved from SQLite, never a shared project pointer.
 resolve_session_id() {
-  local sid=""
-  if [ -f "$POINTER" ]; then
-    sid="$(tr -dc '0-9' < "$POINTER" 2>/dev/null || true)"
-    # Ignore a pointer to a row that no longer exists (e.g. a restored DB).
-    if [ -n "$sid" ] && [ -z "$(sqlite3 "$DB" "SELECT 1 FROM sessions WHERE id=$sid;")" ]; then
-      sid=""
-    fi
-  fi
-  if [ -z "$sid" ]; then
-    sid="$(sqlite3 "$DB" "SELECT id FROM sessions WHERE project='$PROJECT' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;")"
-  fi
-  printf '%s' "$sid"
+  python3 "$GC_BIN_DIR/_gc_session_identity.py" resolve-id "$PROJECT"
 }
 
 case "$CMD" in
@@ -46,11 +31,7 @@ case "$CMD" in
     echo "$PROJECT"
     ;;
   current-session)
-    # id|started_at of the current session (contract: slash commands parse this)
-    SID="$(resolve_session_id)"
-    if [ -n "$SID" ]; then
-      sqlite3 "$DB" "SELECT id, started_at FROM sessions WHERE id=$SID;"
-    fi
+    python3 "$GC_BIN_DIR/_gc_session_identity.py" resolve "$PROJECT" "${@:2}"
     ;;
   last-summary)
     # summary|ended_at of the most recent ENDED session
@@ -62,6 +43,16 @@ case "$CMD" in
     if [ -n "$SID" ]; then
       sqlite3 "$DB" "SELECT substr(prompt, 1, 200) FROM prompts WHERE session_id=$SID ORDER BY id DESC LIMIT 5;"
     fi
+    ;;
+  today-context)
+    PROMPT_LAB_DIR="${PROMPT_LAB_DIR:-$HOME/src/prompt-lab}"
+    SID="$(resolve_session_id)"
+    if [ -z "$SID" ]; then
+      echo "No current session; run readup before gathering handoff context" >&2
+      exit 3
+    fi
+    export PROMPT_LAB_DIR
+    "$PROMPT_LAB_DIR/.venv/bin/python" "$GC_BIN_DIR/_gc_day_context.py" "$PROJECT" --session-id "$SID"
     ;;
   today-counts)
     # today's prompt/session/commit counts for this project.
@@ -108,7 +99,7 @@ else:
     sqlite3 -header "$DB" "SELECT ds.week_start, ds.days, ds.ids, ds.summaries, ds.prompts, ds.sessions, ds.commits FROM (SELECT date(date, 'weekday 0', '-6 days') as week_start, COUNT(*) as days, GROUP_CONCAT(id) as ids, GROUP_CONCAT(summary, ' | ') as summaries, SUM(prompt_count) as prompts, SUM(session_count) as sessions, SUM(commit_count) as commits FROM daily_summaries WHERE project='$PROJECT' AND date < date('now', 'weekday 0', '-6 days') GROUP BY week_start) ds LEFT JOIN weekly_rollups wr ON wr.project='$PROJECT' AND wr.week_start = ds.week_start WHERE wr.id IS NULL ORDER BY ds.week_start DESC;"
     ;;
   *)
-    echo "usage: gc-read.sh {project|current-session|last-summary|pulse-prompts|today-counts|weekly-rollup-check|unsummarized-context}" >&2
+    echo "usage: gc-read.sh {project|current-session [id]|last-summary|pulse-prompts|today-context|today-counts|weekly-rollup-check|unsummarized-context}" >&2
     exit 2
     ;;
 esac

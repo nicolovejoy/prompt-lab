@@ -20,12 +20,19 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 && in_repo=1
 # --- 2. remote check (no pull) ------------------------------------------------
 if [ "$in_repo" = 1 ]; then
   cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
-  git fetch --quiet --all --prune 2>/dev/null
-  echo "REMOTE=$(git status -sb 2>/dev/null | head -1)"
-  echo "TRACKING:"
-  git for-each-ref --format='%(refname:short) %(upstream:short) %(upstream:track)' refs/heads | awk '$3 != "" {print "  " $0}'
-  echo "REMOTE_ONLY:"
-  git branch -r --no-merged 2>/dev/null | grep -v HEAD | sed 's/^/  /'
+  fetch_out="$(git fetch --quiet --all --prune 2>&1)"; fetch_rc=$?
+  if [ "$fetch_rc" -eq 0 ]; then
+    echo "REMOTE=$(git status -sb 2>/dev/null | head -1)"
+    echo "TRACKING:"
+    git for-each-ref --format='%(refname:short) %(upstream:short) %(upstream:track)' refs/heads | awk '$3 != "" {print "  " $0}'
+    echo "REMOTE_ONLY:"
+    git branch -r --no-merged 2>/dev/null | grep -v HEAD | sed 's/^/  /'
+  else
+    echo "REMOTE=error"
+    printf '%s\n' "$fetch_out" | head -3 | sed 's/^/  fetch: /'
+    echo "TRACKING=unavailable (fetch failed; local tracking data may be stale)"
+    echo "REMOTE_ONLY=unavailable (fetch failed)"
+  fi
   # --- 4. other agents --------------------------------------------------------
   wt="$(git worktree list 2>/dev/null)"
   if [ "$(printf '%s\n' "$wt" | wc -l | tr -d ' ')" -gt 1 ]; then
@@ -84,7 +91,8 @@ if [ "$in_repo" != 1 ]; then
 elif ! command -v gh >/dev/null 2>&1; then
   echo "CI_PROBE=skip reason=gh-not-installed"
 elif ! gh auth status >/dev/null 2>&1; then
-  echo "CI_PROBE=skip reason=not-authenticated"
+  echo "CI_PROBE=error"
+  echo "  Could not verify GitHub authentication; check gh auth status."
 else
   default_branch="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')"
   default_branch="${default_branch:-main}"
@@ -111,7 +119,13 @@ fi
 if [ "$project" = "prompt-lab" ] && [ -f scripts/check_public_allowlist.py ]; then
   py=python3; [ -x .venv/bin/python ] && py=.venv/bin/python
   pub_out="$("$py" scripts/check_public_allowlist.py 2>&1)"; rc=$?
-  case $rc in 0) echo "PUBLIC_DRIFT=ok" ;; 1) echo "PUBLIC_DRIFT=drift" ;; 2) echo "PUBLIC_DRIFT=config" ;; *) echo "PUBLIC_DRIFT=error" ;; esac
+  case $rc in
+    0) echo "PUBLIC_DRIFT=ok" ;;
+    10) echo "PUBLIC_DRIFT=drift" ;;
+    2) echo "PUBLIC_DRIFT=config" ;;
+    3) echo "PUBLIC_DRIFT=incomplete" ;;
+    *) echo "PUBLIC_DRIFT=error" ;;
+  esac
   [ $rc -ne 0 ] && printf '%s\n' "$pub_out" | sed 's/^/  /'
 else
   echo "PUBLIC_DRIFT=skip"

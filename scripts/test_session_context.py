@@ -4,11 +4,13 @@ session-start.sh agree, and that session-context.sh's own guard clauses work.
 
 Standalone runner (this repo doesn't use pytest — see CLAUDE.md Testing section).
 """
+import datetime
 import json
 import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 REPO_DIR = subprocess.run(
     ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True
@@ -104,9 +106,6 @@ check("session-start.sh exits 0 outside ~/src/*", hook_outside_result.returncode
 #    ~/src/.handoff with one channel matching this repo's basename and three
 #    entries: fresh, stale, and fresh-with-a-multiline-body. Bodies must never
 #    reach the output (they were 99% of a 194 KB injection on 2026-09-13).
-import datetime
-import tempfile
-
 project = os.path.basename(REPO_DIR)
 fresh = (datetime.date.today() - datetime.timedelta(days=3)).isoformat()
 stale = (datetime.date.today() - datetime.timedelta(days=90)).isoformat()

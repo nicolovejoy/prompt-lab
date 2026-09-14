@@ -6,17 +6,21 @@ allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin
 
 Start a session. Be concise.
 
-Note: a SessionStart hook usually already injected today's date, last-session summary, recent commits, working-tree state, and bulletin headlines (Claude Code sessions get this automatically). **If you already have that context, do not re-fetch it.** If you don't — Codex and any other agent without an equivalent hook won't — run this first:
+If SessionStart already injected the date, last summary, commits, working-tree state, and bulletin headlines, do not re-fetch them. Otherwise (including Codex without an equivalent hook), run:
 
 ```bash
 ~/.claude/bin/session-context.sh
 ```
 
-and read its output before continuing. Either way, this command exists for the side effects (session row, remote check, full CLAUDE.md read) that the hook deliberately skips.
+Read its output, then continue: registration, remote checks and the full CLAUDE.md read are still required.
 
 ## Do (in parallel)
 
-1. Register session: `~/.claude/bin/gc-write.sh register-session` (this will prompt — writes aren't auto-allowed)
+1. Register session: `~/.claude/bin/gc-write.sh register-session`. Retain the returned
+   `<session_id>|<started_at>` in this conversation and use that exact ID for
+   `/handoff`. Empty output or a failed registration is an error: report it,
+   never guess another window's session. Repeating registration in the same
+   scoped conversation returns the same row.
 2. Run the bundled read-only checks (fetch, branch tracking, worktrees, codex branches, resync marker, CLAUDE.md/AGENTS.md conventions drift, handoff flush, CI, public drift) in ONE call: `~/.claude/bin/readup-checks.sh`. It never pulls or modifies the tree. Interpret its output with the table under "Interpreting readup-checks" below.
 3. Read CLAUDE.md in full (focus on Next Steps + project conventions). The hook's injected context covers recent activity, but not project intent.
 4. Other agents on this repo: if the `ListAgents` tool is available, call it and flag any other local or cloud session whose name/task suggests this repo (a cloud agent's work won't show in `git status` at all until it pushes). `ListAgents` missing or erroring → skip silently, never block session start.
@@ -68,15 +72,15 @@ This saves the nightly synthesizer from running for these days (~$0.02-0.04 each
 One line of behaviour per key. Anything not listed here → say nothing.
 
 - `PROJECT`: informational; silent, except `PROJECT_RESOLVER=fallback-basename` → one line: `_gc_project.sh` not installed alongside.
-- `REMOTE` / `TRACKING` / `REMOTE_ONLY`: any branch ahead/behind, or an unfamiliar remote-only branch → flag it in the summary so the user can decide whether to `git pull --rebase` / `git checkout` manually. Clean → silent.
+- `REMOTE` / `TRACKING` / `REMOTE_ONLY`: `REMOTE=error` → fetch failed; report that remote status could not be checked, never interpret stale tracking data as current. Otherwise, any branch ahead/behind, or an unfamiliar remote-only branch → flag it in the summary so the user can decide whether to `git pull --rebase` / `git checkout` manually. Clean → silent.
 - `WORKTREES:` block (more than the main checkout) → another agent may be mid-task; flag it with its branch. `CODEX_BRANCHES:` block → Codex has touched or is touching this repo (it always works on `codex/<desc>`); flag it. Combine with `ListAgents` from the Do list, item 4.
 - `RESYNC=… due=yes` → invoke `/resync --light` inline and fold its findings into the summary (no separate wall of text). `due=no` → silent.
 - `CONVENTIONS_CLAUDE`: `drift` or `missing` → one line offering the exact fix `~/.claude/bin/sync-shared-md.sh --apply ./CLAUDE.md` (review the `git diff`, then commit). `in sync` / `absent` / `skip` → silent. `unknown` → one line: sync-shared-md.sh printed nothing.
-- `CONVENTIONS_AGENTS`: `drift` or `missing` → same fix, targeting `./AGENTS.md`. `absent` → **do not treat as fine** — Codex reads `AGENTS.md`, never `CLAUDE.md`, so an absent one means Codex sees none of this repo's conventions. One line offering `~/.claude/bin/sync-shared-md.sh --apply ./AGENTS.md`, plus: add a one-line preamble above the shared block ("Read CLAUDE.md in this repo first for project-specific conventions.") since the shared block alone won't point Codex at it. `in sync` / `skip` → silent. `unknown` → one line: sync-shared-md.sh printed nothing.
+- `CONVENTIONS_AGENTS`: `drift` or `missing` → same fix, targeting `./AGENTS.md`. `absent` → **do not treat as fine** — Codex discovers `AGENTS.md` automatically; without it, project conventions need an explicit read. One line offering `~/.claude/bin/sync-shared-md.sh --apply ./AGENTS.md`, plus: add a one-line preamble above the shared block ("Read CLAUDE.md in this repo first for project-specific conventions.") since the shared block alone won't point Codex at it. `in sync` / `skip` → silent. `unknown` → one line: sync-shared-md.sh printed nothing.
   Never apply either fix automatically — materializing into a checked-in file is the user's call.
 - `HANDOFF_SYNC=conflict` or `offline` → one line; the entry stays safe locally (conflict: resolve in `~/src/.handoff`; offline: re-run `handoff.sh sync` later). `ok` / `absent` → silent. `error` → one line: handoff sync failed for an unexpected reason; check `handoff.sh sync` by hand.
 - `CI_PROBE=skip` → silent. `CI_PROBE=error` → say ONE line: "couldn't read CI status (`<first indented line>`)". Never report an error as "no CI configured" — you don't know. `CI_PROBE=ok` with `[]` and no `CI_PROBE_NOTE` → no CI, silent. `CI_PROBE_NOTE=workflow-files-exist-but-no-runs` → flag one line (Actions disabled, or every trigger filtered out). Latest run in `CI_MAIN:` (and `CI_BRANCH:` if present) with `conclusion: "success"` or still `in_progress`/`queued` → silent. `failure` / `cancelled` / `timed_out` → ⚠️ line in the summary naming workflow, branch, and how long it's been red (walk `createdAt`/`conclusion` back to the last success). If the workflow YAML has a job with `needs: test`, say so — a red `test` starves it and it shows as *skipped*, never failed. Offer `gh run view <run-id> --log-failed`; don't auto-fix.
-- `PUBLIC_DRIFT=drift` → **urgent** ⚠️: a project that should be private has rows on the live unauthenticated endpoint. List the project(s)/table(s) from the indented lines and point at `.venv/bin/python scripts/unpublish_public.py <project> --apply` (venv python — the script imports `anthropic` via `claude_api`), or re-run the audit with `--fix`. `config` → flag once: `docs/public-allowlist.txt` missing or empty (a config problem, distinct from drift). `ok` / `skip` → silent. `error` → one line: the audit itself failed (see the indented output) — this is *could not check*, not *ok*.
+- `PUBLIC_DRIFT=drift` → **urgent** ⚠️: a project that should be private has rows on the live unauthenticated endpoint. List the project(s)/table(s) from the indented lines and point at `.venv/bin/python scripts/unpublish_public.py <project> --apply` (venv python — the script imports `anthropic` via `claude_api`), or re-run the audit with `--fix`. `config` → flag once: `docs/public-allowlist.txt` missing or empty (a config problem, distinct from drift). `ok` / `skip` → silent. `incomplete` → live Turso data could not be checked (credentials missing or partial); never report it clean. `error` → one line: the audit itself failed (see the indented output) — this is *could not check*, not *ok*.
 
 ## Then
 

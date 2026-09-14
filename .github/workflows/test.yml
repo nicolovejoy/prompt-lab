@@ -38,6 +38,17 @@ jobs:
       - name: Session identity tests
         run: python scripts/test_session_identity.py
 
+      - name: Readup and whole-day workflow tests
+        run: |
+          python scripts/test_readup_checks.py
+          python scripts/test_public_allowlist.py
+          python scripts/test_day_context.py
+          python scripts/test_workflow_roundtrip.py
+          python scripts/test_readup_md_structure.py
+          python scripts/test_handoff_md_structure.py
+          python scripts/test_paid_artifacts.py
+          python scripts/test_sync_clobber.py
+
       - name: Codex prompt installation tests
         run: python scripts/test_install_codex_prompts.py
 
@@ -82,4 +93,3 @@ jobs:
 
       - name: Deploy to Vercel
         run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
-

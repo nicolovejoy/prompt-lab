@@ -45,9 +45,14 @@ https://learn.chatgpt.com/docs/permissions
 
 ## Phase 2 — session identity
 
-Status at close: implementation preserved in `drafts/codex-session-identity.patch`,
-not applied. The child agent reports 20 passing identity scenarios and passing
-shell syntax checks. Integration review remains.
+Status 2026-09-14: integrated in source and verified against isolated databases.
+`workflow/bin/_gc_session_identity.py` owns registration and resolution for the
+wrappers and Claude hooks. Native Codex thread IDs are authoritative; the local
+`session_identity_bindings` table preserves launcher ownership after Claude
+adopts its native UUID. Pointer files cannot establish scoped ownership.
+Twenty-one scenario groups pass, including concurrent registration, resume/fork,
+wrong-ID writes, legacy closed rows, quoted project names and stop-hook tokens.
+The earlier draft is retained as historical input, not an installation source.
 
 Registration must return the authoritative `id|started_at`, bind it immediately,
 and be idempotent for the same conversation. A scoped caller must never silently
@@ -62,10 +67,13 @@ by the implementation tests.
 
 ## Phase 3 — whole-day handoff and CI
 
-Status at close: implementation preserved in `drafts/codex-whole-day-context.patch`,
-not applied. Its isolated tests passed. Add the `today-context` dispatch to
-gc-read.sh and reconcile explicit session-ID validation with Phase 2 before
-applying and testing the combined change.
+Status 2026-09-14: integrated in source. `today-context` reads an explicit Pacific
+day from local SQLite, including sessions with activity across midnight and the
+validated caller. `save-daily-summary` rejects stale revisions and incorrect
+counts under a write lock, then uses the store's archive-before-replace upsert.
+Existing daily prose is part of synthesis input. The installed-copy roundtrip,
+day-context regressions and prompt contract checks are now in CI. The earlier
+draft is retained as historical input; it is superseded by these source files.
 
 Daily prose must summarize the project's whole Pacific calendar day. Before
 replacing the live daily row, fetch all available session summaries, bounded
@@ -80,7 +88,8 @@ quality of model-written prose; the live two-session smoke test must check it.
 
 ## Phase 4 — installation and live validation
 
-After local checks and review, Nico runs the installer. Start fresh `work` and
+Local checks and review are complete; Nico runs the installer next. Follow
+`docs/codex-workflow-validation.md` for exact installation and live acceptance steps. Start fresh `work` and
 `cx` windows in Prompt Lab, run readup in each, and verify distinct stable session
 IDs. Perform one small distinct task in each, hand off both, and verify each
 summary and closure affects only its own row. The resulting daily account should

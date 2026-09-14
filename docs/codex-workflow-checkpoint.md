@@ -1,5 +1,20 @@
 # Codex workflow checkpoint — 2026-09-13
 
+## Readup and session bookkeeping — source integrated 2026-09-14
+
+The launcher failure remains closed. This pass fixed readup's false drift alarm
+on audit crashes, distinguished incomplete audits, and made failed fetch/auth
+checks visible. Confirmed public drift now uses exit 10; both readup and the
+non-fatal post-sync consumer classify it separately from generic failures.
+
+The session identity and whole-day drafts below are superseded by integrated
+source: shared SQLite ownership for wrappers/hooks, guarded daily saves, and a
+passing temporary-installation roundtrip. `AGENTS.md` now points at CLAUDE.md
+and carries the shared conventions. Installer and real paired-conversation
+acceptance remain Nico's next step; no permission profile was installed or
+selected. See `docs/codex-workflow-validation.md` and the updated roadmap.
+
+
 ## iTerm `-10000` blocker — diagnosed and closed, 2026-09-14
 
 Root cause: a stale shell function, not a defect in `work.zsh`. Commit `eab5b13`
