@@ -64,6 +64,17 @@ The full chronological log — and the narrative behind everything below, under 
 
 ### Open
 
+**Session-context diet — shipped and installed 2026-09-13, branch `codex/agent-work-launchers`.**
+SessionStart injection went from 194 KB to 8.5 KB (handoff headlines newer than 30d + counts,
+`HANDOFF_HEADLINE_DAYS` overrides), readup's seven probes run as one `readup-checks.sh` call, CLAUDE.md
+is 33 KB (was 49; rule-floor is ~30 KB, so the weekly `/handoff` §2.5 trim fires only above 35 KB).
+Left open: (1) the first real `/readup` on both tools is the acceptance test; (2) **AGENTS.md gap** —
+Codex reads AGENTS.md, not CLAUDE.md, and readup treats an absent one as "not wanted"; fix is a readup
+line offering `sync-shared-md.sh --apply ./AGENTS.md` plus a "read CLAUDE.md first" preamble, per repo;
+(3) archive sweep of 127 active handoff entries across 14 channels (ibuild4you 44) — unhurried, needs
+Nico's memory; (4) §2.5 checks CLAUDE.md only, not AGENTS.md; (5) Testing section's "~243 tests across
+7 files" is stale — 22 files now. Plan: `docs/superpowers/plans/2026-09-13-session-context-diet.md`.
+
 **Codex workflow checkpoint — 2026-09-13, branch `codex/agent-work-launchers`.** `work` keeps
 Claude, `cx` launches Codex with the same three-pane layout. **Blocker:** `cx
 musicforge-505-drive-oauth` dies with `518:557: execution error: iTerm got an error:
