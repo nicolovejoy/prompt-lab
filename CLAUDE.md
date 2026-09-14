@@ -68,21 +68,24 @@ The full chronological log — and the narrative behind everything below, under 
 SessionStart injection went from 194 KB to 8.5 KB (handoff headlines newer than 30d + counts,
 `HANDOFF_HEADLINE_DAYS` overrides), readup's seven probes run as one `readup-checks.sh` call, CLAUDE.md
 is 33 KB (was 49; rule-floor is ~30 KB, so the weekly `/handoff` §2.5 trim fires only above 35 KB).
-Left open: (1) the first real `/readup` on both tools is the acceptance test; (2) **AGENTS.md gap** —
-Codex reads AGENTS.md, not CLAUDE.md, and readup treats an absent one as "not wanted"; fix is a readup
-line offering `sync-shared-md.sh --apply ./AGENTS.md` plus a "read CLAUDE.md first" preamble, per repo;
-(3) archive sweep of 127 active handoff entries across 14 channels (ibuild4you 44) — unhurried, needs
-Nico's memory; (4) §2.5 checks CLAUDE.md only, not AGENTS.md; (5) Testing section's "~243 tests across
-7 files" is stale — 22 files now. Plan: `docs/superpowers/plans/2026-09-13-session-context-diet.md`.
+Left open: (1) the first real `/readup` on both tools is the acceptance test; (2) **AGENTS.md gap
+fixed 2026-09-14** — `readup.md` step 5 no longer treats `CONVENTIONS_AGENTS=absent` as fine; it now
+offers `sync-shared-md.sh --apply ./AGENTS.md` plus a "read CLAUDE.md first" preamble line, per repo.
+Needs `./workflow/install.sh` (Nico runs it) to reach `~/.claude/commands/` and `~/.codex/prompts/`
+before it's live; (3) archive sweep of 127 active handoff entries across 14 channels (ibuild4you 44) —
+unhurried, needs Nico's memory; (4) §2.5 checks CLAUDE.md only, not AGENTS.md; (5) Testing section's
+"~243 tests across 7 files" is stale — 22 files now. Plan: `docs/superpowers/plans/2026-09-13-session-context-diet.md`.
 
 **Codex workflow checkpoint — 2026-09-13, branch `codex/agent-work-launchers`.** `work` keeps
-Claude, `cx` launches Codex with the same three-pane layout. **Blocker:** `cx
-musicforge-505-drive-oauth` dies with `518:557: execution error: iTerm got an error:
-AppleEvent handler failed. (-10000)`; installed `~/.claude/shell/work.zsh` matches the repo
-but the loaded shell function was never compared. Diagnose the actual failing AppleScript
-operation and verify a live launch before claiming the launcher works. Scope, in order: (1)
-that launch, then permission-profile rollout checks (no profile is installed or claimed
-safe), (2) session identity, (3) readup/handoff end to end. **Don't trust `gc-read.sh
+Claude, `cx` launches Codex with the same three-pane layout. **iTerm blocker diagnosed and
+verified 2026-09-14:** the `-10000` failure on `cx musicforge-505-drive-oauth` was a stale
+shell function, not live code — commit `eab5b13` (2026-09-13 10:11am) had already removed the
+crashing AppleScript line (`set title of current tab to windowTitle`, the same iTerm 3.6.11
+incompatibility fixed earlier for `cx songpath`); any tab opened before that fix+reinstall
+kept the old in-memory function. Verified with a real `cx musicforge-codex` launch in a fresh
+shell today: window + all 3 panes created, no error. Remaining scope, in order: (1)
+permission-profile rollout checks (no profile is installed or claimed safe), (2) session
+identity, (3) readup/handoff end to end. **Don't trust `gc-read.sh
 current-session` from Codex yet** — this readup made row 574, the pointer returned row 573.
 Nico runs the installer himself. Nico approved renaming safe templates to `env.tpl` /
 `env.example`; the rename and a candidate profile are in the working tree, profile NOT
@@ -245,6 +248,12 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
 - **`workflow/bin/*` and `workflow/commands/*` run from installed copies under `~/.claude/`**,
   so a committed fix is not live until copied over, per machine. Sweep:
   `for f in workflow/bin/*.sh; do diff -q "$f" ~/.claude/bin/$(basename "$f"); done`.
+- **`work.zsh`'s functions are loaded once, at shell startup (`.zshrc` sources it), and stay
+  in memory after that.** Reinstalling the file underneath an already-open tab does not fix
+  it — that tab keeps running the stale function until it's closed and a new one opened. This
+  produced the exact `-10000 AppleEvent handler failed` symptom of an already-fixed bug,
+  weeks apart, purely because the terminal predated the fix (2026-09-14). Diffing installed
+  vs. repo proves nothing about what a given open tab has loaded.
 - **`tail -r` is BSD-only; CI is Linux.** A macOS-only shell idiom in `workflow/` fails by
   producing empty output, not an error (`prompts.context` was empty on Linux for months).
 - **A Vercel-origin service behind Cloudflare bot protection fails ~95%, not 100%, and the

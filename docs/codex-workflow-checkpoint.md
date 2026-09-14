@@ -1,5 +1,36 @@
 # Codex workflow checkpoint — 2026-09-13
 
+## iTerm `-10000` blocker — diagnosed and closed, 2026-09-14
+
+Root cause: a stale shell function, not a defect in `work.zsh`. Commit `eab5b13`
+(2026-09-13 10:11am Pacific) had already removed the AppleScript line that crashes
+on iTerm 3.6.11 (`set title of current tab to windowTitle` — the same
+incompatibility fixed earlier in this document for `cx songpath`) and replaced it
+with an OSC-title-via-shell-precmd approach. `~/.claude/shell/work.zsh` on disk
+matched the repo byte-for-byte. But `.zshrc` sources `work.zsh` only once, at
+shell startup — any iTerm tab opened *before* the fix+reinstall keeps the old,
+crashing function definition in memory regardless of what's on disk. The
+`musicforge-505-drive-oauth` failure almost certainly came from exactly that: a
+tab that predated the fix.
+
+Verification performed:
+- Isolated each AppleScript operation (window create, session split
+  horizontal/vertical, `write text` on all three panes, select) with `try`/`on
+  error` blocks directly via `osascript` — every stage succeeded cleanly with
+  realistic command strings.
+- Ran the real, unmodified `cx` function (sourced fresh in a new non-interactive
+  shell) against `musicforge-codex` (the closest existing project —
+  `musicforge-505-drive-oauth` no longer exists, evidently a cleaned-up worktree).
+  Window + all 3 panes created successfully, no AppleEvent error.
+- Confirmed `workflow/commands/handoff.md`'s dead code path (the removed
+  `windowTitle` AppleScript variable is now unused inside the `tell` block, just
+  vestigial argv, harmless) is not itself a hazard.
+
+No code change was needed. Fix for next time: **open a new terminal tab/window
+after any `work.zsh` install**, not just confirm the file diff — see the new
+CLAUDE.md trap. Remaining scope from this checkpoint (permission-profile
+rollout, session identity, readup/handoff end-to-end) is unchanged, see below.
+
 ## Latest session — 577
 
 **Closing request:** reduce excessive Codex permission prompts, ideally through
