@@ -62,6 +62,7 @@ echo "claude_md_bytes=${size:-0} trim_age_d=$(( ($(date +%s) - mt) / 86400 ))"
   2. Keep in CLAUDE.md, each at ≤ 3 lines: what is still open, the decision made (with date), invariants, traps as rule + one-line reason, file pointers.
   3. Never edit between the `SHARED-CONVENTIONS` markers; never remove an open item, an invariant, or a trap — compress, don't delete.
   4. `mkdir -p ~/.claude/state && touch "$m"`, then tell the user in one line what moved and the before/after byte counts. The doc commit in step 5 carries it.
+  5. If nothing qualifies (every item is already at its ≤3-line floor), say so in one line, touch the marker anyway, and do not force a trim.
 
 ## 3. Synthesize daily summary
 

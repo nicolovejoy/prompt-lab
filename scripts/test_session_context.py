@@ -150,6 +150,14 @@ with tempfile.TemporaryDirectory() as td:
     check("handoff: HANDOFF_HEADLINE_DAYS widens the window", "STALE_HEADLINE" in out2)
     check("handoff: widened header counts", "3 active entries, 3 newer than 100d" in out2)
 
+    # Non-numeric window falls back to the 30d default rather than admitting
+    # every entry ever written (empty cutoff from a failed `date` call).
+    env_bad = dict(env, HANDOFF_HEADLINE_DAYS="abc")
+    out_bad = subprocess.run(
+        ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True, env=env_bad
+    ).stdout
+    check("handoff: non-numeric HANDOFF_HEADLINE_DAYS falls back to 30d", "newer than 30d" in out_bad)
+
     # M == 0: a channel with only stale entries still prints its header (with
     # count) so an old-but-unarchived backlog stays visible — just no headlines.
     env3 = dict(env, HANDOFF_HEADLINE_DAYS="1")

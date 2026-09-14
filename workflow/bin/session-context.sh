@@ -88,6 +88,10 @@ HANDOFF_BIN="${HANDOFF_BIN:-$HOME/.claude/bin/handoff.sh}"
 # Inject the dated `### ` headlines newer than HANDOFF_HEADLINE_DAYS plus a
 # count; the body is one `cat` away when a headline matters.
 HANDOFF_HEADLINE_DAYS="${HANDOFF_HEADLINE_DAYS:-30}"
+# Non-numeric input makes both `date -v-Nd` and `date -d "N days ago"` fail,
+# collapsing HANDOFF_CUTOFF to empty and admitting every entry ever written —
+# fall back to the 30d default instead.
+case "$HANDOFF_HEADLINE_DAYS" in ''|*[!0-9]*) HANDOFF_HEADLINE_DAYS=30 ;; esac
 if [ -d "$HANDOFF_DIR/.git" ]; then
   # Pull BEFORE scanning. Gating the pull on having already matched a file is a
   # chicken-and-egg: a channel created by the other side does not exist in this

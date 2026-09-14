@@ -4,12 +4,22 @@
 # or writes to the tree. /readup interprets the keys (see readup.md).
 # Portable: must run on macOS (BSD) and Linux (GNU) userland.
 
-project="$(basename "$PWD")"
+RC_BIN_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+if [ -f "$RC_BIN_DIR/_gc_project.sh" ]; then
+  # shellcheck source=./_gc_project.sh
+  . "$RC_BIN_DIR/_gc_project.sh"
+  project="$(gc_resolve_project "$PWD")"
+else
+  project="$(basename "$PWD")"
+  echo "PROJECT_RESOLVER=fallback-basename"
+fi
+echo "PROJECT=$project"
 in_repo=0
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 && in_repo=1
 
 # --- 2. remote check (no pull) ------------------------------------------------
 if [ "$in_repo" = 1 ]; then
+  cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
   git fetch --quiet --all --prune 2>/dev/null
   echo "REMOTE=$(git status -sb 2>/dev/null | head -1)"
   echo "TRACKING:"
@@ -50,7 +60,8 @@ conv() {  # $1 = file → in sync | drift | missing | absent
   local f="$1" out
   if [ -x "$HOME/.claude/bin/sync-shared-md.sh" ]; then
     out="$("$HOME/.claude/bin/sync-shared-md.sh" --check "./$f" 2>&1 | head -1)"
-    printf '%s' "${out%%:*}"
+    out="${out%%:*}"
+    printf '%s' "${out:-unknown}"
   else
     printf 'skip'
   fi
@@ -61,6 +72,7 @@ echo "CONVENTIONS_AGENTS=$(conv AGENTS.md)"
 # --- 7. flush handoff channel -------------------------------------------------
 if [ -d "$HOME/src/.handoff/.git" ] && [ -x "$HOME/.claude/bin/handoff.sh" ]; then
   "$HOME/.claude/bin/handoff.sh" sync >/dev/null 2>&1
+  # $? must be read on the very next line — do not insert anything between.
   case $? in 0) echo "HANDOFF_SYNC=ok" ;; 3) echo "HANDOFF_SYNC=conflict" ;; 4) echo "HANDOFF_SYNC=offline" ;; *) echo "HANDOFF_SYNC=error" ;; esac
 else
   echo "HANDOFF_SYNC=absent"
