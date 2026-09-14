@@ -73,14 +73,17 @@ operation and verify a live launch before claiming the launcher works. Scope, in
 that launch, then permission-profile rollout checks (no profile is installed or claimed
 safe), (2) session identity, (3) readup/handoff end to end. **Don't trust `gc-read.sh
 current-session` from Codex yet** — this readup made row 574, the pointer returned row 573.
-Nico runs the installer himself. `docs/codex-workflow-roadmap.md` (gates),
-`docs/codex-workflow-checkpoint.md` (investigation).
+Nico runs the installer himself. Nico approved renaming safe templates to `env.tpl` /
+`env.example`; the rename and a candidate profile are in the working tree, profile NOT
+installed. `docs/codex-workflow-roadmap.md` (gates), `docs/codex-workflow-checkpoint.md`
+(investigation).
 
 **1Password preference:** when Nico requests a new item, create its secret field with the
 literal placeholder `replace-this-value`; Nico pastes the real value into 1Password. `env.tpl`
 files contain references and should remain readable. Do not infer that arbitrary
 agent-selected commands can use secrets without being able to expose them. Start with
-human-run secret operations; proposed first protected helper is read-only operational status.
+human-run secret operations; proposed first protected helper is read-only operational
+status, deployment later.
 
 **Dual-agent commands — one thing left.** Run `/prompts:readup` then `/prompts:handoff` from
 Codex once, in songpath or musicforge (Codex needs a session restart to see new prompt files).
@@ -226,8 +229,8 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
 ### Traps that cost real time
 
 - **`workflow/bin/_gc_project.sh` is the ONE project-resolution implementation for
-  `gc-read.sh`/`gc-write.sh`** — `basename $PWD` read empty from an agent worktree and
-  `/handoff` wrote that emptiness into a summary.
+  `gc-read.sh`/`gc-write.sh`** — it mirrors `log-prompt.sh`: `--git-common-dir` (never
+  `--show-toplevel`), only git exit 128 buckets to `scratch`, never an empty name.
 - **`workflow/bin/*` and `workflow/commands/*` run from installed copies under `~/.claude/`**,
   so a committed fix is not live until copied over, per machine. Sweep:
   `for f in workflow/bin/*.sh; do diff -q "$f" ~/.claude/bin/$(basename "$f"); done`.
@@ -284,7 +287,8 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
   Turso, and never let a sync leg touch `project_metadata`, which is cloud-direct.
 - **Test UptimeRobot alerting on a throwaway monitor, never by flipping a real one to a
   failing URL** — that writes a fake outage into a permanent ratio, and the archive is never
-  backfilled. `https://prompt-labs.org/api/<anything>` returns **200** (SPA catch-all).
+  backfilled. Pick a target that returns a real 404 (`garm.prompt-labs.org` does):
+  `https://prompt-labs.org/api/<anything>` returns **200** from the SPA catch-all.
 - **Turso returns `SUM()`/`COUNT()` aggregates as JSON strings** — an explicit `int()` coalesce
   is load-bearing, or chart math concatenates.
 - **UptimeRobot v2's `custom_uptime_ratio` is a string** (`"100.000-99.980-99.990"`, 1d-7d-30d)
@@ -340,7 +344,8 @@ the archive write must be separately observable.
   Vercel+Turso+Resend stack would die with the watched. No Pi, no launchd sampler.
 - **OAuth is hand-rolled in Python, zero new deps** — a confidential client doing its own
   code exchange, so the `id_token` arrives over TLS and needs no JWT verification. Spec:
-  `docs/phase2-oauth-plan.md`. `verify_token` requires `role` and `email` **keys**.
+  `docs/phase2-oauth-plan.md`. `verify_token` requires `role` and `email`
+  **keys** (key-presence, not truthiness) — that subtlety is load-bearing.
 - **No display names in the sign-ins panel** — a name would cost the log's anonymity. When a
   second reader joins (#43), use a stable opaque per-user id (HMAC of email under a salt).
 - **First-party beacon over Vercel Analytics** — drains are Pro-only, Hobby has no read API.

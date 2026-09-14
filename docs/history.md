@@ -166,6 +166,26 @@ two operational risks, then freeze the rollout until real demand. Posted to
   `#/health`/`#/visitors`/uptime, 10-min revocation, admin bypass. "Reverse
   lookup" (who has access to project X) remains ruled out — blast radius.
 
+### Per-Pi service inventory and the 2026-08-13 closet move (moved 2026-09-13)
+*Kept in CLAUDE.md: the pointer to `docs/pi-inventory.md` and the three leftovers as a one-line list.*
+
+**Per-Pi service inventory — promoted to `docs/pi-inventory.md` 2026-09-07.**
+What runs on phrpi and homeassistant.local, their two addresses each, and the
+traps that go with them. prompt-lab owns that document; read it before touching
+either box.
+
+Closet move DONE 2026-08-13 — both Pis wired, both deliberately dual-homed,
+all four interfaces DHCP-reserved. What's left, none of it prompt-lab's code
+and all of it filed in `~/src/.handoff` (new channels
+`home-assistant-prompt-lab.md` + `phrpi-lights-prompt-lab.md`):
+- **Laptop SSH key into HA's add-on.** The highest-leverage one: today's HA
+  work ran on screenshots and inference while phrpi got measured in seconds.
+  Everything else about that box stays guesswork until this lands.
+- **Repoint hardcoded `192.168.5.34`** → `homeassistant.local` in
+  phrpi-lights and the home-assistant repo.
+- **`cloudflared`'s token out of argv** on phrpi (owner unclear — the
+  container's compose dir wasn't traced; not filed anywhere yet).
+
 ### garm and byside both burned their Neon CU quota on prompt-lab's own health poll (moved 2026-09-13)
 *Kept in CLAUDE.md: one four-line open item — check the September CU numbers for both. The transferable rule became a Trap.*
 
@@ -209,26 +229,6 @@ remote) also deliberately unpushed. Two loose ends from the rescue: the
 agent installed git-lfs globally (Homebrew) to get rock-art-fab pushed, and
 musicforge's lilypond submodule edits went to the shared
 `neonscribe/lilypond-lead-sheets` repo on a rescue branch. The dead-token copy in `~/mini-staging/home/zshrc.mini` was deleted 2026-09-07.
-
-### Per-Pi service inventory and the 2026-08-13 closet move (moved 2026-09-13)
-*Kept in CLAUDE.md: the pointer to `docs/pi-inventory.md` and the three leftovers as a one-line list.*
-
-**Per-Pi service inventory — promoted to `docs/pi-inventory.md` 2026-09-07.**
-What runs on phrpi and homeassistant.local, their two addresses each, and the
-traps that go with them. prompt-lab owns that document; read it before touching
-either box.
-
-Closet move DONE 2026-08-13 — both Pis wired, both deliberately dual-homed,
-all four interfaces DHCP-reserved. What's left, none of it prompt-lab's code
-and all of it filed in `~/src/.handoff` (new channels
-`home-assistant-prompt-lab.md` + `phrpi-lights-prompt-lab.md`):
-- **Laptop SSH key into HA's add-on.** The highest-leverage one: today's HA
-  work ran on screenshots and inference while phrpi got measured in seconds.
-  Everything else about that box stays guesswork until this lands.
-- **Repoint hardcoded `192.168.5.34`** → `homeassistant.local` in
-  phrpi-lights and the home-assistant repo.
-- **`cloudflared`'s token out of argv** on phrpi (owner unclear — the
-  container's compose dir wasn't traced; not filed anywhere yet).
 
 ### Open-items narrative: copy review, project names, ACTIVE · N, and the uptime/health thread (moved 2026-09-13)
 *Kept in CLAUDE.md: each item compressed to five lines or fewer, every bullet of the uptime/health list retained at two lines.*
