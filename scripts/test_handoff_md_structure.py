@@ -38,6 +38,13 @@ check(
     content.count("model='<claude-code|codex>'") == 2,
 )
 
+check("handoff has the weekly CLAUDE.md size check", "## 2.5 CLAUDE.md size check" in content)
+check("size check uses the state marker", "claude-trim-" in content)
+check("size check names the history file", "docs/history.md" in content)
+check("size check has a GNU stat fallback", "stat -c %Y" in content)
+check("size check protects the conventions block", "SHARED-CONVENTIONS" in content)
+check("size check runs before daily summary", content.index("## 2.5 CLAUDE.md size check") < content.index("## 3. Synthesize daily summary"))
+
 print()
 if failures:
     print(f"{len(failures)} FAILURE(S): {failures}")
