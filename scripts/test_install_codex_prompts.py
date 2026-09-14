@@ -57,7 +57,7 @@ for path in command_files:
     )
     transformed_lines = result.stdout.splitlines(keepends=True)
 
-    had_allowed_tools = any(l.startswith("allowed-tools:") for l in original_lines)
+    had_allowed_tools = any(line.startswith("allowed-tools:") for line in original_lines)
     # Informational only — not every command file is required to have an
     # allowed-tools line. The transform's actual contract (per install.sh's own
     # comment) is "drop the line when present", not "every file has one".
@@ -70,15 +70,15 @@ for path in command_files:
     )
     check(
         f"{name}: transform leaves no allowed-tools line behind",
-        not any(l.startswith("allowed-tools:") for l in transformed_lines),
+        not any(line.startswith("allowed-tools:") for line in transformed_lines),
     )
     check(
         f"{name}: transform preserves the name: line",
-        any(l.startswith("name:") for l in transformed_lines),
+        any(line.startswith("name:") for line in transformed_lines),
     )
     check(
         f"{name}: transform preserves the description: line",
-        any(l.startswith("description:") for l in transformed_lines),
+        any(line.startswith("description:") for line in transformed_lines),
     )
 
 print()
