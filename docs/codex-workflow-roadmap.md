@@ -4,7 +4,7 @@ Scope: Prompt Lab's CLI/iTerm launchers, secret protection, session bookkeeping,
 and installed readup/handoff commands. Nico installs locally; implementation and
 fixture tests happen before that step. No live secret reads are used for testing.
 
-## Current status — 2026-09-14
+## Current status — 2026-09-15
 
 The installed `f5cb2cf` workflow passed the paired Songpath identity and full
 handoff exercise. Results and repeatable smoke steps live in
@@ -21,13 +21,13 @@ improvised a partial readup and never registered a session. The installer now al
 renders the canonical commands as explicit-only `$source-command-*` user skills,
 repairing the desktop migrator's incorrect `~/.Codex/bin` and `AGENTS.md` rewrites.
 The installed readup skill passed repeated identity checks as Songpath session `610`.
-Its first lean handoff then stopped safely when the sandbox denied the private DB
-write. Source now installs a narrow rule for only the reviewed `gc-write.sh` helper
-and uses a constrained temporary summary file so the invocation is rule-matchable.
-Reinstall and fresh-resume acceptance remain. No broad permission profile is installed.
+Its first lean handoff stopped safely when the sandbox denied the private DB write.
+After installing a narrow rule for only the reviewed `gc-write.sh` helper and the
+constrained temporary-summary path, the exact Codex thread resumed session `610`,
+saved the audit, and closed it successfully. No broad permission profile is installed.
 
-Remaining gates: lean installed-command smoke, actual before/after usage
-measurement, fresh-launcher resume/fork, permission-profile acceptance, and the
+Remaining gates: full-handoff smoke, actual before/after usage measurement,
+fresh-launcher fork, broader permission-profile acceptance, and the
 separate sleeping-host nightly test. No overnight or API-cost result is claimed
 by the isolated local tests.
 
@@ -57,9 +57,9 @@ The gate before installation is broader than that result:
 
 - Test the profile loaded from its actual configuration location in a fresh CLI
   session, with legacy sandbox settings removed from that candidate's launch.
-- Confirm the separate narrow `gc-write.sh` rule through the installed fresh-resume
-  path. It is intentionally independent of the broader candidate, which still denies
-  direct private-database access.
+- The separate narrow `gc-write.sh` rule passed through the installed fresh-resume
+  path. It remains intentionally independent of the broader candidate, which still
+  denies direct private-database access.
 - Test shell startup and environment inheritance using fake values; unreadable
   files do not remove credentials already inherited by a process.
 - Keep secret operations human-run until protected helpers have constrained

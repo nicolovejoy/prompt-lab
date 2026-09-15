@@ -44,15 +44,17 @@ successive invocations reported the same authoritative identity,
 `610|2026-09-14 22:50:41`. A read-only database check confirmed that row `610`
 belongs to Songpath, remained open, and had no session summary after readup.
 
-The subsequent `$source-command-handoff` reached the correct row but failed its
+The subsequent `$source-command-handoff` reached the correct row but initially failed its
 first write with `attempt to write a readonly database`. It stopped before closing
 `610`, as required; a read-only check confirmed the row was still open and empty.
 Cause: the database is outside Songpath's writable workspace, and handoff's heredoc
 command could not match a narrow executable-prefix rule. The source installer now
 adds `prompt-lab-session.rules` for only the installed `gc-write.sh` subcommands,
 and Codex handoff passes its summary through a constrained, consumed
-`/tmp/gc-session-<id>-<nonce>.txt` file. Reinstall plus a fresh Codex resume is
-required to retest the pending write and closure.
+`/tmp/gc-session-<id>-<nonce>.txt` file. After reinstalling, the exact native Codex
+thread was resumed directly. Readup retained `610`; handoff saved a 604-character
+Wild Flowers audit and closed the row at `2026-09-15 22:43:17` UTC. The Songpath
+tree remained clean and there were no commits. The narrow-rule live acceptance passed.
 
 Readup also created an initial daily summary before either handoff. Its stored
 session count was zero despite the two open sessions; Claude's guarded handoff
@@ -66,9 +68,9 @@ script suites passed locally, including exact rendering of every command into a
 skill and its explicit-only policy. Ruff, installer shell syntax and whitespace
 checks passed. Heartbeat tests required permission to bind a local test server;
 session-context tests required access to their installed-state marker. The
-installed readup and repeated-identity checks now pass. Handoff, full handoff,
-fresh-launcher resume/fork, and live nightly acceptance remain pending. The
-handoff failure path also passed: it left session `610` open after the denied write.
+installed readup, repeated-identity, resumed handoff, and narrow-rule checks now
+pass. Full handoff, fresh-launcher fork, and live nightly acceptance remain pending.
+The failure path also passed: it left session `610` open after the denied write.
 
 Run the automated tests from `/Users/nico/src/prompt-lab`. They use disposable
 local databases and a stubbed model response; no live API calls or history edits:

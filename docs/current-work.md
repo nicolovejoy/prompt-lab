@@ -5,10 +5,11 @@ implementation and remaining gates; `docs/codex-workflow-validation.md` holds
 smoke tests/results. The paired Songpath test passed. After reinstalling, the
 explicit `$source-command-readup` skill passed its live invocation and stable-ID
 checks. The first `$source-command-handoff` correctly stopped on a read-only DB
-error; a narrow installed-helper rule and constrained temporary summary-file path
-are implemented in source and need reinstall/resume validation. Full handoff and
-fresh-launcher resume/fork checks remain. The deprecated `/prompts:*` interface
-failed its live check. Broad permission-profile rollout is separate.
+error. After the narrow installed-helper rule and constrained temporary summary
+path were installed, a fresh resume retained session `610`, saved its 604-character
+audit, and closed it successfully. Full handoff, fresh-launcher fork, and nightly
+checks remain. The deprecated `/prompts:*` interface failed its live check. Broad
+permission-profile rollout is separate.
 
 **Shared-conventions rollout:** the checker now hashes the actual body and separates
 clean `behind` copies from `tampered` blocks, which apply refuses to overwrite. A
