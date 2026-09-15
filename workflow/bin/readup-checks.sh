@@ -63,7 +63,7 @@ due=no; [ "$age_h" -ge 48 ] && [ "$commits_since" -gt 3 ] && due=yes
 echo "RESYNC=age_h=$age_h commits_since=$commits_since due=$due"
 
 # --- 6. shared-conventions drift (check only) --------------------------------
-conv() {  # $1 = file → in sync | drift | missing | absent
+conv() {  # $1 = file → in sync | behind | tampered | missing | absent
   local f="$1" out
   if [ -x "$HOME/.claude/bin/sync-shared-md.sh" ]; then
     out="$("$HOME/.claude/bin/sync-shared-md.sh" --check "./$f" 2>&1 | head -1)"

@@ -20,6 +20,20 @@ def check(label, condition, detail=""):
 with tempfile.TemporaryDirectory(prefix="readup-checks-") as tmp:
     home = Path(tmp) / "home"
     home.mkdir()
+    sync_dir = home / ".claude/bin"
+    sync_dir.mkdir(parents=True)
+    sync = sync_dir / "sync-shared-md.sh"
+    sync.write_text('''#!/bin/sh
+case "$2" in
+  *CLAUDE.md) state="${FAKE_CONV_CLAUDE:-in sync}" ;;
+  *AGENTS.md) state="${FAKE_CONV_AGENTS:-in sync}" ;;
+esac
+printf '%s: fixture\n' "$state"
+[ "$state" = "in sync" ] && exit 0
+[ "$state" = "absent" ] && exit 2
+exit 1
+''')
+    sync.chmod(0o755)
     repo = Path(tmp) / "prompt-lab"
     (repo / "scripts").mkdir(parents=True)
     (repo / "scripts/check_public_allowlist.py").write_text("# Fake audit entrypoint\n")
@@ -82,10 +96,16 @@ exit "${FAKE_AUDIT_RC:-0}"
           "TRACKING=unavailable" in failed_fetch and "[behind 1]" not in failed_fetch)
     failed_auth = probe(FAKE_AUTH_RC="1")
     check("unverifiable authentication is not a silent skip", "CI_PROBE=error" in failed_auth)
+    conventions = probe(FAKE_CONV_CLAUDE="behind", FAKE_CONV_AGENTS="tampered")
+    check("clean shared-block lag is reported as behind",
+          "CONVENTIONS_CLAUDE=behind" in conventions)
+    check("locally changed shared block is reported as tampered",
+          "CONVENTIONS_AGENTS=tampered" in conventions)
     outside = probe(FAKE_OUTSIDE="1")
     check("outside repo skips CI and public audit",
           "CI_PROBE=skip" in outside and "PUBLIC_DRIFT=skip" in outside)
-    check("no real home state created", list(home.iterdir()) == [])
+    check("no home state beyond the isolated sync fixture",
+          list(home.iterdir()) == [home / ".claude"])
 
 if failures:
     sys.exit(f"{len(failures)} failures: {failures}")

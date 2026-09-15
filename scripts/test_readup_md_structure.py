@@ -39,6 +39,12 @@ check(
 )
 check("still checks CLAUDE.md drift", "CLAUDE.md" in content)
 check("also checks AGENTS.md drift", "AGENTS.md" in content)
+check(
+    "distinguishes clean lag from local edits",
+    "`behind` → calm rollout note" in content
+    and "`tampered` → strong warning" in content
+    and "`--apply` will refuse" in content,
+)
 check("frontmatter still has a name: line", content.startswith("---\nname: readup"))
 
 check("readup invokes readup-checks.sh", "readup-checks.sh" in content)
