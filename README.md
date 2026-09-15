@@ -135,6 +135,13 @@ the cloud after a successful nightly synthesis and sync. The installer also adds
 narrow Codex rule for the installed `gc-write.sh` session-bookkeeping helper; restart
 Codex after installation so the rule is loaded.
 
+Shared conventions are materialized into each repo's `CLAUDE.md` and `AGENTS.md`.
+`sync-shared-md.sh --check <file>` distinguishes a clean old block (`behind`) from
+local edits or malformed markers (`tampered`); apply refuses tampered blocks. Use
+`sync-shared-fleet.sh` for a read-only tab-separated inventory of both files across
+repositories under `~/src`. Its explicit `--apply` mode updates only verified
+`behind` or `missing` blocks; it never creates absent files, commits, or pushes.
+
 `/review [N] [project] [-v]` — session review across projects for last N days (default: 7), optional verbose mode for non-technical audience
 
 `/ask` — query the knowledge store with natural language

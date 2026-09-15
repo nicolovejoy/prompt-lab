@@ -10,6 +10,13 @@ are implemented in source and need reinstall/resume validation. Full handoff and
 fresh-launcher resume/fork checks remain. The deprecated `/prompts:*` interface
 failed its live check. Broad permission-profile rollout is separate.
 
+**Shared-conventions rollout:** the checker now hashes the actual body and separates
+clean `behind` copies from `tampered` blocks, which apply refuses to overwrite. A
+dry-run fleet inventory covers both `CLAUDE.md` and `AGENTS.md`; its explicit apply
+mode updates only verified behind/missing blocks and never commits sibling repos.
+The canonical preamble is now target-neutral. Install these guards before asking
+individual repo owners to refresh their blocks.
+
 **1Password preference:** when Nico requests a new item, create its secret field with the
 literal placeholder `replace-this-value`; Nico pastes the real value into 1Password. `env.tpl`
 files contain references and should remain readable. Do not infer that arbitrary

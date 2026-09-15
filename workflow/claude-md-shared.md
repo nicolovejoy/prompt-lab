@@ -1,8 +1,9 @@
 ## Shared conventions
 
 <!-- These are Nico's cross-repo output rules. They're materialized into each repo's
-CLAUDE.md so every agent (local, cloud, third-party) sees them as plain text. Source
-of truth: prompt-lab/workflow/claude-md-shared.md — edit there and re-sync, never here. -->
+CLAUDE.md and AGENTS.md so every agent (local, cloud, third-party) sees them as plain
+text. Source of truth: prompt-lab/workflow/claude-md-shared.md — edit there and
+re-sync, never here. -->
 
 - **Clickable URLs.** When pointing at any web destination (dashboard, repo, PR, deploy, settings, docs, localhost), print the full bare URL — `https://example.com` or `http://localhost:8080` — on its own, never just the page's name and never a markdown `[label](url)` link. Nico's terminal auto-linkifies raw `https://` text, so a bare URL is one-click and stays copyable.
 
