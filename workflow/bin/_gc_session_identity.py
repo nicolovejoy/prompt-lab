@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import socket
 import sqlite3
+import stat
 import sys
 import tempfile
 from urllib.parse import quote
@@ -19,6 +20,42 @@ from urllib.parse import quote
 
 class IdentityError(ValueError):
     pass
+
+
+def read_summary_file(session_id, value):
+    """Read one sandbox-created summary without granting arbitrary file reads."""
+    path = Path(value)
+    if path.parent != Path("/tmp") or not re.fullmatch(
+        rf"gc-session-{session_id}-[A-Za-z0-9._-]+\.txt", path.name
+    ):
+        raise ValueError(
+            f"Summary file must match /tmp/gc-session-{session_id}-<nonce>.txt"
+        )
+    flags = os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
+    fd = None
+    try:
+        fd = os.open(path, flags)
+        info = os.fstat(fd)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.getuid()
+            or info.st_nlink != 1
+            or info.st_size > 16_384
+        ):
+            raise ValueError("Summary file must be a small, user-owned regular file")
+        with os.fdopen(fd, encoding="utf-8") as handle:
+            fd = None
+            summary = handle.read(16_385).strip()
+    except FileNotFoundError as exc:
+        raise ValueError("Summary file does not exist") from exc
+    except UnicodeError as exc:
+        raise ValueError("Summary file must be UTF-8 text") from exc
+    finally:
+        if fd is not None:
+            os.close(fd)
+    if not summary:
+        raise ValueError("Session summary must not be empty")
+    return summary, path
 
 
 def identity(*, claude=False):
@@ -177,7 +214,7 @@ def main():
     try:
         owner = identity(claude=command in {"claude", "tokens"})
         expected = {"register": (0,), "resolve": (0, 1), "resolve-id": (0,),
-                    "summary": (1,), "end": (1,), "claude": (1,), "tokens": (2,)}
+                    "summary": (1, 2), "end": (1,), "claude": (1,), "tokens": (2,)}
         if len(values) not in expected[command]:
             raise ValueError("Wrong number of session command arguments")
         requested = numeric(values[0]) if values and command in {"resolve", "summary", "end"} else None
@@ -189,6 +226,7 @@ def main():
             conn.execute("BEGIN IMMEDIATE")
             initialize(conn)
         row = None
+        consumed_summary = None
         if command == "register":
             row = register(conn, project, owner)
         elif command == "claude":
@@ -204,11 +242,24 @@ def main():
         else:
             row = resolve(conn, project, owner, requested)
             if command == "summary":
-                conn.execute("UPDATE sessions SET summary=? WHERE id=?", (sys.stdin.read().strip(), row["id"]))
+                if len(values) == 2:
+                    summary, consumed_summary = read_summary_file(requested, values[1])
+                else:
+                    summary = sys.stdin.read().strip()
+                conn.execute("UPDATE sessions SET summary=? WHERE id=?", (summary, row["id"]))
             elif command == "end":
                 conn.execute("UPDATE sessions SET ended_at=datetime('now') WHERE id=?", (row["id"],))
         if not readonly:
             conn.commit()
+        if consumed_summary is not None:
+            try:
+                consumed_summary.unlink()
+            except OSError as exc:
+                print(
+                    f"Warning: session summary was saved but its temporary file "
+                    f"could not be removed: {exc}",
+                    file=sys.stderr,
+                )
         if row is not None and command in {"register", "claude"}:
             write_pointer(project, owner, row["id"])
         if row is not None and command in {"register", "resolve"}:

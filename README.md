@@ -131,7 +131,9 @@ Codex uses `$source-command-readup`, `$source-command-handoff`,
 skill by typing `$` in Codex; these skills are explicit-only and never run merely
 because prose resembles their description. Readup does no summary backfill; nightly
 handles completed Pacific days, including sessions without prompt logs. Recaps reach
-the cloud after a successful nightly synthesis and sync.
+the cloud after a successful nightly synthesis and sync. The installer also adds a
+narrow Codex rule for the installed `gc-write.sh` session-bookkeeping helper; restart
+Codex after installation so the rule is loaded.
 
 `/review [N] [project] [-v]` — session review across projects for last N days (default: 7), optional verbose mode for non-technical audience
 

@@ -31,7 +31,8 @@ def check(name, condition, detail=""):
         failures.append(name)
 
 
-# 1. Structural: retain legacy prompts and install current explicit-only skills.
+# 1. Structural: retain legacy prompts, install current explicit-only skills,
+#    and install a narrow rule for the out-of-workspace session helper.
 with open(os.path.join(REPO_DIR, "workflow", "install.sh")) as f:
     install_src = f.read()
 
@@ -50,6 +51,11 @@ check(
 check(
     "installed Codex skills are explicit-only",
     "allow_implicit_invocation: false" in install_src,
+)
+check(
+    "install.sh installs a separate Codex session rule",
+    "prompt-lab-session.rules" in install_src
+    and "workflow/codex-session.rules.tpl" in install_src,
 )
 
 # 2. Functional: the transform must drop exactly the allowed-tools line (when
@@ -124,7 +130,7 @@ with tempfile.TemporaryDirectory(prefix='codex-prompt-install-') as dest:
 # Claude's allowed-tools line. Codex's automatic Claude importer rewrote both and
 # produced unusable ~/.Codex/bin paths; this test pins the narrower transform.
 skill_block = install_src.split('# --- Codex user skills', 1)[1].split(
-    '# --- bin scripts', 1
+    '# --- Codex session-bookkeeping rule', 1
 )[0]
 skill_block = '# --- Codex user skills' + skill_block
 skill_block = skill_block.replace(
@@ -183,6 +189,37 @@ with tempfile.TemporaryDirectory(prefix='codex-skill-install-') as dest:
                 policy = f.read()
         check(f'{skill_name}: explicit-only policy installed',
               policy == 'policy:\n  allow_implicit_invocation: false\n')
+
+# Run the real Codex-rule distribution block against a disposable destination.
+rules_block = install_src.split('# --- Codex session-bookkeeping rule', 1)[1].split(
+    '# --- bin scripts', 1
+)[0]
+rules_block = '# --- Codex session-bookkeeping rule' + rules_block
+rules_block = rules_block.replace(
+    'CODEX_RULES_DIR="$HOME/.codex/rules"',
+    'CODEX_RULES_DIR="$CODEX_TEST_DEST"',
+)
+with tempfile.TemporaryDirectory(prefix='codex-rule-install-') as dest:
+    fake_home = os.path.join(dest, 'home')
+    rules_dest = os.path.join(dest, 'rules')
+    os.makedirs(fake_home)
+    env = dict(
+        os.environ,
+        REPO_DIR=REPO_DIR,
+        CODEX_TEST_DEST=rules_dest,
+        BIN_DIR=os.path.join(fake_home, '.claude', 'bin'),
+    )
+    run = subprocess.run(
+        ['bash', '-e', '-c', 'install_file() { cp "$1" "$2"; }\n' + rules_block],
+        env=env, capture_output=True, text=True)
+    check('real Codex rule distribution block succeeds', run.returncode == 0, run.stderr)
+    rule_path = os.path.join(rules_dest, 'prompt-lab-session.rules')
+    rule = open(rule_path).read() if os.path.isfile(rule_path) else ''
+    expected_helper = os.path.join(fake_home, '.claude', 'bin', 'gc-write.sh')
+    check('installed rule resolves the absolute helper path',
+          expected_helper in rule and '__GC_WRITE_PATH__' not in rule)
+    check('installed rule allows only reviewed gc-write subcommands',
+          '"register-session", "update-session-summary", "end-session", "save-daily-summary"' in rule)
 
 print()
 if failures:

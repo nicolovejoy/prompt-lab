@@ -117,6 +117,21 @@ for cmd in "$REPO_DIR/workflow/commands/"*.md; do
     echo "Copied codex skill: $skill_name → $skill_dir/"
 done
 
+# --- Codex session-bookkeeping rule ---
+# Session history lives outside project workspaces. Permit only the installed,
+# reviewed gc-write wrapper to cross that boundary; its identity and revision
+# guards still constrain every mutation. A separate file avoids modifying
+# Codex-generated default.rules entries.
+CODEX_RULES_DIR="$HOME/.codex/rules"
+mkdir -p "$CODEX_RULES_DIR"
+rendered=$(mktemp -t "codex-session-rules.XXXXXX")
+sed "s|__GC_WRITE_PATH__|$BIN_DIR/gc-write.sh|g" \
+    "$REPO_DIR/workflow/codex-session.rules.tpl" > "$rendered"
+install_file "$rendered" "$CODEX_RULES_DIR/prompt-lab-session.rules" \
+    "codex session-bookkeeping rules"
+rm -f "$rendered"
+echo "Copied codex rules: prompt-lab-session.rules → $CODEX_RULES_DIR/"
+
 # --- bin scripts (everything in workflow/bin/) ---
 mkdir -p "$BIN_DIR"
 for src in "$REPO_DIR/workflow/bin/"*; do
@@ -250,4 +265,4 @@ EOF
 
 echo ""
 echo "Done. Restart Claude Code for hook changes to take effect."
-echo "Codex skills update automatically; if they do not appear, start a new Codex session."
+echo "Restart Codex so its session-bookkeeping rule is loaded."

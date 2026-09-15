@@ -334,6 +334,47 @@ def test_summary_does_not_end(tmp: Path) -> None:
     check("summary written", row[0], "did some things")
     check("ended_at still null", row[1], None)
 
+    fd, summary_name = tempfile.mkstemp(
+        prefix=f"gc-session-{sid}-", suffix=".txt", dir="/tmp"
+    )
+    os.close(fd)
+    summary_path = Path(summary_name)
+    summary_path.write_text("updated through a constrained summary file")
+    e.gc(GC_WRITE, "update-session-summary", str(sid), str(summary_path))
+    check(
+        "summary-file form writes summary",
+        e.q("SELECT summary FROM sessions WHERE id=?", (sid,))[0][0],
+        "updated through a constrained summary file",
+    )
+    check("successful summary-file form consumes input", summary_path.exists(), False)
+
+    wrong_path = tmp / f"gc-session-{sid}-wrong.txt"
+    wrong_path.write_text("must not be read")
+    check(
+        "summary-file form rejects paths outside /tmp",
+        e.gc(GC_WRITE, "update-session-summary", str(sid), str(wrong_path)).startswith(
+            "<exit 2"
+        ),
+        True,
+    )
+    check("rejected summary file remains intact", wrong_path.exists(), True)
+
+    symlink_target = tmp / "summary-target.txt"
+    symlink_target.write_text("must not be followed")
+    symlink_path = Path(f"/tmp/gc-session-{sid}-symlink.txt")
+    try:
+        symlink_path.symlink_to(symlink_target)
+        check(
+            "summary-file form rejects symbolic links",
+            e.gc(GC_WRITE, "update-session-summary", str(sid), str(symlink_path)).startswith(
+                "<exit 1"
+            ),
+            True,
+        )
+        check("rejected symlink target remains intact", symlink_target.exists(), True)
+    finally:
+        symlink_path.unlink(missing_ok=True)
+
     e.gc(GC_WRITE, "end-session", str(sid))
     check("ended_at set by end-session",
           bool(e.q("SELECT ended_at FROM sessions WHERE id=?", (sid,))[0][0]), True)

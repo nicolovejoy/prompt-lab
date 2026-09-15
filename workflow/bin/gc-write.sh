@@ -39,7 +39,7 @@ case "$CMD" in
     "$PROMPT_LAB_DIR/.venv/bin/python" "$GC_BIN_DIR/_gc_day_context.py" "$PROJECT" --save "$1"
     ;;
   *)
-    echo "usage: gc-write.sh {register-session|update-session-summary <id>|end-session <id>|save-daily-summary <json-path>}" >&2
+    echo "usage: gc-write.sh {register-session|update-session-summary <id> [summary-file]|end-session <id>|save-daily-summary <json-path>}" >&2
     exit 2
     ;;
 esac

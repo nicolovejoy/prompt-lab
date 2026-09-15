@@ -20,7 +20,11 @@ The first live Codex smoke exposed that CLI 0.154.0 rejected the deprecated
 improvised a partial readup and never registered a session. The installer now also
 renders the canonical commands as explicit-only `$source-command-*` user skills,
 repairing the desktop migrator's incorrect `~/.Codex/bin` and `AGENTS.md` rewrites.
-Nico must reinstall and smoke-test this skill path. No permission profile is installed.
+The installed readup skill passed repeated identity checks as Songpath session `610`.
+Its first lean handoff then stopped safely when the sandbox denied the private DB
+write. Source now installs a narrow rule for only the reviewed `gc-write.sh` helper
+and uses a constrained temporary summary file so the invocation is rule-matchable.
+Reinstall and fresh-resume acceptance remain. No broad permission profile is installed.
 
 Remaining gates: lean installed-command smoke, actual before/after usage
 measurement, fresh-launcher resume/fork, permission-profile acceptance, and the
@@ -53,8 +57,9 @@ The gate before installation is broader than that result:
 
 - Test the profile loaded from its actual configuration location in a fresh CLI
   session, with legacy sandbox settings removed from that candidate's launch.
-- Decide how session helpers reach the private database without broadly reopening
-  the home directory. The candidate currently denies that access.
+- Confirm the separate narrow `gc-write.sh` rule through the installed fresh-resume
+  path. It is intentionally independent of the broader candidate, which still denies
+  direct private-database access.
 - Test shell startup and environment inheritance using fake values; unreadable
   files do not remove credentials already inherited by a process.
 - Keep secret operations human-run until protected helpers have constrained

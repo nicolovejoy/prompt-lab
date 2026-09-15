@@ -39,15 +39,22 @@ Insert each hash, message and validated session ID into the local database at
 `INSERT OR IGNORE INTO commits (hash, message, timestamp, session_id) VALUES (?, ?, datetime(?, 'unixepoch'), ?)`.
 Use `%ct` for Unix seconds; never substitute insertion time. Zero commits is normal.
 
-Save a concise session summary via stdin, usually 50–100 words. Include findings,
-key decisions, unresolved questions and the next concrete step. Preserve details
+Save a concise session summary, usually 50–100 words. Include findings, key
+decisions, unresolved questions and the next concrete step. Preserve details
 needed to resume; reference existing files rather than writing new documentation.
 
+Write the summary as UTF-8 plain text to an exact path matching
+`/tmp/gc-session-<session_id>-<nonce>.txt`, using a file-writing tool rather than
+shell redirection. The nonce may be a short random alphanumeric value. Then run
+the helper as a simple command so Codex can match its narrow permission rule:
+
 ```bash
-~/.claude/bin/gc-write.sh update-session-summary <session_id> <<'SUMMARY'
-<session findings, decisions, open questions, next step>
-SUMMARY
+~/.claude/bin/gc-write.sh update-session-summary <session_id> /tmp/gc-session-<session_id>-<nonce>.txt
 ```
+
+The helper accepts only that filename shape, a small user-owned regular file,
+and consumes the file after a successful database commit. Its original stdin
+form remains supported for compatibility, but Codex must use the file form.
 
 ## 3. Coordinate only when needed
 

@@ -4,9 +4,11 @@
 implementation and remaining gates; `docs/codex-workflow-validation.md` holds
 smoke tests/results. The paired Songpath test passed. After reinstalling, the
 explicit `$source-command-readup` skill passed its live invocation and stable-ID
-checks; `$source-command-handoff`, `$source-command-handoff-full`, and the
+checks. The first `$source-command-handoff` correctly stopped on a read-only DB
+error; a narrow installed-helper rule and constrained temporary summary-file path
+are implemented in source and need reinstall/resume validation. Full handoff and
 fresh-launcher resume/fork checks remain. The deprecated `/prompts:*` interface
-failed its live check. Permission-profile rollout is separate.
+failed its live check. Broad permission-profile rollout is separate.
 
 **1Password preference:** when Nico requests a new item, create its secret field with the
 literal placeholder `replace-this-value`; Nico pastes the real value into 1Password. `env.tpl`
