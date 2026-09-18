@@ -1,0 +1,121 @@
+# Reviewed Codex command rules. DRAFT (2026-09-18): not installed.
+# Install target: ~/.codex/rules/reviewed.rules (user layer, all repos).
+#
+# decision="allow" runs the command OUTSIDE the sandbox without prompting
+# (https://learn.chatgpt.com/docs/agent-configuration/rules). So allow only
+# commands the sandbox cannot run (they need a credential or write outside the
+# repo) and that are read-only or low-impact. Anything the sandbox CAN run
+# (git add/commit, npm test, rg, python tests) gets NO rule: it runs sandboxed.
+# Rules match a command's leading tokens only; flags later in the command are
+# invisible, so no allow may cover a command whose danger lives in a flag.
+# The most restrictive matching rule wins: forbidden > prompt > allow.
+# Derived from 444 escalation requests in ~/.codex/sessions (2026-08/09).
+
+# --- GitHub reads (gh cannot reach its token inside the sandbox) -------------
+prefix_rule(
+    pattern = ["gh", "pr", ["view", "list", "checks", "diff", "status"]],
+    decision = "allow",
+    justification = "Read-only pull request queries",
+    match = ["gh pr view 506 --json body", "gh pr checks", "gh pr list --state open"],
+    not_match = ["gh pr merge 506", "gh pr close 506", "gh api repos/x/y"],
+)
+prefix_rule(
+    pattern = ["gh", "issue", ["view", "list"]],
+    decision = "allow",
+    justification = "Read-only issue queries",
+    match = ["gh issue view 513 --json body", "gh issue list --state open"],
+    not_match = ["gh issue close 513", "gh issue delete 513"],
+)
+prefix_rule(
+    pattern = ["gh", "run", ["list", "view", "watch"]],
+    decision = "allow",
+    justification = "Read-only CI run queries",
+    match = ["gh run list --limit 5", "gh run view 123 --log-failed"],
+    not_match = ["gh run cancel 123", "gh run rerun 123"],
+)
+prefix_rule(
+    pattern = ["gh", ["label", "repo"], ["list", "view"]],
+    decision = "allow",
+    justification = "Read-only label and repo queries",
+    match = ["gh label list", "gh repo view --json visibility"],
+    not_match = ["gh label delete bug", "gh repo delete x"],
+)
+prefix_rule(
+    pattern = ["gh", "auth", "status"],
+    decision = "allow",
+    justification = "Shows login state, not the token",
+    match = ["gh auth status"],
+    not_match = ["gh auth token"],
+)
+
+# --- GitHub writes: DECISION 2 (outward-facing but reversible) ---------------
+prefix_rule(
+    pattern = ["gh", "pr", ["create", "edit", "ready", "comment"]],
+    decision = "allow",
+    justification = "Create or update pull requests; merge and close still ask",
+    match = ["gh pr create --title x --body-file f", "gh pr edit 506 --body-file f"],
+    not_match = ["gh pr merge 506", "gh pr close 506"],
+)
+prefix_rule(
+    pattern = ["gh", "issue", ["create", "edit", "comment"]],
+    decision = "allow",
+    justification = "Create or update issues; close and delete still ask",
+    match = ["gh issue create --title x --body-file f", "gh issue edit 5 --add-label y"],
+    not_match = ["gh issue close 5", "gh issue delete 5"],
+)
+
+# --- git over the network ------------------------------------------------------
+prefix_rule(
+    pattern = ["git", ["fetch", "ls-remote"]],
+    decision = "allow",
+    justification = "Read from remotes; writes nothing but remote-tracking refs",
+    match = ["git fetch", "git fetch origin main", "git ls-remote origin HEAD"],
+    not_match = ["git push", "git pull"],
+)
+# DECISION 1: git push. Left to prompt (no rule). A `git push` allow would also
+# allow `git push origin main --force`: the flag sits past the matched prefix.
+
+# --- Prompt Lab workflow helpers (reviewed code outside every workspace) ----
+# gc-write.sh keeps its own tighter file: prompt-lab-session.rules.
+prefix_rule(
+    pattern = [["/Users/nico/.claude/bin/handoff.sh", "~/.claude/bin/handoff.sh"],
+               ["append", "sync", "pull"]],
+    decision = "allow",
+    justification = "Cross-repo handoff log: append-only entries plus sync",
+    match = ["/Users/nico/.claude/bin/handoff.sh sync", "~/.claude/bin/handoff.sh pull"],
+    not_match = ["/Users/nico/.claude/bin/handoff.sh.bak sync"],
+)
+prefix_rule(
+    pattern = [["/Users/nico/.claude/bin/readup-checks.sh", "~/.claude/bin/readup-checks.sh",
+                "/Users/nico/.claude/bin/session-context.sh", "~/.claude/bin/session-context.sh",
+                "/Users/nico/.claude/bin/gc-read.sh", "~/.claude/bin/gc-read.sh"]],
+    decision = "allow",
+    justification = "Read-only session context and readup probes",
+    match = ["/Users/nico/.claude/bin/readup-checks.sh", "~/.claude/bin/gc-read.sh today-context"],
+    not_match = ["/Users/nico/.claude/bin/gc-write.sh end-session 1"],
+)
+
+# --- Apple toolchain (simulators and DerivedData live outside the repo) -----
+prefix_rule(
+    pattern = ["xcodebuild", ["build", "test", "-list", "-showBuildSettings"]],
+    decision = "allow",
+    justification = "Xcode builds and tests",
+    match = ["xcodebuild test -scheme App", "xcodebuild -list"],
+    not_match = ["xcodebuild archive"],
+)
+prefix_rule(
+    pattern = ["xcrun", "simctl", "list"],
+    decision = "allow",
+    justification = "List simulators",
+    match = ["xcrun simctl list devices"],
+    not_match = ["xcrun simctl erase all"],
+)
+
+# --- Never, even with approval (mirrors the global secrets rule) ------------
+prefix_rule(
+    pattern = ["op", ["read", "item"]],
+    decision = "forbidden",
+    justification = "Secret values never enter the session; use op run/op inject",
+    match = ["op read op://vault/item/field", "op item get x --reveal", "op item list"],
+    not_match = ["op run --env-file=env.tpl -- npm test", "op inject -i env.tpl -o out"],
+)
