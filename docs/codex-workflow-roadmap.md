@@ -46,12 +46,23 @@ multi-character class needed by the four-template complement denied templates.
 The complex pattern approach is rejected for this runtime.
 
 `workflow/codex-permissions.candidate.toml` is a candidate, not installed or selected
-by either launcher. It permits the workspace and runtime reads, with Homebrew
-explicitly readable on this laptop, and denies matching environment/key paths.
-`scripts/probe_codex_permissions.py` uses this candidate against disposable fake
-files. Initial result: 72/72 checks passed, covering cat/Python reads, recursive
-search, symlinks, nested files, backups, ordinary and template writes, and refusal
-to create a new matching secret file.
+by either launcher. Revised 2026-09-18 after mining 444 escalation requests from
+`~/.codex/sessions` (442 approved; causes: bookkeeping writes outside the repo 108,
+network 133, local git writes 86, dev servers/builds 73). The first version's
+`":root" = "deny"` broke git (`~/.gitconfig`), node (OpenSSL config) and gh, and it
+silently disables exact-path carve-outs. Reads are now open by default, with explicit
+denies for home secrets, the raw prompt database and the 1Password CLI socket. A custom
+profile does not inherit `:workspace`'s `.git` protection, so the candidate reopens
+`.git` for local commits and keeps `.git/hooks` and `.git/config` read-only (a planted
+hook would run later outside the sandbox). Network is on; credentialed calls (`gh`,
+push, private fetch) still fail in the sandbox because the gh config, `~/.ssh` and the
+keychain credential are unreachable, so they remain escalations or reviewed rules.
+`scripts/probe_codex_permissions.py` uses this candidate against disposable fake files
+in a git repo: 91/91 on CLI 0.155.1 and the app's 0.155 alpha, covering secret-file
+reads, recursive search, symlinks, writes, local commit, hook/config protection, every
+denied home path, and git/node/python/public network still working. Sandboxed `op`
+reports no accounts. Run it with an `rg` on PATH (this laptop has one only inside
+`/Applications/ChatGPT.app/Contents/Resources`).
 
 The gate before installation is broader than that result:
 

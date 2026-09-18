@@ -31,6 +31,7 @@ def main():
     print(subprocess.check_output([codex, "--version"], text=True).strip())
     with tempfile.TemporaryDirectory(prefix="cx-fake-permissions-") as tmp:
         root = pathlib.Path(tmp)
+        subprocess.run(["git", "init", "-q", tmp], check=True)
         safe = ["ordinary.txt", "env.tpl", "env.template", "env.example", "env.sample",
                 "nested/env.tpl", "nested/deep/env.example"]
         denied = [".env.tpl", ".env.example", ".env.template", ".env.sample", ".ENV.TPL", ".env", ".env.local", ".env.production", ".env.bak", ".env~", ".env-backup",
@@ -50,6 +51,15 @@ def main():
         # Exact exceptions cannot reliably reopen a matching deny glob, so none
         # are used. Pass the entire table: dotted overrides may merge old rules.
         profile = {"cx-fake-probe": config["permissions"]["prompt-lab"]}
+        home_denied = [k for k, v in config["permissions"]["prompt-lab"]["filesystem"].items()
+                       if k.startswith("~/") and v == "deny"]
+        # Only existence and exit status are checked; nothing is printed.
+        tools = [("git-config-read", ["git", "config", "--global", "--list"]),
+                 ("network-public", ["curl", "-sSf", "-m", "10", "-o", "/dev/null",
+                                     "https://registry.npmjs.org/"])]
+        for label, name, args in (("node", "node", ["-e", "0"]), ("python3", "python3", ["-c", "0"])):
+            if shutil.which(name):
+                tools.append((label, [shutil.which(name)] + args))
         code = '''import json, pathlib, subprocess
 safe = ''' + repr(safe) + '''
 denied = ''' + repr(denied) + '''
@@ -79,6 +89,36 @@ try:
     checks['new-secret-write'] = False
 except PermissionError:
     checks['new-secret-write'] = True
+# Local git works; hooks and config stay read-only (a planted hook would run
+# later, outside the sandbox).
+result = subprocess.run(['git', 'add', 'ordinary.txt'], capture_output=True)
+result = result.returncode == 0 and subprocess.run(
+    ['git', '-c', 'user.email=probe@example.invalid', '-c', 'user.name=probe',
+     'commit', '-qm', 'probe'], capture_output=True).returncode == 0
+checks['git-commit'] = result
+for name in ('.git/hooks/pre-commit', '.git/config'):
+    try:
+        with open(name, 'a') as f:
+            f.write('# FAKE_PROBE\\n')
+        checks['git-protected:' + name] = False
+    except PermissionError:
+        checks['git-protected:' + name] = True
+# Home-directory secrets and the raw prompt store stay unreadable.
+for name in ''' + repr(home_denied) + ''':
+    path = pathlib.Path(name).expanduser()
+    try:
+        if path.is_dir():
+            list(path.iterdir())
+        else:
+            path.read_bytes()
+        checks['home-denied:' + name] = not path.exists()
+    except PermissionError:
+        checks['home-denied:' + name] = True
+    except FileNotFoundError:
+        checks['home-denied:' + name] = True
+# Reads stay open enough for everyday tools.
+for label, argv in ''' + repr(tools) + ''':
+    checks['tool:' + label] = subprocess.run(argv, capture_output=True).returncode == 0
 print(json.dumps(checks))
 '''
         command = [codex, "sandbox", "-P", "cx-fake-probe", "-c",

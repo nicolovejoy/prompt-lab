@@ -1,6 +1,10 @@
 # Candidate only: not installed or selected by work.zsh/install.sh.
 # Use env.tpl / env.example for references and placeholders; .env* is denied.
 # Profiles cover command execution, not approved escalation or external tools.
+#
+# Reads stay open by default (no ":root" = "deny"): denying the root breaks git
+# (~/.gitconfig), node (OpenSSL config) and gh, and it silently disables the
+# exact-path .git carve-outs below. Secrets are protected by explicit denies.
 default_permissions = "prompt-lab"
 approval_policy = "on-request"
 
@@ -8,9 +12,6 @@ approval_policy = "on-request"
 extends = ":workspace"
 
 [permissions.prompt-lab.filesystem]
-":root" = "deny"
-":minimal" = "read"
-"/opt/homebrew" = "read"
 "~/.ssh" = "deny"
 "~/.aws" = "deny"
 "~/.config/gcloud" = "deny"
@@ -18,6 +19,14 @@ extends = ":workspace"
 "~/.codex/auth.json" = "deny"
 "~/.netrc" = "deny"
 "~/.npmrc" = "deny"
+"~/.appstoreconnect" = "deny"
+# 1Password desktop-app integration socket: sandboxed `op` must never reach it.
+# (1Password also rejects sandboxed callers today; this makes it structural.)
+"~/Library/Group Containers/2BUA8C4S2C.com.1password" = "deny"
+# Raw prompts: reachable only through the reviewed gc-read/gc-write helpers.
+"~/.claude/prompt-history.db" = "deny"
+"~/.claude/prompt-history.db-wal" = "deny"
+"~/.claude/prompt-history.db-shm" = "deny"
 
 [permissions.prompt-lab.filesystem.":workspace_roots"]
 "**/.[eE][nN][vV]*" = "deny"
@@ -25,6 +34,12 @@ extends = ":workspace"
 "**/*.[eE][nN][vV].*" = "deny"
 "**/*.pem" = "deny"
 "**/*.key" = "deny"
+# A custom profile does not inherit :workspace's .git protection. Reopen .git
+# for local commits, but keep hooks and config read-only: a planted hook would
+# later run outside the sandbox.
+".git" = "write"
+".git/hooks" = "read"
+".git/config" = "read"
 
 [permissions.prompt-lab.network]
 enabled = true
