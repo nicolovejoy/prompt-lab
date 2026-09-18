@@ -62,7 +62,24 @@ in a git repo: 91/91 on CLI 0.155.1 and the app's 0.155 alpha, covering secret-f
 reads, recursive search, symlinks, writes, local commit, hook/config protection, every
 denied home path, and git/node/python/public network still working. Sandboxed `op`
 reports no accounts. Run it with an `rg` on PATH (this laptop has one only inside
-`/Applications/ChatGPT.app/Contents/Resources`).
+`/Applications/ChatGPT.app/Contents/Resources`). The custom profile also drops
+`:workspace`'s read-only `.codex` and `.agents`, so both are reopened read-only;
+without that a sandboxed agent could rewrite its own project config (93/93 with
+those checks).
+
+Pilot, 2026-09-18: the candidate is copied (untracked) to `prompt-lab/.codex/config.toml`
+and applies only to Codex sessions in this repo; delete the file to undo. A fresh
+`codex exec` in the repo recorded `active_permission_profile: prompt-lab` with every
+entry in its session log's `turn_context`. That record is the proof of which profile a
+session ran, and it's the check to repeat after any change. The same profile name from
+another directory fails to resolve.
+
+Environment: sandboxed commands inherit the launching shell's variables, including
+secret-named ones. `shell_environment_policy` (`inherit = "core"`, `exclude` globs) had
+no effect on CLI 0.155.1, from `-c` or from the config file. The launching shell
+currently exports no secrets. The rule that follows: never start Codex under
+`op run` or with a secret exported. Wrap the single command that needs the secret
+instead, where it runs as an escalation.
 
 The gate before installation is broader than that result:
 

@@ -32,6 +32,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix="cx-fake-permissions-") as tmp:
         root = pathlib.Path(tmp)
         subprocess.run(["git", "init", "-q", tmp], check=True)
+        (root / ".codex").mkdir()
+        (root / ".agents").mkdir()
         safe = ["ordinary.txt", "env.tpl", "env.template", "env.example", "env.sample",
                 "nested/env.tpl", "nested/deep/env.example"]
         denied = [".env.tpl", ".env.example", ".env.template", ".env.sample", ".ENV.TPL", ".env", ".env.local", ".env.production", ".env.bak", ".env~", ".env-backup",
@@ -96,7 +98,8 @@ result = result.returncode == 0 and subprocess.run(
     ['git', '-c', 'user.email=probe@example.invalid', '-c', 'user.name=probe',
      'commit', '-qm', 'probe'], capture_output=True).returncode == 0
 checks['git-commit'] = result
-for name in ('.git/hooks/pre-commit', '.git/config'):
+for name in ('.git/hooks/pre-commit', '.git/config', '.codex/config.toml',
+             '.agents/probe.md'):
     try:
         with open(name, 'a') as f:
             f.write('# FAKE_PROBE\\n')
