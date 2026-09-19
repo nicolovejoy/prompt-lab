@@ -17,7 +17,9 @@
 # USE:      `work`            -> shows a numbered menu
 #           `work musicforge` -> opens that project directly
 #           `work mus<TAB>`   -> completes from ~/src
-#           `cx prompt-lab` -> same layout, running Codex
+#           `cx prompt-lab` -> same layout, running Codex in
+#                              ~/src/<project>-codex; refuses if that
+#                              clone doesn't exist
 #           `duet prompt-lab` -> four panes: Claude | Codex on top,
 #                              a shell under each; Codex runs in
 #                              ~/src/<project>-codex; refuses to launch
@@ -127,6 +129,20 @@ _work_cmds() {
   reply=("$top_cmd" "$shell_cmd")
 }
 
+# Resolve a project's Codex clone (~/src/<name>-codex) into REPLY.
+# No clone -> refuse. Falling back to the main checkout put Claude and
+# Codex in one tree, and the warning scrolled away behind the new window.
+_work_codex_dir() {
+  local name="$1"
+  local proj_dir="$WORK_SRC_DIR/$name" codex_dir="$WORK_SRC_DIR/$name-codex"
+  if [[ ! -d "$codex_dir" ]]; then
+    echo "No Codex clone at $codex_dir; not launching (Claude and Codex would share one checkout)."
+    echo "Create one: git clone \"\$(git -C ${(q)proj_dir} remote get-url origin)\" ${(q)codex_dir}"
+    return 1
+  fi
+  REPLY="$codex_dir"
+}
+
 _work_launch() {
   local agent="$1"
   shift
@@ -134,6 +150,10 @@ _work_launch() {
   local name="$REPLY"
   # NB: can't name this "path" — zsh ties that name to $PATH.
   local proj_dir="$WORK_SRC_DIR/$name"
+  if [[ "$agent" == codex && "$name" != *-codex ]]; then
+    _work_codex_dir "$name" || return 1
+    proj_dir="$REPLY"
+  fi
 
   _work_cmds "$agent" "$name" "$proj_dir"
   local top_cmd="${reply[1]}" shell_cmd="${reply[2]}"
@@ -173,18 +193,13 @@ APPLESCRIPT
 # duet: Claude and Codex side by side, one column per checkout.
 #   left  : Claude + shell in ~/src/<project>
 #   right : Codex  + shell in ~/src/<project>-codex (the Codex clone).
-#   No clone -> refuse. A fallback to the main checkout put both agents
-#   in one tree, and its warning scrolled away behind the new window.
+#   No clone -> refuse (see _work_codex_dir).
 _work_duet() {
   _work_pick "$1" || return 1
   local name="$REPLY"
   local proj_dir="$WORK_SRC_DIR/$name"
-  local codex_dir="$WORK_SRC_DIR/$name-codex"
-  if [[ ! -d "$codex_dir" ]]; then
-    echo "No Codex clone at $codex_dir; not launching (Claude and Codex would share one checkout)."
-    echo "Create one: git clone \"\$(git -C ${(q)proj_dir} remote get-url origin)\" ${(q)codex_dir}"
-    return 1
-  fi
+  _work_codex_dir "$name" || return 1
+  local codex_dir="$REPLY"
 
   local duet_title="${(U)name[1]}${name[2,-1]} -- DUET: Claude + Codex"
   _work_cmds claude "$name" "$proj_dir" "$duet_title"
