@@ -13,6 +13,42 @@ drifts.
 
 ## Build log (newest first)
 
+### Stranded Codex bookkeeping work recovered — 2026-09-19
+
+Recovered the uncommitted hook proposal, lifecycle evidence, current-work updates
+and manual probe from `~/src/prompt-lab`, then merged the older approval-rule
+finding from `/private/tmp/prompt-lab-bookkeeping`. The older proposed escalation
+gate is explicitly superseded; its dated evidence is retained. The recovery
+branch starts at `origin/main`, excluding the pre-squash duplicate `787524b`.
+Both source locations remain untouched; every added line from the later set is
+retained, and the probe script is byte-identical. Pinned Ruff passed. The full
+standalone loop ran; only `test_session_context.py` was blocked by its write to
+the real user's nudge stamp. It also invokes a live-DB reader, so it was not
+escalated under the explicit DB denial. Database-backed session closeout remains
+unavailable; this entry preserves local continuity for the recovery PR.
+
+### Codex hook lifecycle fixture passed — 2026-09-19
+
+Added the manual `scripts/probe_codex_hooks.py` experiment. The installed CLI with
+a local Responses stub received hook identity, wrote a fake handoff, and received
+its committed receipt through a one-time Stop continuation. Notification-only
+output did not return to the model. Wrong-ID rejection left summary/closure empty.
+Three fixture cases passed; no paid model, live DB or installation involved.
+Nested Seatbelt failed, so successful cases used the existing outer sandbox and
+make no production-profile acceptance claim. Evidence and repeat steps are in
+`docs/codex-workflow-validation.md`. Changes left uncommitted for review.
+
+### Codex bookkeeping: hook recovery proposal — 2026-09-19
+
+Read Claude's fake-database result from the shared Claude/Codex handoff channel.
+Distinguished the observed sandbox denial from the unrun escalation steps, and
+replaced the roadmap's escalation experiment with a hook-lifecycle gate. Proposed
+host-injected session identity, validated bounded handoff requests, atomic saves
+and host-origin receipts; queued requests must not be reported as saved. Updated
+validation and current-work status. Documentation only, left uncommitted for
+review; no live database access or installation. Database-backed session handoff
+remains unavailable under this session's denial.
+
 ### Codex workflow checkpoint — 2026-09-13 (moved 2026-09-13)
 *Kept in CLAUDE.md, compressed: the branch, the iTerm -10000 blocker, the three next-session scope items, the doc pointers, and the `gc-read.sh current-session` warning.*
 
