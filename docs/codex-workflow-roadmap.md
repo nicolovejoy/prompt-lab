@@ -59,6 +59,34 @@ Evidence available on 2026-09-19:
   commit capture. This is a separate uncovered access path even if registration
   succeeds; the earlier zero-commit smoke did not exercise it.
 
+**Root cause, verified from Claude 2026-09-19** (not under the Codex profile, so it
+could read the DB and `~/.codex/sessions`):
+
+- Both failing MusicForge Codex conversations (`01a0ba63-…`, `01a0ba8d-d918-…`,
+  cwd `~/src/musicforge-codex`) ran `/Users/nico/.claude/bin/gc-write.sh
+  register-session` as a plain `exec_command`, with no `sandbox_permissions`. Output:
+  `Session bookkeeping failed: unable to open database file`, exit 1. No retry.
+- Their session rows **exist anyway**: 691 and 693, project `musicforge-codex`,
+  `claude_session_id` equal to the conversation IDs. The `UserPromptSubmit` hook
+  (`log-prompt.sh` → `_gc_session_identity.py claude`) wrote them; Codex hooks run
+  outside the sandbox. The row exists; the agent just cannot read its ID back.
+- `~/.codex/rules/prompt-lab-session.rules` has `decision = "allow"` for the four
+  `gc-write.sh` subcommands. An allow rule removes the approval prompt. It does not
+  lift the sandbox, and the profile's `prompt-history.db = "deny"` applies to every
+  sandboxed child process, the reviewed helper included. Session 610 passed only
+  because it ran before the profile was installed.
+
+Candidate fix to test first, before the heavier interface below: readup/handoff
+tell Codex to invoke `gc-write.sh` (only) with `sandbox_permissions =
+"require_escalated"`, relying on the existing prefix rule to approve that
+escalation. **Open question that decides it:** does the installed rule
+auto-approve an escalated run of a matching command, or does the profile's deny
+still apply / still prompt? The Codex session above reported the DB denials as
+non-escalatable in its policy; that has to be tested, not assumed. If escalation
+is refused, the fallback is the hook route: hooks already write the row, so a
+hook-side step could hand the ID to the agent (e.g. inject it into context) and
+move the other writes behind hooks too.
+
 Preserve the database denial and conversation-ownership checks. Do not choose a
 different session, copy the database, broaden Python/sqlite permissions, or treat
 an approved command prefix as authority to bypass a non-escalatable deny.
