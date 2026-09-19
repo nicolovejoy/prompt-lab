@@ -75,6 +75,15 @@ conv() {  # $1 = file → in sync | behind | tampered | missing | absent
 }
 echo "CONVENTIONS_CLAUDE=$(conv CLAUDE.md)"
 echo "CONVENTIONS_AGENTS=$(conv AGENTS.md)"
+# Codex Desktop's "import from Claude Code" writes a find-replaced copy of CLAUDE.md
+# wherever AGENTS.md is absent. Same fingerprints as make-agents-md.sh.
+if [ -f AGENTS.md ] && grep -qE 'guidance to Codex \(Codex\.ai/code\)|Codex-md-shared\.md|~/\.Codex/|Codex API' AGENTS.md; then
+  if git ls-files --error-unmatch AGENTS.md >/dev/null 2>&1; then
+    echo "AGENTS_ORIGIN=codex-import tracked"
+  else
+    echo "AGENTS_ORIGIN=codex-import untracked"
+  fi
+fi
 
 # --- 7. flush handoff channel -------------------------------------------------
 if [ -d "$HOME/src/.handoff/.git" ] && [ -x "$HOME/.claude/bin/handoff.sh" ]; then
