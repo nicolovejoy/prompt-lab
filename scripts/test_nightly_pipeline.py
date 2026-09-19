@@ -156,15 +156,53 @@ def _():
 def _():
     stages = np.build_stages("python")
     names = [s.name for s in stages]
-    assert names == ["cost-pull", "synthesizer", "review", "report", "publish"], names
+    assert names == ["cost-pull", "synthesizer", "sync-summaries", "review",
+                      "report", "publish"], names
     by = {s.name: s for s in stages}
-    assert by["review"].needs == ("synthesizer",)
-    assert by["report"].needs == ("synthesizer",)
+    assert by["sync-summaries"].needs == ("synthesizer",)
+    assert by["review"].needs == ("synthesizer", "sync-summaries")
+    assert by["report"].needs == ("synthesizer", "sync-summaries")
     assert by["report"].condition is not None, "report must be artifact-gated"
     assert by["publish"].always, "publish must run unconditionally"
     assert not by["publish"].needs
     for s in stages:
         assert s.timeout > 0
+
+
+@test("build_stages: a failed sync-summaries skips review and report, "
+      "publish still runs")
+def _():
+    """#56: the review reads Turso while the synthesizer only writes local —
+    a review or report composed over stale Turso is the silent failure this
+    stage exists to prevent. A skipped review/report is loud and recorded
+    instead."""
+    with tempfile.TemporaryDirectory() as d:
+        stages = np.build_stages("python")
+        by = {s.name: s for s in stages}
+        by["cost-pull"].argv = touch_stage("cost-pull", d).argv
+        by["synthesizer"].argv = touch_stage("synthesizer", d).argv
+        by["sync-summaries"].argv = touch_stage("sync-summaries", d, exit_code=1).argv
+        by["review"].argv = touch_stage("review", d).argv
+        by["report"].condition = lambda: (True, "")
+        by["report"].argv = touch_stage("report", d).argv
+        by["publish"].argv = touch_stage("publish", d).argv
+
+        results = {r.name: r for r in np.run_pipeline(stages, cwd=Path(d))}
+        assert results["sync-summaries"].outcome == "failed", results["sync-summaries"]
+        assert results["review"].outcome == "skipped", results["review"]
+        assert results["report"].outcome == "skipped", results["report"]
+        assert results["publish"].outcome == "ok", results["publish"]
+        assert order_in(d) == ["cost-pull", "synthesizer", "sync-summaries", "publish"], \
+            order_in(d)
+
+
+@test("the cost-pull heartbeat condition still keys on the publish stage")
+def _():
+    """main() gates the heartbeat on by_name['publish'].ok — that lookup key
+    must survive the new stage regardless of where it sits in the list."""
+    src = (ROOT / "nightly_pipeline.py").read_text()
+    assert 'by_name.get("publish")' in src, \
+        "the cost-pull heartbeat must still key on the stage named 'publish'"
 
 
 @test("run_identity derives run_id from started_at and host")
