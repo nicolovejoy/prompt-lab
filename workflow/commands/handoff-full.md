@@ -4,6 +4,13 @@ description: Close a session and refresh the whole-day summary and weekly rollup
 allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(python3:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Read, Write
 ---
 
+Codex: this full-handoff path is unavailable under the DB-denial profile until
+its separate host context/synthesis contract passes review. Report that limitation
+and stop; do not execute the Claude instructions below, escalate, or queue a routine
+handoff as a substitute for this explicit full request.
+
+Claude Code: continue with the existing flow below.
+
 Use only when explicitly requested. Follow `/handoff` (Codex: `$source-command-handoff`)
 through saving the session summary and capturing commits, but defer its final
 `end-session` until the synthesis below is saved. Do not run document maintenance.

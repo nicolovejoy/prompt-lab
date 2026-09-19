@@ -6,7 +6,21 @@ allowed-tools: Bash(git:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin
 
 Start a session. Be concise.
 
-If SessionStart already injected the date, last summary, commits, working-tree state, and bulletin headlines, do not re-fetch them. Otherwise (including Codex without an equivalent hook), run:
+## Codex: consume host identity
+
+Codex only: retain host-injected
+`Session: <session_id>|<started_at>` and matching `GC_IDENTITY` (project,
+conversation_id, session_id, started_at, request_path). Missing/inconsistent
+identity is an error; never guess a row. Do not call DB helpers, SQLite, session-context.sh, readup-checks.sh, or escalation:
+Full handoff/context reads stay gated.
+
+Read CLAUDE.md in full; use injected context. Check `git status --short --branch`,
+`git fetch`, `git branch -avv`, `git worktree list`, and CI via GitHub. Report
+unavailable checks, including public-data audits, as unverified. Handoff requires a host receipt to claim saved; otherwise pending.
+
+## Claude Code: existing registration and checks
+
+If SessionStart already injected the date, last summary, commits, working-tree state, and bulletin headlines, do not re-fetch them. Otherwise, run:
 
 ```bash
 ~/.claude/bin/session-context.sh

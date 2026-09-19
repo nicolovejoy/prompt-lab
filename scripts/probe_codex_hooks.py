@@ -7,6 +7,7 @@ Run manually: python3 scripts/probe_codex_hooks.py
 from __future__ import annotations
 
 import argparse
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -98,7 +99,7 @@ def marker_json(text, marker):
     return json.JSONDecoder().raw_decode(text[position + len(marker):])[0]
 
 
-def run_case(codex, root, mode, *, outer_sandbox=False):
+def run_case(codex, root, mode, *, outer_sandbox=False, consumer=False):
     case = root / mode
     workspace = case / "repo"
     host = case / "host"
@@ -111,6 +112,15 @@ def run_case(codex, root, mode, *, outer_sandbox=False):
         conn.execute("""CREATE TABLE sessions (
             id INTEGER PRIMARY KEY, native TEXT UNIQUE,
             started_at TEXT DEFAULT (datetime('now')), summary TEXT, ended_at TEXT)""")
+    fixture = None
+    if consumer:
+        from test_hook_bookkeeping import Fixture, git_commit
+        # Keep the existing model/server loop; swap only its disposable host hook.
+        fixture_root = case / 'consumer'
+        fixture_root.mkdir()
+        fixture = Fixture(fixture_root)
+        workspace = fixture.repo
+        commit = git_commit(fixture)
     seen = []
     errors = []
 
@@ -124,8 +134,11 @@ def run_case(codex, root, mode, *, outer_sandbox=False):
             try:
                 request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 content = "\n".join(text_parts(request.get("input", [])))
-                identity = marker_json(content, "PROBE_SESSION=")
-                receipt = marker_json(content, "PROBE_RECEIPT=")
+                identity = marker_json(content, "GC_IDENTITY=" if consumer else "PROBE_SESSION=")
+                receipt = marker_json(content, "GC_RECEIPT=" if consumer else "PROBE_RECEIPT=")
+                failure = 'Bookkeeping failed' in content if consumer else False
+                if failure and receipt is None:
+                    receipt = {'status': 'rejected'}
                 seen.append({"request": len(seen) + 1, "identity": identity, "receipt": receipt,
                              "has_tool_result": 'function_call_output' in json.dumps(request.get("input"))})
                 n = len(seen)
@@ -133,8 +146,18 @@ def run_case(codex, root, mode, *, outer_sandbox=False):
                     if identity is None:
                         raise AssertionError("First model request lacked hook-injected session identity")
                     data = dict(session_id=identity["session_id"] + (1 if mode == "reject" else 0),
-                                native=identity["native"], request_id="fixture-request", summary="Fake review only")
-                    command = "printf '%s' " + shlex.quote(json.dumps(data)) + " > handoff-request.json"
+                                native=identity.get("native", identity.get("conversation_id")), request_id="fixture-request", summary="Fake review only")
+                    request_name = "handoff-request.json"
+                    if consumer:
+                        import uuid
+                        data = {k: identity[k] for k in ('project', 'conversation_id', 'session_id', 'started_at')}
+                        data.update(version=1, request_id=str(uuid.uuid4()), summary='Fake review only', commits=[commit])
+                        if mode == 'reject':
+                            data['session_id'] += 1
+                        request_name = identity['request_path']
+                    if consumer:
+                        seen[0]['intent'] = 'GC_REQUEST=' + data['request_id'] + ':' + hashlib.sha256(json.dumps(data).encode()).hexdigest()
+                    command = "printf '%s' " + shlex.quote(json.dumps(data)) + " > " + shlex.quote(request_name)
                     tool_names = [tool.get("name") for tool in request.get("tools", [])]
                     if "exec_command" not in tool_names:
                         raise AssertionError(f"Expected exec_command tool; offered {tool_names}")
@@ -144,6 +167,8 @@ def run_case(codex, root, mode, *, outer_sandbox=False):
                 else:
                     message = "QUEUED" if receipt is None else (
                         "SAVED HOST_RECEIPT_7391" if receipt["status"] == "saved" else "REJECTED HOST_RECEIPT_7391")
+                    if consumer and receipt is None:
+                        message += ' ' + seen[0]['intent']
                     item = {"id": f"msg_{n}", "type": "message", "role": "assistant",
                             "status": "completed", "content": [{"type": "output_text", "text": message,
                                                                      "annotations": []}]}
@@ -167,7 +192,7 @@ def run_case(codex, root, mode, *, outer_sandbox=False):
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()
-    hook_command = shlex.join([sys.executable, "-I", str(host / "hook.py")])
+    hook_command = shlex.join(fixture.command if consumer else [sys.executable, "-I", str(host / "hook.py")])
     # A child-only Codex configuration directory; never change the parent shell
     # or user's installation. Codex opens installation_id for writing at startup.
     probe_codex_dir = case / "codex-runtime"
@@ -194,7 +219,7 @@ def run_case(codex, root, mode, *, outer_sandbox=False):
         "features.code_mode": False,
         "web_search": "disabled",
         "default_permissions": "hook_fixture",
-        "permissions": {"hook_fixture": {"extends": ":workspace", "filesystem": {str(host): "deny"},
+        "permissions": {"hook_fixture": {"extends": ":workspace", "filesystem": {str(fixture.root if consumer else host): "deny", **({str(workspace): "write"} if consumer else {})},
                                            "network": {"enabled": False}}},
     }
     command = [codex, "exec", "--ignore-user-config", "--ignore-rules", "--ephemeral",
@@ -223,6 +248,27 @@ def run_case(codex, root, mode, *, outer_sandbox=False):
         raise AssertionError("; ".join(errors))
     if result.returncode:
         raise AssertionError(f"Codex exited {result.returncode}; see {case / 'stderr.txt'}")
+    if consumer:
+        rows = fixture.rows()
+        assert len(rows) == 1, rows
+        saved = mode != 'reject'
+        assert bool(rows[0]['ended_at']) == saved
+        assert rows[0]['summary'] == ('Fake review only' if saved else None)
+        assert len(fixture.rows('SELECT * FROM commits')) == (1 if saved else 0)
+        assert len(seen) == 3, seen  # tool, queued final, one host continuation
+        assert seen[0]['identity'] == seen[1]['identity']
+        assert seen[0]['receipt'] is None and seen[1]['receipt'] is None
+        assert seen[2]['receipt']['status'] == ('saved' if saved else 'rejected')
+        assert ('SAVED HOST_RECEIPT_7391' if saved else 'REJECTED HOST_RECEIPT_7391') in result.stdout
+        if saved:
+            record = fixture.rows('SELECT * FROM hook_bookkeeping_requests')[0]
+            assert record['emitted_turn']
+            assert fixture.rows('SELECT timestamp FROM commits')[0]['timestamp'] == '2001-02-03 04:05:06'
+        summary = dict(mode=mode, consumer=True, outer_sandbox=outer_sandbox,
+                       model_requests=len(seen), saved=saved, receipt_delivered_to_model=True)
+        (case / 'result.json').write_text(json.dumps(summary, indent=2))
+        print('PASS ' + json.dumps(summary), flush=True)
+        return summary
     hook_events = [json.loads(line) for line in (host / "events.jsonl").read_text().splitlines()]
     with sqlite3.connect(host / "fixture.db") as conn:
         rows = conn.execute("SELECT id, native, summary, ended_at FROM sessions").fetchall()
@@ -252,6 +298,7 @@ def run_case(codex, root, mode, *, outer_sandbox=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", choices=("notify", "continue", "reject", "all"), default="all")
+    parser.add_argument("--consumer", action="store_true", help="Exercise the installed production consumer")
     parser.add_argument("--outer-sandbox", action="store_true",
                         help="Use only inside an existing sandbox; avoid nested macOS Seatbelt")
     args = parser.parse_args()
@@ -261,9 +308,11 @@ def main():
     root = Path(tempfile.mkdtemp(prefix="prompt-lab-hook-probe-", dir="/private/tmp"))
     print(f"Evidence: {root}", flush=True)
     print(subprocess.check_output([codex, "--version"], text=True).strip(), flush=True)
-    cases = ("notify", "continue", "reject") if args.case == "all" else (args.case,)
+    if args.consumer and args.case == 'notify':
+        parser.error('Consumer uses block receipts; notification-only is a historical fixture')
+    cases = (("continue", "reject") if args.consumer else ("notify", "continue", "reject")) if args.case == "all" else (args.case,)
     for mode in cases:
-        run_case(codex, root, mode, outer_sandbox=args.outer_sandbox)
+        run_case(codex, root, mode, outer_sandbox=args.outer_sandbox, consumer=args.consumer)
 
 
 if __name__ == "__main__":

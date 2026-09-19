@@ -36,7 +36,9 @@ jobs:
         run: python scripts/test_alias_layer.py
 
       - name: Session identity tests
-        run: python scripts/test_session_identity.py
+        run: |
+          python scripts/test_session_identity.py
+          python scripts/test_hook_bookkeeping.py
 
       - name: Readup and whole-day workflow tests
         run: |

@@ -32,7 +32,7 @@ def check(name, condition, detail=""):
 
 
 # 1. Structural: retain legacy prompts, install current explicit-only skills,
-#    and install a narrow rule for the out-of-workspace session helper.
+#    and leave the retired DB-helper escalation route disabled.
 with open(os.path.join(REPO_DIR, "workflow", "install.sh")) as f:
     install_src = f.read()
 
@@ -53,9 +53,8 @@ check(
     "allow_implicit_invocation: false" in install_src,
 )
 check(
-    "install.sh installs a separate Codex session rule",
-    "prompt-lab-session.rules" in install_src
-    and "workflow/codex-session.rules.tpl" in install_src,
+    "install.sh does not install DB-helper approval rules",
+    "workflow/codex-session.rules.tpl" not in install_src,
 )
 
 # 2. Functional: the transform must drop exactly the allowed-tools line (when
@@ -213,13 +212,7 @@ with tempfile.TemporaryDirectory(prefix='codex-rule-install-') as dest:
         ['bash', '-e', '-c', 'install_file() { cp "$1" "$2"; }\n' + rules_block],
         env=env, capture_output=True, text=True)
     check('real Codex rule distribution block succeeds', run.returncode == 0, run.stderr)
-    rule_path = os.path.join(rules_dest, 'prompt-lab-session.rules')
-    rule = open(rule_path).read() if os.path.isfile(rule_path) else ''
-    expected_helper = os.path.join(fake_home, '.claude', 'bin', 'gc-write.sh')
-    check('installed rule resolves the absolute helper path',
-          expected_helper in rule and '__GC_WRITE_PATH__' not in rule)
-    check('installed rule allows only reviewed gc-write subcommands',
-          '"register-session", "update-session-summary", "end-session", "save-daily-summary"' in rule)
+    check('retired rule block writes no approval rule', not os.path.exists(rules_dest))
 
 print()
 if failures:
