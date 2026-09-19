@@ -16,7 +16,7 @@ import io
 import sqlite3
 import sys
 import tempfile
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -24,6 +24,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import dedup_commits  # noqa: E402
+from store.sqlite_store import SqliteKnowledgeStore  # noqa: E402
 
 _results: list[tuple[str, bool, str]] = []
 
@@ -193,6 +194,75 @@ def _():
         assert code == 0, out
         assert "duplicate rows:  2" in out, out
         assert "cross-session:   1" in out, out
+
+
+# --- store.sqlite_store.SqliteKnowledgeStore.migrate() coverage ---
+#
+# migrate() defensively (re-)creates commits_hash itself (see
+# store/sqlite_store.py) so any DB opened through the store, not just one
+# passed through dedup_commits.py, ends up with the index once it's safe to
+# add. Both branches of that guard need direct coverage: clean table -> the
+# index gets created; table still carrying duplicates -> migrate() must not
+# raise, must not create the index, and must say so on stderr (the "Important"
+# finding from task-3 round 1 review — a silent `except: pass` there hides
+# that #57 isn't fixed on that DB and INSERT OR IGNORE is still inserting
+# duplicates).
+
+@test("migrate(): clean commits table gets the commits_hash unique index")
+def _():
+    with tempfile.TemporaryDirectory() as td:
+        db = Path(td) / "store.db"
+        conn = sqlite3.connect(db)
+        conn.executescript(SCHEMA)
+        conn.executemany(
+            "INSERT INTO commits (hash, message, session_id) VALUES (?, ?, ?)",
+            [("aaa", "one", 1), ("bbb", "two", 1)],
+        )
+        conn.commit()
+        conn.close()
+
+        err = io.StringIO()
+        with redirect_stderr(err):
+            store = SqliteKnowledgeStore(db_path=db)
+            store.migrate()
+            store.close()
+
+        assert "commits" not in err.getvalue(), err.getvalue()
+        conn = sqlite3.connect(db)
+        indexes = {r[1]: r[2] for r in conn.execute("PRAGMA index_list(commits)")}
+        assert indexes.get("commits_hash") == 1, indexes
+        conn.close()
+
+
+@test("migrate(): commits table with duplicates — no raise, no index, warns on stderr")
+def _():
+    with tempfile.TemporaryDirectory() as td:
+        db = Path(td) / "store.db"
+        conn = sqlite3.connect(db)
+        conn.executescript(SCHEMA)
+        conn.executemany(
+            "INSERT INTO commits (hash, message, session_id) VALUES (?, ?, ?)",
+            [("aaa", "kept", 1), ("aaa", "duplicate", 2)],
+        )
+        conn.commit()
+        conn.close()
+
+        err = io.StringIO()
+        with redirect_stderr(err):
+            store = SqliteKnowledgeStore(db_path=db)
+            store.migrate()  # must not raise
+            store.close()
+
+        warning = err.getvalue()
+        assert "commits" in warning and "duplicate hashes present" in warning, warning
+        assert "scripts/dedup_commits.py --apply" in warning, warning
+
+        conn = sqlite3.connect(db)
+        indexes = {r[1] for r in conn.execute("PRAGMA index_list(commits)")}
+        assert "commits_hash" not in indexes, indexes
+        assert conn.execute("SELECT COUNT(*) FROM commits").fetchone()[0] == 2, \
+            "migrate() must not delete anything — that's dedup_commits.py's job"
+        conn.close()
 
 
 if __name__ == "__main__":

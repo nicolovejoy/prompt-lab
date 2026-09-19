@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -378,18 +379,24 @@ class SqliteKnowledgeStore(KnowledgeStore):
         # BEFORE building its own sessions/prompts/commits tables, relying on
         # migrate() leaving them alone. So this only ever adds the index
         # scripts/dedup_commits.py creates, and only once the table already
-        # exists. On today's real DB it's a no-op until dedup_commits.py
-        # --apply clears the ~395 pre-existing duplicate hashes; guarding the
-        # IntegrityError means a dirty real DB never breaks migrate() for
-        # every other caller (synthesizer, sync_to_turso, slash commands) in
-        # the meantime.
+        # exists. On a DB that still has duplicate hashes the CREATE UNIQUE
+        # INDEX raises — that must not break migrate() for every other
+        # caller (synthesizer, sync_to_turso, slash commands), but silently
+        # swallowing it would hide that #57 isn't fixed there yet and that
+        # INSERT OR IGNORE is still inserting duplicates. So: don't raise,
+        # but say so on stderr every time, until dedup_commits.py --apply
+        # clears the duplicates and this stops firing for good.
         if self._has_table("commits"):
             try:
                 self._conn.execute(
                     "CREATE UNIQUE INDEX IF NOT EXISTS commits_hash ON commits(hash)"
                 )
             except sqlite3.IntegrityError:
-                pass
+                print(
+                    "commits: duplicate hashes present, unique index not "
+                    "created — run scripts/dedup_commits.py --apply",
+                    file=sys.stderr,
+                )
 
         self._conn.commit()
 
