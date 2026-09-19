@@ -24,6 +24,7 @@ with tempfile.TemporaryDirectory(prefix="readup-checks-") as tmp:
     sync_dir.mkdir(parents=True)
     sync = sync_dir / "sync-shared-md.sh"
     sync.write_text('''#!/bin/sh
+[ -n "${FAKE_CONV_LOG:-}" ] && printf '%s\n' "$2" >> "$FAKE_CONV_LOG"
 case "$2" in
   *CLAUDE.md) state="${FAKE_CONV_CLAUDE:-in sync}" ;;
   *AGENTS.md) state="${FAKE_CONV_AGENTS:-in sync}" ;;
@@ -112,6 +113,21 @@ exit "${FAKE_AUDIT_RC:-0}"
     (repo / "AGENTS.md").write_text("Read CLAUDE.md in this repo first.\n")
     check("pointer-form AGENTS.md is not flagged", "AGENTS_ORIGIN" not in probe())
     (repo / "AGENTS.md").unlink()
+    conv_log = Path(tmp) / "conv.log"
+    probe(FAKE_CONV_LOG=str(conv_log))
+    check("root CLAUDE.md is the default conventions target",
+          "./CLAUDE.md" in conv_log.read_text().splitlines())
+    conv_log.unlink()
+    (repo / ".claude").mkdir()
+    (repo / ".claude/CLAUDE.md").write_text("# Project\n")
+    probe(FAKE_CONV_LOG=str(conv_log))
+    check("with no root CLAUDE.md, .claude/CLAUDE.md is checked",
+          "./.claude/CLAUDE.md" in conv_log.read_text().splitlines(), conv_log.read_text())
+    (repo / "CLAUDE.md").write_text("# Root\n")
+    conv_log.unlink()
+    probe(FAKE_CONV_LOG=str(conv_log))
+    check("root CLAUDE.md wins when both exist",
+          "./CLAUDE.md" in conv_log.read_text().splitlines())
     outside = probe(FAKE_OUTSIDE="1")
     check("outside repo skips CI and public audit",
           "CI_PROBE=skip" in outside and "PUBLIC_DRIFT=skip" in outside)

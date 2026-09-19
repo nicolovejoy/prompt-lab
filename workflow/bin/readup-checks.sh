@@ -73,7 +73,10 @@ conv() {  # $1 = file → in sync | behind | tampered | missing | absent
     printf 'skip'
   fi
 }
-echo "CONVENTIONS_CLAUDE=$(conv CLAUDE.md)"
+# Some repos keep project instructions at .claude/CLAUDE.md instead of the root.
+claude_md=CLAUDE.md
+[ ! -f CLAUDE.md ] && [ -f .claude/CLAUDE.md ] && claude_md=.claude/CLAUDE.md
+echo "CONVENTIONS_CLAUDE=$(conv "$claude_md")"
 echo "CONVENTIONS_AGENTS=$(conv AGENTS.md)"
 # Codex Desktop's "import from Claude Code" writes a find-replaced copy of CLAUDE.md
 # wherever AGENTS.md is absent. Same fingerprints as make-agents-md.sh.

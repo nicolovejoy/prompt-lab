@@ -12,6 +12,9 @@
 #   make-agents-md.sh [DIR]                          # create if absent
 #   make-agents-md.sh --replace-importer-copy [DIR]  # also replace an untracked importer copy
 #
+# CLAUDE.md may live at DIR/CLAUDE.md or DIR/.claude/CLAUDE.md (both are places
+# Claude Code reads project instructions from); the pointer names whichever exists.
+#
 # Exit: 0 created · 2 no CLAUDE.md in DIR · 3 AGENTS.md exists (left alone)
 #       4 importer copy is tracked by git (refused; fix it with a reviewed commit)
 #       5 shared-block sync failed (partial file removed)
@@ -36,8 +39,12 @@ is_importer_copy() {
     grep -qE 'guidance to Codex \(Codex\.ai/code\)|Codex-md-shared\.md|~/\.Codex/|Codex API' "$1"
 }
 
-if [ ! -f "$DIR/CLAUDE.md" ]; then
-    echo "no-claude-md: $DIR has no CLAUDE.md to point at; nothing written" >&2
+if [ -f "$DIR/CLAUDE.md" ]; then
+    CLAUDE_MD="CLAUDE.md"
+elif [ -f "$DIR/.claude/CLAUDE.md" ]; then
+    CLAUDE_MD=".claude/CLAUDE.md"
+else
+    echo "no-claude-md: $DIR has no CLAUDE.md or .claude/CLAUDE.md to point at; nothing written" >&2
     exit 2
 fi
 
@@ -63,9 +70,9 @@ cat > "$TARGET" <<EOF
   Written $today by prompt-lab's make-agents-md.sh, for Nico. The prompt-lab agent
   owns this format; raise questions in that repo's handoff channel.
 
-  Why this is a pointer and not a copy: CLAUDE.md is this repo's single source of
+  Why this is a pointer and not a copy: $CLAUDE_MD is this repo's single source of
   project instructions. Codex reads AGENTS.md automatically, so this file sends it
-  to CLAUDE.md and carries the shared-conventions block below.
+  to $CLAUDE_MD and carries the shared-conventions block below.
 
   Do not replace it with a copy of CLAUDE.md. In September 2026, Codex Desktop's
   "import from Claude Code" wrote whole-file copies using a blind Claude-to-Codex
@@ -77,7 +84,7 @@ cat > "$TARGET" <<EOF
   ~/.claude/bin/sync-shared-md.sh --apply ./AGENTS.md
 -->
 
-Read CLAUDE.md in this repo first for project-specific conventions.
+Read $CLAUDE_MD in this repo first for project-specific conventions.
 EOF
 
 if ! "$SYNC" --apply "$TARGET" >/dev/null; then

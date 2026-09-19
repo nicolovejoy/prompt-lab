@@ -87,6 +87,16 @@ with tempfile.TemporaryDirectory() as tmp:
     check("missing CLAUDE.md exits 2", r.returncode == 2)
     check("missing CLAUDE.md writes nothing", not os.path.exists(os.path.join(d, "AGENTS.md")))
 
+    # CLAUDE.md under .claude/ (home-assistant's layout) → pointer names that path.
+    d = repo("dot-claude", claude=False)
+    os.makedirs(os.path.join(d, ".claude"))
+    with open(os.path.join(d, ".claude", "CLAUDE.md"), "w") as f:
+        f.write("# Project\n")
+    r = run(d)
+    content = open(os.path.join(d, "AGENTS.md")).read() if r.returncode == 0 else ""
+    check(".claude/CLAUDE.md is found", r.returncode == 0, r.stderr)
+    check(".claude/CLAUDE.md pointer names its path", "Read .claude/CLAUDE.md in this repo first" in content)
+
     # Importer copy without the flag → left alone.
     d = repo("importer", git=True)
     with open(os.path.join(d, "AGENTS.md"), "w") as f:
