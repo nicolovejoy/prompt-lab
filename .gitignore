@@ -13,3 +13,6 @@ reports/
 .playwright-mcp/
 .vercel
 .env*
+
+# Codex CLI per-repo local state
+.codex/
