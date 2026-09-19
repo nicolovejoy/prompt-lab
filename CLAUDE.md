@@ -297,6 +297,14 @@ the archive write must be separately observable.
   wrong count (**11 domains, not ~37**) and `musicforge.org` was never on Resend. Return-path
   `send.` subdomains consume no slot; `span.`/`mail.` subdomains are separate entries.
   `musicforge.org`'s SPF must be **extended** (`include:icloud.com`), never replaced.
+- **prompt-lab owns every repo's AGENTS.md format — 2026-09-18.** One form only: a dated
+  provenance comment, "Read CLAUDE.md in this repo first", and the shared block, written by
+  `workflow/bin/make-agents-md.sh`. Never a whole-file copy of CLAUDE.md. Codex Desktop's
+  "import from Claude Code" wrote such copies wherever AGENTS.md was absent, with a blind
+  Claude→Codex replace (`~/.claude` → `~/.Codex`); proven by second-level timestamp matches
+  against `~/.codex/external_agent_session_imports.json`. Claude-side `/readup` creates an
+  absent AGENTS.md and replaces an untracked importer copy (backup in
+  `~/.claude/agents-md-backups/`), never commits either.
 - **Dual-agent commands (Claude Code + Codex) — 2026-09-12.** `workflow/commands/*.md` is the
   single source; `install.sh` distributes to `~/.claude/commands/` and renders
   explicit-only `~/.agents/skills/source-command-*/` skills (deprecated

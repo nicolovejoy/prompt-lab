@@ -41,6 +41,7 @@ jobs:
       - name: Readup and whole-day workflow tests
         run: |
           python scripts/test_readup_checks.py
+          python scripts/test_make_agents_md.py
           python scripts/test_public_allowlist.py
           python scripts/test_day_context.py
           python scripts/test_workflow_roundtrip.py

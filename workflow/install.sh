@@ -239,7 +239,8 @@ cat <<EOF
       "Bash(~/.claude/bin/gc-read.sh *)",
       "Bash(~/.claude/bin/gc-write.sh *)",
       "Bash(~/.claude/bin/handoff.sh *)",
-      "Bash(~/.claude/bin/readup-checks.sh *)"
+      "Bash(~/.claude/bin/readup-checks.sh *)",
+      "Bash(~/.claude/bin/make-agents-md.sh *)"
     ]
   },
   "hooks": {

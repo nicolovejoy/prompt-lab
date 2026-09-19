@@ -60,6 +60,7 @@ case "$1" in
   symbolic-ref) echo refs/remotes/origin/main ;;
   worktree) echo "$PWD fake-head [main]" ;;
   for-each-ref) echo 'main origin/main [behind 1]' ;;
+  ls-files) exit "${FAKE_LSFILES_RC:-0}" ;;
 esac
 exit 0
 ''')
@@ -101,6 +102,16 @@ exit "${FAKE_AUDIT_RC:-0}"
           "CONVENTIONS_CLAUDE=behind" in conventions)
     check("locally changed shared block is reported as tampered",
           "CONVENTIONS_AGENTS=tampered" in conventions)
+    check("no importer line for a repo without AGENTS.md", "AGENTS_ORIGIN" not in clean)
+    (repo / "AGENTS.md").write_text(
+        "This file provides guidance to Codex (Codex.ai/code) when working with code.\n")
+    check("untracked Codex import copy is flagged",
+          "AGENTS_ORIGIN=codex-import untracked" in probe(FAKE_LSFILES_RC="1"))
+    check("tracked Codex import copy is flagged as tracked",
+          "AGENTS_ORIGIN=codex-import tracked" in probe())
+    (repo / "AGENTS.md").write_text("Read CLAUDE.md in this repo first.\n")
+    check("pointer-form AGENTS.md is not flagged", "AGENTS_ORIGIN" not in probe())
+    (repo / "AGENTS.md").unlink()
     outside = probe(FAKE_OUTSIDE="1")
     check("outside repo skips CI and public audit",
           "CI_PROBE=skip" in outside and "PUBLIC_DRIFT=skip" in outside)
