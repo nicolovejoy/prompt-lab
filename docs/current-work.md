@@ -1,5 +1,19 @@
 # Current work and deferred decisions
 
+**Next session, start here (2026-09-18):**
+1. **#56: review email says "no activity" since Sep 17.** Hypothesis with evidence in the
+   issue: since the lean handoff (f8916c0) only the nightly synthesizer writes yesterday's
+   `daily_summaries`, and the review stage reads Turso before the publish stage syncs them.
+2. **#57: `commits` duplicates on every `/handoff` re-run.** No unique key on `hash`; 393
+   extra rows. Back up the DB before the dedup, and pick an attribution rule first.
+3. **Codex permissions: installed globally 2026-09-18.** `~/.codex/config.toml` selects the
+   `prompt-lab` profile from `workflow/codex-permissions.candidate.toml`, and
+   `~/.codex/rules/reviewed.rules` (from `workflow/codex-rules/`) replaced 170 accumulated
+   approvals. Backups: `~/.codex/backup-2026-09-18/`. Undo = copy both back and delete
+   `reviewed.rules`. Now watch which prompts remain in daily use; a fresh `default.rules`
+   will collect new "don't ask again" clicks, so review it. Details:
+   `docs/codex-workflow-roadmap.md`. Branch `claude/codex-permissions` is unpushed.
+
 **Workflow status:** `docs/codex-workflow-roadmap.md` is authoritative for current
 implementation and remaining gates; `docs/codex-workflow-validation.md` holds
 smoke tests/results. The paired Songpath test passed. After reinstalling, the

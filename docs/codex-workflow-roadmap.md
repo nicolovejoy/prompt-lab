@@ -67,8 +67,19 @@ reports no accounts. Run it with an `rg` on PATH (this laptop has one only insid
 without that a sandboxed agent could rewrite its own project config (93/93 with
 those checks).
 
-Pilot, 2026-09-18: the candidate is copied (untracked) to `prompt-lab/.codex/config.toml`
-and applies only to Codex sessions in this repo; delete the file to undo. A fresh
+Installed globally 2026-09-18 after the pilot and a real-use check passed:
+`~/.codex/config.toml` sets `default_permissions = "prompt-lab"` and
+`approval_policy = "on-request"` with the candidate's tables, and
+`~/.codex/rules/reviewed.rules` replaced `default.rules`. A fresh session in songpath
+recorded the profile. Backups are in `~/.codex/backup-2026-09-18/`. The candidate
+remains the source; re-copy its tables after edits. Prefix rules cannot see trailing
+flags (`git push origin main --force` matches a `git push` allow), so push stays
+prompting. Known wrinkle: repos that still have `.env.tpl` (songpath) print
+`Operation not permitted` from git status and the file can't be edited from the
+sandbox; renaming it to `env.tpl` fixes both.
+
+Pilot, 2026-09-18 (superseded by the install): the candidate was copied to
+`prompt-lab/.codex/config.toml` and applied only to Codex sessions in this repo. A fresh
 `codex exec` in the repo recorded `active_permission_profile: prompt-lab` with every
 entry in its session log's `turn_context`. That record is the proof of which profile a
 session ran, and it's the check to repeat after any change. The same profile name from
