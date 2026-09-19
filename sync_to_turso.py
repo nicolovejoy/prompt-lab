@@ -12,6 +12,12 @@ Usage:
   python sync_to_turso.py --dry-run    # show what would be synced
 
 Requires TURSO_DATABASE_URL and TURSO_AUTH_TOKEN in .env or environment.
+
+Per-row failures no longer pass silently (#59): every upsert that raises is
+still printed immediately, but also recorded in the module-level _FAILURES
+list. The run finishes every table regardless, then main() exits 1 if any
+failures were recorded — so a partial sync reports failed to the nightly
+pipeline instead of reading as full success.
 """
 
 import json
@@ -26,6 +32,22 @@ from store.sqlite_store import SqliteKnowledgeStore
 from store.turso_store import TursoKnowledgeStore
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+# Per-row sync failures, reset at the start of main() and drained by finish()
+# (#59). A module-level list rather than threading a mutable arg through
+# every sync_* call — those already return a synced-count and take no
+# failures parameter.
+_FAILURES: list[str] = []
+
+
+def record_failure(table, row_id, exc):
+    """Record one swallowed exception so a partial sync can't exit 0 (#59).
+
+    Appends a human-readable "<table>: <row identifier>: <ExceptionType>:
+    <message>" string to _FAILURES. Callers still print immediately too —
+    this only adds a record, it doesn't replace the print.
+    """
+    _FAILURES.append(f"{table}: {row_id}: {type(exc).__name__}: {exc}")
 
 
 def machine_label():
@@ -116,13 +138,18 @@ def sync_daily_summaries(local, remote, since, dry_run):
                     model=row.get("model", "unknown"))
                 synced += 1
             except Exception as e:
-                print(f"  daily_summaries: error on part "
-                      f"{row.get('project', '?')}/{row.get('date', '?')}: {e}")
+                ident = f"{row.get('project', '?')}/{row.get('date', '?')}"
+                print(f"  daily_summaries: error on part {ident}: {e}")
+                record_failure("daily_summaries", ident, e)
     finally:
         remote._execute = orig_execute
     for i in range(0, len(buffer), 100):
         remote._execute_many(buffer[i:i + 100])
-    print(f"  daily_summaries: {synced} parts synced as '{machine}'")
+    failed = len(rows) - synced
+    if failed:
+        print(f"  daily_summaries: {synced} parts synced as '{machine}', {failed} failed")
+    else:
+        print(f"  daily_summaries: {synced} parts synced as '{machine}'")
 
     dates = sorted({r["date"] for r in rows})
     parts = remote.get_daily_summary_parts(since=dates[0], until=dates[-1])
@@ -139,7 +166,9 @@ def sync_daily_summaries(local, remote, since, dry_run):
                 remote.upsert_daily_summary(**merge_summary_parts(pair_parts))
                 rebuilt += 1
             except Exception as e:
-                print(f"  daily_summaries: error rebuilding {project}/{date}: {e}")
+                ident = f"{project}/{date}"
+                print(f"  daily_summaries: error rebuilding {ident}: {e}")
+                record_failure("daily_summaries", ident, e)
     finally:
         remote._execute = orig_execute
     for i in range(0, len(buffer), 100):
@@ -171,12 +200,18 @@ def sync_table(local, remote, table_name, query_fn, upsert_fn, dry_run=False, ch
         buffer.append((sql, args or []))
 
     remote._execute = buffered_execute
+    synced = 0
+    failed = 0
     try:
         for row in rows:
             try:
                 upsert_fn(remote, row)
+                synced += 1
             except Exception as e:
-                print(f"  {table_name}: error on row {row.get('id', '?')}: {e}")
+                row_id = row.get("id", "?")
+                print(f"  {table_name}: error on row {row_id}: {e}")
+                record_failure(table_name, row_id, e)
+                failed += 1
     finally:
         remote._execute = orig_execute
 
@@ -186,8 +221,11 @@ def sync_table(local, remote, table_name, query_fn, upsert_fn, dry_run=False, ch
         done = min(i + chunk, n)
         if n > chunk:
             print(f"  {table_name}: {done}/{n} synced")
-    print(f"  {table_name}: {len(rows)} rows synced")
-    return len(rows)
+    if failed:
+        print(f"  {table_name}: {synced} rows synced, {failed} failed")
+    else:
+        print(f"  {table_name}: {synced} rows synced")
+    return synced
 
 
 def check_public_allowlist_drift():
@@ -219,6 +257,8 @@ def check_public_allowlist_drift():
 
 
 def main():
+    global _FAILURES
+    _FAILURES = []
     sys.stdout.reconfigure(line_buffering=True)
     dry_run = "--dry-run" in sys.argv
     days = None
@@ -433,6 +473,7 @@ def main():
             print("  project_aliases: 0 rows (skip)")
     except Exception as e:
         print(f"  project_aliases: {e}")
+        record_failure("project_aliases", "all", e)
 
     local.close()
     remote.close()
@@ -440,6 +481,27 @@ def main():
     print(f"\nTotal: {total} rows {'would be ' if dry_run else ''}synced")
 
     check_public_allowlist_drift()
+
+    sys.exit(finish(_FAILURES))
+
+
+def finish(failures):
+    """Decide the run's exit status from recorded failures (#59).
+
+    Factored out of main() so the exit decision is testable without running
+    the whole sync. No failures -> 0, same as before. Any failures -> print
+    the FAILED block (capped at 20 lines) and return 1, so a partial sync
+    reports failed to the nightly pipeline instead of reading as success.
+    """
+    if not failures:
+        return 0
+    print(f"\nFAILED: {len(failures)} row(s) did not sync:")
+    cap = 20
+    for f in failures[:cap]:
+        print(f"  {f}")
+    if len(failures) > cap:
+        print(f"  … and {len(failures) - cap} more")
+    return 1
 
 
 if __name__ == "__main__":
