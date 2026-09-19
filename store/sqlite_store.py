@@ -822,6 +822,21 @@ class SqliteKnowledgeStore(KnowledgeStore):
 
         return {"prompts": prompts, "sessions": sessions, "commits": all_commits}
 
+    def count_prompts_on(self, date: str) -> int:
+        """Count this machine's local prompts on a Pacific calendar day.
+
+        Narrow guard for send-review.py (#56): before trusting an empty
+        Turso `daily_summaries` read as "no activity", check whether the
+        raw tier — which is machine-local and always current — disagrees.
+        Bucketed with 'localtime' like get_day_data, not a pinned zone; see
+        the module docstring.
+        """
+        row = self._conn.execute(
+            "SELECT COUNT(*) as n FROM prompts WHERE date(timestamp, 'localtime') = ?",
+            (date,),
+        ).fetchone()
+        return row["n"]
+
     def get_raw_sessions(self, *, project=None, since_days=None, overlap_utc=None):
         clauses = ["summary IS NOT NULL"]
         params = []

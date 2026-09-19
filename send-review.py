@@ -218,6 +218,25 @@ def main():
     weekly_rollups = store.get_weekly_rollups(since=w["week_since"])
     store.close()
 
+    # Guard against the #56 shape: Turso a night behind while this machine's
+    # raw tier already has the day's prompts. Reading a *count* (never
+    # content) from the local store is not the raw-tier-content read the
+    # invariant forbids — it never reaches the email. No try/except: a
+    # failure to open or query the local store should fail this stage exactly
+    # like any other unhandled error, not be swallowed into "no activity".
+    if not daily_summaries_1d:
+        local_store = get_store("sqlite")
+        local_count = local_store.count_prompts_on(w["review_day"])
+        local_store.close()
+        if local_count > 0:
+            print(
+                f"Error: Turso has no daily_summaries for {w['review_day']}, but "
+                f"this machine logged {local_count} local prompt(s) that day. "
+                f"Refusing to send an empty review — sync likely hasn't caught up.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
     if not weekly_summaries and not weekly_rollups:
         print("No summaries or rollups found for the period.")
         return
