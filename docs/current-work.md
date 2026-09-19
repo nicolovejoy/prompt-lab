@@ -9,9 +9,13 @@
 3. **Codex permissions: installed globally 2026-09-18.** `~/.codex/config.toml` selects the
    `prompt-lab` profile from `workflow/codex-permissions.candidate.toml`, and
    `~/.codex/rules/reviewed.rules` (from `workflow/codex-rules/`) replaced 170 accumulated
-   approvals. Backups: `~/.codex/backup-2026-09-18/`. Undo = copy both back and delete
-   `reviewed.rules`. Now watch which prompts remain in daily use; a fresh `default.rules`
-   will collect new "don't ask again" clicks, so review it. Details:
+   approvals. Backups: `~/.codex/backup-2026-09-18/`; any rollback now requires the
+   policy-compatibility review in the roadmap. Watch which prompts remain in daily
+   use; a fresh `default.rules`
+   will collect new "don't ask again" clicks, so review it. **Acceptance reopened
+   2026-09-19:** MusicForge reported registration blocked by DB permissions and
+   handoff correctly stopped. Further rollout is on hold pending the reviewed
+   bookkeeping interface and staged end-to-end gates. Details:
    `docs/codex-workflow-roadmap.md`. Branch `claude/codex-permissions` is unpushed.
 4. **Onboard stars-demo.** It shows up only as a grey "+15 more" entry in the dashboard
    chart (24 prompts on Sep 17). Find out what's missing from the dashboard for it, e.g.
@@ -20,16 +24,20 @@
    `handoff.sh append`; today that refuses. Stars-demo's Sep 17 entries about orphaned
    `scratch` sessions and ibuild4you DNS currently sit in the ibuild4you channel.
 
-**Workflow status:** `docs/codex-workflow-roadmap.md` is authoritative for current
+**Workflow status (2026-09-19):** `docs/codex-workflow-roadmap.md` is authoritative for current
 implementation and remaining gates; `docs/codex-workflow-validation.md` holds
 smoke tests/results. The paired Songpath test passed. After reinstalling, the
 explicit `$source-command-readup` skill passed its live invocation and stable-ID
 checks. The first `$source-command-handoff` correctly stopped on a read-only DB
 error. After the narrow installed-helper rule and constrained temporary summary
 path were installed, a fresh resume retained session `610`, saved its 604-character
-audit, and closed it successfully. Full handoff, fresh-launcher fork, and nightly
-checks remain. The deprecated `/prompts:*` interface failed its live check. Broad
-permission-profile rollout is separate.
+audit, and closed it successfully. That zero-commit test preceded the global
+permission-profile install; MusicForge's new registration failure reopens
+bookkeeping acceptance. Direct SQLite commit capture also remains outside the
+helper. The roadmap now proposes an explicitly permitted interface and staged
+validation; this is a plan, not an installed fix. Full handoff, fresh-launcher
+fork, and nightly checks remain. The deprecated `/prompts:*` interface failed its
+live check.
 
 **Shared-conventions rollout:** the checker now hashes the actual body and separates
 clean `behind` copies from `tampered` blocks, which apply refuses to overwrite. A

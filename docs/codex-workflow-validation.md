@@ -1,5 +1,33 @@
 # Readup and handoff validation
 
+## Acceptance reopened — 2026-09-19
+
+MusicForge reported `unable to open database file` during readup registration,
+followed by handoff stopping without a validated session ID. This is a reported
+live failure, not a newly reproduced database check. Source inspection confirms
+the profile's database denial and handoff's separate direct-SQLite commit-write
+requirement. The installed registration helper matches source. The exact failing
+MusicForge invocation/rule handling remains to be established.
+
+The results below are historical evidence. The successful resumed Songpath
+handoff preceded the global permission-profile installation and had no commits.
+It does not pass the current end-to-end acceptance gate. No new live gate has
+passed as part of this documentation update.
+
+Follow the staged recovery in
+[the roadmap](codex-workflow-roadmap.md#phase-4--installation-and-live-validation).
+Installation and the historical smoke steps require the design and disposable-data
+gates to pass first.
+New acceptance evidence must record the runtime/version, actual launch path,
+effective policy, installed helper revision, stable identity, and persisted results
+for registration, validation, nonzero commit capture, summary save, and closure.
+Also record retry behavior, peer/fork isolation, and denial/failure handling.
+Use disposable data first; direct access to a denied live database is never a
+verification step. Human verification or an explicitly permitted interface must
+supply the persisted-result evidence.
+
+## Earlier verification scope
+
 The source changes are exercised against temporary databases and temporary
 installed helper copies. They do not install a permission profile, change
 launchd, or repair existing session rows. The remaining acceptance check is a
@@ -88,7 +116,8 @@ Pass: each command exits zero. The nightly test deliberately prints one
 `ERROR: Day context changed` before its final PASS: that proves a concurrent
 peer save is preserved rather than overwritten. Any assertion/traceback is a fail.
 
-Nico installs the updated commands, then opens fresh terminal/agent windows:
+Only after the revised pilot gate authorizes installation, Nico installs the
+reviewed commands and opens fresh terminal/agent windows:
 
 ```bash
 cd /Users/nico/src/prompt-lab
@@ -114,9 +143,10 @@ Use `work songpath` for Claude and `cx songpath` for Codex. In each session:
    its ID; a new/forked conversation must get a distinct ID. This fresh-launcher
    check remains a live acceptance gate, separate from fixture coverage.
 
-Ask the verifying agent to read only the two recorded session rows, the Songpath
-Pacific-day daily summary and its superseded rows. A missing/wrong identity,
-missing contribution, unintended doc edit, or routine recap write is a failure.
+Use an explicitly permitted interface, or ask Nico to verify only the two recorded
+session rows, the Songpath Pacific-day daily summary and its superseded rows.
+An agent whose policy denies the DB must not execute direct queries. A missing/wrong
+identity, missing contribution, unintended doc edit, or routine recap write is a failure.
 Do not repair live rows to make the test pass.
 
 For nightly acceptance, leave one ordinary session with only a lean handoff and
@@ -153,7 +183,8 @@ crossing midnight, exact counts despite truncation, and changes during synthesis
 
 ## Full handoff identity regression (optional repeat)
 
-Nico runs the installer from the source checkout:
+Only after the revised pilot gate authorizes installation, Nico runs the installer
+from the source checkout:
 
 ```bash
 cd /Users/nico/src/prompt-lab
@@ -178,7 +209,8 @@ fresh Claude window with `work prompt-lab` and a fresh Codex window with
    readup: its ID must remain unchanged. A new/forked conversation must get a
    distinct ID.
 
-For verification, replace the two placeholders below with the IDs from step 1.
+For human-run verification only, replace the two placeholders below with the IDs
+from step 1. These queries are not authorized agent steps under a database denial.
 The first query should show two different summaries and each row's own closure.
 The second should include both contributions. The final query should retain
 the replaced daily prose; it is local-only and is never synced publicly.

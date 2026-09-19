@@ -4,7 +4,14 @@ Scope: Prompt Lab's CLI/iTerm launchers, secret protection, session bookkeeping,
 and installed readup/handoff commands. Nico installs locally; implementation and
 fixture tests happen before that step. No live secret reads are used for testing.
 
-## Current status — 2026-09-15
+## Current status — 2026-09-19
+
+**Bookkeeping acceptance is reopened; further rollout is on hold.** The permission
+profile was installed globally on 2026-09-18, but MusicForge now reports that
+readup failed with `unable to open database file`. No validated session ID was
+returned, so handoff correctly stopped without saving a summary or closing a row.
+The recovery proposal below is for review; no helpers, installed skills, or
+permissions have been changed by this documentation update.
 
 The installed `f5cb2cf` workflow passed the paired Songpath identity and full
 handoff exercise. Results and repeatable smoke steps live in
@@ -24,12 +31,64 @@ The installed readup skill passed repeated identity checks as Songpath session `
 Its first lean handoff stopped safely when the sandbox denied the private DB write.
 After installing a narrow rule for only the reviewed `gc-write.sh` helper and the
 constrained temporary-summary path, the exact Codex thread resumed session `610`,
-saved the audit, and closed it successfully. No broad permission profile is installed.
+saved the audit, and closed it successfully. That test preceded the global profile
+installation and had zero commits; it does not establish complete handoff support
+under the currently active restrictions.
 
 Remaining gates: full-handoff smoke, actual before/after usage measurement,
-fresh-launcher fork, broader permission-profile acceptance, and the
-separate sleeping-host nightly test. No overnight or API-cost result is claimed
+fresh-launcher fork, complete bookkeeping under the installed permission profile,
+and the separate sleeping-host nightly test. No overnight or API-cost result is claimed
 by the isolated local tests.
+
+### Permission failure and proposed recovery
+
+Evidence available on 2026-09-19:
+
+- MusicForge's agent reported failed registration and no validated ID. Its review
+  remains at `/private/tmp/musicforge-mvp-review.GxfZFE/REVIEW.md` according to that
+  report. This investigation has not independently verified that file or any DB row.
+- The source profile denies `~/.claude/prompt-history.db`, `-wal`, and `-shm`.
+  This Prompt Lab session's active policy also makes those denials
+  non-escalatable. We did not attempt database access or a bypass to reproduce it.
+- The installed `gc-write.sh` and `_gc_session_identity.py` match the repository
+  byte-for-byte. Registration opens the denied database. The narrow allow rule
+  documents an intended helper route, but does not prove that route is permitted
+  in every runtime. MusicForge's exact invocation and effective rule handling
+  remain unverified.
+- `workflow/commands/handoff.md` still requires direct Python SQLite inserts for
+  commit capture. This is a separate uncovered access path even if registration
+  succeeds; the earlier zero-commit smoke did not exercise it.
+
+Preserve the database denial and conversation-ownership checks. Do not choose a
+different session, copy the database, broaden Python/sqlite permissions, or treat
+an approved command prefix as authority to bypass a non-escalatable deny.
+
+Proposed implementation, after review:
+
+1. Establish an **explicitly permitted bookkeeping interface** in each supported
+   runtime. First determine whether that runtime supports a constrained installed
+   helper; if its policy forbids this access, keep automatic bookkeeping blocked
+   until a supported host-managed service or human-operated path is approved.
+   This plan does not authorize installing such a service or changing policy.
+2. Cover registration, identity validation, commit capture, summary save, and
+   closure through that interface. Bind every operation to the conversation and
+   canonical project. Accept bounded structured inputs; expose only the receipts
+   and session metadata needed for validation, with no arbitrary SQL, database
+   path, or raw-prompt read operation. The executable and its privileged imports
+   must be protected from workspace edits.
+3. Move commit capture into the constrained interface and remove direct SQLite
+   instructions from handoff. Preserve UTC commit timestamps, duplicate-hash
+   handling, and validated attribution. Reject attempts to attach commits to a
+   different conversation; define retry behavior without silently reassigning an
+   existing commit. Include zero-commit and nonzero-commit paths.
+4. Update canonical commands, generated skills, installation rules, and error
+   reporting together. Failed registration must be visible immediately. Required
+   saves must succeed before closure; denial must leave local findings available
+   and explicitly report incomplete bookkeeping. A local file is not a saved DB
+   summary. Never reconstruct a missing identity from another window's row.
+
+Validate and deploy in the stages under Phase 4. Architecture, implementation,
+installation, and live acceptance are separate review points.
 
 ## Phase 1 — secret protection
 
@@ -45,8 +104,9 @@ matching deny glob. A single-character negated class worked, but the
 multi-character class needed by the four-template complement denied templates.
 The complex pattern approach is rejected for this runtime.
 
-`workflow/codex-permissions.candidate.toml` is a candidate, not installed or selected
-by either launcher. Revised 2026-09-18 after mining 444 escalation requests from
+`workflow/codex-permissions.candidate.toml` is the source for the globally installed
+profile described below (its candidate filename is retained). Revised 2026-09-18
+after mining 444 escalation requests from
 `~/.codex/sessions` (442 approved; causes: bookkeeping writes outside the repo 108,
 network 133, local git writes 86, dev servers/builds 73). The first version's
 `":root" = "deny"` broke git (`~/.gitconfig`), node (OpenSSL config) and gh, and it
@@ -72,8 +132,9 @@ Installed globally 2026-09-18 after the pilot and a real-use check passed:
 `approval_policy = "on-request"` with the candidate's tables, and
 `~/.codex/rules/reviewed.rules` replaced `default.rules`. A fresh session in songpath
 recorded the profile. Backups are in `~/.codex/backup-2026-09-18/`. The candidate
-remains the source; re-copy its tables after edits. Prefix rules cannot see trailing
-flags (`git push origin main --force` matches a `git push` allow), so push stays
+remains the source; future installations must pass the revised Phase 4 gates.
+Prefix rules cannot see trailing flags (`git push origin main --force` matches a
+`git push` allow), so push stays
 prompting. Known wrinkle: repos that still have `.env.tpl` (songpath) print
 `Operation not permitted` from git status and the file can't be edited from the
 sandbox; renaming it to `env.tpl` fixes both.
@@ -92,13 +153,13 @@ currently exports no secrets. The rule that follows: never start Codex under
 `op run` or with a secret exported. Wrap the single command that needs the secret
 instead, where it runs as an escalation.
 
-The gate before installation is broader than that result:
+The installation evidence does not replace these acceptance requirements:
 
 - Test the profile loaded from its actual configuration location in a fresh CLI
   session, with legacy sandbox settings removed from that candidate's launch.
 - The separate narrow `gc-write.sh` rule passed through the installed fresh-resume
-  path. It remains intentionally independent of the broader candidate, which still
-  denies direct private-database access.
+  path before the global profile installation. It has not established complete
+  bookkeeping support under the current policy, which denies database access.
 - Test shell startup and environment inheritance using fake values; unreadable
   files do not remove credentials already inherited by a process.
 - Keep secret operations human-run until protected helpers have constrained
@@ -155,12 +216,38 @@ quality of model-written prose; the live two-session smoke test must check it.
 
 ## Phase 4 — installation and live validation
 
-The earlier paired installation test passed. Follow
-`docs/codex-workflow-validation.md` for the lean follow-up installation and smoke
-steps. Keep implementation, installation and live validation separate.
+The profile is already installed globally. Do not repeat or expand installation
+based on the earlier paired test. Use this staged recovery sequence; the live
+steps in [validation](codex-workflow-validation.md) are gated by it.
 
-Install/select the permission candidate separately only after Phase 1's remaining
-gates pass. Repeat the fake-file probe through the final launch path. A passing
-inline sandbox probe alone is not evidence that the launcher selected the profile.
+1. **Review the design.** Record each target runtime's effective restrictions and
+   permitted execution path. Resolve the interface and commit-attribution contract
+   before implementation. A hard denial is a blocked capability, not a request to
+   escalate. Preserve existing local review artifacts while bookkeeping is blocked.
+2. **Implement and test with disposable data.** Exercise the actual installed-copy
+   interface against a fake database and throwaway Git repository. Require stable
+   repeated registration; distinct peer/fork IDs; wrong-ID rejection; zero and
+   nonzero commit capture; duplicate-safe retries; original UTC timestamps;
+   summary-save receipts; and closure of only the validated row. Inject denial and
+   failed saves at each boundary, proving that required-save failures cannot close
+   the row. Test malformed/oversized inputs and protected helper dependencies.
+3. **Pilot one runtime and project.** After review, Nico installs the reviewed
+   version for a controlled pilot. Start through the actual fresh launcher, record
+   versions, effective profile/rules and helper revision, and run the entire
+   register → validate → capture commits → save summary → close sequence. Include
+   a nonzero-commit case in a disposable repo. Verify persisted results through the
+   permitted interface or a human check, never direct DB access by a denied agent.
+   Repeat the secret-denial probes using fake fixtures through that launch path.
+4. **Exercise resume, fork, and the peer agent.** Resume the same conversation in
+   a fresh launcher and retain its identity; fork/new conversation gets a distinct
+   identity. Verify the Claude/Codex pair cannot alter each other's row. If both
+   CLI and Desktop are intended targets, each needs its own evidence; a CLI pass
+   does not establish Desktop acceptance. Full handoff remains a separate gate.
+5. **Expand only after acceptance.** Record receipts and failures in validation,
+   then install on the next intended runtime/machine. Any denied required operation
+   stops expansion. Restore a known compatible reviewed installation only if one
+   exists for that policy; otherwise retain protection and report bookkeeping as
+   unavailable. Do not make the database readable as a rollback shortcut.
 
-Push/production deployment is separate from local workflow installation.
+No stage is passed by a fake-file probe alone. Live database repair, recovery of
+MusicForge's missing session, and push/production deployment are separate work.
