@@ -51,6 +51,7 @@ jobs:
           python scripts/test_handoff_md_structure.py
           python scripts/test_paid_artifacts.py
           python scripts/test_sync_clobber.py
+          python scripts/test_sync_failures.py
 
       - name: Codex prompt installation tests
         run: python scripts/test_install_codex_prompts.py
