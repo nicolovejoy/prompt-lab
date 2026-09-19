@@ -372,6 +372,25 @@ class SqliteKnowledgeStore(KnowledgeStore):
         self._add_column_if_missing("daily_summaries", "prompt_version", "TEXT")
         self._add_column_if_missing("weekly_rollups", "prompt_version", "TEXT")
 
+        # `commits` is legacy too (issue #57): it predates this store, no
+        # CREATE TABLE for it exists anywhere in this repo, and migrate() must
+        # not add one — scripts/test_workflow_roundtrip.py calls migrate()
+        # BEFORE building its own sessions/prompts/commits tables, relying on
+        # migrate() leaving them alone. So this only ever adds the index
+        # scripts/dedup_commits.py creates, and only once the table already
+        # exists. On today's real DB it's a no-op until dedup_commits.py
+        # --apply clears the ~395 pre-existing duplicate hashes; guarding the
+        # IntegrityError means a dirty real DB never breaks migrate() for
+        # every other caller (synthesizer, sync_to_turso, slash commands) in
+        # the meantime.
+        if self._has_table("commits"):
+            try:
+                self._conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS commits_hash ON commits(hash)"
+                )
+            except sqlite3.IntegrityError:
+                pass
+
         self._conn.commit()
 
     # Columns copied to the archive, per live table. The archive keeps the
@@ -414,6 +433,9 @@ class SqliteKnowledgeStore(KnowledgeStore):
         if not cols or column in cols:
             return
         self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+    def _has_table(self, table: str) -> bool:
+        return bool(self._conn.execute(f"PRAGMA table_info({table})").fetchall())
 
     def _has_column(self, table: str, column: str) -> bool:
         cols = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})")}

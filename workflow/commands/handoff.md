@@ -38,6 +38,7 @@ Insert each hash, message and validated session ID into the local database at
 `~/.claude/prompt-history.db` with Python sqlite3 parameter bindings:
 `INSERT OR IGNORE INTO commits (hash, message, timestamp, session_id) VALUES (?, ?, datetime(?, 'unixepoch'), ?)`.
 Use `%ct` for Unix seconds; never substitute insertion time. Zero commits is normal.
+The unique index on `hash` (see `scripts/dedup_commits.py`) is what makes OR IGNORE actually ignore a re-run.
 
 Save a concise session summary, usually 50–100 words. Include findings, key
 decisions, unresolved questions and the next concrete step. Preserve details

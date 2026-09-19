@@ -66,6 +66,14 @@ jobs:
       - name: Heartbeat tests
         run: python scripts/test_heartbeat.py
 
+      - name: Commits dedup tests
+        run: python scripts/test_dedup_commits.py
+
+      - name: Nightly pipeline tests
+        run: |
+          python scripts/test_send_review.py
+          python scripts/test_nightly_pipeline.py
+
   deploy:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
