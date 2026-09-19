@@ -1,5 +1,7 @@
 # Review Jobs → Processed Tables (Turso) Implementation Plan
 
+Status reviewed 2026-09-14: Historical implementation plan: processed-table readers and report catch-up shipped. Current operations are described in data-and-access.md; deferred cross-machine weekly reconciliation remains separate.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make `send-review.py` and `generate-report.py` compose from processed

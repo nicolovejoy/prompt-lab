@@ -209,7 +209,7 @@ def check_public_allowlist_drift():
 
     if result.returncode == 0:
         print("\npublic-allowlist check: OK (no drift)")
-    elif result.returncode == 1:
+    elif result.returncode == 10:
         print("\n⚠️  public-allowlist check: DRIFT — public rows outside the allowlist")
         print(result.stdout.strip())
     else:

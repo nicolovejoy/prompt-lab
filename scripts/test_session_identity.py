@@ -114,6 +114,8 @@ class Env:
     def env(self) -> dict:
         e = dict(os.environ)
         e["HOME"] = str(self.home)
+        e.pop("CODEX_THREAD_ID", None)
+        e.pop("GC_SESSION_SCOPE", None)
         return e
 
     def transcript(self, session_uuid: str, reply: str = "prior reply") -> Path:
@@ -127,7 +129,8 @@ class Env:
 
     def submit(self, prompt: str, *, session_uuid: str | None = None,
                include_session_id: bool = True, transcript: bool = True,
-               cwd: Path | None = None, reply: str = "prior reply") -> None:
+               cwd: Path | None = None, reply: str = "prior reply",
+               scope: str | None = None) -> None:
         # cwd overrides the repo root, for the project-resolution cases.
         where = cwd or self.cwd
         payload = {"prompt": prompt, "cwd": str(where)}
@@ -137,8 +140,11 @@ class Env:
                     self.transcript(session_uuid, reply))
             if include_session_id:
                 payload["session_id"] = session_uuid
+        env = self.env
+        if scope:
+            env["GC_SESSION_SCOPE"] = scope
         subprocess.run([str(HOOK)], input=json.dumps(payload), text=True,
-                       env=self.env, cwd=str(where),
+                       env=env, cwd=str(where),
                        capture_output=True, check=True)
 
     def q(self, sql: str, params: tuple = ()):
@@ -148,10 +154,16 @@ class Env:
         return rows
 
     def gc(self, script: Path, *args: str, stdin: str = "",
-           cwd: Path | None = None) -> str:
+           cwd: Path | None = None, scope: str | None = None,
+           codex_thread: str | None = None) -> str:
         # cwd overrides the repo root, for the project-resolution cases.
+        env = self.env
+        if scope:
+            env["GC_SESSION_SCOPE"] = scope
+        if codex_thread:
+            env["CODEX_THREAD_ID"] = codex_thread
         r = subprocess.run([str(script), *args], input=stdin, text=True,
-                           env=self.env, cwd=str(cwd or self.cwd),
+                           env=env, cwd=str(cwd or self.cwd),
                            capture_output=True)
         if r.returncode != 0:
             return f"<exit {r.returncode}: {r.stderr.strip()}>"
@@ -321,6 +333,47 @@ def test_summary_does_not_end(tmp: Path) -> None:
     row = e.q("SELECT summary, ended_at FROM sessions WHERE id=?", (sid,))[0]
     check("summary written", row[0], "did some things")
     check("ended_at still null", row[1], None)
+
+    fd, summary_name = tempfile.mkstemp(
+        prefix=f"gc-session-{sid}-", suffix=".txt", dir="/tmp"
+    )
+    os.close(fd)
+    summary_path = Path(summary_name)
+    summary_path.write_text("updated through a constrained summary file")
+    e.gc(GC_WRITE, "update-session-summary", str(sid), str(summary_path))
+    check(
+        "summary-file form writes summary",
+        e.q("SELECT summary FROM sessions WHERE id=?", (sid,))[0][0],
+        "updated through a constrained summary file",
+    )
+    check("successful summary-file form consumes input", summary_path.exists(), False)
+
+    wrong_path = tmp / f"gc-session-{sid}-wrong.txt"
+    wrong_path.write_text("must not be read")
+    check(
+        "summary-file form rejects paths outside /tmp",
+        e.gc(GC_WRITE, "update-session-summary", str(sid), str(wrong_path)).startswith(
+            "<exit 2"
+        ),
+        True,
+    )
+    check("rejected summary file remains intact", wrong_path.exists(), True)
+
+    symlink_target = tmp / "summary-target.txt"
+    symlink_target.write_text("must not be followed")
+    symlink_path = Path(f"/tmp/gc-session-{sid}-symlink.txt")
+    try:
+        symlink_path.symlink_to(symlink_target)
+        check(
+            "summary-file form rejects symbolic links",
+            e.gc(GC_WRITE, "update-session-summary", str(sid), str(symlink_path)).startswith(
+                "<exit 1"
+            ),
+            True,
+        )
+        check("rejected symlink target remains intact", symlink_target.exists(), True)
+    finally:
+        symlink_path.unlink(missing_ok=True)
 
     e.gc(GC_WRITE, "end-session", str(sid))
     check("ended_at set by end-session",
@@ -509,6 +562,122 @@ def test_gc_project_helper_is_shared(tmp: Path) -> None:
               'basename "$PWD"' in body, False)
 
 
+def test_scoped_identity_is_durable_and_strict(tmp: Path) -> None:
+    print("\n15. scoped identity survives adoption and rejects forged pointers")
+    e = Env(tmp)
+    one = e.gc(GC_WRITE, "register-session", scope="one")
+    two = e.gc(GC_WRITE, "register-session", scope="two")
+    sid1, sid2 = one.split("|", 1)[0], two.split("|", 1)[0]
+    check("scopes are distinct", sid1 != sid2, True)
+    e.submit("Claude adopts launch one", session_uuid="claude-one", scope="one")
+    check("adopted scope still resolves", e.gc(GC_READ, "current-session", scope="one"), one)
+    pointer = e.home / ".claude/state" / f"current-session-{PROJECT}-launch:one"
+    pointer.write_text(sid2 + "\n")
+    check("same-project forged pointer rejected", e.gc(GC_READ, "current-session", scope="one"), one)
+    check("wrong identity cannot close", e.gc(GC_WRITE, "end-session", sid2, scope="one").startswith("<exit 3"), True)
+
+
+def test_codex_resume_fork_and_missing_pointer(tmp: Path) -> None:
+    print("\n16. native Codex identity is authoritative across resume and fork")
+    e = Env(tmp)
+    resumed = e.gc(GC_WRITE, "register-session", codex_thread="thread-a")
+    again = e.gc(GC_WRITE, "register-session", codex_thread="thread-a")
+    forked = e.gc(GC_WRITE, "register-session", codex_thread="thread-b")
+    check("resume is idempotent", again, resumed)
+    check("fork is distinct", forked.split("|", 1)[0] != resumed.split("|", 1)[0], True)
+    pointer = e.home / ".claude/state" / f"current-session-{PROJECT}-codex:thread-a"
+    pointer.unlink()
+    check("missing pointer resolves from binding", e.gc(GC_READ, "current-session", codex_thread="thread-a"), resumed)
+
+
+def test_concurrent_registration_is_idempotent(tmp: Path) -> None:
+    print("\n17. concurrent registration creates one row")
+    from concurrent.futures import ThreadPoolExecutor
+    e = Env(tmp)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        rows = list(pool.map(lambda _: e.gc(GC_WRITE, "register-session", codex_thread="same-thread"), range(16)))
+    check("all callers receive same row", len(set(rows)), 1)
+    check("one session row", len(e.q("SELECT id FROM sessions")), 1)
+
+
+def test_explicit_identity_guards(tmp: Path) -> None:
+    print("\n18. explicit IDs cannot read, summarize or close another scoped row")
+    e = Env(tmp)
+    first = e.gc(GC_WRITE, "register-session", codex_thread="thread-one")
+    second = e.gc(GC_WRITE, "register-session", codex_thread="thread-two")
+    sid1, sid2 = first.split("|", 1)[0], second.split("|", 1)[0]
+    check("explicit own ID is accepted", e.gc(GC_READ, "current-session", sid1,
+          codex_thread="thread-one"), first)
+    for script, command in ((GC_READ, "current-session"), (GC_WRITE, "update-session-summary"),
+                            (GC_WRITE, "end-session")):
+        check(f"{command} rejects another conversation", e.gc(script, command, sid2,
+              codex_thread="thread-one", stdin="must not write").startswith("<exit 3"), True)
+    check("other row is untouched", e.q("SELECT summary, ended_at FROM sessions WHERE id=?", (sid2,)),
+          [(None, None)])
+    conn = sqlite3.connect(e.db)
+    conn.execute("UPDATE sessions SET project='elsewhere' WHERE id=?", (sid1,))
+    conn.commit()
+    conn.close()
+    check("wrong-project explicit ID is rejected", e.gc(GC_READ, "current-session", sid1,
+          codex_thread="thread-one").startswith("<exit 3"), True)
+    check("unsafe identity is rejected", e.gc(GC_WRITE, "register-session", scope="../../bad").startswith("<exit 2"), True)
+
+
+def test_launcher_lifecycle(tmp: Path) -> None:
+    print("\n19. hook-before-readup, launcher reuse and native resume")
+    e = Env(tmp)
+    e.submit("first prompt before readup", session_uuid="claude-a", scope="window")
+    first = e.gc(GC_WRITE, "register-session", scope="window")
+    check("hook-before-readup avoids duplicate", len(e.q("SELECT id FROM sessions")), 1)
+    e.gc(GC_WRITE, "end-session", first.split("|")[0], scope="window")
+    e.submit("new conversation in same launcher", session_uuid="claude-b", scope="window")
+    second = e.gc(GC_WRITE, "register-session", scope="window")
+    check("new Claude UUID gets a distinct row", first != second, True)
+    e.submit("resume original conversation", session_uuid="claude-a", scope="fresh-window")
+    check("native Claude resume keeps original row", e.gc(GC_WRITE, "register-session", scope="fresh-window"), first)
+    check("closed scoped Claude conversation remains idempotent", e.gc(GC_WRITE, "register-session", scope="fresh-window"), first)
+
+
+def test_legacy_cannot_adopt_codex_or_closed_rows(tmp: Path) -> None:
+    print("\n20. legacy hook cannot adopt Codex or a closed pointer")
+    e = Env(tmp)
+    codex = e.gc(GC_WRITE, "register-session", codex_thread="isolated-codex")
+    e.submit("new unidentified Claude prompt", session_uuid=None)
+    legacy_id = e.q("SELECT session_id FROM prompts ORDER BY id DESC LIMIT 1")[0][0]
+    check("unidentified Claude avoids Codex row", str(legacy_id) != codex.split("|")[0], True)
+    e.gc(GC_WRITE, "end-session", str(legacy_id))
+    e.submit("another unidentified session", session_uuid=None)
+    next_id = e.q("SELECT session_id FROM prompts ORDER BY id DESC LIMIT 1")[0][0]
+    check("closed legacy row is not reused", next_id != legacy_id, True)
+    e.submit("native Claude prompt", session_uuid="native-claude")
+    check("Codex binding survives Claude adoption", e.q("SELECT claude_session_id FROM sessions WHERE id=?",
+          (codex.split("|")[0],))[0][0], "codex:isolated-codex")
+
+
+def test_quoted_project_and_stop(tmp: Path) -> None:
+    print("\n21. quoted project names and stop-hook ownership")
+    e = Env(tmp)
+    renamed = e.cwd.with_name("test project's repo")
+    e.cwd.rename(renamed)
+    e.cwd = renamed
+    e.submit("quoted project prompt", session_uuid="stop-claude", scope="quoted-window")
+    session = e.gc(GC_WRITE, "register-session", scope="quoted-window")
+    check("quoted project registration succeeds", not session.startswith("<exit"), True)
+    check("quoted project prompt is stored", e.q("SELECT project FROM prompts"), [(renamed.name,)])
+    codex = e.gc(GC_WRITE, "register-session", codex_thread="stop-codex")
+    hook = ROOT / "workflow/hooks/session-stop.sh"
+    for native in ("stop-claude", "unknown-native"):
+        transcript = e.transcript(native)
+        result = subprocess.run([str(hook)], input=json.dumps(dict(
+            cwd=str(e.cwd), session_id=native, transcript_path=str(transcript))),
+            text=True, capture_output=True, env=e.env, cwd=e.cwd)
+        check(f"stop hook runs for {native}", result.returncode, 0)
+    check("Claude token count reaches only its own row", e.q("SELECT token_count FROM sessions WHERE id=?",
+          (session.split("|")[0],))[0][0], 10)
+    check("Codex token count stays untouched", e.q("SELECT token_count FROM sessions WHERE id=?",
+          (codex.split("|")[0],))[0][0], None)
+
+
 def main() -> int:
     # The hook is bash and shells out; skip rather than fail red if the runner
     # lacks a dependency. A skip is honest; a red CI for an env reason is noise.
@@ -532,6 +701,13 @@ def main() -> int:
         test_context_captures_the_whole_last_reply,
         test_gc_scripts_resolve_the_repo,
         test_gc_project_helper_is_shared,
+        test_scoped_identity_is_durable_and_strict,
+        test_codex_resume_fork_and_missing_pointer,
+        test_concurrent_registration_is_idempotent,
+        test_explicit_identity_guards,
+        test_launcher_lifecycle,
+        test_legacy_cannot_adopt_codex_or_closed_rows,
+        test_quoted_project_and_stop,
     ]
     for t in tests:
         with tempfile.TemporaryDirectory() as d:

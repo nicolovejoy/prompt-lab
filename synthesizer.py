@@ -9,10 +9,13 @@ import json
 import os
 import sys
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import heartbeat
 from claude_api import SONNET, call_claude, estimate_cost_cents, get_client, load_env
 from store import get_store
+from store.sqlite_store import SqliteKnowledgeStore
+from workflow.bin._gc_day_context import build_context, save_summary
 
 
 def prompt_version(system: str, tool: dict) -> str:
@@ -69,7 +72,13 @@ def synthesize_daily_summaries(store, client, target_date=None):
 
     for project, date in pairs:
         print(f"  Summarizing {project} / {date}...", end=" ", flush=True)
-        data = store.get_day_data(project, date)
+        context = (build_context(store, project, date)
+                   if isinstance(store, SqliteKnowledgeStore) else None)
+        data = (dict(prompts=[{"prompt": p} for p in context["prompts"]],
+                     sessions=context["sessions"], commits=context["commits"])
+                if context else store.get_day_data(project, date))
+        counts = (context["counts"] if context else
+                  {key: len(data[key]) for key in ("prompts", "sessions", "commits")})
 
         prompt_texts = [f"- {p['prompt']}" for p in data["prompts"] if p.get("prompt")]
         commit_texts = [f"- {c['hash'][:8]}: {c['message']}" for c in data["commits"] if c.get("message")]
@@ -87,6 +96,11 @@ Commits ({len(data['commits'])}):
 Sessions ({len(data['sessions'])}):
 {chr(10).join(session_texts) or '(none)'}"""
 
+        if context:
+            user_msg += "\n\nPrior daily prose and decisions (preserve contributions):\n" + json.dumps(context["existing_daily"])
+            user_msg += "\nExact counts and clipping metadata:\n" + json.dumps(
+                {"counts": counts, "truncation": context["truncation"]})
+
         system = """You summarize a developer's daily work on a project.
 Focus on WHAT was done and WHY, not low-level details. Be concise."""
 
@@ -98,16 +112,23 @@ Focus on WHAT was done and WHY, not low-level details. Be concise."""
             cost = estimate_cost_cents(result["model"], result["input_tokens"],
                                        result["output_tokens"])
 
-            store.upsert_daily_summary(
+            payload = dict(
                 project=project, date=date,
                 summary=parsed.get("summary", ""),
                 key_decisions=parsed.get("key_decisions", []),
-                prompt_count=len(data["prompts"]),
-                session_count=len(data["sessions"]),
-                commit_count=len(data["commits"]),
+                prompt_count=counts["prompts"],
+                session_count=counts["sessions"],
+                commit_count=counts["commits"],
                 model=result["model"],
                 prompt_version=prompt_version(system, SUMMARY_TOOL),
             )
+
+            if context:
+                payload.update(context_revision=context["context_revision"],
+                               synthesis_session_id=None)
+                save_summary(store, project, payload)
+            else:
+                store.upsert_daily_summary(**payload)
 
             store.log_synthesis(
                 run_type="daily", target_date=date, project=project,
@@ -310,7 +331,7 @@ Be direct and specific — no filler. 2-4 sentences max."""
 
             snapshot_data["state_summary"] = parsed.get("state_summary", "")
 
-            today = datetime.now().strftime("%Y-%m-%d")
+            today = datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d")
             store.save_project_snapshot(project=project, date=today, data=snapshot_data)
 
             store.log_synthesis(
@@ -342,11 +363,11 @@ def generate_project_snapshots(store):
         print("No projects with recent activity.")
         return
 
-    # Naive datetime.now() is the LAB DAY here, deliberately (#48): this runs
+    # Naive datetime.now(ZoneInfo("America/Los_Angeles")) is the LAB DAY here, deliberately (#48): this runs
     # on the mini under launchd, the mini is Pacific, and `date` on the row
     # it writes is a calendar day a human reads. Do not "fix" this to UTC —
     # that is the direction the bug came from.
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d")
     print(f"Generating snapshots for {len(projects)} project(s).")
 
     # Load project metadata (github_url, site_url) if available
@@ -433,7 +454,7 @@ def main():
 
     if args.all or args.states:
         # Only run states on Sundays (or when explicitly requested)
-        is_sunday = datetime.now().weekday() == 6
+        is_sunday = datetime.now(ZoneInfo("America/Los_Angeles")).weekday() == 6
         if args.states or is_sunday:
             print("\n=== Project State Summaries ===")
             attempted, errored = synthesize_project_states(store, client)

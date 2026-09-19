@@ -3,14 +3,14 @@
 #
 # The shared block (prompt-lab/workflow/claude-md-shared.md) is the single source of
 # truth for Nico's cross-repo output rules. This script writes it verbatim between
-# sentinel markers in a target CLAUDE.md, touching NOTHING outside the markers — each
+# sentinel markers in a target Markdown file, touching NOTHING outside the markers — each
 # repo's bespoke content is preserved. We compile-to-committed-text rather than rely on
 # CLAUDE.md @import because @import is a Claude Code harness feature only (cloud/headless/
 # third-party consumers see the literal @path), so it would not reach every environment.
 #
 # Usage:
-#   sync-shared-md.sh --check  [TARGET]   # exit 0 in sync, 1 drift/absent, 2 no CLAUDE.md
-#   sync-shared-md.sh --apply  [TARGET]   # write/refresh the block (creates CLAUDE.md if absent)
+#   sync-shared-md.sh --check  [TARGET]   # exit 0 in sync, 1 behind/tampered/missing, 2 absent
+#   sync-shared-md.sh --apply  [TARGET]   # create/refresh clean blocks; refuses tampered blocks
 #
 # TARGET defaults to ./CLAUDE.md. Canonical source defaults to ~/.claude/claude-md-shared.md
 # (installed copy); falls back to the in-repo copy next to this script. Override with
@@ -50,22 +50,71 @@ recorded_hash() {
     { grep -m1 "^<!-- $BEGIN_TOKEN" "$TARGET" 2>/dev/null || true; } | sed -n 's/.*v=\([a-f0-9]*\).*/\1/p'
 }
 
+target_state() {
+    # Print exactly one machine-readable state. A clean old block is "behind";
+    # a body that no longer matches its own recorded hash is "tampered". This
+    # distinction prevents a canonical reword from looking like local damage.
+    begin_count="$({ grep -c "^<!-- $BEGIN_TOKEN" "$TARGET" 2>/dev/null || true; } | tr -d ' ')"
+    end_count="$({ grep -c "^<!-- $END_TOKEN" "$TARGET" 2>/dev/null || true; } | tr -d ' ')"
+    if [ "$begin_count" = 0 ] && [ "$end_count" = 0 ]; then
+        printf 'missing'
+        return
+    fi
+    if [ "$begin_count" != 1 ] || [ "$end_count" != 1 ] || ! awk \
+        -v b="<!-- $BEGIN_TOKEN" -v e="<!-- $END_TOKEN" '
+            index($0, b) == 1 { begin_line=NR }
+            index($0, e) == 1 { end_line=NR }
+            END { exit !(begin_line > 0 && end_line > begin_line) }
+        ' "$TARGET"
+    then
+        printf 'tampered'
+        return
+    fi
+
+    rec="$(recorded_hash)"
+    if [ "${#rec}" -ne 12 ] || printf '%s' "$rec" | grep -q '[^a-f0-9]'; then
+        printf 'tampered'
+        return
+    fi
+
+    body="$(mktemp -t sync-shared-body.XXXXXX)"
+    awk -v b="<!-- $BEGIN_TOKEN" -v e="<!-- $END_TOKEN" '
+        index($0, b) == 1 { inside=1; next }
+        index($0, e) == 1 { inside=0; next }
+        inside { print }
+    ' "$TARGET" > "$body"
+    actual="$(shasum -a 256 "$body" | awk '{print $1}' | cut -c1-12)"
+    rm -f "$body"
+    if [ "$actual" != "$rec" ]; then
+        printf 'tampered'
+    elif [ "$rec" != "$HASH" ]; then
+        printf 'behind'
+    else
+        printf 'in sync'
+    fi
+}
+
 case "$MODE" in
     --check)
         if [ ! -f "$TARGET" ]; then
             echo "absent: $TARGET does not exist"
             exit 2
         fi
+        state="$(target_state)"
         rec="$(recorded_hash)"
-        if [ -z "$rec" ]; then
+        if [ "$state" = "missing" ]; then
             echo "missing: shared-conventions block not present in $TARGET (run --apply)"
             exit 1
         fi
-        if [ "$rec" = "$HASH" ]; then
+        if [ "$state" = "tampered" ]; then
+            echo "tampered: shared-conventions block or marker does not match its recorded hash in $TARGET (review manually; --apply will not overwrite it)"
+            exit 1
+        fi
+        if [ "$state" = "in sync" ]; then
             echo "in sync: $TARGET (v=$HASH)"
             exit 0
         fi
-        echo "drift: $TARGET has v=$rec, source is v=$HASH (run --apply)"
+        echo "behind: $TARGET has clean v=$rec, source is v=$HASH (run --apply)"
         exit 1
         ;;
     --apply)
@@ -85,7 +134,14 @@ case "$MODE" in
             exit 0
         fi
 
-        if grep -q "^<!-- $BEGIN_TOKEN" "$TARGET"; then
+        state="$(target_state)"
+        if [ "$state" = "tampered" ]; then
+            echo "REFUSED: shared-conventions block or marker is tampered in $TARGET." >&2
+            echo "         Review the local edits manually; --apply never overwrites an unverified block." >&2
+            exit 6
+        fi
+
+        if [ "$state" != "missing" ]; then
             # Replace existing region in place. On BEGIN, emit the new block then skip
             # old lines through END; everything else passes through untouched.
             # `index(...)==1` anchors to real markers (line starts with the comment

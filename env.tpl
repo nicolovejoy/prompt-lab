@@ -1,5 +1,6 @@
 # Prompt Lab — 1Password secret template
-# Generate .env.local with: op inject -i .env.tpl -o .env.local
+# References only. Nico runs secret operations in the helper pane.
+# This template includes cloud-only keys; do not inject the whole file locally.
 
 # Required for nightly synthesis (synthesizer.py) and review emails (send-review.py)
 ANTHROPIC_API_KEY=op://dev-secrets/prompt-lab-key-1/credential

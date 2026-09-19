@@ -11,13 +11,15 @@ upserts) against docs/public-allowlist.txt, the prompt-lab mirror of the
 consumer's manifest. Alias-aware: a row's project is resolved to its canonical
 before the check, so e.g. offer-builder is judged as byside.
 
-Report-only by design — it never deletes. On drift, exit 1 and list offenders;
+Report-only by design — it never deletes. On confirmed drift, exit 10 and list offenders;
 with --fix, also print (do NOT run) the unpublish commands to remove them.
 
-    python scripts/check_public_allowlist.py          # audit, exit 1 on drift
+    python scripts/check_public_allowlist.py          # audit, exit 10 on drift
     python scripts/check_public_allowlist.py --fix     # also print unpublish cmds
 
-Exit codes: 0 clean, 1 drift found, 2 allowlist missing/empty.
+Exit codes: 0 clean (complete audit), 10 confirmed drift, 2 allowlist
+missing/empty, 3 incomplete audit (for example missing credentials), 4 audit
+failed operationally.
 """
 
 from __future__ import annotations
@@ -69,15 +71,26 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    load_env()
-    local = SqliteKnowledgeStore()
-    local.migrate()
+    local = None
+    try:
+        load_env()
+        allowlist = load_allowlist()
+        if not allowlist:
+            print(f"ERROR: allowlist missing or empty: {ALLOWLIST_FILE}", file=sys.stderr)
+            return 2
+        local = SqliteKnowledgeStore()
+        local.migrate()
+        return audit(local, allowlist, show_fixes=args.fix)
+    except Exception as exc:
+        print(f"ERROR: public-data audit could not complete ({type(exc).__name__}): {exc}",
+              file=sys.stderr)
+        return 4
+    finally:
+        if local is not None:
+            local.close()
 
-    allowlist = load_allowlist()
-    if not allowlist:
-        print(f"ERROR: allowlist missing or empty: {ALLOWLIST_FILE}", file=sys.stderr)
-        return 2
 
+def audit(local, allowlist, *, show_fixes=False):
     # Every project-column value legitimately allowed = each allowlist historyKey
     # expanded to [canonical, *aliases], so aliased renames of allowed projects pass.
     allowed: set[str] = set()
@@ -92,16 +105,29 @@ def main() -> int:
 
     url = os.environ.get("TURSO_DATABASE_URL")
     token = os.environ.get("TURSO_AUTH_TOKEN")
-    remote = TursoKnowledgeStore(url=url, token=token) if (url and token) else None
-    if remote is not None:
+    if bool(url) != bool(token):
+        print(
+            "INCOMPLETE: Turso credentials are partial; both "
+            "TURSO_DATABASE_URL and TURSO_AUTH_TOKEN are required.",
+            file=sys.stderr,
+        )
+        return 3
+    if not url and not token:
+        print(
+            "INCOMPLETE: Turso credentials are missing; checked LOCAL only "
+            "(the live site reads Turso).",
+            file=sys.stderr,
+        )
+        return 3
+
+    try:
+        remote = TursoKnowledgeStore(url=url, token=token)
         for table in PUBLIC_TABLES:
             for p in _distinct_remote(remote, table):
                 present.setdefault(p, set()).add(f"turso/{table}")
-    else:
-        print(
-            "WARNING: Turso creds not set — checked LOCAL only "
-            "(the live site reads Turso, so this is an incomplete audit)."
-        )
+    except Exception as exc:
+        print(f"ERROR: Turso public-data audit failed: {exc}", file=sys.stderr)
+        return 4
 
     offenders = sorted(p for p in present if p not in allowed)
 
@@ -120,7 +146,7 @@ def main() -> int:
         where = ", ".join(sorted(present[p]))
         print(f"  - {p}  ({where})")
 
-    if args.fix:
+    if show_fixes:
         print("\nTo remove (REVIEW FIRST — this audit never deletes):")
         seen_groups: set[frozenset[str]] = set()
         for p in offenders:
@@ -130,7 +156,7 @@ def main() -> int:
             seen_groups.add(group)
             print(f"  python scripts/unpublish_public.py {p} --apply")
 
-    return 1
+    return 10
 
 
 if __name__ == "__main__":

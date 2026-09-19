@@ -4,11 +4,13 @@ session-start.sh agree, and that session-context.sh's own guard clauses work.
 
 Standalone runner (this repo doesn't use pytest — see CLAUDE.md Testing section).
 """
+import datetime
 import json
 import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 REPO_DIR = subprocess.run(
     ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True
@@ -99,6 +101,73 @@ hook_outside_result = subprocess.run(
 )
 check("session-start.sh produces zero stdout outside ~/src/*", hook_outside_result.stdout == "")
 check("session-start.sh exits 0 outside ~/src/*", hook_outside_result.returncode == 0)
+
+# 5. Handoff channel injection is headline-only and age-capped. Build a fake
+#    ~/src/.handoff with one channel matching this repo's basename and three
+#    entries: fresh, stale, and fresh-with-a-multiline-body. Bodies must never
+#    reach the output (they were 99% of a 194 KB injection on 2026-09-13).
+project = os.path.basename(REPO_DIR)
+fresh = (datetime.date.today() - datetime.timedelta(days=3)).isoformat()
+stale = (datetime.date.today() - datetime.timedelta(days=90)).isoformat()
+with tempfile.TemporaryDirectory() as td:
+    hd = pathlib.Path(td) / ".handoff"
+    (hd / ".git").mkdir(parents=True)
+    channel = hd / f"peer-{project}.md"
+    channel.write_text(
+        "---\n"
+        f"repos: [peer, {project}]\n"
+        "---\n"
+        "## Active\n\n"
+        f"### {fresh} peer → {project}: FRESH_HEADLINE_ONE\n\n"
+        "BODY_LINE_MUST_NOT_APPEAR_ONE\n\n"
+        f"### {stale} peer → {project}: STALE_HEADLINE\n\n"
+        "BODY_LINE_MUST_NOT_APPEAR_TWO\n\n"
+        f"### {fresh} {project} → peer: FRESH_HEADLINE_TWO\n\n"
+        "BODY_LINE_MUST_NOT_APPEAR_THREE\nsecond body line\n\n"
+        "## Archived\n\n"
+        f"### {fresh} peer → {project}: ARCHIVED_HEADLINE\n"
+    )
+    env = dict(os.environ, HANDOFF_DIR=str(hd), HANDOFF_BIN="/nonexistent/handoff.sh")
+    r = subprocess.run(
+        ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True, env=env
+    )
+    out = r.stdout
+    check("handoff: script exits 0 with fake channel", r.returncode == 0, r.stderr[-300:])
+    check("handoff: fresh headline one listed", "FRESH_HEADLINE_ONE" in out)
+    check("handoff: fresh headline two listed", "FRESH_HEADLINE_TWO" in out)
+    check("handoff: stale headline NOT listed", "STALE_HEADLINE" not in out)
+    check("handoff: archived headline NOT listed", "ARCHIVED_HEADLINE" not in out)
+    check("handoff: no body text leaks", "BODY_LINE_MUST_NOT_APPEAR" not in out and "second body line" not in out)
+    check("handoff: counts in header", f"peer-{project}.md: 3 active entries, 2 newer than 30d" in out)
+    check("handoff: points at the file for bodies", f"cat ~/src/.handoff/peer-{project}.md" in out)
+
+    # Window is overridable (so a repo can widen it) — with 100 days the stale one shows.
+    env2 = dict(env, HANDOFF_HEADLINE_DAYS="100")
+    out2 = subprocess.run(
+        ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True, env=env2
+    ).stdout
+    check("handoff: HANDOFF_HEADLINE_DAYS widens the window", "STALE_HEADLINE" in out2)
+    check("handoff: widened header counts", "3 active entries, 3 newer than 100d" in out2)
+
+    # Non-numeric window falls back to the 30d default rather than admitting
+    # every entry ever written (empty cutoff from a failed `date` call).
+    env_bad = dict(env, HANDOFF_HEADLINE_DAYS="abc")
+    out_bad = subprocess.run(
+        ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True, env=env_bad
+    ).stdout
+    check("handoff: non-numeric HANDOFF_HEADLINE_DAYS falls back to 30d", "newer than 30d" in out_bad)
+
+    # M == 0: a channel with only stale entries still prints its header (with
+    # count) so an old-but-unarchived backlog stays visible — just no headlines.
+    env3 = dict(env, HANDOFF_HEADLINE_DAYS="1")
+    out3 = subprocess.run(
+        ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True, env=env3
+    ).stdout
+    check("handoff: M==0 header still prints", f"peer-{project}.md: 3 active entries, 0 newer than 1d" in out3)
+    check(
+        "handoff: M==0 no headlines listed",
+        "FRESH_HEADLINE_ONE" not in out3 and "FRESH_HEADLINE_TWO" not in out3 and "STALE_HEADLINE" not in out3,
+    )
 
 print()
 if failures:

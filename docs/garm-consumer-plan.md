@@ -1,5 +1,7 @@
 # prompt-lab as a Garm consumer — design + implementation plan
 
+Status reviewed 2026-09-14: DEFERRED: no rollout until a real second user needs it. Preserve this design; do not execute its unchecked tasks automatically.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Readers of prompt-labs.org see only the projects Garm grants them; admin (Nico) keeps today's Garm-free login; usage lands in the health email.

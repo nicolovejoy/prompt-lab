@@ -2,13 +2,10 @@
 
 **Prompt Lab** — overview dashboard for tracking agent sessions, todos, and themes across projects. Data from `~/.claude/prompt-history.db`.
 
-## Run
+## Start here
 
-```bash
-.venv/bin/python mobile/serve.py  # local mobile PWA → localhost:8080
-```
-
-The Flask local dashboard (`dashboard/`) was retired 2026-05-28 — it had gone ~3 months stale and none of the cost-tracking work landed there. The cloud dashboard (`web/`) is the single canonical UI. `todos.py` is kept as the shared scanner but is currently unwired (its only consumer was the local dashboard); rewire it into `web/` when todos return to the UI.
+`README.md` covers setup; `docs/README.md` is the documentation index.
+The canonical UI is `web/`. Former local UI/scanner source is in `archive/`.
 
 ## Deploy (cloud dashboard)
 
@@ -29,8 +26,8 @@ To self-host: fork the repo, create a Turso database, set the env vars above, de
 - `generate-report.py` — bi-monthly markdown report; reads processed tables from Turso (`get_store("turso")`); snapshot writes stay local and sync as before
 - `sync_to_turso.py` — pushes processed tables to Turso (no raw prompts)
 - `web/` — cloud dashboard (Preact+HTM + Vercel Python serverless), auth-protected, reads from Turso
-- `mobile/` — legacy local mobile PWA, reads from Turso directly
-- `/handoff` generates daily summaries + weekly rollups inline (no API call)
+- `/handoff` saves session continuity; `/handoff-full` adds immediate recaps.
+- `/workflow-maintenance` handles explicit docs/memory maintenance; nightly owns backfill.
 - `/ask` queries the knowledge store with natural language
 - `workflow/` — slash commands (`commands/`), hooks, and `statusline-command.sh` (copy to `~/.claude/`)
 - **Data & access model: see `docs/data-and-access.md`** — the single coherent description of the three storage tiers (raw/private, processed/private, public), how public vs private is differentiated, the two-tier cloud auth, and how secrets grant access. Read it first when reasoning about what's stored where or who can see it.
@@ -43,7 +40,7 @@ The SessionStart hook (`workflow/hooks/session-start.sh`) injects a `Machine:` l
 
 ## Cross-agent handoff
 
-This repo coordinates with peer repos (selected-projects, prntd) via an append-only shared log living in the **standalone private git repo `nicolovejoy/handoff`**, cloned to `~/src/.handoff` (synced across mini + laptop). One file per pairing, each with a `repos: [a, b]` front-matter manifest. The SessionStart hook auto-injects the matching file's `## Active` section after a time-boxed best-effort pull, so you see pending notes without reading the file manually.
+This repo coordinates with peer repos (selected-projects, prntd) via an append-only shared log living in the **standalone private git repo `nicolovejoy/handoff`**, cloned to `~/src/.handoff` (synced across mini + laptop). One file per pairing, each with a `repos: [a, b]` front-matter manifest. The SessionStart hook auto-injects, per matching file, the dated `### ` headlines newer than 30 days plus an active-entry count (`HANDOFF_HEADLINE_DAYS` overrides the window). Bodies are not injected — `cat` the file when a headline matters. Full bodies used to be injected and reached 193 KB per session start (2026-09-13).
 
 **Writing a cross-repo note** — never hand-edit + manually `git push`; use the wrapper so the pull-rebase/commit/push is atomic and conflicts surface loudly:
 
@@ -59,232 +56,15 @@ It inserts the entry at the **top** of `## Active`. When an entry is acted on, m
 
 Shipped work is in git and in the code. What follows is only what isn't:
 open work, traps that cost real time, and decisions not worth re-litigating.
-The full chronological log lives in `docs/history.md`.
+The full chronological log — and the narrative behind everything below, under the
+`(moved 2026-09-13)` headings — lives in `docs/history.md`.
 
 ### Open
 
-**Dual-agent commands installed 2026-09-12 — one thing left, a real Codex
-try.** `workflow/install.sh` ran on the laptop: `~/.codex/prompts/readup.md`
-verified with zero `allowed-tools:` lines, `session-context.sh` and
-`sync-shared-md.sh` confirmed installed, the orphaned pre-rename
-`~/.claude/bin/sync-claude-md.sh` deleted. Still open: actually run
-`/prompts:readup` then `/prompts:handoff` from Codex in songpath or
-musicforge once (Codex needs a session restart to pick up new prompt files)
-— that first real `/handoff` from Codex is what gets that project onto the
-dashboard, no separate registration step (see
-`docs/superpowers/specs/2026-09-12-dual-agent-commands-design.md`).
-
-**Garm: HARDEN-THEN-FREEZE — Nico's decision 2026-08-27, don't re-litigate
-the unwind question.** He seriously considered unwinding Garm ecosystem-wide
-(triggered by the grant-seeding lockout gap) and chose: keep it, harden the
-two operational risks, then freeze the rollout until real demand. Posted to
-`~/src/.handoff/garm-prompt-lab.md` 2026-08-27. What that means here:
-
-- **Frozen indefinitely:** `GARM_GATING` stays **off**; `READER_EMAILS`
-  remains the live gate. **"Off" is a Vercel env var, not the code
-  default** — `web/garm_helper.py` defaults to `on`, so an env reset would
-  silently turn gating on and fail closed. Check `vercel env ls` before
-  trusting this line. Grant seeding (Pierre → `prompt-lab.prntd`, the
-  brother) is DEFERRED, no longer blocking anything. Task 9 smoke test
-  deferred with it. No new consumers, no admin UI (build-plan #8), and the
-  2026-08-23 dashboard-panel offers (per-person access lookup, usage panel,
-  `GARM_REPORTING_KEY` handover) are deferred with thanks. Revisit trigger:
-  a real second user who needs actual access management, not "might someday."
-- **Harden asks, garm-side, pending in the handoff channel:** (1) answer +
-  document where the admin key lives — narrowed for them 2026-08-27:
-  1Password `dev-secrets` has no `garm-admin-key` item, only a bare `garm`
-  item it might be a field on (titles checked from here; the classifier
-  correctly blocked opening the item); (2) free-tier Neon is a mismatch for
-  fail-closed auth (this month's 100% CU-quota near-miss) — either Nico
-  upgrades the plan or garm proposes a softer failure posture (longer
-  consumer grant caches).
-- PR #54 stays merged/deployed (it's inert with gating off — 97 lines of
-  helpers built kill-switch-first, so gating-off IS the unwound behavior for
-  free). Decisions from 2026-08-22 stand unchanged for whenever the freeze
-  lifts: namespaced dot slugs, reader = ≥1 `prompt-lab.*` grant, admin-only
-  `#/health`/`#/visitors`/uptime, 10-min revocation, admin bypass. "Reverse
-  lookup" (who has access to project X) remains ruled out — blast radius.
-
-**Resend: STAYING ON PRO — Nico's decision 2026-09-07, consolidation
-CANCELLED. Don't re-litigate.** The paid→free plan was built on a wrong
-count: the account had **11 domains, not ~37**, and `musicforge.org` — which
-Nico wants as its own sending domain ("my most popular app") — was never on
-Resend at all, so free's 3-domain cap would have needed a fourth slot on day
-one. $20/mo Pro is the cheapest paid tier (Free is $0 / 3 domains / 100
-emails a day; Pro is 10 domains, no daily cap, 50k/month account-wide).
-
-Applied 2026-09-07: four dead domains deleted by hand (`free-vite.com`,
-`send.anomatom.com`, `soiree.pianohouseproject.org`, `send.notemaxxing.net` —
-the last confirmed dead by notemaxxing's own "daily-send shutdown" commit and
-zero sends since Aug 15; all four confirmed gone by Nico the same day).
-Seven remain, three under Pro's ten, with room for `musicforge.org`. Nothing moves: `prompt-labs.org` keeps sending the health
-email (`HEALTH_FROM_EMAIL` default at `web/api/health_report.py:897`); the
-review email stays on `reviews@mail.pianohouseproject.org` where it landed
-2026-09-06, because moving it back buys nothing.
-
-Two facts worth keeping from the cancelled plan, both verified against the
-API: a return-path `send.` subdomain does NOT consume a domain slot (it is a
-record inside the parent's entry); and the key is account-wide, so any
-consumer can send from any verified domain with no DNS work. The
-"subdomains are separate slots" finding is also true — `span.` and `mail.`
-`pianohouseproject.org` are two entries — it just no longer matters.
-
-musicforge verifies `musicforge.org` itself. The one trap, flagged to them:
-that domain carries Nico's iCloud mail, so its SPF must be **extended**
-(`include:icloud.com` plus Resend's include), never replaced. Cancellation
-notes went to byside, span, ibuild4you, selected-projects and nudge the same
-day; the 2026-09-03 cloud-drafted plan branch is deleted.
-
-**The nightly pipeline's wake/DNS failure was found and fixed 2026-09-06** —
-narrative in `docs/history.md`, the generalizable trap in Traps below.
-
-**Two consequences to know, neither a bug:**
-
-- **Escalation is one day late for a single dead night.** The morning after, the
-  record still cannot have been pushed, and the newest remote row is age 1,
-  which passes. The red email arrives the following morning with the catch-up.
-  Two consecutive dead nights escalate on time via the age rule — which is what
-  the 2 -> 1 change is actually for, so do not "simplify" it back.
-- **A bad night stays red for up to 7 days and there is no acknowledgement
-  path.** Re-running that date manually adds a row, it does not clear the old
-  one. Loud-for-a-week was chosen deliberately over silent-forever.
-
-The three follow-ups deferred from this fix (cover the `_apply_recent_bad`
-note-append branch, pin `NIGHTLY_RUN_WINDOW_DAYS == 7`, null-host guard on
-backfilled rows) all landed 2026-09-07.
-
-**`docs/nightly-pipeline-plan.md`: steps 1, 2, 3 and 5 are DONE (2026-08-29,
-narrative in `docs/history.md`).**
-Step 4 remains mostly absorbed (report catch-up done; reader catch-up
-otherwise still optional) and unbuilt beyond that.
-
-**Still outstanding: step 2's sleeping-host test**, and it needs a real
-overnight rather than a healthy awake host (an awake, online laptop passes it
-either way, which is exactly why it needs staging). With the machine
-deliberately asleep across 02:30, confirm one wake produces one run in the
-correct order and Turso's newest `review_snapshots` date equals the run date.
-Note the network gate now sits in front of this, so a sleeping-host run should
-show a `--- network: resolved after Ns ---` line rather than a stage dying on
-`gaierror`; that line is itself the evidence the gate is earning its place.
-
-Also still unverified until it happens: the health-email changes are
-Vercel-side code reading Turso, so the first real morning email carrying a
-`nightly_runs` row is their acceptance test — **and it does not run until the
-merge is pushed and deployed.**
-
-**mini-rescue curation — open, unhurried.** `~/src/mini-rescue/` holds 13
-rescued repos; walk them at leisure, merge-or-discard, delete each folder as
-judged (the dir emptying is the progress meter). Settled 2026-08-17, don't
-revisit: freevite IS invitekit under its old name, left to rest (its last
-commit lives only in that local copy — remote is archived, deliberately not
-pushed); roll-your-own (GitLab, no auth) and skitrack-ntzb-poc (third-party
-remote) also deliberately unpushed. Two loose ends from the rescue: the
-agent installed git-lfs globally (Homebrew) to get rock-art-fab pushed, and
-musicforge's lilypond submodule edits went to the shared
-`neonscribe/lilypond-lead-sheets` repo on a rescue branch. The dead-token copy in `~/mini-staging/home/zshrc.mini` was deleted 2026-09-07.
-
-**garm hit the same Neon-CU bug as byside — found 2026-08-18, fixed same day
-by the garm side.** Neon alerted that `neon-bole-tree` (garm's DB, project
-`steep-glitter-55844373`) used 100% of its 100 CU-hour monthly quota with
-12+ days left before reset — confirmed by the math (0.25 CU × 1,453,008
-active-seconds ÷ 3600 = 100.9 CU-hours, exact match). Same root cause as
-byside below: `scripts/uptimerobot.py` deep-polled
-`garm.prompt-labs.org/api/health?db=1` every 5 minutes, never letting Neon's
-free-tier autosuspend kick in. Filed to `~/src/.handoff/garm-prompt-lab.md`;
-commit `59ea622` ("garm's health check stops paying to keep Neon awake")
-landed same day. Since consumers fail closed on a garm outage, this wasn't
-just a cost problem — worth confirming next month's CU number actually drops
-like byside's did, same as the open byside check below.
-
-**One small follow-up from 2026-08-14, not urgent.**
-
-*byside's Neon bill.* The deep health poll was consuming 80 of byside's 100
-monthly CU-hours (Neon free tier autosuspends after 5 min idle; we polled at
-5 min, so it never slept). Monitor is shallow now and applied live — **check
-the September CU number to confirm the drop**, since nothing alarms on it. The
-transferable rule, filed in `scripts/uptimerobot.py`: deep coverage over an
-autosuspending DB needs an interval **longer than the suspend window**, not a
-deeper URL, because polling at the suspend interval makes the check circular —
-it keeps the database warm and then reports that the warm database answers.
-Notified byside; their route comment still calls the deep check "cheap enough
-to poll every 5 minutes", which is true of the function and false of the
-compute.
-
-**Per-Pi service inventory — promoted to `docs/pi-inventory.md` 2026-09-07.**
-What runs on phrpi and homeassistant.local, their two addresses each, and the
-traps that go with them. prompt-lab owns that document; read it before touching
-either box.
-
-Closet move DONE 2026-08-13 — both Pis wired, both deliberately dual-homed,
-all four interfaces DHCP-reserved. What's left, none of it prompt-lab's code
-and all of it filed in `~/src/.handoff` (new channels
-`home-assistant-prompt-lab.md` + `phrpi-lights-prompt-lab.md`):
-- **Laptop SSH key into HA's add-on.** The highest-leverage one: today's HA
-  work ran on screenshots and inference while phrpi got measured in seconds.
-  Everything else about that box stays guesswork until this lands.
-- **Repoint hardcoded `192.168.5.34`** → `homeassistant.local` in
-  phrpi-lights and the home-assistant repo.
-- **`cloudflared`'s token out of argv** on phrpi (owner unclear — the
-  container's compose dir wasn't traced; not filed anywhere yet).
-
-**Copy review (#49) — batches 2–4 remain.** Batch 1 closed 2026-08-05 (narrative
-in `docs/history.md`). The review runs page by page at a computer, 3-5 items at a
-time. Nico answers by number and often stops mid-batch, so **track which items
-were actually answered, not which batch was sent** — the first pass through this
-lost two items by recording the batch as finished. Left to do: batch 2 (Activity +
-the day page), batch 3 (Costs, Visitors, Todos), batch 4 (Health, About, project
-pages). One open question the batch-1 rework raised, still unsettled: with Ask
-gone from the primary row, `More` guards a single destination plus your identity,
-so a plain `About` button in the primary row may be simpler than the panel.
-
-**Follow-ups the 2026-08-05 project-name cleanup surfaced (narrative in
-`docs/history.md`), all unconfirmed and needing Nico's memory of
-which directory he was actually in** — the names alone aren't evidence:
-`koma_art`/`koma-launch` look like the same underscore/dash pair fixed
-elsewhere; `freevite` (167 prompts, dormant) may be `invitekit` under an older
-directory name, since invitekit deploys to `freevite.vercel.app`; and `spike`
-(4 prompts) has the same shape as the hidden artifacts.
-
-**`ACTIVE · N` counts hidden projects.** `activeCount` is `activeList.length`
-with no `private` filter (`web/index.html:1308-1310`), and it also feeds the
-`active projects` KPI tile (`:1334`) and the `Active · N` header (`:1421`), so the home screen read `37` when 16 were
-shown and 21 were hidden junk. Chips honor the toggle; the counts don't. The fix
-is one filter, but the semantics are a real choice: excluding private is
-obviously right while `private` holds only artifacts, and wrong the day a
-genuine project is marked private. Alternative is `37 · 16 shown`. Undecided.
-
-Open, from the 2026-08-02 uptime/health thread and the issue backlog:
-- **`#/health` has never been visually verified** — both themes were checked by
-  computed contrast, not by eye. https://prompt-labs.org/#/health Also unseen:
-  **the nav below 640px** — the hamburger path. The 2026-08-05 verification was
-  done at a computer, so it covered the wide layout only, and the phone markup is
-  a separate CSS branch. (`#/about` and the More panel are verified.) **This sandbox
-  cannot render the app at all** — `index.html` pulls Preact from `esm.sh` at
-  runtime and the network policy blocks it, so every frontend change here is
-  verified by `node --check` over the extracted module plus class-usage greps, and
-  needs your eyes before it is real. Don't mistake "tests pass" for "it looks right."
-- **Beacon fan-out: `prntd`** never got the snippet; `page_views` has zero rows
-  ever for it. (musicforge was believed missing too, but it has been reporting
-  since 2026-08-09 — 676 rows by 2026-09-07 — so only prntd remains.)
-- **Public rollups:** only ibuild4you `2026-05-18` remains unpublished, and that is a
-  deliberate skip (cost forensics + internal ops; nothing left after scrubbing). It
-  reappears in every future draft by design.
-- **#48 residual:** the "8am" cron is `0 15 * * *`, which is 8am Pacific in summer
-  and **7am in winter** — Vercel crons are UTC-only, so this is a choice to make
-  (accept the winter hour, or split the schedule), not a bug to fix.
-- Open issues (resynced 2026-09-07): **#14** design tokens (own session; 244
-  font-size declarations now, up from 146 when filed), **#43** sign-ins panel
-  (trigger-gated on a second reader — note readers now also arrive via Garm
-  grants in `web/api/callback.py`, not only `READER_EMAILS`), **#9** beacon
-  fan-out, **#49** copy review (the issue has no comments; this file is the only
-  record of batch progress), **#53** iOS chart-tap zoom, **#55** cloudflared
-  token (owner traced to SPAN 2026-08-29; handoff note unanswered), **#51**
-  unmapped costs (reopened at the resync: the close rested on an attribution
-  guess, never a measurement). Closed at that resync: #34 and #45 (leftovers
-  noted on the issues), #27 (frozen). Earlier closes: #50 (day-page cache), #52. Settled off the same list:
-  Ask's per-user history is parked with Ask itself, and the selected-projects
-  commit counts wait on *their* repo wiring `lib/history.ts`.
-- Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
+Read `docs/current-work.md` for the current backlog and deferred decisions.
+For workflow work, start with `docs/codex-workflow-roadmap.md`; for operations,
+use `docs/data-and-access.md` and the invariants below. Do not re-open decisions
+marked settled without new evidence or Nico's instruction.
 
 ### The failure shape this repo keeps hitting
 
@@ -359,157 +139,103 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
 
 ### Traps that cost real time
 
-- **`workflow/bin/_gc_project.sh` is the ONE project-resolution implementation
-  for `gc-read.sh`/`gc-write.sh`** (landed 2026-09-07; both used to take
-  `basename $PWD`, so from an agent worktree `current-session`/`today-counts`
-  silently read empty and `/handoff` wrote that emptiness into a summary). It
-  mirrors `log-prompt.sh`: `--git-common-dir` (never `--show-toplevel`), only
-  git exit 128 buckets to `scratch`, never an empty name. A drift-guard test
-  greps both scripts for the `source`. Installed on both machines 2026-09-07
-  (mini verified by diff-sweep over `ssh mini.local`).
-
-- **`workflow/bin/*` and `workflow/commands/*` run from installed copies under
-  `~/.claude/`, not from the repo.** A fix committed to the repo is not live
-  until copied over (per machine!). Bit hard 2026-08-10: the Monday week-bug
-  fix landed in `workflow/bin/gc-read.sh` while the installed copy kept the
-  buggy SQL, and `/handoff`'s rollup check invented two phantom missing weeks
-  from Monday-dated summaries. After fixing anything under `workflow/`,
-  diff-sweep: `for f in workflow/bin/*.sh ; do diff -q "$f" ~/.claude/bin/$(basename "$f"); done`
-  (and the same for commands) — on BOTH machines.
-
-- **`tail -r` is BSD-only; CI is Linux.** `log-prompt.sh` reversed the
-  transcript with `tail -r`, which works on the Macs it actually runs on and
-  silently produces nothing everywhere else — so `prompts.context` was empty on
-  any Linux host and nobody knew, because no test asserted on the column until
-  2026-08-14. The hook now detects (`tail -r /dev/null` → else `tac`). The
-  general lesson: a macOS-only shell idiom in `workflow/` is a latent bug the
-  moment the code touches a Pi (phrpi is Debian) or CI, and it fails by
-  producing empty output rather than an error.
-- **A Vercel-origin service behind Cloudflare bot protection fails ~95%, not
-  100%, and the partial failure impersonates a rate limit.** Diagnosed on SPAN
-  2026-08-21. Vercel egresses from a rotating pool of AWS IPs; Bot Fight Mode
-  scores each independently, so a check occasionally draws an unchallenged IP,
-  succeeds once, then fails again on the next draw. That produced UP windows of
-  exactly one check interval separated by multi-hour DOWN runs, with gaps
-  regular enough (three consecutive at 2:07:4x to the second) that both agents
-  on the incident independently reached for "refilling budget / rate limit."
-  It was IP roulette. Cloudflare's firewall-events export settles it in
-  seconds — read `ruleId`/`source`/`action`, don't infer the control from the
-  failure pattern.
-- **Two sampling traps from the same incident, both of which produced confident
-  wrong answers.** A probe of 10 requests at 3s intervals spans 30 seconds and
-  cannot distinguish "blocked 100%" from "~5% pass rate spread over hours" — at
-  p=0.05, 10/10 failures is the *expected* result ~60% of the time. And
-  UptimeRobot's v2 log caps at **25 entries** regardless of `logs_limit`, while
-  Cloudflare's firewall-events export caps at **500** — so neither bounds an
-  onset time, and the oldest visible entry is a cap artifact, not a start.
-  Before accepting any peer's "we tested it, it isn't that", ask what sampling
-  window produced it.
-- **A failure whose own cause also blocks its reporting path erases its own
-  evidence.** The nightly wake/DNS deaths (2026-09-06) could not push their own run
-  records, so the grader never received the row and the email stayed green. No care
-  in the grader helps: fix it on the reading side — grade a WINDOW, not the newest row.
-- **A scheduler is not a dependency mechanism.** launchd coalesces missed
-  `StartCalendarInterval`s onto one wake, so agents scheduled 45 minutes apart start
-  simultaneously after a closed-lid night. Ordering belongs in `nightly_pipeline.py`,
-  never in the plist times.
-- **Never enforce a timeout on wall-clock time on a host that sleeps.** `time.time()`
-  counts sleep; the monotonic clock httpx uses for its read timeout does not. The
-  "3h19m API call" of 2026-08-20 was a healthy 136s run stretched across a sleeping
-  Mac — a wall-clock deadline would have aborted a good run every night.
-- **`source <file> && python …` in a plist silently runs nothing** when the file is
-  absent. That `&&` short-circuit killed the bi-monthly report twice (four months
-  once, then again on the mini). Every reader calls `load_env()` itself, so the
-  `source` was always redundant — invoke python directly through `run-nightly.sh`.
-- **SQLite's `weekday N` means next-or-SAME day.** `date(<d>,'weekday 1','-7 days')`
-  returns the *previous* Monday when `<d>` is already a Monday, which filed every
-  Monday under the wrong week. The correct bucket is `date(<d>,'weekday 0','-6 days')`.
-  A `clocks:` test greps `'weekday 1'` out of all four homes of this expression.
+- **`workflow/bin/_gc_project.sh` is the ONE project-resolution implementation for
+  `gc-read.sh`/`gc-write.sh`** — it mirrors `log-prompt.sh`: `--git-common-dir` (never
+  `--show-toplevel`), only git exit 128 buckets to `scratch`, never an empty name.
+- **`workflow/bin/*` and `workflow/commands/*` run from installed copies under `~/.claude/`**,
+  so a committed fix is not live until copied over, per machine. Sweep:
+  `for f in workflow/bin/*.sh; do diff -q "$f" ~/.claude/bin/$(basename "$f"); done`.
+- **`work.zsh`'s functions are loaded once, at shell startup (`.zshrc` sources it), and stay
+  in memory after that.** Reinstalling the file underneath an already-open tab does not fix
+  it — that tab keeps running the stale function until it's closed and a new one opened. This
+  produced the exact `-10000 AppleEvent handler failed` symptom of an already-fixed bug,
+  weeks apart, purely because the terminal predated the fix (2026-09-14). Diffing installed
+  vs. repo proves nothing about what a given open tab has loaded.
+- **`tail -r` is BSD-only; CI is Linux.** A macOS-only shell idiom in `workflow/` fails by
+  producing empty output, not an error (`prompts.context` was empty on Linux for months).
+- **A Vercel-origin service behind Cloudflare bot protection fails ~95%, not 100%, and the
+  partial failure impersonates a rate limit** — rotating egress IPs, each scored separately.
+  Read the firewall-events export; don't infer the control from the failure pattern.
+- **Ask what sampling window produced any "we tested it, it isn't that."** 10 requests over
+  30s cannot see a 5% pass rate; UptimeRobot v2's log caps at 25 entries and Cloudflare's
+  export at 500, so the oldest entry is a cap artifact, not an onset.
+- **A failure whose own cause also blocks its reporting path erases its own evidence** — the
+  wake/DNS deaths couldn't push their run records, so the email stayed green. Fix it on the
+  reading side: grade a WINDOW, not the newest row.
+- **Escalation is one day late for a single dead night** (the newest remote row is still age 1
+  next morning). Two dead nights escalate on time via the 2→1 age rule — don't "simplify" it.
+- **A bad night stays red up to 7 days with no acknowledgement path** — re-running the date
+  adds a row, never clears one. Loud-for-a-week was deliberate.
+- **A scheduler is not a dependency mechanism.** launchd coalesces missed intervals onto one
+  wake, so jobs 45 min apart start together. Ordering belongs in `nightly_pipeline.py`.
+- **Never enforce a wall-clock timeout on a host that sleeps.** `time.time()` counts sleep,
+  httpx's monotonic read timeout does not — the "3h19m API call" was a healthy 136s run.
+- **`source <file> && python …` in a plist silently runs nothing** when the file is absent;
+  it killed the bi-monthly report twice. Every reader calls `load_env()` — invoke python
+  directly through `run-nightly.sh`.
+- **SQLite's `weekday N` means next-or-SAME day**, so `date(<d>,'weekday 1','-7 days')` files
+  every Monday under the wrong week. Correct bucket: `date(<d>,'weekday 0','-6 days')`.
 - **Turso's `daily_summaries.prompt_version` is perpetually NULL by design** —
-  `merge_summary_parts()` in `sync_to_turso.py` omits it deliberately (local
-  provenance, no cloud reader needs it). Not a broken sync leg; don't "fix" it.
-- **`review_snapshots` records composition, not delivery.** A failed send still writes
-  the row, and the #45 heartbeat structurally cannot see a last-step delivery failure
-  because the artifact is upstream of it.
-- **`scripts/uptimerobot.py --apply` always exits 1** — the 4 HEARTBEAT creates fail
-  every run (3× 403 paid-plan, 1× 400 `gracePeriod > 86400`). Cosmetic, but it trains
-  you to ignore the exit code; read the output, not the status.
-- **`/api/private_history` has no allowlist of its own** — it accepts any project and
-  is gated solely by `SERVICE_HISTORY_KEY`. Don't go looking for one; the 8-key
-  allowlist is the *public* tier's write gate.
-- **Load-shedding is not available on our side.** The `deep` flag in
-  `web/api/health_report.py` is *descriptive* — it mirrors `?db=1` in the URL, and
-  `_check_target()` issues the request either way. Reduction comes from editing the
-  URL, never from flipping the flag.
-- **When two sources disagree about *when*, suspect a display timezone** before
-  suspecting either party's reading. UptimeRobot's account display was UTC-10, and an
-  authoritative-sounding wrong timestamp cost two rounds of cross-agent confusion.
-- **Restart Home Assistant before believing its Network-adapter panel.** HA builds the
-  adapter list at startup, so the panel reads *stale, not wrong* — it showed `wlan0`
-  only for days after the ethernet cable went in.
-- **A UI list is evidence about the UI, not about every credential in the system.**
-  HA's token card listing one long-lived token was read as "there is only one"; the
-  authoritative test is whether the consumer still authenticates.
-- **Prompt counts step up once on 2026-08-14** and the step is real. Before that date
-  a write-time filter dropped every prompt under 20 characters; after it, nothing is
-  dropped. `CAPTURE_FIX_DAY` + the `.heatmap-note` caption say so on the chart, and
-  backfill is impossible — the dropped prompts were never stored.
-- **Any overlay positions against the layout viewport**, so a `position:fixed` sheet
-  slides off-screen under pinch-zoom exactly like an absolutely-positioned panel. On a
-  phone, prefer a real route over a modal.
-- **`alias.py` takes two arguments and zsh does not word-split unquoted variables**, so
-  a `for pair in "a b"` loop silently writes the whole pair into the alias column. Quote
-  the split, or pass the two names separately.
-- **A full `sync_to_turso.py` runs past 120s.** When you need one upsert-only row (e.g.
-  `project_aliases`), write it straight to Turso instead of waiting on a full sync — and
-  never let a sync leg touch `project_metadata`, which is cloud-direct.
+  `merge_summary_parts()` omits it (local provenance). Not a broken sync leg.
+- **`review_snapshots` records composition, not delivery** — a failed send still writes the
+  row, so the #45 heartbeat cannot see a last-step delivery failure.
+- **`scripts/uptimerobot.py --apply` always exits 1** (4 HEARTBEAT creates fail every run).
+  Read the output, not the status.
+- **`/api/private_history` has no allowlist of its own** — any project, gated solely by
+  `SERVICE_HISTORY_KEY`. The 8-key allowlist is the *public* tier's write gate.
+- **Load-shedding is not available on our side.** `deep` in `web/api/health_report.py` is
+  descriptive; `_check_target()` requests either way. Reduce by editing the URL, not the flag.
+- **Deep coverage over an autosuspending DB needs a poll interval longer than the suspend
+  window**, not a deeper URL — else the check keeps the DB warm and reports that it answers.
+  Cost garm and byside their Neon CU quota; filed in `scripts/uptimerobot.py`.
+- **When two sources disagree about *when*, suspect a display timezone** first. UptimeRobot's
+  account display was UTC-10 and cost two rounds of cross-agent confusion.
+- **Restart Home Assistant before believing its Network-adapter panel** — HA builds the
+  adapter list at startup, so the panel reads stale, not wrong.
+- **A UI list is evidence about the UI, not about every credential in the system.** HA's token
+  card listing one token proved nothing; the test is whether the consumer authenticates.
+- **Prompt counts step up once on 2026-08-14 and the step is real** — a write-time filter
+  dropped every prompt under 20 chars before then. Backfill is impossible.
+- **Any overlay positions against the layout viewport**, so a `position:fixed` sheet slides
+  off-screen under pinch-zoom. On a phone, prefer a real route over a modal.
+- **`alias.py` takes two arguments and zsh does not word-split unquoted variables** — a
+  `for pair in "a b"` loop writes the whole pair into the alias column. Quote the split.
+- **A full `sync_to_turso.py` runs past 120s** — for one upsert-only row write straight to
+  Turso, and never let a sync leg touch `project_metadata`, which is cloud-direct.
 - **Test UptimeRobot alerting on a throwaway monitor, never by flipping a real one to a
-  failing URL** — that writes a fake outage into that service's permanent uptime ratio,
-  and the archive is never backfilled. Pick a target that returns a real 404
-  (`garm.prompt-labs.org` does): `https://prompt-labs.org/api/<anything>` returns **200**
-  from the SPA catch-all and produces a false UP.
-- **Turso returns `SUM()`/`COUNT()` aggregates as JSON strings.** An explicit `int()`
-  coalesce is load-bearing — without it chart math concatenates instead of adding.
-- **UptimeRobot v2's `custom_uptime_ratio` is a string** (`"100.000-99.980-99.990"`,
-  1d-7d-30d). Split and float, or every downstream average is text.
-- **The SPA catch-all serves `index.html` with a 200 for unknown paths.** A health
-  target pointed at a nonexistent path becomes a permanent false UP. Health targets
-  must also be unauthenticated — the first health email false-DOWNed prompt-labs.org
-  by polling auth-gated `/api/info`.
-- **`vercel env add` takes no value argument** — it opens an interactive prompt and
-  reads one line from stdin, so the trailing newline is the *submit*. Never pipe
-  through `tr -d '\n'` (it blocks forever, writes nothing, exits without error) and
-  never wrap it in a `for` loop (the first prompt seizes the TTY). Always verify with
-  `vercel env ls`: a good write reads seconds old.
-- **`op inject` substitutes `op://` references inside `#` comments** — a commented
-  reference is still live, and one unresolvable ref aborts the whole file. And
-  `op inject -i .env.tpl -o .env.local` is **not** a working workflow here: the
-  template is the union of local + cloud secrets, so regenerating locally tries to
-  materialize cloud-only values. Append single variables instead.
-- **The public-draft path regex only matches `/Users/…`.** Tilde paths (`~/src/…`)
-  sail straight through — a human-only catch.
-- **Reading `/api/public_history`: the envelope key is `rollups`, not
-  `weekly_rollups`.** A probe using the wrong key reports 0 rows on a healthy endpoint.
-- **A missing site in `#/visitors` is a hole, not a zero.** recountly showed zero rows
-  for weeks because the beacon had never once fired, not because there was no traffic.
-- **prntd's domain is `.org`, not `.com`.** pianohouse must be monitored at **www**,
-  not the apex — the apex 307s, and a monitor leaning on redirect-following is one
-  setting away from a false DOWN.
-- **Vercel log retention is ~1 hour.** Post-hoc forensics on a daily cron is not
-  available.
-- **CI ruff is pinned to `0.15.22` — don't unpin.** An unpinned `pip install ruff`
-  grabbed a new release and produced 339 new-rule errors on a docs-only push. Local
-  ruff passing while CI fails on a docs commit = version drift; check the pin first.
-- **`deploy` has `needs: test`**, so a starved or failing test run shows as *skipped*,
-  not failed, and no prod deploy goes out silently.
-- **Three Vercel diagnostics that produce false conclusions — don't reuse them:**
-  `gh api repos/:owner/:repo/hooks` is no evidence about Vercel linkage (Vercel
-  connects via a GitHub App, which creates no repo-level webhooks — check `link` on
-  `GET /v9/projects/<id>`); grepping served HTML for `_vercel/insights` false-negatives
-  on any current site (`@vercel/analytics` 2.x uses a randomized anti-adblock path);
-  and `githubCommitSha`/`githubCommitRef` on a deployment do **not** imply a git
-  trigger (the CLI stamps local checkout metadata onto manual deploys). The real tell
-  for "never linked" is zero preview deployments across the project's whole history.
+  failing URL** — that writes a fake outage into a permanent ratio, and the archive is never
+  backfilled. Pick a target that returns a real 404 (`garm.prompt-labs.org` does):
+  `https://prompt-labs.org/api/<anything>` returns **200** from the SPA catch-all.
+- **Turso returns `SUM()`/`COUNT()` aggregates as JSON strings** — an explicit `int()` coalesce
+  is load-bearing, or chart math concatenates.
+- **UptimeRobot v2's `custom_uptime_ratio` is a string** (`"100.000-99.980-99.990"`, 1d-7d-30d)
+  — split and float, or every downstream average is text.
+- **The SPA catch-all serves `index.html` with a 200 for unknown paths**, so a health target on
+  a nonexistent path is a permanent false UP. Targets must also be unauthenticated.
+- **`vercel env add` takes no value argument** — it reads one line from stdin and the trailing
+  newline is the *submit*. Never pipe through `tr -d '\n'`, never loop it; verify with
+  `vercel env ls`.
+- **`op inject` substitutes `op://` references inside `#` comments**, and one unresolvable ref
+  aborts the file. `-o .env.local` is not a workflow here (the template unions local + cloud
+  secrets) — append single variables instead.
+- **`web/garm_helper.py` defaults `GARM_GATING` to `on`** — the freeze is a Vercel env var, so
+  an env reset silently turns gating on and fails closed.
+- **The public-draft path regex only matches `/Users/…`** — tilde paths sail through. Human
+  catch only.
+- **Reading `/api/public_history`: the envelope key is `rollups`, not `weekly_rollups`** — the
+  wrong key reports 0 rows on a healthy endpoint.
+- **A missing site in `#/visitors` is a hole, not a zero** — recountly's beacon had never once
+  fired.
+- **prntd's domain is `.org`, not `.com`**, and pianohouse must be monitored at **www** — the
+  apex 307s, one setting away from a false DOWN.
+- **Vercel log retention is ~1 hour** — post-hoc forensics on a daily cron is not available.
+- **CI ruff is pinned to `0.15.22` — don't unpin.** An unpinned install produced 339 new-rule
+  errors on a docs-only push; local-passing + CI-failing on docs = version drift.
+- **`deploy` has `needs: test`**, so a starved or failing test run shows as *skipped*, not
+  failed, and no prod deploy goes out silently.
+- **Three Vercel diagnostics produce false conclusions:** repo-level webhooks (Vercel uses a
+  GitHub App; check `link` on `GET /v9/projects/<id>`), grepping HTML for `_vercel/insights`
+  (randomized path), `githubCommitSha` (stamped on manual deploys). Tell: zero previews ever.
 
 ### Testing
 
@@ -520,9 +246,10 @@ Run each directly:
 for f in scripts/test_*.py; do .venv/bin/python "$f"; done
 ```
 
-~243 tests across 7 files as of 2026-08-04 (162 in `test_web_api.py`, plus alias-layer
-22, cost-pipeline 22, public-draft 21, session-identity 9, heartbeat 7, and
-`test_imports.py`, which is an import smoke script with no test cases).
+The standalone suites live in `scripts/test_*.py`; `.github/workflows/test.yml`
+lists the CI gate. Workflow changes additionally exercise isolated session
+identity, readup error states, whole-day context, and a temporary installation
+roundtrip. No test should use the real history database or publish data.
 `_health_mod(up=, hb=, ur=)` stubs the health endpoint; its Turso stub dispatches on
 the SQL because the pause lookup, the freshness lookups and the uptime upsert share
 `turso_query` and must not be conflated — pause fails open, freshness fails loud, and
@@ -531,82 +258,59 @@ the archive write must be separately observable.
 ### Settled — don't re-litigate
 
 - **UptimeRobot is the sensor AND the pager; prompt-lab samples nothing and pages for
-  nothing.** 5-min polling on independent infra, free tier, 3-month retention. Ratified
-  in garm's 2026-07-29 handoff: prompt-lab shares the Vercel+Turso+Resend stack, so a
-  watcher built on it would die with the watched. No Pi, no launchd sampler.
-  API facts, probed live (the published docs are thin and partly wrong): **v3
-  provisions but has no history endpoints** (`/logs`, `/response-times`, `/uptimes` all
-  404); **v2 legacy is the only source of history** and works on free; `HEARTBEAT` type
-  needs a paid plan (403 `009-005` at every interval and grace value); free tier is 50
-  monitors, 5-min interval, 10 req/min, 3-month retention.
-- **OAuth is hand-rolled in Python, zero new deps.** Because this is a confidential
-  client doing its own server-side code exchange, the `id_token` arrives from Google
-  over TLS — no JWT signature verification, no JWKS fetch, no crypto dependency.
-  Rejected: Next.js conversion, mixed Node+Python runtime, third-party auth. Spec in
-  `docs/phase2-oauth-plan.md` — read it before touching auth. `verify_token` requires
-  both `role` and `email` **keys** (key-presence, not truthiness) — that subtlety is
-  load-bearing.
-- **No display names in the sign-ins panel.** With two accounts the beacon role already
-  identifies the person, and a name would cost the log's anonymity. #43 tracks the
-  trigger: when a second reader joins, the fix is a stable **opaque per-user id** (HMAC
-  of email under a server salt, like `visitor_hash`) — never an email or a name.
-- **First-party beacon over Vercel Analytics.** Drains are Pro-only and Hobby Analytics
-  has no read API, so it could never feed a unified dashboard. The beacon is also
-  hosting-neutral and writes cloud-direct.
-- **The public tier's curation is the consumer's job** — the `selected-projects` MDX
-  manifest is the single source of truth for which projects appear publicly.
-  `docs/public-allowlist.txt` mirrors it and gates *writes*, not reads.
-- **The public-draft division of labour:** the machine refuses to publish on anything
-  regex-able (absolute paths, emails, credential tokens, internal DB hosts, unedited
-  blockquotes, prose <15 words, prose ≥75% similar to the private source). The human
-  owns the four things regexes structurally cannot see: **named people/orgs,
-  identifiability-by-description, unreleased plans stated as fact, and commercially or
-  personally sensitive detail.**
-- **`private` on `project_metadata` is cosmetic only** — a hide-toggle, not the
-  public-data gate, and it does not gate any API. `public_counts` is the real gate.
-- **The nightly jobs run on the LAPTOP and nowhere else, and there is exactly one
-  sender** (2026-08-20). Never load the readers on two machines or Nico gets two
-  emails a night. The mini runs nothing for prompt-lab: it sleeps through the night
-  and its raw DB is frozen at the 2026-08-12 snapshot.
-- **DB ownership is federated — Option B, 2026-08-10.** Raw prompts stay machine-local
-  by invariant; each machine synthesizes its own and pushes processed rows to Turso,
-  which is the merge point. `daily_summaries` clobber is solved by the per-machine
-  parts table; `weekly_rollups` still has the same shape, deferred until it bites.
-- **Prompt ratings are abandoned (2026-08-14).** `utility`/`tags`/`notes`/`outcome`
-  and `idx_prompts_utility` exist in the live DB, 0 rows have ever been rated, and no
-  code has ever written them. The columns stay (harmless); don't revive the aspiration
-  without a new idea — a one-word in-the-moment marker, or deriving utility from outcome.
-- **Ask is mothballed, not deleted.** `web/api/ask.py` and the modal are untouched and
-  reachable from `#/about` and the `/` shortcut. Deleting it would not even drop the
-  `ANTHROPIC_API_KEY` dependency, which the Todos classifier holds.
-- **Any future account split must *move* `~/.claude/prompt-history.db`, never copy
-  it** — a second copy of every raw prompt is a privacy regression.
-- **The recountly.org UptimeRobot monitor stays until raconte posts teardown notice in
-  the handoff channel.** recountly became Raconte (native iOS, no backend ever, slot
-  closed 2026-08-02); the site still answers 307 and the monitor is deliberately kept —
-  do not delete it as cruft.
-- **Machine-voice convention:** any AI-authored text renders italic + muted with a
-  `↳ from claude` marker.
-- **Dual-agent commands (Claude Code + Codex) — 2026-09-12.** `workflow/commands/*.md`
-  is the single source for both; `install.sh` distributes to `~/.claude/commands/`
-  (unchanged) and `~/.codex/prompts/` (allowed-tools stripped). Codex has no
-  SessionStart-hook equivalent, so `/readup` falls back to running the
-  *installed* `~/.claude/bin/session-context.sh` — extracted from the hook for
-  exactly this reuse (a command runs from an arbitrary cwd via
-  `~/.claude/commands/`, so it needs the installed path; only the hook itself
-  uses the in-repo relative path, since it runs from its registered in-repo
-  location). `sync-claude-md.sh` was renamed `sync-shared-md.sh` (it was already
-  target-path-agnostic) so the same shared-conventions source compiles into both
-  CLAUDE.md and AGENTS.md. Codex sessions always branch as `codex/<desc>`, the one
-  signal a Claude session can check for since `ListAgents` doesn't cross tool
-  boundaries. Full design: `docs/superpowers/specs/2026-09-12-dual-agent-commands-design.md`.
+  nothing.** 5-min polling, free tier, 3-month retention — a watcher on our own
+  Vercel+Turso+Resend stack would die with the watched. No Pi, no launchd sampler.
+- **OAuth is hand-rolled in Python, zero new deps** — a confidential client doing its own
+  code exchange, so the `id_token` arrives over TLS and needs no JWT verification. Spec:
+  `docs/phase2-oauth-plan.md`. `verify_token` requires `role` and `email`
+  **keys** (key-presence, not truthiness) — that subtlety is load-bearing.
+- **No display names in the sign-ins panel** — a name would cost the log's anonymity. When a
+  second reader joins (#43), use a stable opaque per-user id (HMAC of email under a salt).
+- **First-party beacon over Vercel Analytics** — drains are Pro-only, Hobby has no read API.
+  Hosting-neutral, writes cloud-direct.
+- **The public tier's curation is the consumer's job** — the `selected-projects` MDX manifest
+  is the source of truth; `docs/public-allowlist.txt` mirrors it and gates *writes*.
+- **The public-draft division of labour:** the machine refuses anything regex-able (paths,
+  emails, tokens, DB hosts, unedited quotes, prose <15 words or ≥75% similar). The human owns
+  named people/orgs, identifiability-by-description, unreleased plans, sensitive detail.
+- **`private` on `project_metadata` is cosmetic only** — a hide-toggle gating no API.
+  `public_counts` is the real gate.
+- **The nightly jobs run on the LAPTOP and nowhere else, and there is exactly one sender**
+  (2026-08-20) — two loaded readers means two emails a night. The mini runs nothing.
+- **DB ownership is federated — Option B, 2026-08-10.** Raw prompts stay machine-local; each
+  machine pushes processed rows to Turso, the merge point. `daily_summaries` clobber is solved
+  by the per-machine parts table across MACHINES; `weekly_rollups` still isn't, deferred until
+  it bites. For two agents on one machine, the new handoff source uses whole-day context
+  and revision-checked saves (2026-09-14). The paired live check passed. Routine
+  handoff now saves session summaries; explicit full handoff and nightly daily
+  synthesis use revision-checked whole-day saves. See the validation doc for gates.
+- **Prompt ratings are abandoned (2026-08-14)** — columns exist, 0 rows ever rated, no code
+  ever wrote them. They stay (harmless); don't revive without a new idea.
+- **Ask is mothballed, not deleted** — `web/api/ask.py` and the modal are reachable from
+  `#/about`, and deleting it wouldn't even drop `ANTHROPIC_API_KEY` (Todos holds it).
+- **Any future account split must *move* `~/.claude/prompt-history.db`, never copy it** — a
+  second copy of every raw prompt is a privacy regression.
+- **The recountly.org UptimeRobot monitor stays until raconte posts teardown notice** in the
+  handoff channel — the site still answers 307; do not delete it as cruft.
+- **Machine-voice convention:** AI-authored text renders italic + muted with `↳ from claude`.
+- **Resend stays on Pro — 2026-09-07, consolidation CANCELLED.** The free plan rested on a
+  wrong count (**11 domains, not ~37**) and `musicforge.org` was never on Resend. Return-path
+  `send.` subdomains consume no slot; `span.`/`mail.` subdomains are separate entries.
+  `musicforge.org`'s SPF must be **extended** (`include:icloud.com`), never replaced.
+- **Dual-agent commands (Claude Code + Codex) — 2026-09-12.** `workflow/commands/*.md` is the
+  single source; `install.sh` distributes to `~/.claude/commands/` and renders
+  explicit-only `~/.agents/skills/source-command-*/` skills (deprecated
+  `~/.codex/prompts/` copies remain for compatibility). Codex readup falls back to the
+  installed `session-context.sh`.
+  Design: `docs/superpowers/specs/2026-09-12-dual-agent-commands-design.md`.
 
-<!-- SHARED-CONVENTIONS:BEGIN v=a203b3e87f6b — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->
+<!-- SHARED-CONVENTIONS:BEGIN v=4fafc2cfa0f4 — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->
 ## Shared conventions
 
 <!-- These are Nico's cross-repo output rules. They're materialized into each repo's
-CLAUDE.md so every agent (local, cloud, third-party) sees them as plain text. Source
-of truth: prompt-lab/workflow/claude-md-shared.md — edit there and re-sync, never here. -->
+CLAUDE.md and AGENTS.md so every agent (local, cloud, third-party) sees them as plain
+text. Source of truth: prompt-lab/workflow/claude-md-shared.md — edit there and
+re-sync, never here. -->
 
 - **Clickable URLs.** When pointing at any web destination (dashboard, repo, PR, deploy, settings, docs, localhost), print the full bare URL — `https://example.com` or `http://localhost:8080` — on its own, never just the page's name and never a markdown `[label](url)` link. Nico's terminal auto-linkifies raw `https://` text, so a bare URL is one-click and stays copyable.
 

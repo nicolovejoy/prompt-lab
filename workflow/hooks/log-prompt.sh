@@ -87,55 +87,10 @@ if [ -z "$CLAUDE_SESSION_ID" ] && [ -n "$TRANSCRIPT_PATH" ]; then
     CLAUDE_SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl)
 fi
 
-SESSION_ID=""
-if [ -n "$CLAUDE_SESSION_ID" ]; then
-    CSID=$(echo "$CLAUDE_SESSION_ID" | sed "s/'/''/g")
-
-    # Self-heal the schema so a machine that hasn't run store.migrate() yet
-    # still binds correctly instead of silently falling back.
-    if ! sqlite3 "$DB" "SELECT claude_session_id FROM sessions LIMIT 1;" >/dev/null 2>&1; then
-        sqlite3 "$DB" "ALTER TABLE sessions ADD COLUMN claude_session_id TEXT;" 2>/dev/null
-    fi
-
-    # Upsert by claude_session_id. The UPDATE adopts the unbound row /readup's
-    # register-session just created (recent, still open, no prompts yet) so the
-    # hook and /readup don't each create a row for one conversation.
-    SESSION_ID=$(sqlite3 "$DB" "
-        UPDATE sessions SET claude_session_id='$CSID'
-         WHERE id = (SELECT id FROM sessions
-                      WHERE project='$PROJECT_ESCAPED'
-                        AND claude_session_id IS NULL
-                        AND ended_at IS NULL
-                        AND started_at >= datetime('now','-12 hours')
-                        AND NOT EXISTS (SELECT 1 FROM prompts
-                                         WHERE prompts.session_id = sessions.id)
-                      ORDER BY started_at DESC LIMIT 1)
-           AND NOT EXISTS (SELECT 1 FROM sessions
-                            WHERE project='$PROJECT_ESCAPED'
-                              AND claude_session_id='$CSID');
-        INSERT INTO sessions (project, claude_session_id, hostname)
-             SELECT '$PROJECT_ESCAPED', '$CSID', '$(hostname -s)'
-              WHERE NOT EXISTS (SELECT 1 FROM sessions
-                                 WHERE project='$PROJECT_ESCAPED'
-                                   AND claude_session_id='$CSID');
-        SELECT id FROM sessions
-         WHERE project='$PROJECT_ESCAPED' AND claude_session_id='$CSID'
-         ORDER BY id DESC LIMIT 1;" 2>/dev/null)
-fi
-
-# Fallback: no derivable session id — keep the old behavior rather than
-# dropping the prompt on the floor.
-if [ -z "$SESSION_ID" ]; then
-    SESSION_ID=$(sqlite3 "$DB" "SELECT id FROM sessions WHERE project='$PROJECT_ESCAPED' AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1;" 2>/dev/null)
-fi
-
-# Pointer file so slash commands resolve the same row without threading an id
-# through the model. gc-read.sh / gc-write.sh read it, falling back to the old
-# query when it's absent.
-if [ -n "$SESSION_ID" ]; then
-    mkdir -p ~/.claude/state 2>/dev/null
-    echo "$SESSION_ID" > ~/.claude/state/current-session-"$PROJECT" 2>/dev/null
-fi
+HOOK_REAL=$(readlink -f "$0" 2>/dev/null || echo "$0")
+# Native Claude UUIDs and launcher bindings share the command wrappers' resolver.
+# Fail visibly if identity cannot be established; never attach to a guessed row.
+SESSION_ID=$(python3 "$(dirname "$HOOK_REAL")/../bin/_gc_session_identity.py" claude "$PROJECT" "$CLAUDE_SESSION_ID") || exit $?
 
 # Extract the last assistant response as context. Paired with kind='approval'
 # this is what answers "what did I actually say yes to?" — the prompt alone is
@@ -205,7 +160,7 @@ PROMPT_ESCAPED=$(printf '%s' "$PROMPT" | sed "s/'/''/g")
 CONTEXT_ESCAPED=$(printf '%s' "$CONTEXT" | sed "s/'/''/g")
 
 # Auto-register project if not already known
-sqlite3 "$DB" "INSERT OR IGNORE INTO projects (name) VALUES ('$PROJECT');" 2>/dev/null
+sqlite3 "$DB" "INSERT OR IGNORE INTO projects (name) VALUES ('$PROJECT_ESCAPED');" 2>/dev/null
 
 # The `prompts` table predates store/sqlite_store.py's migrate path (it was
 # created by the Flask dashboard, retired 2026-05-28), and this hook is bash —
@@ -217,9 +172,9 @@ sqlite3 "$DB" "ALTER TABLE prompts ADD COLUMN kind TEXT;" 2>/dev/null
 
 # Insert into database
 if [ -n "$SESSION_ID" ]; then
-    INSERT_ERR=$(sqlite3 "$DB" "INSERT INTO prompts (project, prompt, session_id, context, hostname, kind) VALUES ('$PROJECT', '$PROMPT_ESCAPED', $SESSION_ID, '$CONTEXT_ESCAPED', '$MACHINE', '$KIND');" 2>&1 >/dev/null)
+    INSERT_ERR=$(sqlite3 "$DB" "INSERT INTO prompts (project, prompt, session_id, context, hostname, kind) VALUES ('$PROJECT_ESCAPED', '$PROMPT_ESCAPED', $SESSION_ID, '$CONTEXT_ESCAPED', '$MACHINE', '$KIND');" 2>&1 >/dev/null)
 else
-    INSERT_ERR=$(sqlite3 "$DB" "INSERT INTO prompts (project, prompt, context, hostname, kind) VALUES ('$PROJECT', '$PROMPT_ESCAPED', '$CONTEXT_ESCAPED', '$MACHINE', '$KIND');" 2>&1 >/dev/null)
+    INSERT_ERR=$(sqlite3 "$DB" "INSERT INTO prompts (project, prompt, context, hostname, kind) VALUES ('$PROJECT_ESCAPED', '$PROMPT_ESCAPED', '$CONTEXT_ESCAPED', '$MACHINE', '$KIND');" 2>&1 >/dev/null)
 fi
 
 # A failed insert used to go to /dev/null, so a broken hook and a quiet day

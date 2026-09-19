@@ -1,6 +1,8 @@
 # prompt-lab / Ground Control
 
-Workflow tools and dashboards for tracking Claude Code sessions across projects.
+Workflow tools and dashboards for tracking Claude Code and Codex sessions across projects.
+
+[Documentation index](docs/README.md) · [Workflow smoke tests](docs/codex-workflow-validation.md)
 
 Every session is logged, summarized, and surfaced in a cloud dashboard. Slash commands handle session start/end and review. Nightly synthesis generates daily summaries, weekly rollups, and project snapshots. Optional email reviews and bi-monthly reports via the Anthropic API and Resend.
 
@@ -25,18 +27,21 @@ cd ~/src/prompt-lab
 
 This will:
 - Create a Python virtualenv and install dependencies
-- Copy slash commands to `~/.claude/commands/`
+- Copy slash commands to `~/.claude/commands/` and explicit-only Codex skills to
+  `~/.agents/skills/source-command-*/` (deprecated prompt copies are retained for
+  compatibility)
 - Generate and load launchd plists (macOS scheduled jobs)
 - Print the `~/.claude/settings.json` snippet to add manually
 
 Then add the printed snippet to `~/.claude/settings.json` and restart Claude Code.
+Codex skills update automatically; start a new Codex session if they do not appear.
 
 ### 2. Configure environment
 
 Copy the example and fill in your values:
 
 ```bash
-cp .env.example .env
+cp env.example .env
 ```
 
 Edit `.env` with your keys and email addresses. See [Configuration](#configuration) below for details on each variable.
@@ -51,7 +56,7 @@ cp workflow/CLAUDE.md.template ~/.claude/CLAUDE.md
 
 ## Configuration
 
-All configuration lives in `.env` (gitignored — never committed). See `.env.example` for the template.
+All configuration lives in `.env` (gitignored — never committed). See `env.example` for the template.
 
 ### Required
 
@@ -115,7 +120,27 @@ All commands live in `~/.claude/commands/` and work across every repo. Source of
 
 `/readup` — start a session: registers it in DB, reads CLAUDE.md, shows recent git log
 
-`/handoff` — end a session: logs commits, writes summary, updates CLAUDE.md Next Steps
+`/handoff` — save findings, decisions and next steps, capture commits, close only this session
+
+`/handoff-full` — also refresh the whole-day summary and due weekly rollups now
+
+`/workflow-maintenance` — explicitly review project docs, memory and maintenance backlog
+
+Codex uses `$source-command-readup`, `$source-command-handoff`,
+`$source-command-handoff-full` and `$source-command-workflow-maintenance`. Select a
+skill by typing `$` in Codex; these skills are explicit-only and never run merely
+because prose resembles their description. Readup does no summary backfill; nightly
+handles completed Pacific days, including sessions without prompt logs. Recaps reach
+the cloud after a successful nightly synthesis and sync. The installer also adds a
+narrow Codex rule for the installed `gc-write.sh` session-bookkeeping helper; restart
+Codex after installation so the rule is loaded.
+
+Shared conventions are materialized into each repo's `CLAUDE.md` and `AGENTS.md`.
+`sync-shared-md.sh --check <file>` distinguishes a clean old block (`behind`) from
+local edits or malformed markers (`tampered`); apply refuses tampered blocks. Use
+`sync-shared-fleet.sh` for a read-only tab-separated inventory of both files across
+repositories under `~/src`. Its explicit `--apply` mode updates only verified
+`behind` or `missing` blocks; it never creates absent files, commits, or pushes.
 
 `/review [N] [project] [-v]` — session review across projects for last N days (default: 7), optional verbose mode for non-technical audience
 
@@ -154,10 +179,8 @@ prompt-lab/
 │   ├── auth_helper.py     # Cookie-based auth
 │   ├── turso_helper.py    # Turso HTTP client
 │   ├── vercel.json        # Vercel config
-│   └── api/               # Python serverless functions (9 endpoints)
-├── mobile/
-│   ├── index.html         # Legacy PWA (reads from Turso)
-│   └── serve.py           # Local dev server
+│   └── api/               # Python serverless functions
+├── archive/              # Historical UI and utilities; not active entry points
 ├── workflow/
 │   ├── commands/          # Slash command source of truth
 │   │   ├── readup.md
@@ -175,8 +198,7 @@ prompt-lab/
 ├── send-review.py         # Daily review email (optional)
 ├── generate-report.py     # Bi-monthly report generator (optional)
 ├── sync_to_turso.py       # Push processed tables to Turso (no raw prompts)
-├── todos.py               # Shared todo scanner (currently unwired)
-├── .env.example           # Configuration template
+├── env.example           # Configuration template
 └── README.md
 ```
 
