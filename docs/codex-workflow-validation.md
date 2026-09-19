@@ -1,5 +1,58 @@
 # Readup and handoff validation
 
+## Hook lifecycle probe — passed 2026-09-19 (fixture only)
+
+`scripts/probe_codex_hooks.py` exercised the installed Codex CLI 0.155.1 against
+a localhost Responses stub, temporary hooks and a fake SQLite database. No paid
+model calls, real credentials, installed hooks or live history were used. The
+child had its own temporary Codex configuration directory, in-memory credential
+storage, and user config/rules/plugins disabled.
+
+Three cases passed:
+
+- **Identity:** SessionStart and UserPromptSubmit delivered the same native
+  conversation and database session ID in the first model request. The actual
+  agent tool loop wrote the fake request file.
+- **Notification only:** Stop saved the summary and closed the fake session,
+  but `systemMessage` did not cause another model request. The final model reply
+  remained `QUEUED`; a UI notification alone cannot justify a saved claim.
+- **Receipt continuation:** Stop returned `decision: "block"` with the committed
+  receipt in `reason`. Codex made one additional model request containing that
+  receipt, then ran Stop again with `stop_hook_active=true`. The fixture's replay
+  guard ended the turn without a loop. The final reply was `SAVED` with the receipt.
+- **Wrong session:** A forged session ID produced a rejection receipt through the
+  same continuation. The summary and closure remained NULL; final reply `REJECTED`.
+
+Evidence directories (each contains the exact invocation, hook events, model
+context observations, CLI output and persisted-result assertions):
+
+- Notification: `/private/tmp/prompt-lab-hook-probe-zk81xlgw/notify/`
+- Save/continuation: `/private/tmp/prompt-lab-hook-probe-ekiz_uss/continue/`
+- Rejection: `/private/tmp/prompt-lab-hook-probe-pra6jbo7/reject/`
+
+**Scope:** This proves event ordering and model-visible delivery with a deterministic
+stub, not an LLM's interpretation, the production identity adapter, or a hardened
+request consumer. macOS refused nested Seatbelt even on the approved retry. The
+successful runs used `--outer-sandbox`: the child CLI did not add a second sandbox,
+while the enclosing session's sandbox remained active. The temporary fake-DB deny
+profile was therefore not exercised in these successful runs. Production profile
+acceptance remains pending. Earlier startup attempts failed before any hook ran.
+
+For a repeat from an already sandboxed session, run from the source checkout:
+
+```bash
+python3 scripts/probe_codex_hooks.py --outer-sandbox
+```
+
+Pass: three `PASS` results; notification has no model receipt, continuation saves
+and delivers a receipt, rejection delivers an error without saving. Any assertion
+or startup error is a failed/incomplete probe. From a normal terminal, omit
+`--outer-sandbox` to exercise the temporary profile too; that mode remains unverified.
+This is a manual probe, not a CI test or an install command.
+
+Protocol reference:
+https://learn.chatgpt.com/docs/hooks
+
 ## Acceptance reopened — 2026-09-19
 
 MusicForge reported `unable to open database file` during readup registration,
@@ -26,7 +79,46 @@ Use disposable data first; direct access to a denied live database is never a
 verification step. Human verification or an explicitly permitted interface must
 supply the persisted-result evidence.
 
+## Fake-database permission test — reported 2026-09-19
+
+Source: Claude's entry in `~/src/.handoff/prompt-lab-prompt-lab-codex.md`, titled
+"fake-DB permission test run — escalation route is closed by Codex's own prompt;
+go hook-side". Reported runtime: Codex CLI 0.155.1, throwaway repository and fake
+database with an explicit deny. Real DB and installed permissions were untouched.
+
+- Plain helper registration: exit 1, `unable to open database file`.
+- Escalated registration and repeat: **not run**; the noninteractive session
+  injected `approval_policy=never`. Interactive escalation was not measured.
+- UserPromptSubmit nevertheless created a row in the fake database, according to
+  the report. This supports investigating a hook interface, not claiming that
+  identity injection or Stop-driven handoff already works.
+- Separately, Codex's escalated `register-session --help` returned exit 0 without
+  another prompt. It exits before DB access and cannot establish registration.
+
+The active explicit prohibition on escalating access to denied paths rules out
+that design. The roadmap now requires a disposable hook-lifecycle test: trusted
+identity injection, request validation, persistence, and host-origin receipt
+delivery. Stop timing must be observed; queued requests cannot be reported saved.
+No complete handoff gate has passed, and no hook changes have been installed.
+
 ## Earlier verification scope
+
+### Approval-rule probe — 2026-09-19 (historical)
+
+Codex invoked `/Users/nico/.claude/bin/gc-write.sh register-session --help` using
+`sandbox_permissions = "require_escalated"`. It returned the installed identity
+helper's usage and exit 0 without a further approval prompt. Source inspection
+establishes that argument parsing exits before any database connection.
+
+This tests acceptance of the escalated command prefix only. It does not test
+registration, ID read-back, DB access, or complete handoff. The active session's
+DB denial was explicitly non-escalatable, so none of those live operations was
+attempted. No implementation or installed files were changed. The original
+recommendation to wait for a permitted disposable-data test before selecting the
+implementation route predates, and is superseded by, the decision to drop
+escalation recorded above. Retain this probe as evidence, not a live recovery gate.
+
+## Earlier fixture and paired-session scope
 
 The source changes are exercised against temporary databases and temporary
 installed helper copies. They do not install a permission profile, change

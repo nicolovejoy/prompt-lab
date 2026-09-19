@@ -42,6 +42,17 @@ by the isolated local tests.
 
 ### Permission failure and proposed recovery
 
+**Lifecycle experiment completed, 2026-09-19:** the real CLI with a deterministic
+local Responses stub received hook-injected identity and a Stop receipt delivered
+by a one-time `decision: "block"` continuation. Notification-only Stop output did
+not reach a subsequent model request. Wrong-session input was rejected without a
+save or closure. See validation for evidence and limits: these runs remained in
+the enclosing sandbox but could not exercise a nested production-style permission
+profile. This is a working lifecycle fixture, not an installed bookkeeping fix.
+Next implementation step: integrate the existing identity resolver with a bounded
+hook request consumer, durable replay handling and a post-commit continuation
+receipt; preserve the independent installation and production-profile gates.
+
 Evidence available on 2026-09-19:
 
 - MusicForge's agent reported failed registration and no validated ID. Its review
@@ -76,44 +87,89 @@ could read the DB and `~/.codex/sessions`):
   sandboxed child process, the reviewed helper included. Session 610 passed only
   because it ran before the profile was installed.
 
-Candidate fix to test first, before the heavier interface below: readup/handoff
-tell Codex to invoke `gc-write.sh` (only) with `sandbox_permissions =
-"require_escalated"`, relying on the existing prefix rule to approve that
-escalation. **Open question that decides it:** does the installed rule
-auto-approve an escalated run of a matching command, or does the profile's deny
-still apply / still prompt? The Codex session above reported the DB denials as
-non-escalatable in its policy; that has to be tested, not assumed. If escalation
-is refused, the fallback is the hook route: hooks already write the row, so a
-hook-side step could hand the ID to the agent (e.g. inject it into context) and
-move the other writes behind hooks too.
+**Escalation route dropped; proposed recovery uses hooks (2026-09-19).** Claude's
+follow-up in `~/src/.handoff/prompt-lab-prompt-lab-codex.md` reports a disposable
+test through Codex CLI 0.155.1. Plain registration failed on the fake DB as
+expected. Escalated registration and the repeat were **not run**: that
+noninteractive invocation injected `approval_policy=never`. This is not evidence
+that an interactive escalation was tried and refused. The separate explicit
+instruction forbidding escalation of denied paths is the reason to reject that
+design, irrespective of whether an approval rule might accept the command.
+
+The fake DB nevertheless acquired a session row through UserPromptSubmit, according
+to Claude's report. Codex's own escalated `register-session --help` probe also
+returned exit 0 without another approval prompt, but argument parsing exits before
+SQLite access; it establishes no database capability. Neither result passes the
+complete bookkeeping acceptance gate. The real database and installed permissions
+were unchanged by these probes.
+
+**Codex approval-rule probe, 2026-09-19 — historical finding:** An
+`exec_command` invocation of
+`/Users/nico/.claude/bin/gc-write.sh register-session --help` with
+`sandbox_permissions = "require_escalated"` returned help and exit 0 without a
+further approval prompt. The installed Python parser handles `--help` before
+opening SQLite, so this confirms the matching escalated command can be accepted,
+**not** that registration or database access succeeds. This session's explicit
+non-escalatable DB denial prohibited testing real registration through that route.
+No live registration, rule/profile change, or helper installation occurred.
+At the time, the proposed next step was a permitted disposable-data execution test,
+holding the larger interface until the gate chose between the existing helper and
+hooks; an accepted help call was insufficient evidence for either. That proposed
+gate is superseded by the later decision above to drop escalation and use hooks.
 
 Preserve the database denial and conversation-ownership checks. Do not choose a
 different session, copy the database, broaden Python/sqlite permissions, or treat
 an approved command prefix as authority to bypass a non-escalatable deny.
 
-Proposed implementation, after review:
+Proposed implementation, after review — a host-managed hook interface, not an
+agent-invoked escape from the database denial:
 
-1. Establish an **explicitly permitted bookkeeping interface** in each supported
-   runtime. First determine whether that runtime supports a constrained installed
-   helper; if its policy forbids this access, keep automatic bookkeeping blocked
-   until a supported host-managed service or human-operated path is approved.
-   This plan does not authorize installing such a service or changing policy.
-2. Cover registration, identity validation, commit capture, summary save, and
-   closure through that interface. Bind every operation to the conversation and
-   canonical project. Accept bounded structured inputs; expose only the receipts
-   and session metadata needed for validation, with no arbitrary SQL, database
-   path, or raw-prompt read operation. The executable and its privileged imports
-   must be protected from workspace edits.
-3. Move commit capture into the constrained interface and remove direct SQLite
-   instructions from handoff. Preserve UTC commit timestamps, duplicate-hash
-   handling, and validated attribution. Reject attempts to attach commits to a
-   different conversation; define retry behavior without silently reassigning an
-   existing commit. Include zero-commit and nonzero-commit paths.
-4. Update canonical commands, generated skills, installation rules, and error
-   reporting together. Failed registration must be visible immediately. Required
-   saves must succeed before closure; denial must leave local findings available
-   and explicitly report incomplete bookkeeping. A local file is not a saved DB
-   summary. Never reconstruct a missing identity from another window's row.
+1. **Prove the hook lifecycle with disposable data first.** Confirm the supported
+   Codex event payload, trusted native conversation ID, project resolution, context
+   injection and Stop execution through the real launcher. The existing
+   `session-start.sh` explicitly does not register, and `session-stop.sh` is a
+   Claude token-count hook that can exit when transcript usage is absent. Neither
+   is already a Codex handoff consumer. A successful prompt hook proves only that
+   event's operation; do not assume the remaining lifecycle works identically.
+2. **Inject identity from the host.** SessionStart, or UserPromptSubmit when the
+   native identity first becomes available, registers/resolves the conversation
+   through reviewed installed code and injects `Session: <id>|<started_at>` with
+   project and conversation provenance. Readup retains that identity without a DB
+   call. Missing or inconsistent context is an error; no newest-row or pointer
+   fallback. Repeated events and resumes retain the ID; forks get distinct IDs.
+3. **Submit a bounded handoff request.** The agent writes a structured file in a
+   sandbox-writable location containing the summary, commit records and a unique
+   request ID. The hook derives the authoritative conversation and project from
+   its host event, not the file, then checks the requested session against that
+   binding. File ownership alone is not proof of conversation ownership. Reject
+   arbitrary SQL, commands, database paths, unknown fields, oversized inputs,
+   symlinks and unsafe file replacement. Do not scan other sessions' requests.
+4. **Save through protected hook code.** The Stop hook validates and applies only
+   the permitted bookkeeping operations. Move commit persistence out of the
+   agent's direct SQLite instructions. Preserve UTC commit timestamps and the
+   first recorded attribution for an existing hash; retries never reassign it.
+   Save commits, summary and routine closure atomically, with a durable request
+   identifier so replay cannot duplicate work. Failure leaves the request
+   recoverable and does not close an open row. The hook executable and all code it
+   imports must be outside agent-writable paths; do not install a hook that imports
+   privileged logic from the working checkout.
+5. **Acknowledge persistence accurately.** Emit a host-origin receipt only after
+   commit, bound to the request, conversation and session. Writing a request means
+   **queued**, not **saved**. Establish when Codex actually receives Stop results:
+   if the runtime cannot resume the turn before the final response, report queued
+   at handoff and inject the receipt on the next supported event. Do not poll for
+   a Stop event that cannot occur until the turn ends, or trust an agent-writable
+   receipt file as proof. The lifecycle probe demonstrated that Stop can use a
+   one-time `decision: "block"` reason to deliver a receipt before the final
+   acknowledgement; the second Stop must recognize replay and exit. Failed hooks
+   must surface an explicit failure on that
+   acknowledgement path. Missing receipts leave status pending, never successful.
+6. **Update commands and installation together.** Codex readup/handoff consume
+   host identity and receipts; they never invoke DB readers/writers by escalation.
+   Keep Claude's supported path compatible. Full handoff and DB-backed pulse/context
+   reads need separate contracts and remain gated; the lean write path does not
+   authorize raw-prompt access. Nico installs only after the fixture and review
+   gates; this plan changes no installed hooks, rules or policy.
 
 Validate and deploy in the stages under Phase 4. Architecture, implementation,
 installation, and live acceptance are separate review points.
@@ -248,21 +304,27 @@ The profile is already installed globally. Do not repeat or expand installation
 based on the earlier paired test. Use this staged recovery sequence; the live
 steps in [validation](codex-workflow-validation.md) are gated by it.
 
-1. **Review the design.** Record each target runtime's effective restrictions and
-   permitted execution path. Resolve the interface and commit-attribution contract
-   before implementation. A hard denial is a blocked capability, not a request to
-   escalate. Preserve existing local review artifacts while bookkeeping is blocked.
+1. **Verify and review the hook contract.** Run the disposable lifecycle check
+   above before building the request consumer. Record the actual identity payload,
+   event ordering and receipt-delivery behavior for each target runtime. Resolve
+   the file-ownership, commit-attribution and retry contracts before implementation.
+   If trusted identity or acknowledgement cannot be delivered, keep bookkeeping
+   unavailable and report that exact limitation. Do not reopen the escalation route.
 2. **Implement and test with disposable data.** Exercise the actual installed-copy
    interface against a fake database and throwaway Git repository. Require stable
    repeated registration; distinct peer/fork IDs; wrong-ID rejection; zero and
    nonzero commit capture; duplicate-safe retries; original UTC timestamps;
    summary-save receipts; and closure of only the validated row. Inject denial and
    failed saves at each boundary, proving that required-save failures cannot close
-   the row. Test malformed/oversized inputs and protected helper dependencies.
+   the row. Test malformed/oversized inputs, cross-conversation request injection,
+   symlink/replacement attacks and protected helper dependencies. Repeat Stop events
+   and a crash after DB commit but before acknowledgement must not duplicate writes.
+   Test both missing receipts and explicit failures without false success messages.
 3. **Pilot one runtime and project.** After review, Nico installs the reviewed
    version for a controlled pilot. Start through the actual fresh launcher, record
    versions, effective profile/rules and helper revision, and run the entire
-   register → validate → capture commits → save summary → close sequence. Include
+   inject identity → queue request → hook validation → save commits/summary and
+   close → acknowledge sequence. Include
    a nonzero-commit case in a disposable repo. Verify persisted results through the
    permitted interface or a human check, never direct DB access by a denied agent.
    Repeat the secret-denial probes using fake fixtures through that launch path.

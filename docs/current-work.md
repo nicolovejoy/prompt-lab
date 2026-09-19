@@ -34,8 +34,16 @@ path were installed, a fresh resume retained session `610`, saved its 604-charac
 audit, and closed it successfully. That zero-commit test preceded the global
 permission-profile install; MusicForge's new registration failure reopens
 bookkeeping acceptance. Direct SQLite commit capture also remains outside the
-helper. The roadmap now proposes an explicitly permitted interface and staged
-validation; this is a plan, not an installed fix. Full handoff, fresh-launcher
+helper. Claude's fake-DB probe confirmed sandboxed registration failure and a
+prompt-hook-created row; it did not execute escalation. The explicit deny policy
+rules out that route. The roadmap now proposes host-injected identity and validated
+hook-side handoff requests, with receipts after persistence. The real CLI lifecycle
+fixture passed with a local model stub: identity arrived, Stop saved fake data and
+continued once to deliver a receipt, and a wrong ID was rejected without saving.
+Production-profile acceptance was not tested (nested macOS sandboxing failed).
+Next: implement the protected request consumer and replay/receipt contract against
+the existing identity resolver. This is not an installed fix.
+Full handoff, fresh-launcher
 fork, and nightly checks remain. The deprecated `/prompts:*` interface failed its
 live check.
 
