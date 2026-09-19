@@ -305,6 +305,10 @@ the archive write must be separately observable.
   against `~/.codex/external_agent_session_imports.json`. Claude-side `/readup` creates an
   absent AGENTS.md and replaces an untracked importer copy (backup in
   `~/.claude/agents-md-backups/`), never commits either.
+- **Codex gets one long-lived clone per repo (`~/src/<repo>-codex`), not worktrees —
+  2026-09-19.** A worktree's `.git` sits outside Codex's sandbox root; a clone's doesn't.
+  Main checkout adds it as remote `codex`; the clone's project name is aliased to the
+  repo. Fleet guidance: `BULLETIN.md` 2026-09-19 entry.
 - **Dual-agent commands (Claude Code + Codex) — 2026-09-12.** `workflow/commands/*.md` is the
   single source; `install.sh` distributes to `~/.claude/commands/` and renders
   explicit-only `~/.agents/skills/source-command-*/` skills (deprecated

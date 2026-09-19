@@ -10,6 +10,35 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-09-19 — Codex works in one long-lived clone per repo, not a worktree
+
+Scope: any repo where Codex writes code alongside Claude
+
+A worktree's git metadata lives in the main checkout's `.git`, outside the
+worktree folder. Codex's sandbox confines writes to its workspace, so in a
+worktree its commits and branch switches fail or need escalation. A clone keeps
+`.git` inside its own folder, and git's one-branch-per-worktree lock doesn't apply.
+
+**The rule:**
+
+- One clone per repo for Codex: `~/src/<repo>-codex`. Long-lived, set up once
+  (deps, `op inject`), not one per feature. Codex works there on
+  `codex/<desc>` branches; everything reaches main through origin.
+- In the main checkout, add the clone as a remote so its unpushed branches are
+  visible: `git remote add codex ~/src/<repo>-codex`, then `git fetch codex`.
+  Readup's worktree and `codex/*` checks cannot see inside another clone otherwise.
+- The clone registers as its own project name (`<repo>-codex`). Fold it into the
+  real project on the dashboard from `~/src/prompt-lab`:
+  `python scripts/alias.py add <repo>-codex <repo>`, then `python sync_to_turso.py`.
+  Codex sessions stay identifiable by their `01a0…` session IDs.
+- Don't mix: a Codex clone plus several Codex feature worktrees of the same repo
+  is where work gets lost. Worktrees stay the tool for Claude subagents (below).
+
+Same-repo Claude↔Codex notes go in a handoff channel
+`<repo>-<repo>-codex.md` (see `musicforge-musicforge-codex.md`).
+
+---
+
 ## 2026-08-17 — Worktrees: one per mutating agent, not one per feature
 
 Scope: all projects, any time two or more agents write files in the same repo concurrently
