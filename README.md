@@ -151,9 +151,9 @@ repositories under `~/src`. Its explicit `--apply` mode updates only verified
 One launchd job installed by `install.sh` (macOS only):
 
 `com.promptlab.nightly` — runs `nightly_pipeline.py` at 2:30am, logs to
-`nightly-pipeline.log`. One ordered run: cost pull → synthesizer → review
-email → bi-monthly report (when the current half-month has none yet) →
-publish to Turso. Ordering, dependencies, and per-stage (monotonic) timeouts
+`nightly-pipeline.log`. One ordered run: cost pull → synthesizer → sync
+summaries to Turso → review email → bi-monthly report (when the current
+half-month has none yet) → publish to Turso. Ordering, dependencies, and per-stage (monotonic) timeouts
 live in `nightly_pipeline.py`, which runs from the repo checkout — editing it
 is live the next night with no reinstall; only the plist's start time needs a
 re-render. The review email includes daily and weekly recaps (Saturday goes

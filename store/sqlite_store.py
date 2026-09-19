@@ -10,14 +10,18 @@ the whole of #48: a prompt typed at 5:30pm Pacific on Aug 2 has a UTC timestamp
 of Aug 3, so a bare `date(...)` over it filed a day's work under tomorrow and the
 today-counts read zero every evening.
 
-So: bucketing a *timestamp* into a day always passes `'localtime'`, and a
-column that is already a day never does. The `datetime('now', '-N days')`
-comparisons are deliberately left in UTC — those are rolling windows of
-instants, not calendar days, and UTC-vs-UTC is correct there.
+So: bucketing a *timestamp* into a day either passes `'localtime'` or goes
+through the `lab_day` SQLite function below, and a column that is already a
+day never does either. The `datetime('now', '-N days')` comparisons are
+deliberately left in UTC — those are rolling windows of instants, not
+calendar days, and UTC-vs-UTC is correct there.
 
-`'localtime'` rather than a pinned zone because SQLite carries no timezone
-database; it resolves through the OS, which gets DST right, and both writer
-machines run Pacific.
+Two conventions for bucketing a timestamp, both Pacific: `'localtime'`
+resolves through the OS's zone, which is fine as long as every host running
+the query is Pacific. `lab_day` pins America/Los_Angeles in Python instead,
+for anything that must agree across hosts regardless of the OS zone — CI, and
+the #56 guard in send-review.py. `get_unsummarized_days` and
+`count_prompts_on` both use `lab_day`.
 """
 
 from __future__ import annotations

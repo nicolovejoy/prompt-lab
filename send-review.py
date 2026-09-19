@@ -238,6 +238,10 @@ def main():
             sys.exit(1)
 
     if not weekly_summaries and not weekly_rollups:
+        # Stays a plain return, not an error: the guard above already fails
+        # loudly if the review day has local prompts Turso hasn't seen. A
+        # whole missing week needs Turso itself to be dark that long, and
+        # that's the #45 review-email artifact heartbeat's job to catch.
         print("No summaries or rollups found for the period.")
         return
 
