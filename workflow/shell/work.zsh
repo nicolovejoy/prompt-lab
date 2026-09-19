@@ -101,10 +101,12 @@ _work_pick() {
 }
 
 # Build the pane commands for one agent in one checkout.
-#   _work_cmds <agent> <project> <dir>
+#   _work_cmds <agent> <project> <dir> [window_title]
+# window_title (optional) replaces the per-agent title in the title bar;
+# the badge keeps naming the agent so each pane stays identifiable.
 # Sets reply=(agent_pane_cmd shell_pane_cmd).
 _work_cmds() {
-  local agent="$1" name="$2" dir="$3"
+  local agent="$1" name="$2" dir="$3" window_title="$4"
   local r g b
   read r g b <<< "$(_work_color "$name")"
 
@@ -115,7 +117,7 @@ _work_cmds() {
   local session_scope="${agent}-$(uuidgen)"
   # Quote shell arguments before passing commands as AppleScript argv.
   # Project names may contain spaces, quotes, or shell metacharacters.
-  local title_cmd="printf '\\033]0;%s\\a' ${(q)title}"
+  local title_cmd="printf '\\033]0;%s\\a' ${(q)${window_title:-$title}}"
   # Each helper shell restores the project/agent title at its prompt.
   local shell_cmd="cd -- ${(q)dir} && precmd() { $title_cmd; } && precmd"
   local agent_cmd="claude --name ${(q)title}"
@@ -182,9 +184,10 @@ _work_duet() {
     codex_dir="$proj_dir"
   fi
 
-  _work_cmds claude "$name" "$proj_dir"
+  local duet_title="${(U)name[1]}${name[2,-1]} -- DUET: Claude + Codex"
+  _work_cmds claude "$name" "$proj_dir" "$duet_title"
   local claude_cmd="${reply[1]}" claude_shell="${reply[2]}"
-  _work_cmds codex "$name" "$codex_dir"
+  _work_cmds codex "$name" "$codex_dir" "$duet_title"
   local codex_cmd="${reply[1]}" codex_shell="${reply[2]}"
   local bottom_rows=$(( WORK_ROWS * 15 / 100 ))
 
@@ -205,15 +208,13 @@ on run argv
       tell s1
         set columns to windowColumns
         set rows to windowRows
-        -- Columns first, so the two bottom shells line up under their agents.
-        set s3 to (split vertically with default profile)
+        -- Rows first: one bottom strip, so both shells get the same height.
         set s2 to (split horizontally with default profile)
       end tell
       tell s2 to set rows to bottomRows
-      tell s3
-        set s4 to (split horizontally with default profile)
-      end tell
-      tell s4 to set rows to bottomRows
+      -- Then halve each row; equal halves keep the column divider aligned.
+      tell s1 to set s3 to (split vertically with default profile)
+      tell s2 to set s4 to (split vertically with default profile)
       tell s1 to write text claudeCommand
       tell s2 to write text claudeShell
       tell s3 to write text codexCommand
