@@ -38,6 +38,23 @@ from .base import (
 DEFAULT_DB_PATH = Path.home() / ".claude" / "prompt-history.db"
 
 
+def _lab_day(stamp, zone=ZoneInfo("America/Los_Angeles")):
+    """Convert a UTC-ish timestamp string to its Pacific calendar day.
+
+    Registered as the SQLite scalar function `lab_day` so every query that
+    needs to bucket a timestamp column by calendar day uses this one
+    pinned-zone implementation, not `'localtime'` (which resolves through
+    the OS's zone and makes results depend on the host running the query —
+    the bug a Linux CI runner or a UTC host would hit).
+    """
+    if not stamp:
+        return None
+    value = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(zone).date().isoformat()
+
+
 def _decode_run(row: dict) -> dict:
     """JSON-decode a nightly_runs row's blob columns in place.
 
@@ -732,16 +749,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
     def get_unsummarized_days(self, target_date=None):
         """Missing or stale completed Pacific days, including prompt-free sessions."""
         zone = ZoneInfo("America/Los_Angeles")
-
-        def lab_day(stamp):
-            if not stamp:
-                return None
-            value = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-            if value.tzinfo is None:
-                value = value.replace(tzinfo=timezone.utc)
-            return value.astimezone(zone).date().isoformat()
-
-        self._conn.create_function("lab_day", 1, lab_day, deterministic=True)
+        self._conn.create_function("lab_day", 1, _lab_day, deterministic=True)
         # A session that closes after midnight changes both its start day's
         # account and its closing day's account. Never require a prompt hook.
         sources = [
@@ -828,13 +836,18 @@ class SqliteKnowledgeStore(KnowledgeStore):
         Narrow guard for send-review.py (#56): before trusting an empty
         Turso `daily_summaries` read as "no activity", check whether the
         raw tier — which is machine-local and always current — disagrees.
-        Bucketed with 'localtime' like get_day_data, not a pinned zone; see
-        the module docstring.
+        Buckets with the same pinned-zone `lab_day` SQLite function
+        `get_unsummarized_days` registers (not `'localtime'`, which resolves
+        through the OS and would make this disagree with the host it runs
+        on), and filters `project IS NOT NULL` to match the rows
+        `get_unsummarized_days` counts as activity when producing the
+        daily_summaries this guard is checking against.
         """
-        row = self._conn.execute(
-            "SELECT COUNT(*) as n FROM prompts WHERE date(timestamp, 'localtime') = ?",
-            (date,),
-        ).fetchone()
+        self._conn.create_function("lab_day", 1, _lab_day, deterministic=True)
+        row = self._conn.execute("""
+            SELECT COUNT(*) as n FROM prompts
+            WHERE project IS NOT NULL AND lab_day(timestamp) = ?
+        """, (date,)).fetchone()
         return row["n"]
 
     def get_raw_sessions(self, *, project=None, since_days=None, overlap_utc=None):

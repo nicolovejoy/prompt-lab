@@ -320,8 +320,13 @@ def _refuse_client():
     raise AssertionError("Claude must not be called")
 
 
-@test("count_prompts_on buckets a UTC timestamp into the correct Pacific day")
+@test("count_prompts_on buckets by the pinned Pacific zone, independent of host TZ")
 def _():
+    # Pinned-zone bucketing (the `lab_day` SQLite function) must give the same
+    # answer no matter what timezone the host process is running in — unlike
+    # 'localtime', which resolves through the OS and made this test (and the
+    # guard it covers) silently depend on the machine running it. Run this
+    # file under both `TZ=UTC` and `TZ=America/Los_Angeles` to prove it.
     store = SqliteKnowledgeStore(":memory:")
     store.migrate()
     store._conn.execute("""
@@ -333,10 +338,14 @@ def _():
         "INSERT INTO prompts (project, timestamp, prompt) VALUES (?, ?, ?)",
         [
             # 5:30pm Pacific on Aug 11 (PDT, UTC-7) is 00:30 UTC Aug 12 — the
-            # #48 case a bare date(timestamp) would misfile as Aug 12.
+            # #48 case a bare date(timestamp) (and 'localtime' on a non-Pacific
+            # host) would misfile as Aug 12.
             ("raconte", "2026-08-12 00:30:00", "5:30pm Pacific Aug 11"),
             ("raconte", "2026-08-11 20:00:00", "1pm Pacific Aug 11"),
             ("raconte", "2026-08-13 00:30:00", "a different day entirely"),
+            # No project — get_unsummarized_days excludes these when producing
+            # daily_summaries, so the guard's count must match and exclude it too.
+            (None, "2026-08-11 20:00:00", "orphaned prompt, no project"),
         ],
     )
     store._conn.commit()
