@@ -75,10 +75,10 @@ burned by prompt-lab's own 5-min deep health poll never letting Neon's free tier
 fixed 2026-08-14 (byside) and 2026-08-18 (garm). Nothing alarms on the number.
 
 **Per-Pi service inventory: `docs/pi-inventory.md`** — prompt-lab owns it; read it before
-touching phrpi or homeassistant.local. Three leftovers from the 2026-08-13 closet move, none
-of them our code, all filed in `~/src/.handoff`: a laptop SSH key into HA's add-on (highest
-leverage), repointing hardcoded `192.168.5.34` → `homeassistant.local`, and getting
-`cloudflared`'s token out of argv on phrpi.
+touching phrpi or homeassistant.local. Two leftovers from the 2026-08-13 closet move, neither
+of them our code, both filed in `~/src/.handoff`: a laptop SSH key into HA's add-on (highest
+leverage) and repointing hardcoded `192.168.5.34` → `homeassistant.local`. The third,
+`cloudflared`'s token in argv, was fixed by SPAN 2026-09-19 (not rotated; see the inventory).
 
 **Copy review (#49) — batches 2–4 remain**, batch 1 closed 2026-08-05. **Track which items
 were actually answered, not which batch was sent** — Nico answers by number and often stops
@@ -107,7 +107,7 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   Vercel crons are UTC-only, so this is a choice to make, not a bug to fix.
 - Open issues (2026-09-07): **#14** design tokens, **#43** sign-ins panel (gated on a second
   reader), **#9** beacon fan-out, **#49** copy review (this file is the only record of batch
-  progress), **#53** iOS chart-tap zoom, **#55** cloudflared token (owner SPAN), **#51**
+  progress), **#53** iOS chart-tap zoom, **#51**
   unmapped costs (the close rested on a guess).
 - Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
 

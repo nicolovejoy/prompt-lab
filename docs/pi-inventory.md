@@ -34,14 +34,30 @@ its SSH add-on).
   is `enabled`, units present and static) — this is DELIBERATE: Nico turned
   nudge off just before the 2026-08-13 wipe. Not a silent failure, don't
   "fix" it; re-enabling is a nudge-repo decision.
-  One finding that is worth acting on, though not prompt-lab's to fix: the
-  **`cloudflared` tunnel token is passed as a plaintext CLI arg**,
-  visible to anything that can run `docker inspect` — worth moving to a file
-  or env, and it means phrpi has an inbound tunnel from the public internet,
-  which is not mentioned anywhere else in these notes. **Owner: the SPAN
-  repo** — traced 2026-08-29 to compose project `pi`, working dir
-  `/home/nico/SPAN/pi/docker-compose.yml` (prompt-lab #55); the fix request
-  sits in `~/src/.handoff/span-prompt-lab.md`.
+  **`cloudflared` — phrpi's inbound tunnel from the public internet.**
+  **Owner: the SPAN repo**, compose project `pi`
+  (`/home/nico/SPAN/pi/docker-compose.yml`), traced 2026-08-29 (#55). The
+  token used to sit in plaintext argv (visible to `docker inspect` and host
+  `ps`), and the container also had `env_file: .env`, so its environment held
+  every secret in SPAN's `pi/.env`. **Both fixed 2026-09-19** (SPAN b3bd48b):
+  the token is a compose file secret at `/run/secrets/tunnel_token`, the
+  command is `tunnel --no-autoupdate run --token-file …`, and `env_file` is
+  gone. Verified: `docker inspect` shows only the path; env holds `PATH` and
+  `SSL_CERT_FILE`. **The token was not rotated** (SPAN's call: one connector
+  registered, no sign of a leak); rotating means a Cloudflare-dashboard
+  action plus a hand edit to `pi/.env` on the Pi.
+  Hostname → service map (dashboard-managed routes, read by SPAN 2026-09-19):
+  - `grafana.pianohouseproject.org` → `grafana:3000` (answers 302, looks Access-gated)
+  - `influx.pianohouseproject.org` → `influxdb:8086` (Access-gated, `span-web` service token)
+  - `span.pianohouseproject.org` → `web:3000` — **stale route**: `web` retired
+    2026-08-13 and DNS now points at Vercel; SPAN's cleanup
+  - `koma.pianohouseproject.org` → `nudge-board:80` (Access unchecked)
+  - `michael.pianohouseproject.org` → `nudge-board:80` (Access unchecked)
+  - catch-all → 404
+  **The tunnel is shared beyond SPAN:** `nudge-board` lives in the nudge
+  project's own compose project (`deploy`) but joins SPAN's `pi_default`
+  network, so restarting SPAN's `cloudflared` blips all five hostnames. One
+  connector is registered.
   The mini's old `com.span.bath-detector` LaunchAgent was ruled LEGACY
   2026-08-13 (detection moved to the Docker service; the plist was a
   potential double-writer and is excluded from the mini rebuild).
