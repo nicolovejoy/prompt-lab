@@ -10,20 +10,25 @@ the whole of #48: a prompt typed at 5:30pm Pacific on Aug 2 has a UTC timestamp
 of Aug 3, so a bare `date(...)` over it filed a day's work under tomorrow and the
 today-counts read zero every evening.
 
-So: bucketing a *timestamp* into a day always passes `'localtime'`, and a
-column that is already a day never does. The `datetime('now', '-N days')`
-comparisons are deliberately left in UTC — those are rolling windows of
-instants, not calendar days, and UTC-vs-UTC is correct there.
+So: bucketing a *timestamp* into a day either passes `'localtime'` or goes
+through the `lab_day` SQLite function below, and a column that is already a
+day never does either. The `datetime('now', '-N days')` comparisons are
+deliberately left in UTC — those are rolling windows of instants, not
+calendar days, and UTC-vs-UTC is correct there.
 
-`'localtime'` rather than a pinned zone because SQLite carries no timezone
-database; it resolves through the OS, which gets DST right, and both writer
-machines run Pacific.
+Two conventions for bucketing a timestamp, both Pacific: `'localtime'`
+resolves through the OS's zone, which is fine as long as every host running
+the query is Pacific. `lab_day` pins America/Los_Angeles in Python instead,
+for anything that must agree across hosts regardless of the OS zone — CI, and
+the #56 guard in send-review.py. `get_unsummarized_days` and
+`count_prompts_on` both use `lab_day`.
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -36,6 +41,23 @@ from .base import (
 )
 
 DEFAULT_DB_PATH = Path.home() / ".claude" / "prompt-history.db"
+
+
+def _lab_day(stamp, zone=ZoneInfo("America/Los_Angeles")):
+    """Convert a UTC-ish timestamp string to its Pacific calendar day.
+
+    Registered as the SQLite scalar function `lab_day` so every query that
+    needs to bucket a timestamp column by calendar day uses this one
+    pinned-zone implementation, not `'localtime'` (which resolves through
+    the OS's zone and makes results depend on the host running the query —
+    the bug a Linux CI runner or a UTC host would hit).
+    """
+    if not stamp:
+        return None
+    value = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(zone).date().isoformat()
 
 
 def _decode_run(row: dict) -> dict:
@@ -355,6 +377,31 @@ class SqliteKnowledgeStore(KnowledgeStore):
         self._add_column_if_missing("daily_summaries", "prompt_version", "TEXT")
         self._add_column_if_missing("weekly_rollups", "prompt_version", "TEXT")
 
+        # `commits` is legacy too (issue #57): it predates this store, no
+        # CREATE TABLE for it exists anywhere in this repo, and migrate() must
+        # not add one — scripts/test_workflow_roundtrip.py calls migrate()
+        # BEFORE building its own sessions/prompts/commits tables, relying on
+        # migrate() leaving them alone. So this only ever adds the index
+        # scripts/dedup_commits.py creates, and only once the table already
+        # exists. On a DB that still has duplicate hashes the CREATE UNIQUE
+        # INDEX raises — that must not break migrate() for every other
+        # caller (synthesizer, sync_to_turso, slash commands), but silently
+        # swallowing it would hide that #57 isn't fixed there yet and that
+        # INSERT OR IGNORE is still inserting duplicates. So: don't raise,
+        # but say so on stderr every time, until dedup_commits.py --apply
+        # clears the duplicates and this stops firing for good.
+        if self._has_table("commits"):
+            try:
+                self._conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS commits_hash ON commits(hash)"
+                )
+            except sqlite3.IntegrityError:
+                print(
+                    "commits: duplicate hashes present, unique index not "
+                    "created — run scripts/dedup_commits.py --apply",
+                    file=sys.stderr,
+                )
+
         self._conn.commit()
 
     # Columns copied to the archive, per live table. The archive keeps the
@@ -397,6 +444,9 @@ class SqliteKnowledgeStore(KnowledgeStore):
         if not cols or column in cols:
             return
         self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+    def _has_table(self, table: str) -> bool:
+        return bool(self._conn.execute(f"PRAGMA table_info({table})").fetchall())
 
     def _has_column(self, table: str, column: str) -> bool:
         cols = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})")}
@@ -732,16 +782,7 @@ class SqliteKnowledgeStore(KnowledgeStore):
     def get_unsummarized_days(self, target_date=None):
         """Missing or stale completed Pacific days, including prompt-free sessions."""
         zone = ZoneInfo("America/Los_Angeles")
-
-        def lab_day(stamp):
-            if not stamp:
-                return None
-            value = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-            if value.tzinfo is None:
-                value = value.replace(tzinfo=timezone.utc)
-            return value.astimezone(zone).date().isoformat()
-
-        self._conn.create_function("lab_day", 1, lab_day, deterministic=True)
+        self._conn.create_function("lab_day", 1, _lab_day, deterministic=True)
         # A session that closes after midnight changes both its start day's
         # account and its closing day's account. Never require a prompt hook.
         sources = [
@@ -821,6 +862,26 @@ class SqliteKnowledgeStore(KnowledgeStore):
                 all_commits.append(dict(c))
 
         return {"prompts": prompts, "sessions": sessions, "commits": all_commits}
+
+    def count_prompts_on(self, date: str) -> int:
+        """Count this machine's local prompts on a Pacific calendar day.
+
+        Narrow guard for send-review.py (#56): before trusting an empty
+        Turso `daily_summaries` read as "no activity", check whether the
+        raw tier — which is machine-local and always current — disagrees.
+        Buckets with the same pinned-zone `lab_day` SQLite function
+        `get_unsummarized_days` registers (not `'localtime'`, which resolves
+        through the OS and would make this disagree with the host it runs
+        on), and filters `project IS NOT NULL` to match the rows
+        `get_unsummarized_days` counts as activity when producing the
+        daily_summaries this guard is checking against.
+        """
+        self._conn.create_function("lab_day", 1, _lab_day, deterministic=True)
+        row = self._conn.execute("""
+            SELECT COUNT(*) as n FROM prompts
+            WHERE project IS NOT NULL AND lab_day(timestamp) = ?
+        """, (date,)).fetchone()
+        return row["n"]
 
     def get_raw_sessions(self, *, project=None, since_days=None, overlap_utc=None):
         clauses = ["summary IS NOT NULL"]

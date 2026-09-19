@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""One nightly run, in dependency order: cost pull -> synthesizer -> review ->
-report (when due) -> publish. Replaces four racing LaunchAgents
-(nightly-pipeline-plan step 2).
+"""One nightly run, in dependency order: cost pull -> synthesizer ->
+sync-summaries -> review -> report (when due) -> publish. Replaces four
+racing LaunchAgents (nightly-pipeline-plan step 2).
 
 Why one process instead of four schedules: launchd coalesces missed
 StartCalendarIntervals onto one wake, so agents scheduled 45 minutes apart
@@ -32,6 +32,13 @@ synthesis would email "no new work" on a busy day — this repo's signature
 failure), but publish always runs: syncing a partial night beats leaving
 Turso a day behind. Exit is non-zero if any stage failed, and the per-stage
 lines in the log are what to read first.
+
+sync-summaries exists because review and report read Turso while the
+synthesizer only writes local SQLite: without an early sync, review reads
+yesterday's rows and reports "no activity" on a night that had plenty (#56).
+It runs right after synthesizer and before review/report, which both depend
+on it — a failed sync skips them rather than composing either over stale
+Turso data.
 """
 
 from __future__ import annotations
@@ -109,10 +116,13 @@ def build_stages(py: str = sys.executable) -> list[Stage]:
     return [
         Stage("cost-pull", [py, "pull_api_costs.py"], timeout=900),
         Stage("synthesizer", [py, "synthesizer.py", "--all"], timeout=3600),
-        Stage("review", [py, "send-review.py"], timeout=1800,
+        Stage("sync-summaries", [py, "sync_to_turso.py", "--days", "7"], timeout=900,
               needs=("synthesizer",)),
+        Stage("review", [py, "send-review.py"], timeout=1800,
+              needs=("synthesizer", "sync-summaries")),
         Stage("report", [py, "generate-report.py", "30"], timeout=1800,
-              needs=("synthesizer",), condition=_report_due_from_store),
+              needs=("synthesizer", "sync-summaries"),
+              condition=_report_due_from_store),
         Stage("publish", [py, "sync_to_turso.py", "--days", "7"], timeout=900,
               always=True),
     ]
@@ -363,9 +373,10 @@ def _finish_run(store, *, run_id, host, started_at, lab_date, results,
 
 USAGE = """usage: nightly_pipeline.py
 
-Runs the whole night in dependency order: cost pull -> synthesizer -> review
--> report (when due) -> publish. Takes no options — what runs is decided by
-the data (the report is artifact-keyed), not by flags.
+Runs the whole night in dependency order: cost pull -> synthesizer ->
+sync-summaries -> review -> report (when due) -> publish. Takes no options —
+what runs is decided by the data (the report is artifact-keyed), not by
+flags.
 
 THIS IS NOT A DRY RUN. It sends the review email, writes review_snapshots,
 records the run in nightly_runs and pushes to Turso. There is deliberately no
