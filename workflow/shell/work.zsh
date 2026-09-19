@@ -20,7 +20,8 @@
 #           `cx prompt-lab` -> same layout, running Codex
 #           `duet prompt-lab` -> four panes: Claude | Codex on top,
 #                              a shell under each; Codex runs in
-#                              ~/src/<project>-codex when that clone exists
+#                              ~/src/<project>-codex; refuses to launch
+#                              if that clone doesn't exist
 # ============================================================
 
 WORK_SRC_DIR="$HOME/src"
@@ -171,17 +172,18 @@ APPLESCRIPT
 
 # duet: Claude and Codex side by side, one column per checkout.
 #   left  : Claude + shell in ~/src/<project>
-#   right : Codex  + shell in ~/src/<project>-codex (the Codex clone;
-#           falls back to the main checkout if the clone doesn't exist)
+#   right : Codex  + shell in ~/src/<project>-codex (the Codex clone).
+#   No clone -> refuse. A fallback to the main checkout put both agents
+#   in one tree, and its warning scrolled away behind the new window.
 _work_duet() {
   _work_pick "$1" || return 1
   local name="$REPLY"
   local proj_dir="$WORK_SRC_DIR/$name"
   local codex_dir="$WORK_SRC_DIR/$name-codex"
   if [[ ! -d "$codex_dir" ]]; then
-    echo "No Codex clone at $codex_dir; Codex opens in the main checkout."
+    echo "No Codex clone at $codex_dir; not launching (Claude and Codex would share one checkout)."
     echo "Create one: git clone \"\$(git -C ${(q)proj_dir} remote get-url origin)\" ${(q)codex_dir}"
-    codex_dir="$proj_dir"
+    return 1
   fi
 
   local duet_title="${(U)name[1]}${name[2,-1]} -- DUET: Claude + Codex"
