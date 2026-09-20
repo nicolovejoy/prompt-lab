@@ -12,6 +12,13 @@ approval_policy = "on-request"
 extends = ":workspace"
 
 [permissions.prompt-lab.filesystem]
+# gh needs these two to know which host and account it is acting as; the
+# directory itself is denied below, so this is an exact-path carve-out, not
+# an opening. Safe only while `gh auth status` reports (keyring) — gh then
+# keeps the token in the macOS keychain and hosts.yml holds no credential.
+# If gh ever falls back to file storage, this grant becomes a token grant.
+"~/.config/gh/config.yml" = "read"
+"~/.config/gh/hosts.yml" = "read"
 "~/.ssh" = "deny"
 "~/.aws" = "deny"
 "~/.config/gcloud" = "deny"
