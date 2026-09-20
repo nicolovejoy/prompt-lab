@@ -150,6 +150,14 @@ HEARTBEATS = [
     ("report", "job: bi-monthly report (1st & 15th, 3:00am)", 15 * DAY, 5 * DAY),
 ]
 
+# HEARTBEAT is a paid-plan monitor type. On the free tier every create returns
+# 403, so --apply exited 1 on EVERY run and the documented workaround became
+# "read the output, not the status" — training us to ignore an exit code, which
+# is the exact habit CLAUDE.md's failure-shape section exists to prevent. The
+# declaration above stays as the intent (#45); the creates are gated off until
+# the plan supports them. Flip this to True the day it does.
+HEARTBEATS_SUPPORTED = False
+
 
 class ApiError(Exception):
     def __init__(self, status, message):
@@ -296,9 +304,13 @@ def cmd_sync(args):
             updates.append((cur["id"], name, was,
                             f"alerts: {', '.join(ALERT_CONTACTS)}", body))
 
+    skipped_heartbeats = []
     for job, name, interval, grace in HEARTBEATS:
         cur = by_name.get(name)
         if cur is None:
+            if not HEARTBEATS_SUPPORTED:
+                skipped_heartbeats.append(name)
+                continue
             creates.append(("HEARTBEAT", name, {
                 "type": "HEARTBEAT", "friendlyName": name,
                 "interval": interval, "gracePeriod": grace,
@@ -323,6 +335,10 @@ def cmd_sync(args):
         print(f"UPDATE {'HTTP':9} {name}\n       {old}\n    -> {new}")
     if unknown:
         print(f"\nnot declared here (left alone): {', '.join(sorted(unknown))}")
+    if skipped_heartbeats:
+        print(f"\n{len(skipped_heartbeats)} heartbeat monitor(s) declared but not "
+              f"attempted — HEARTBEAT is paid-plan only (HEARTBEATS_SUPPORTED=False): "
+              f"{', '.join(sorted(skipped_heartbeats))}")
 
     if not args.apply:
         print("\n(dry run — re-run with --apply to make these changes)")
