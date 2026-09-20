@@ -10,6 +10,28 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-09-20 — Two Home Assistant panels that read stale, not wrong
+
+Scope: home-assistant, and anything that authenticates against it
+
+**Restart HA before believing its Network-adapter panel.** HA builds the adapter
+list at startup, so after a network change the panel reports the old state. It is
+stale, not wrong — restarting is the read, not a fix.
+
+**A UI list is evidence about the UI, not about every credential in the system.**
+HA's token card listing a single token proved nothing about what else could
+authenticate. The only test that answers the question is whether the consumer
+actually authenticates.
+
+## 2026-09-20 — On a phone, prefer a real route over a modal
+
+Scope: any web UI with a mobile view
+
+Any overlay positions against the *layout* viewport, not the visual one, so a
+`position: fixed` sheet slides off-screen as soon as the user pinch-zooms. There is
+no CSS fix worth the effort — give the content a real route instead of a modal.
+
+
 ## 2026-09-19 — Codex works in one long-lived clone per repo, not a worktree
 
 Scope: any repo where Codex writes code alongside Claude

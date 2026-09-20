@@ -81,7 +81,7 @@ recurring job declares a max artifact age, checked with `max(date)` over a table
 already syncs to Turso, reported in the daily health email (`HEARTBEATS` in
 `web/api/health_report.py`).
 
-Three rules that fall out of it, each earned:
+Four rules that fall out of it, each earned:
 - **Alarm on the artifact, never on the job's exit status or a synthetic ping.** A
   ping is a side-channel claim that the job ran and can succeed while the artifact is
   missing — precisely how the review email looked healthy for sixty nights.
@@ -92,6 +92,9 @@ Three rules that fall out of it, each earned:
 - **Check the job's log before concluding anything from table rows.** The dead review
   email had 60 identical 403s in `send-review.log`. That log only exists under launchd
   — a manual run prints to the terminal instead, so the file looks empty.
+- **A failure whose own cause also blocks its reporting path erases its own
+  evidence.** The wake/DNS deaths couldn't push their run records, so the email
+  stayed green. Fix it on the reading side: grade a WINDOW, not the newest row.
 
 Known hole, don't mistake it for closed: the `uptime archive` heartbeat is written and
 graded by the *same* request, so it catches "cron alive, pull broken" and cannot catch
@@ -99,6 +102,10 @@ graded by the *same* request, so it catches "cron alive, pull broken" and cannot
 system. Closing it needs a check on infrastructure that fails independently of
 Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what sent
 #45 down the artifact route in the first place.
+
+A second hole in the same category: `review_snapshots` records composition, not
+delivery — a failed send still writes the row, so the #45 heartbeat cannot see a
+last-step delivery failure.
 
 ### Invariants — the things that must not be broken
 
@@ -136,12 +143,13 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
   practical tell: agents working in a sibling repo run from a cold permission slate, so
   a wall of permission prompts mid-task is the convention signalling it's being
   bypassed, not a config annoyance to route around.
+- **`workflow/bin/_gc_project.sh` is the ONE project-resolution implementation** for
+  `gc-read.sh`/`gc-write.sh` — never a second one. It mirrors `log-prompt.sh`:
+  `--git-common-dir` (never `--show-toplevel`), only git exit 128 buckets to
+  `scratch`, never an empty name.
 
 ### Traps that cost real time
 
-- **`workflow/bin/_gc_project.sh` is the ONE project-resolution implementation for
-  `gc-read.sh`/`gc-write.sh`** — it mirrors `log-prompt.sh`: `--git-common-dir` (never
-  `--show-toplevel`), only git exit 128 buckets to `scratch`, never an empty name.
 - **`workflow/bin/*` and `workflow/commands/*` run from installed copies under `~/.claude/`**,
   so a committed fix is not live until copied over, per machine. Sweep:
   `for f in workflow/bin/*.sh; do diff -q "$f" ~/.claude/bin/$(basename "$f"); done`.
@@ -151,55 +159,38 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
   produced the exact `-10000 AppleEvent handler failed` symptom of an already-fixed bug,
   weeks apart, purely because the terminal predated the fix (2026-09-14). Diffing installed
   vs. repo proves nothing about what a given open tab has loaded.
-- **`tail -r` is BSD-only; CI is Linux.** A macOS-only shell idiom in `workflow/` fails by
-  producing empty output, not an error (`prompts.context` was empty on Linux for months).
-- **A Vercel-origin service behind Cloudflare bot protection fails ~95%, not 100%, and the
-  partial failure impersonates a rate limit** — rotating egress IPs, each scored separately.
-  Read the firewall-events export; don't infer the control from the failure pattern.
 - **Ask what sampling window produced any "we tested it, it isn't that."** 10 requests over
   30s cannot see a 5% pass rate; UptimeRobot v2's log caps at 25 entries and Cloudflare's
   export at 500, so the oldest entry is a cap artifact, not an onset.
-- **A failure whose own cause also blocks its reporting path erases its own evidence** — the
-  wake/DNS deaths couldn't push their run records, so the email stayed green. Fix it on the
-  reading side: grade a WINDOW, not the newest row.
-- **Escalation is one day late for a single dead night** (the newest remote row is still age 1
-  next morning). Two dead nights escalate on time via the 2→1 age rule — don't "simplify" it.
-- **A bad night stays red up to 7 days with no acknowledgement path** — re-running the date
-  adds a row, never clears one. Loud-for-a-week was deliberate.
 - **A scheduler is not a dependency mechanism.** launchd coalesces missed intervals onto one
   wake, so jobs 45 min apart start together. Ordering belongs in `nightly_pipeline.py`.
 - **Never enforce a wall-clock timeout on a host that sleeps.** `time.time()` counts sleep,
   httpx's monotonic read timeout does not — the "3h19m API call" was a healthy 136s run.
-- **`source <file> && python …` in a plist silently runs nothing** when the file is absent;
-  it killed the bi-monthly report twice. Every reader calls `load_env()` — invoke python
-  directly through `run-nightly.sh`.
+- **A plist outlives whatever it points at, and launchd says nothing.**
+  `source <file> && python …` runs nothing when the file is absent — it killed the
+  bi-monthly report twice. A plist repointed at a scratch worktree survives that
+  worktree's deletion: on 2026-09-20 the nightly fired into a directory whose only
+  remaining file was the log recording its own `No such file or directory`. Every
+  reader calls `load_env()`, so invoke python directly through `run-nightly.sh` — and
+  never point a plist at a path you intend to delete.
 - **SQLite's `weekday N` means next-or-SAME day**, so `date(<d>,'weekday 1','-7 days')` files
   every Monday under the wrong week. Correct bucket: `date(<d>,'weekday 0','-6 days')`.
 - **Turso's `daily_summaries.prompt_version` is perpetually NULL by design** —
   `merge_summary_parts()` omits it (local provenance). Not a broken sync leg.
-- **`review_snapshots` records composition, not delivery** — a failed send still writes the
-  row, so the #45 heartbeat cannot see a last-step delivery failure.
 - **`scripts/uptimerobot.py --apply` always exits 1** (4 HEARTBEAT creates fail every run).
   Read the output, not the status.
 - **`/api/private_history` has no allowlist of its own** — any project, gated solely by
   `SERVICE_HISTORY_KEY`. The 8-key allowlist is the *public* tier's write gate.
-- **Load-shedding is not available on our side.** `deep` in `web/api/health_report.py` is
-  descriptive; `_check_target()` requests either way. Reduce by editing the URL, not the flag.
-- **Deep coverage over an autosuspending DB needs a poll interval longer than the suspend
-  window**, not a deeper URL — else the check keeps the DB warm and reports that it answers.
-  Cost garm and byside their Neon CU quota; filed in `scripts/uptimerobot.py`.
+- **Deep coverage over an autosuspending DB needs a poll interval longer than the
+  suspend window**, not a deeper URL — else the check keeps the DB warm and reports
+  that it answers. Cost garm and byside their Neon CU quota; filed in
+  `scripts/uptimerobot.py`. Load-shedding is not available on our side either: `deep`
+  in `web/api/health_report.py` is descriptive and `_check_target()` requests
+  regardless, so reduce by editing the URL, not the flag.
 - **When two sources disagree about *when*, suspect a display timezone** first. UptimeRobot's
   account display was UTC-10 and cost two rounds of cross-agent confusion.
-- **Restart Home Assistant before believing its Network-adapter panel** — HA builds the
-  adapter list at startup, so the panel reads stale, not wrong.
-- **A UI list is evidence about the UI, not about every credential in the system.** HA's token
-  card listing one token proved nothing; the test is whether the consumer authenticates.
 - **Prompt counts step up once on 2026-08-14 and the step is real** — a write-time filter
   dropped every prompt under 20 chars before then. Backfill is impossible.
-- **Any overlay positions against the layout viewport**, so a `position:fixed` sheet slides
-  off-screen under pinch-zoom. On a phone, prefer a real route over a modal.
-- **`alias.py` takes two arguments and zsh does not word-split unquoted variables** — a
-  `for pair in "a b"` loop writes the whole pair into the alias column. Quote the split.
 - **A full `sync_to_turso.py` runs past 120s** — for one upsert-only row write straight to
   Turso, and never let a sync leg touch `project_metadata`, which is cloud-direct.
 - **Test UptimeRobot alerting on a throwaway monitor, never by flipping a real one to a
@@ -224,8 +215,6 @@ Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what s
   catch only.
 - **Reading `/api/public_history`: the envelope key is `rollups`, not `weekly_rollups`** — the
   wrong key reports 0 rows on a healthy endpoint.
-- **A missing site in `#/visitors` is a hole, not a zero** — recountly's beacon had never once
-  fired.
 - **prntd's domain is `.org`, not `.com`**, and pianohouse must be monitored at **www** — the
   apex 307s, one setting away from a false DOWN.
 - **Vercel log retention is ~1 hour** — post-hoc forensics on a daily cron is not available.
@@ -260,6 +249,11 @@ the archive write must be separately observable.
 - **UptimeRobot is the sensor AND the pager; prompt-lab samples nothing and pages for
   nothing.** 5-min polling, free tier, 3-month retention — a watcher on our own
   Vercel+Turso+Resend stack would die with the watched. No Pi, no launchd sampler.
+- **The health email's grading lag is deliberate — don't "simplify" it.** Escalation
+  is one day late for a single dead night (the newest remote row is still age 1 the
+  next morning); two dead nights escalate on time via the 2→1 age rule. And a bad
+  night stays red up to 7 days with no acknowledgement path, because re-running the
+  date adds a row and never clears one. Loud-for-a-week was the point.
 - **OAuth is hand-rolled in Python, zero new deps** — a confidential client doing its own
   code exchange, so the `id_token` arrives over TLS and needs no JWT verification. Spec:
   `docs/phase2-oauth-plan.md`. `verify_token` requires `role` and `email`
