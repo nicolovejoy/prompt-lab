@@ -177,8 +177,6 @@ last-step delivery failure.
   every Monday under the wrong week. Correct bucket: `date(<d>,'weekday 0','-6 days')`.
 - **Turso's `daily_summaries.prompt_version` is perpetually NULL by design** —
   `merge_summary_parts()` omits it (local provenance). Not a broken sync leg.
-- **`scripts/uptimerobot.py --apply` always exits 1** (4 HEARTBEAT creates fail every run).
-  Read the output, not the status.
 - **`/api/private_history` has no allowlist of its own** — any project, gated solely by
   `SERVICE_HISTORY_KEY`. The 8-key allowlist is the *public* tier's write gate.
 - **Deep coverage over an autosuspending DB needs a poll interval longer than the
@@ -215,8 +213,6 @@ last-step delivery failure.
   catch only.
 - **Reading `/api/public_history`: the envelope key is `rollups`, not `weekly_rollups`** — the
   wrong key reports 0 rows on a healthy endpoint.
-- **prntd's domain is `.org`, not `.com`**, and pianohouse must be monitored at **www** — the
-  apex 307s, one setting away from a false DOWN.
 - **Vercel log retention is ~1 hour** — post-hoc forensics on a daily cron is not available.
 - **CI ruff is pinned to `0.15.22` — don't unpin.** An unpinned install produced 339 new-rule
   errors on a docs-only push; local-passing + CI-failing on docs = version drift.
