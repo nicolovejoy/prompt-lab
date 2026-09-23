@@ -1,11 +1,11 @@
 # Current work and deferred decisions
 
-**Next session, start here (2026-09-18):**
-1. **#56: review email says "no activity" since Sep 17.** Hypothesis with evidence in the
-   issue: since the lean handoff (f8916c0) only the nightly synthesizer writes yesterday's
-   `daily_summaries`, and the review stage reads Turso before the publish stage syncs them.
-2. **#57: `commits` duplicates on every `/handoff` re-run.** No unique key on `hash`; 393
-   extra rows. Back up the DB before the dedup, and pick an attribution rule first.
+**Next session, start here (2026-09-23):**
+1. **Codex permission tuning — plan in `docs/codex-permission-tuning-plan.md`, pending
+   review.** Steps 1, 2, 4 and 5 are approved in principle. Step 3 (which test and install
+   commands may run outside the sandbox) is open for discussion. #56 and #57 are closed.
+2. **#70: Codex and Claude don't share a handoff protocol.** Includes Codex's lost
+   `handoff.sh append` notes. Songpath's new Codex channel is exposed to this.
 3. **Codex permissions: installed globally 2026-09-18.** `~/.codex/config.toml` selects the
    `prompt-lab` profile from `workflow/codex-permissions.candidate.toml`, and
    `~/.codex/rules/reviewed.rules` (from `workflow/codex-rules/`) replaced 170 accumulated
