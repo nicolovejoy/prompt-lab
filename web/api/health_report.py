@@ -103,6 +103,8 @@ TARGETS = [
     # point vs the ~30s poll) and backup freshness (restic snapshot's own
     # timestamp). No ?db= param — the checks[] body carries the detail.
     ("span", "https://span.pianohouseproject.org/api/health", True),
+    # Shallow: Neon behind it autosuspends; see scripts/uptimerobot.py.
+    ("songpath", "https://songpath.vercel.app/api/health", False),
 ]
 
 # (label, sql, max_age_days) — artifact freshness, issue #45.

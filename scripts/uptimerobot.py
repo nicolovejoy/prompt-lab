@@ -118,6 +118,11 @@ HTTP_MONITORS = [
     # (2026-08-13): public but unadvertised beats logging in to read his own
     # power meter.
     ("span", "https://span.pianohouseproject.org/api/health"),
+    # Shallow by songpath's own request (2026-09-09 handoff): Neon behind it
+    # autosuspends, and a 5-min ?db=1 poll would never let it sleep — the
+    # byside/garm quota burn above. Unknown paths 307 to sign-in rather than
+    # 200 from a catch-all, so no false-UP risk (verified 2026-09-23).
+    ("songpath", "https://songpath.vercel.app/api/health"),
 ]
 
 # --- Desired alert contacts -------------------------------------------------
