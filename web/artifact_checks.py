@@ -29,7 +29,12 @@ ARTIFACT_CHECKS = [
      "SELECT max(date) AS d FROM review_snapshots "
      "WHERE review_type IN ('daily_email', 'weekly_email')", 2),
     ("synthesizer", "SELECT max(date) AS d FROM daily_summaries", 2),
-    ("weekly rollups", "SELECT max(week_start) AS d FROM weekly_rollups", 10),
+    # max(week_start), not the write date: week W is rolled up by the nightly
+    # after its Sunday (W+8), so a healthy newest week_start peaks at 14 days
+    # old the Sunday before W+7 lands. 10 alarmed every Thu-Sun; 15 is the
+    # tightest value that stays green at the peak and still goes red the same
+    # morning a Monday rollup is missed.
+    ("weekly rollups", "SELECT max(week_start) AS d FROM weekly_rollups", 15),
     # Anthropic's Admin API reports a day behind, so yesterday is the normal
     # newest row — 2 would alarm on a healthy pipeline.
     ("cost pull + sync", "SELECT max(date) AS d FROM api_costs", 3),

@@ -3278,7 +3278,9 @@ def _():
     assert by_name["cost pull + sync"] >= 3, by_name
     # 1st & 16th → gaps of ~16 days.
     assert by_name["bi-monthly report"] >= 17, by_name
-    assert by_name["weekly rollups"] >= 8, by_name
+    # Keyed on week_start, which is 14 days old at the healthy Sunday peak;
+    # ok is age < max, so 15 is the exact bound (a Monday miss reads 15).
+    assert by_name["weekly rollups"] == 15, by_name
     # Written by a daily cron, so it tolerates one miss like the other nightlies.
     assert by_name["uptime archive"] == 2, by_name
 
