@@ -11,7 +11,7 @@
 #   handoff.sh pull                   # best-effort time-boxed pull; ALWAYS exits 0
 #
 # Exit codes: 0 ok | 3 conflict (kept local, not pushed) | 4 offline/push-failed
-#             (kept local) | 5 lock timeout | 64 usage. `pull` is exempt — always 0.
+#             (kept local) | 5 lock timeout | 6 repo unwritable | 64 usage. `pull` is exempt — always 0.
 #
 # Design + pressure test: docs/handoff-repo-plan.md, workflow/handoff-sim/.
 set -u
@@ -24,9 +24,22 @@ PULL_TIMEOUT_SECS=3          # cap on the hook pull (hook budget is 5s) — neve
 git_h() { git -C "$REPO" "$@"; }
 
 # --- Portable mutex via atomic mkdir, with stale-lock recovery. ----------------
+# Returns 1 on real contention (timeout), 2 when the lock dir cannot be created
+# at all — e.g. a Codex sandbox with no writable root over $REPO. mkdir failing
+# while no lock dir exists is not contention; three in a row (a release racing
+# the check can explain one) means the repo is unwritable, and reporting that as
+# LOCK-TIMEOUT sent two agents hunting for a lock that never existed.
+LOCK_ERR=""
 acquire_lock() {
-  local tries=0
-  until mkdir "$LOCKDIR" 2>/dev/null; do
+  local tries=0 absent=0
+  until LOCK_ERR="$(mkdir "$LOCKDIR" 2>&1)"; do
+    if [ ! -e "$LOCKDIR" ]; then
+      absent=$((absent + 1))
+      [ "$absent" -ge 3 ] && return 2
+      sleep 0.1
+      continue
+    fi
+    absent=0
     # Reclaim a stale lock left by a crashed run (older than LOCK_STALE_SECS).
     if [ -d "$LOCKDIR" ] && [ -z "$(find "$LOCKDIR" -prune -mmin -"$(( (LOCK_STALE_SECS + 59) / 60 ))" 2>/dev/null)" ]; then
       rmdir "$LOCKDIR" 2>/dev/null || true
@@ -101,7 +114,12 @@ case "$cmd" in
     file="${1:?usage: handoff.sh append <file> <text>}"
     text="${2:?usage: handoff.sh append <file> <text>}"
     [ -f "$REPO/$file" ] || { echo "handoff: no such file: $file" >&2; exit 64; }
-    acquire_lock || { echo "LOCK-TIMEOUT: another handoff write is in progress." >&2; exit 5; }
+    acquire_lock; lrc=$?
+    if [ "$lrc" -eq 2 ]; then
+      echo "handoff: cannot write to $REPO (sandbox or permissions, not a lock): ${LOCK_ERR:-mkdir failed}" >&2; exit 6
+    elif [ "$lrc" -ne 0 ]; then
+      echo "LOCK-TIMEOUT: another handoff write is in progress." >&2; exit 5
+    fi
     trap release_lock EXIT
     insert_after_active "$REPO/$file" "$text" || { echo "handoff: failed to write entry into $file" >&2; exit 1; }
     git_h add "$file"
@@ -111,7 +129,12 @@ case "$cmd" in
     sync_push; exit $?
     ;;
   sync)
-    acquire_lock || { echo "LOCK-TIMEOUT: another handoff write is in progress." >&2; exit 5; }
+    acquire_lock; lrc=$?
+    if [ "$lrc" -eq 2 ]; then
+      echo "handoff: cannot write to $REPO (sandbox or permissions, not a lock): ${LOCK_ERR:-mkdir failed}" >&2; exit 6
+    elif [ "$lrc" -ne 0 ]; then
+      echo "LOCK-TIMEOUT: another handoff write is in progress." >&2; exit 5
+    fi
     trap release_lock EXIT
     git_h add -A
     git_h diff --cached --quiet 2>/dev/null || git_h commit -m "handoff: sync" --quiet

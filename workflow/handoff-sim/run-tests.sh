@@ -162,6 +162,17 @@ if ls "$ROOT/mini"/*.handoff.tmp.* >/dev/null 2>&1; then no "I: stray tmp file l
 ( cd "$ROOT/seed"; git pull -q 2>/dev/null )
 has "$ROOT/seed/prntd-prompt-lab.md" "Second body line." "I: multi-line entry reached remote"
 
+echo "=== Scenario J: repo NOT writable (sandbox) → exit 6 fast, never LOCK-TIMEOUT ==="
+chmod a-w "$ROOT/mini"
+t0=$(date +%s)
+outJ="$(HANDOFF_REPO="$ROOT/mini" bash "$PROTO" append prntd-prompt-lab.md "### 2026-06-29 x → y: unwritable" 2>&1)"; rcJ=$?
+t1=$(date +%s)
+chmod u+w "$ROOT/mini"
+eq "$rcJ" "6" "J: unwritable repo exits 6, not 5"
+if printf '%s' "$outJ" | grep -qF "LOCK-TIMEOUT"; then no "J: misreported as LOCK-TIMEOUT"; else ok "J: not reported as a lock"; fi
+if printf '%s' "$outJ" | grep -qF "cannot write"; then ok "J: names the write failure"; else no "J: message [$outJ]"; fi
+if [ $((t1 - t0)) -le 3 ]; then ok "J: fails fast (no 10s lock wait)"; else no "J: took $((t1 - t0))s"; fi
+
 echo ""
 echo "================  RESULTS: $PASS passed, $FAIL failed  ================"
 rm -rf "$ROOT"
