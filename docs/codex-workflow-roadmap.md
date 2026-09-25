@@ -10,8 +10,8 @@ fixture tests happen before that step. No live secret reads are used for testing
 profile was installed globally on 2026-09-18, but MusicForge now reports that
 readup failed with `unable to open database file`. No validated session ID was
 returned, so handoff correctly stopped without saving a summary or closing a row.
-The recovery proposal below is for review; no helpers, installed skills, or
-permissions have been changed by this documentation update.
+The source consumer below is ready for review; no installed helpers, skills, or
+permissions have been changed.
 
 The installed `f5cb2cf` workflow passed the paired Songpath identity and full
 handoff exercise. Results and repeatable smoke steps live in
@@ -39,6 +39,27 @@ Remaining gates: full-handoff smoke, actual before/after usage measurement,
 fresh-launcher fork, complete bookkeeping under the installed permission profile,
 and the separate sleeping-host nightly test. No overnight or API-cost result is claimed
 by the isolated local tests.
+
+### Phase 4 step 2 — implemented for review, 2026-09-19
+
+The source consumer is `workflow/codex/bookkeeping.py`; explicit staging through
+`scripts/stage_codex_bookkeeping.py` copies it and the existing identity/project
+resolvers into a separate host bundle. No installation or real-DB change occurred.
+The standalone CI suite uses disposable installed copies, databases and Git repos.
+The real CLI fixture now supports `--consumer`, including nonzero commits.
+
+A new request also requires `GC_REQUEST=<uuid>:<sha256>` in the owning
+conversation's host-supplied Stop final message. Matching file identity alone
+cannot prevent a peer in the same writable workspace from planting a request.
+The digest binds the exact authored bytes; only an already-committed matching
+request can replay without new intent. One transaction stores commits, summary,
+closure and receipt, with global first-hash attribution and a durable UUID ledger.
+No existing commit rows are deduplicated or migrated (issue #57 remains separate).
+
+**Review gate:** disposable tests and the CLI continuation fixture pass. Production
+profile enforcement, live pilot, Desktop, fresh-launcher resume/fork and full
+handoff remain untested. See validation for evidence, limitations and Nico's gated
+step-3 installation instructions. Do not install or expand rollout from this PR.
 
 ### Permission failure and proposed recovery
 

@@ -1,5 +1,126 @@
 # Readup and handoff validation
 
+## Hook request consumer — Phase 4 step 2, review gate (2026-09-19)
+
+Implemented and tested with disposable data only. No installed files, permission
+profiles, real history DB, or live rows were read/changed. `scripts/test_hook_bookkeeping.py`
+is a standalone CI runner using staged copies of the actual entry point plus
+`_gc_session_identity.py` and `_gc_project.sh`, fake SQLite and throwaway Git.
+
+Twenty scenario groups pass: stable repeated/concurrent registration and resume;
+distinct peer/fork IDs; absent, inconsistent and wrong identity; zero/nonzero commits;
+original UTC commit seconds; global first-hash attribution with/without the #57
+unique index; concurrent commits and UUID/content replay; summary/closure isolation;
+request/open/lock/commit/summary/ledger failure rollback; host receipts and no-request
+pending state; repeated Stop; real process death after commit before output;
+malformed, deeply nested, oversized, symlink, hard-link, FIFO, writable and replaced
+files; unknown/duplicate JSON keys; dependency symlinks, environment import injection
+and dot-dot placement; and planted peer requests without the owner's final-message
+digest. Required-save failures leave open rows open and request bytes recoverable.
+
+The CLI 0.155.1 localhost Responses fixture passed with the actual staged consumer:
+nonzero-commit save and wrong-ID rejection, each with three model requests (tool,
+queued final, host continuation). The real Stop final message carried the authored
+UUID/digest. A committed `GC_RECEIPT` arrived only via `decision: "block"`; repeated
+Stop terminated without a loop. Evidence:
+`/private/tmp/prompt-lab-hook-probe-ptm2kn3r/{continue,reject}/`.
+The deterministic model stub proves transport, not an LLM's adherence to the command.
+
+Repeat the disposable checks from the source checkout:
+
+```bash
+python3 scripts/test_hook_bookkeeping.py
+python3 scripts/probe_codex_hooks.py --consumer --outer-sandbox
+```
+
+Pass: 17 standalone groups and two CLI `PASS` results. Any traceback, missing identity,
+receipt or nonzero-commit result is a failure. `--outer-sandbox` avoids unsupported
+nested macOS Seatbelt while retaining this session's enclosing sandbox. It does
+**not** test the nested production profile. From an ordinary human terminal, omit
+that flag to test the fixture's own temporary deny profile; that mode is still gated.
+
+### Contract and remaining limits
+
+- Host events supply conversation, cwd and turn; the existing resolver binds a
+  `codex:<conversation>` identity. `log-prompt.sh` also runs for Codex; it detects
+  a Codex payload (a `turn_id`, or a `rollout-*.jsonl` transcript) and registers the
+  same `codex:<conversation>` owner, so prompts land on the consumer's row. Claude
+  payloads keep the bare native UUID. Two rows owned by one `codex:` identity fail
+  explicitly. Historical bare-native Codex rows (written before this rule) are
+  ignored: never adopted, rewritten or treated as a collision, since the consumer
+  never handed one to an agent. A resumed pre-rule conversation gets a new row.
+- One injected workspace filename per project/conversation; no directory scanning.
+  UUID plus SHA-256 in the host Stop final message authorizes the exact new bytes.
+  The agent computes this from authored bytes before publishing, never by adopting
+  an unknown pending file. Strict bounded JSON admits only the lean write operation.
+- Save transaction also records `hook_bookkeeping_requests`, keyed globally by UUID
+  and bound to project/conversation/session/content digest. Existing commit hashes
+  retain their first row unchanged; no historical deduplication runs. The ledger is
+  local bookkeeping and has no cloud sync leg.
+- Receipt delivery cannot be atomic with SQLite. A committed receipt is replayable;
+  its turn is marked emitted only after stdout flush. A crash before that mark can
+  repeat the receipt, never the save. A missing model-visible receipt stays pending;
+  later-turn replay can deliver it again. Input files are never removed by the hook,
+  so delivery is once: after the receipt is marked emitted, a Stop whose final
+  message lacks the matching `GC_REQUEST` marker outputs `{}`.
+- Structural checks reject workspace dependencies and symlinks; `-I -S` excludes
+  cwd/PYTHONPATH/site hooks. **Actual OS protection of the bundle, config, interpreter,
+  stdlib and DB still requires a fresh production-profile pilot.** File modes alone
+  cannot make code unwritable to a same-user agent. No permission widening is allowed.
+- Codex readup avoids DB-backed bundled checks; full handoff, context/pulse reads and
+  raw prompt capture have no new host contract. The dedicated Codex hook replaces
+  legacy Codex registrations through Claude's prompt hook in the pilot. Claude's
+  hooks and direct-helper path remain unchanged and their regression suites pass.
+- Production profile, live DB pilot, Desktop, fresh-launcher resume/fork, and actual
+  LLM adherence remain untested. This is step 2 only, not rollout acceptance.
+
+### Step 3 — Nico's installation after review only
+
+Do not run these steps as part of this PR. Review/merge the source, then use a normal
+human terminal on the pilot machine. Do not use the broad workflow installer merely
+to enable this pilot; it also updates unrelated shell/launchd configuration.
+
+1. Run the disposable tests above and the CLI probe without `--outer-sandbox` from
+   that normal terminal. Record the CLI version, reviewed commit and results.
+2. Stage a fresh versioned bundle outside every agent-writable path. The following
+   example targets this clone; choose only the intended pilot workspace. The tool
+   refuses an existing destination and does not open the database or enable hooks.
+
+Stage the reviewed bundle (human only, after review):
+
+```bash
+cd /Users/nico/src/prompt-lab-codex
+python3 scripts/stage_codex_bookkeeping.py \
+  --destination /Users/nico/.claude/codex-bookkeeping-step2 \
+  --db /Users/nico/.claude/prompt-history.db \
+  --workspace /Users/nico/src/prompt-lab-codex
+```
+
+3. Back up the existing Codex hook configuration and the three affected skills.
+   Review the generated `hooks.toml`, then merge its `SessionStart`,
+   `UserPromptSubmit`, and `Stop` entries into the Codex runtime configuration for
+   this pilot. Use the absolute command exactly as generated (`python -I -S` plus
+   the copied entry point). The shared `log-prompt.sh` may stay: it registers
+   Codex prompts under `codex:<conversation>`. Remove any other legacy **Codex-only**
+   registration hook that would mint bare-native rows; leave Claude's configuration
+   untouched.
+   Copy the generated `skills/source-command-readup`, `source-command-handoff`, and
+   `source-command-handoff-full` directories into `/Users/nico/.agents/skills/`.
+   The general installer no longer generates the retired `gc-write` approval rule;
+   review/remove that obsolete rule separately, never broaden it.
+4. Confirm the effective existing profile prevents agent writes to the bundle,
+   config, interpreter and all dependencies, and retains DB/secret denial. If any
+   dependency is writable, stop the pilot; do not weaken protection. Launch a fresh
+   Codex conversation through `cx prompt-lab`, record effective profile/rules and
+   helper revision, and follow Phase 4 step 3 with disposable nonzero Git commits.
+   Readup must receive the host identity. Handoff must report queued with one digest
+   marker, receive a matching host receipt, then acknowledge saved. Nico verifies
+   persisted records through an authorized host interface. Missing identity,
+   unsupported final-message payload, denied hooks or missing receipt means failure.
+5. Resume/fork and Claude-pair checks are step 4; Desktop needs independent evidence.
+   Expand only after those gates. To disable a failed pilot, restore the prior hook
+   configuration and report bookkeeping unavailable; do not expose the database.
+
 ## Hook lifecycle probe — passed 2026-09-19 (fixture only)
 
 `scripts/probe_codex_hooks.py` exercised the installed Codex CLI 0.155.1 against

@@ -33,9 +33,8 @@ maintenance = open(os.path.join(REPO_DIR, "workflow/commands/workflow-maintenanc
 check("handoff validates the retained session ID", "current-session <session_id>" in content)
 check("handoff saves continuity before closing",
       content.index("update-session-summary") < content.index("gc-write.sh end-session"))
-check("Codex handoff uses rule-matchable summary file",
-      "/tmp/gc-session-<session_id>-<nonce>.txt" in content
-      and "Codex must use the file form" in content)
+check("Codex handoff requires a host receipt",
+      "GC_RECEIPT" in content and "Missing\nreceipt means **pending**" in content)
 check("routine handoff does not synthesize", "gc-read.sh today-context" not in content)
 check("routine handoff does not check rollups", "weekly-rollup-check" not in content)
 check("routine handoff does not trim docs", "claude-trim-" not in content)
