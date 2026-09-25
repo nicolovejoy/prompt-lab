@@ -111,6 +111,28 @@ prefix_rule(
     not_match = ["xcrun simctl erase all"],
 )
 
+# --- Promoted from default.rules, 2026-09-25 (plan: docs/codex-permission-tuning-plan.md)
+# Only the two that genuinely cannot run sandboxed. `git add`, `git merge` and
+# `npm run build` were dropped: they run sandboxed inside the clone and only
+# escalated from worktrees outside it or from a `> /private/tmp/…` redirect,
+# both now forbidden by the shared conventions block. `npm ci` / `npm install`
+# and `firebase emulators:*` keep prompting (step 3 decision); `npx playwright
+# test` is allowed per repo, in that repo's .codex/rules/, never here.
+prefix_rule(
+    pattern = ["uv", "venv"],
+    decision = "allow",
+    justification = "Creates .venv in the repo; uv's download cache lives in ~/.cache/uv",
+    match = ["uv venv", "uv venv --python 3.12"],
+    not_match = ["uv pip install -r requirements.txt", "uv run python x.py"],
+)
+prefix_rule(
+    pattern = ["op", "vault", "list"],
+    decision = "allow",
+    justification = "Vault names only, no items or secrets; op needs its socket, denied in the sandbox",
+    match = ["op vault list --format=json"],
+    not_match = ["op item list", "op vault get Private"],
+)
+
 # --- Never, even with approval (mirrors the global secrets rule) ------------
 prefix_rule(
     pattern = ["op", ["read", "item"]],
