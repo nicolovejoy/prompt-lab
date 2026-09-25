@@ -28,9 +28,8 @@
    `docs/codex-workflow-roadmap.md`. Branch `claude/codex-permissions` is unpushed.
 5. **Onboard stars-demo.** It shows up only as a grey "+15 more" entry in the dashboard
    chart (24 prompts on Sep 17). Find out what's missing from the dashboard for it, e.g.
-   project metadata or colour, and add it. Also create `stars-demo-prompt-lab.md` in
-   `~/src/.handoff` (front-matter `repos: [stars-demo, prompt-lab]`) so its agent can use
-   `handoff.sh append`; today that refuses. Stars-demo's Sep 17 entries about orphaned
+   project metadata or colour, and add it. The `stars-demo-prompt-lab.md` channel exists
+   and accepts appends (verified 2026-09-25). Stars-demo's Sep 17 entries about orphaned
    `scratch` sessions and ibuild4you DNS currently sit in the ibuild4you channel.
 
 **Workflow status (2026-09-19):** `docs/codex-workflow-roadmap.md` is authoritative for current
