@@ -1,12 +1,21 @@
 # Current work and deferred decisions
 
-**Next session, start here (2026-09-23):**
+**Next session, start here (2026-09-25):**
 1. **Codex permission tuning — plan in `docs/codex-permission-tuning-plan.md`, pending
-   review.** Steps 1, 2, 4 and 5 are approved in principle. Step 3 (which test and install
-   commands may run outside the sandbox) is open for discussion. #56 and #57 are closed.
-2. **#70: Codex and Claude don't share a handoff protocol.** Includes Codex's lost
-   `handoff.sh append` notes. Songpath's new Codex channel is exposed to this.
-3. **Codex permissions: installed globally 2026-09-18.** `~/.codex/config.toml` selects the
+   review; Nico wants this done on Fable.** Steps 1, 2, 4 and 5 are approved in principle.
+   Step 3 (which test and install commands may run outside the sandbox) is open for
+   discussion. Add: a writable root over `~/src/.handoff` so Codex can `handoff.sh append`
+   (without it, handoff.sh now exits 6 "cannot write", #73).
+2. **PR #68 (Codex host bookkeeping consumer): both review blockers fixed (4043d2c),
+   devlog.md dropped — awaiting Nico's review.** Live-trial checks: Codex's real
+   UserPromptSubmit payload carries `turn_id`; the handoff skill should emit the
+   `GC_REQUEST` marker only in the handoff turn. If Codex stays occasional, parking #68
+   is a legitimate outcome — until it passes a live trial, Codex's record is its PR.
+3. **#70 closed 2026-09-25:** the history DB is the one session record; no devlog.md.
+   Pending: add to the shared conventions block, with its NEXT change (not a refresh of
+   its own): "A review another agent must act on, or that must outlive the session, goes
+   on the PR as a comment; live in-session reviews stay in chat."
+4. **Codex permissions: installed globally 2026-09-18.** `~/.codex/config.toml` selects the
    `prompt-lab` profile from `workflow/codex-permissions.candidate.toml`, and
    `~/.codex/rules/reviewed.rules` (from `workflow/codex-rules/`) replaced 170 accumulated
    approvals. Backups: `~/.codex/backup-2026-09-18/`; any rollback now requires the
@@ -17,7 +26,7 @@
    handoff correctly stopped. Further rollout is on hold pending the reviewed
    bookkeeping interface and staged end-to-end gates. Details:
    `docs/codex-workflow-roadmap.md`. Branch `claude/codex-permissions` is unpushed.
-4. **Onboard stars-demo.** It shows up only as a grey "+15 more" entry in the dashboard
+5. **Onboard stars-demo.** It shows up only as a grey "+15 more" entry in the dashboard
    chart (24 prompts on Sep 17). Find out what's missing from the dashboard for it, e.g.
    project metadata or colour, and add it. Also create `stars-demo-prompt-lab.md` in
    `~/src/.handoff` (front-matter `repos: [stars-demo, prompt-lab]`) so its agent can use
