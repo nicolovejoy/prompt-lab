@@ -1,9 +1,37 @@
 # Codex permission tuning — plan (2026-09-23)
 
-Status: **plan, pending review.** Nico approved steps 1, 2, 4 and 5 in principle on
-2026-09-23. Step 3 (which commands may run outside the sandbox) is **open for
-discussion** and is not to be implemented until decided. Nothing here has been
-applied yet.
+Status: **applied 2026-09-25** (laptop), except step 1, which Nico applies by hand.
+
+- Writable root over `~/src/.handoff` (added to the plan on 2026-09-25): in the
+  candidate and installed. The sandbox protects `.git` under any writable root, so
+  the grant is four lines: the repo and its `.git` as `write`, `.git/hooks` and
+  `.git/config` as `read`. `scripts/probe_codex_permissions.py` now points that
+  grant at a disposable repo under `~/.cache` and checks lock, commit and
+  protection: 95/97 before the grant, 97/97 after. Not yet verified: whether the
+  sandboxed push reaches the keychain credential. Exit 4 from a Codex
+  `handoff.sh append` means it does not; the entry stays local and the next
+  `handoff.sh sync` from a Claude session pushes it.
+- Step 2 done: `default.rules` pruned to `uv venv` and `op vault list`; backup in
+  `~/.codex/backup-2026-09-25/`. Those two are staged in
+  `workflow/codex-rules/reviewed.rules` with examples, **not yet installed** (Nico
+  reviews first, then `cp` to `~/.codex/rules/reviewed.rules`). `git add`,
+  `git merge` and `npm run build` were not promoted: they run sandboxed inside the
+  clone and only escalated from worktrees outside it or `> /private/tmp/…`
+  redirects, both now forbidden by the conventions block. `git push` prompts again
+  (verified with `codex execpolicy check`).
+- Step 3 decided (Nico, 2026-09-25): `npm ci` / `npm install` and
+  `firebase emulators:*` keep prompting; `npx playwright test` is allowed per repo,
+  in that repo's own `.codex/rules/` (Codex loads project rules from a trusted
+  `.codex/` layer), never in the user layer. musicforge got the rule text.
+- Step 4 done: shared block v=`e9c6d7e1aca0` carries the Codex command-hygiene
+  bullet and the PR-review rule from #70. Other repos pick it up at their next
+  readup (`CONVENTIONS … behind`).
+- Step 5 done: posted to `musicforge-prompt-lab.md`.
+- Step 1 pending: Nico adds the nvm node 22 bin to `~/.zprofile`, then verifies
+  `command -v node npm npx` from a Codex session. musicforge's CI pins node 22, and
+  Codex was already prefixing `v22.16.0` by hand.
+
+Acceptance is re-measured after one week of use (see the end of this file).
 
 ## Problem
 
