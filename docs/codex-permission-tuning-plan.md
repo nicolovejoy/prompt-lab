@@ -4,10 +4,15 @@ Status: **applied 2026-09-25** (laptop), except step 1, which Nico applies by ha
 
 - Writable root over `~/src/.handoff` (added to the plan on 2026-09-25): in the
   candidate and installed. The sandbox protects `.git` under any writable root, so
-  the grant is four lines: the repo and its `.git` as `write`, `.git/hooks` and
-  `.git/config` as `read`. `scripts/probe_codex_permissions.py` now points that
-  grant at a disposable repo under `~/.cache` and checks lock, commit and
-  protection: 95/97 before the grant, 97/97 after. Not yet verified: whether the
+  the grant is five lines: the repo and its `.git` as `write`, `.git/hooks`,
+  `.git/config` and `.git/commondir` as `read`. `commondir` matters: with `.git`
+  writable, a copied gitdir with a planted hook plus a one-line `.git/commondir`
+  pointing at it bypasses both other carve-outs on the next unsandboxed git run
+  (review finding, 2026-09-25; git 2.54 honours it in a plain repo). The workspace
+  block had the same hole and got the same line. `scripts/probe_codex_permissions.py`
+  now points the handoff grant at a disposable repo under `~/.cache` and checks
+  lock, commit and protection: 95/97 before the grant, 99/99 after (needs
+  Python ≥ 3.11 for `tomllib`; the repo `.venv` is older, use `python3`). Not yet verified: whether the
   sandboxed push reaches the keychain credential. Exit 4 from a Codex
   `handoff.sh append` means it does not; the entry stays local and the next
   `handoff.sh sync` from a Claude session pushes it.
@@ -21,8 +26,11 @@ Status: **applied 2026-09-25** (laptop), except step 1, which Nico applies by ha
   (verified with `codex execpolicy check`).
 - Step 3 decided (Nico, 2026-09-25): `npm ci` / `npm install` and
   `firebase emulators:*` keep prompting; `npx playwright test` is allowed per repo,
-  in that repo's own `.codex/rules/` (Codex loads project rules from a trusted
-  `.codex/` layer), never in the user layer. musicforge got the rule text.
+  in that repo's own `.codex/rules/`, never in the user layer. musicforge got the
+  rule text. *Unverified:* that Codex loads `<repo>/.codex/rules/` for a trusted
+  project is from the Codex docs (learn.chatgpt.com/docs/agent-configuration/rules),
+  not tested here. If musicforge's rule never matches, that assumption is the first
+  suspect; `codex execpolicy check` only evaluates files passed with `--rules`.
 - Step 4 done: shared block v=`e9c6d7e1aca0` carries the Codex command-hygiene
   bullet and the PR-review rule from #70. Other repos pick it up at their next
   readup (`CONVENTIONS … behind`).

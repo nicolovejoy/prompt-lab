@@ -115,8 +115,8 @@ result = result.returncode == 0 and subprocess.run(
     ['git', '-c', 'user.email=probe@example.invalid', '-c', 'user.name=probe',
      'commit', '-qm', 'probe'], capture_output=True).returncode == 0
 checks['git-commit'] = result
-for name in ('.git/hooks/pre-commit', '.git/config', '.codex/config.toml',
-             '.agents/probe.md'):
+for name in ('.git/hooks/pre-commit', '.git/config', '.git/commondir',
+             '.codex/config.toml', '.agents/probe.md'):
     try:
         with open(name, 'a') as f:
             f.write('# FAKE_PROBE\\n')
@@ -139,7 +139,7 @@ try:
          'commit', '-qm', 'probe'], capture_output=True).returncode == 0
 except PermissionError:
     checks['handoff-git-commit'] = False
-for name in ('.git/hooks/pre-commit', '.git/config'):
+for name in ('.git/hooks/pre-commit', '.git/config', '.git/commondir'):
     try:
         with open(hf / name, 'a') as f:
             f.write('# FAKE_PROBE\\n')

@@ -246,7 +246,7 @@ sandbox; renaming it to `env.tpl` fixes both.
 
 2026-09-25: the profile gained a writable root over `~/src/.handoff` (repo and
 `.git` write, hooks and config read) so a sandboxed `handoff.sh append` can lock
-and commit; the probe covers it (97/97). `default.rules` was pruned and the
+and commit, with hooks, config and commondir read-only; the probe covers it (99/99). `default.rules` was pruned and the
 approval-rule follow-up lives in `docs/codex-permission-tuning-plan.md`.
 Backups: `~/.codex/backup-2026-09-25/`.
 
