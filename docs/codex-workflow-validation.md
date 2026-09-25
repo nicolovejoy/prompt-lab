@@ -7,7 +7,7 @@ profiles, real history DB, or live rows were read/changed. `scripts/test_hook_bo
 is a standalone CI runner using staged copies of the actual entry point plus
 `_gc_session_identity.py` and `_gc_project.sh`, fake SQLite and throwaway Git.
 
-Seventeen scenario groups pass: stable repeated/concurrent registration and resume;
+Twenty scenario groups pass: stable repeated/concurrent registration and resume;
 distinct peer/fork IDs; absent, inconsistent and wrong identity; zero/nonzero commits;
 original UTC commit seconds; global first-hash attribution with/without the #57
 unique index; concurrent commits and UUID/content replay; summary/closure isolation;
@@ -42,9 +42,13 @@ that flag to test the fixture's own temporary deny profile; that mode is still g
 ### Contract and remaining limits
 
 - Host events supply conversation, cwd and turn; the existing resolver binds a
-  `codex:<conversation>` identity. Ambiguous rows or historical bare-native Codex
-  rows fail explicitly and require separate human review, never automatic adoption.
-  No live-row conversion is implemented. Begin the pilot with a fresh conversation.
+  `codex:<conversation>` identity. `log-prompt.sh` also runs for Codex; it detects
+  a Codex payload (a `turn_id`, or a `rollout-*.jsonl` transcript) and registers the
+  same `codex:<conversation>` owner, so prompts land on the consumer's row. Claude
+  payloads keep the bare native UUID. Two rows owned by one `codex:` identity fail
+  explicitly. Historical bare-native Codex rows (written before this rule) are
+  ignored: never adopted, rewritten or treated as a collision, since the consumer
+  never handed one to an agent. A resumed pre-rule conversation gets a new row.
 - One injected workspace filename per project/conversation; no directory scanning.
   UUID plus SHA-256 in the host Stop final message authorizes the exact new bytes.
   The agent computes this from authored bytes before publishing, never by adopting
@@ -56,7 +60,9 @@ that flag to test the fixture's own temporary deny profile; that mode is still g
 - Receipt delivery cannot be atomic with SQLite. A committed receipt is replayable;
   its turn is marked emitted only after stdout flush. A crash before that mark can
   repeat the receipt, never the save. A missing model-visible receipt stays pending;
-  later-turn replay can deliver it again. Input files are never removed by the hook.
+  later-turn replay can deliver it again. Input files are never removed by the hook,
+  so delivery is once: after the receipt is marked emitted, a Stop whose final
+  message lacks the matching `GC_REQUEST` marker outputs `{}`.
 - Structural checks reject workspace dependencies and symlinks; `-I -S` excludes
   cwd/PYTHONPATH/site hooks. **Actual OS protection of the bundle, config, interpreter,
   stdlib and DB still requires a fresh production-profile pilot.** File modes alone
@@ -94,8 +100,10 @@ python3 scripts/stage_codex_bookkeeping.py \
    Review the generated `hooks.toml`, then merge its `SessionStart`,
    `UserPromptSubmit`, and `Stop` entries into the Codex runtime configuration for
    this pilot. Use the absolute command exactly as generated (`python -I -S` plus
-   the copied entry point). Remove legacy **Codex-only** prompt/Stop registration
-   hooks that would mint bare-native rows; leave Claude's configuration untouched.
+   the copied entry point). The shared `log-prompt.sh` may stay: it registers
+   Codex prompts under `codex:<conversation>`. Remove any other legacy **Codex-only**
+   registration hook that would mint bare-native rows; leave Claude's configuration
+   untouched.
    Copy the generated `skills/source-command-readup`, `source-command-handoff`, and
    `source-command-handoff-full` directories into `/Users/nico/.agents/skills/`.
    The general installer no longer generates the retired `gc-write` approval rule;

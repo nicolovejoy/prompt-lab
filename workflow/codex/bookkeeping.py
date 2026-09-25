@@ -108,10 +108,14 @@ def host_binding(event, bundle, roots):
 def bound_row(conn, resolver, project, native, register=False):
     owner = 'codex:' + native
     # Existing resolver's newest-native behavior is not acceptable for ambiguous
-    # host identities. Reject corruption and legacy bare-native collisions first.
-    rows = conn.execute('SELECT * FROM sessions WHERE project=? AND claude_session_id IN (?,?)',
-                        (project, owner, native)).fetchall()
-    if len(rows) > 1 or (rows and rows[0]['claude_session_id'] != owner):
+    # host identities: two rows owned by one conversation is corruption.
+    # A row carrying the BARE native ID is ignored, not adopted and not an error.
+    # log-prompt.sh wrote those for Codex before it learned the `codex:` prefix;
+    # no such row was ever handed to an agent by this hook, so no request can name
+    # it, and the bare namespace belongs to Claude. It stays as history.
+    rows = conn.execute('SELECT * FROM sessions WHERE project=? AND claude_session_id=?',
+                        (project, owner)).fetchall()
+    if len(rows) > 1:
         raise ValueError('Inconsistent conversation identity; human review required')
     binding = conn.execute('SELECT session_id FROM session_identity_bindings WHERE project=? AND identity=?',
                            (project, owner)).fetchone()
@@ -198,6 +202,14 @@ def initialize(conn, resolver):
         emitted_turn TEXT)''')
 
 
+def intents(event):
+    message = event.get('last_assistant_message')
+    if not isinstance(message, str):
+        return [], 0
+    return (re.findall(r'GC_REQUEST=([0-9a-f-]{36}):([0-9a-f]{64})(?![0-9a-f])', message),
+            message.count('GC_REQUEST='))
+
+
 def save(conn, request, digest, project, native, row, event):
     prior = conn.execute('SELECT * FROM hook_bookkeeping_requests WHERE request_id=?',
                          (request['request_id'],)).fetchone()
@@ -206,10 +218,8 @@ def save(conn, request, digest, project, native, row, event):
                 digest, project, native, row['id']):
             raise ValueError('Request ID was already used with different content or ownership')
         return json.loads(prior['receipt']), prior['emitted_turn']
-    message = event.get('last_assistant_message')
-    markers = re.findall(r'GC_REQUEST=([0-9a-f-]{36}):([0-9a-f]{64})(?![0-9a-f])', message) if isinstance(message, str) else []
-    if (len(markers) != 1 or message.count('GC_REQUEST=') != 1
-            or markers[0] != (request['request_id'], digest)):
+    markers, count = intents(event)
+    if len(markers) != 1 or count != 1 or markers[0] != (request['request_id'], digest):
         raise ValueError('Missing or inconsistent host conversation request intent')
     inserted = 0
     for commit in request['commits']:
@@ -269,7 +279,12 @@ def run(event, host, output=emit):
         if read_request(path) != (data, snapshot):
             raise ValueError('Request replaced before commit')
         conn.commit()  # Every required save, closure and replay key share this commit.
-        if emitted_turn == turn:
+        # Deliver once. The request file stays in the workspace, so every later
+        # Stop finds it; once the receipt has been emitted, only a Stop whose
+        # message restates this exact intent replays it. An undelivered receipt
+        # (crash before emission) is still delivered on the next Stop.
+        if emitted_turn == turn or (emitted_turn is not None
+                                    and (request['request_id'], digest) not in intents(event)[0]):
             output({})
             return
         output({'decision': 'block', 'reason': 'GC_RECEIPT=' + json.dumps(result, sort_keys=True)})

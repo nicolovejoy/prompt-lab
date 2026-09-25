@@ -88,9 +88,19 @@ if [ -z "$CLAUDE_SESSION_ID" ] && [ -n "$TRANSCRIPT_PATH" ]; then
 fi
 
 HOOK_REAL=$(readlink -f "$0" 2>/dev/null || echo "$0")
+# Codex runs this same hook. Its UserPromptSubmit payload carries a turn_id and
+# Claude's never does; a Codex rollout transcript is the fallback signal. A Codex
+# conversation is stored as `codex:<id>` — the owner the host bookkeeping hook
+# and the command wrappers use — never as a bare ID, which would collide with
+# that row (the bare namespace belongs to Claude). Claude's path is unchanged.
+TURN_ID=$(echo "$INPUT" | jq -r '.turn_id // empty')
+IDENTITY_MODE=claude
+if [ -n "$TURN_ID" ] || [[ "$(basename "$TRANSCRIPT_PATH")" == rollout-*.jsonl ]]; then
+    IDENTITY_MODE=codex
+fi
 # Native Claude UUIDs and launcher bindings share the command wrappers' resolver.
 # Fail visibly if identity cannot be established; never attach to a guessed row.
-SESSION_ID=$(python3 "$(dirname "$HOOK_REAL")/../bin/_gc_session_identity.py" claude "$PROJECT" "$CLAUDE_SESSION_ID") || exit $?
+SESSION_ID=$(python3 "$(dirname "$HOOK_REAL")/../bin/_gc_session_identity.py" "$IDENTITY_MODE" "$PROJECT" "$CLAUDE_SESSION_ID") || exit $?
 
 # Extract the last assistant response as context. Paired with kind='approval'
 # this is what answers "what did I actually say yes to?" — the prompt alone is

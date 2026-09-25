@@ -19,7 +19,12 @@ CREATE TABLE sessions (id INTEGER PRIMARY KEY, project TEXT NOT NULL,
  hostname TEXT, claude_session_id TEXT);
 CREATE TABLE commits (id INTEGER PRIMARY KEY, hash TEXT, message TEXT,
  timestamp TEXT, session_id INTEGER);
+CREATE TABLE prompts (id INTEGER PRIMARY KEY, timestamp TEXT DEFAULT (datetime('now')),
+ project TEXT, prompt TEXT NOT NULL, session_id INTEGER, context TEXT, hostname TEXT);
+CREATE TABLE projects (name TEXT PRIMARY KEY);
 """
+LOG_PROMPT = ROOT / 'workflow/hooks/log-prompt.sh'
+
 
 
 class Fixture:
@@ -29,7 +34,11 @@ class Fixture:
         self.repo.mkdir()
         subprocess.run(['git', 'init', '-q', str(self.repo)], check=True)
         self.host = self.root / 'host'
-        self.db = self.root / 'fake.db'
+        # The installed prompt hook finds the DB through $HOME, so the disposable
+        # DB lives at the path log-prompt.sh would open under a fake HOME.
+        self.home = self.root / 'home'
+        (self.home / '.claude').mkdir(parents=True)
+        self.db = self.home / '.claude/prompt-history.db'
         with sqlite3.connect(self.db) as conn:
             conn.executescript(SCHEMA)
         result = subprocess.run([sys.executable, str(ROOT / 'scripts/stage_codex_bookkeeping.py'),
@@ -41,8 +50,8 @@ class Fixture:
     def event(self, kind='SessionStart', native='thread-a', **extra):
         if kind == 'Stop':
             extra.setdefault('last_assistant_message', getattr(self, 'intents', {}).get(native, 'No handoff queued'))
-        return dict(hook_event_name=kind, session_id=native, cwd=str(self.repo),
-                    turn_id='turn-1', stop_hook_active=False, **extra)
+        return dict(dict(hook_event_name=kind, session_id=native, cwd=str(self.repo),
+                         turn_id='turn-1', stop_hook_active=False), **extra)
 
     def call(self, event, ok=True):
         result = subprocess.run(self.command, input=json.dumps(event), capture_output=True,
@@ -69,6 +78,17 @@ class Fixture:
             self.intents = {}
         self.intents[identity['conversation_id']] = 'Queued GC_REQUEST=' + request['request_id'] + ':' + hashlib.sha256(path.read_bytes()).hexdigest()
         return path, request
+
+    def log_prompt(self, native='thread-a', prompt='Ordinary prompt', **payload):
+        """Run the real UserPromptSubmit prompt logger against the disposable HOME."""
+        payload = dict(dict(hook_event_name='UserPromptSubmit', session_id=native, cwd=str(self.repo),
+                            prompt=prompt), **payload)
+        env = {k: v for k, v in os.environ.items() if k not in ('CODEX_THREAD_ID', 'GC_SESSION_SCOPE')}
+        env['HOME'] = str(self.home)
+        result = subprocess.run(['/bin/bash', str(LOG_PROMPT)], input=json.dumps(payload),
+                                capture_output=True, text=True, env=env)
+        assert result.returncode == 0, result.stderr
+        return self.rows('SELECT * FROM prompts WHERE prompt=?', (prompt,))
 
     def rows(self, sql='SELECT * FROM sessions', args=()):
         with sqlite3.connect(self.db) as conn:
@@ -459,6 +479,52 @@ def test_corrupt_started_at_is_not_injected(f):
         conn.execute('UPDATE sessions SET started_at=NULL WHERE id=?', (a['session_id'],))
     out = f.call(f.event(), ok=False)
     assert 'hookSpecificOutput' not in out and 'pending' in out['systemMessage']
+
+def test_log_prompt_and_consumer_share_codex_identity(f):
+    # Codex runs the installed prompt logger (log-prompt.sh) on UserPromptSubmit
+    # alongside the host consumer. Codex events carry turn_id; Claude's do not.
+    codex = dict(turn_id='turn-1', model='gpt-fixture', transcript_path=None)
+    logged = f.log_prompt(prompt='First Codex prompt', **codex)
+    assert len(logged) == 1
+    a = f.identity()  # Must not see a colliding bare-native row.
+    assert logged[0]['session_id'] == a['session_id']
+    assert [r['claude_session_id'] for r in f.rows()] == ['codex:thread-a']
+    assert f.log_prompt(prompt='Second Codex prompt', **codex)[0]['session_id'] == a['session_id']
+    f.request(a)
+    assert receipt(f.call(f.event('Stop')))['session_id'] == a['session_id']
+    assert len(f.rows()) == 1
+    # Claude's path is unchanged: no turn_id means a bare native Claude UUID row.
+    claude = f.log_prompt(native='claude-uuid', prompt='Claude prompt')
+    row = f.rows('SELECT * FROM sessions WHERE id=?', (claude[0]['session_id'],))[0]
+    assert row['claude_session_id'] == 'claude-uuid'
+
+
+def test_legacy_bare_codex_row_is_left_alone(f):
+    # Rows written before the fix carry the bare native Codex ID. They were never
+    # handed to an agent by the consumer, so they are historical, not an owner.
+    with sqlite3.connect(f.db) as conn:
+        legacy = conn.execute("INSERT INTO sessions(project,claude_session_id) VALUES('repo','thread-a')").lastrowid
+        conn.execute("INSERT INTO prompts(project,prompt,session_id) VALUES('repo','old',?)", (legacy,))
+    a = f.identity()
+    assert a['session_id'] != legacy
+    f.request(a)
+    assert receipt(f.call(f.event('Stop')))['session_id'] == a['session_id']
+    old = f.rows('SELECT * FROM sessions WHERE id=?', (legacy,))[0]
+    assert old['claude_session_id'] == 'thread-a' and old['summary'] is None and old['ended_at'] is None
+    assert f.log_prompt(prompt='Resumed prompt', turn_id='turn-2')[0]['session_id'] == a['session_id']
+
+
+def test_receipt_is_delivered_once(f):
+    a = f.identity()
+    f.request(a)
+    saved = receipt(f.call(f.event('Stop')))
+    for n in (2, 3):  # Two ordinary later turns; the request file is still present.
+        event = f.event('Stop', turn_id=f'turn-{n}', last_assistant_message=f'Ordinary answer {n}')
+        assert f.call(event) == {}, n
+    # An explicit replay of the same intent still gets the durable receipt.
+    event = f.event('Stop', turn_id='turn-4')
+    assert receipt(f.call(event)) == saved
+
 
 def main():
     tests = [v for k, v in globals().items() if k.startswith('test_') and callable(v)]

@@ -197,6 +197,18 @@ def claude_row(conn, project, owner, native):
     return row
 
 
+def codex_owner(native):
+    """Host-hook identity for a native Codex conversation ID from a hook payload.
+
+    Codex conversations are always stored as `codex:<id>` — the same owner the
+    command wrappers derive from CODEX_THREAD_ID and the host bookkeeping hook
+    registers. A bare native ID is reserved for Claude conversations.
+    """
+    if not native or len(native) > 120 or not re.fullmatch(r"[A-Za-z0-9._-]+", native):
+        raise ValueError("Invalid native Codex conversation ID")
+    return "codex:" + native
+
+
 def numeric(value):
     if not re.fullmatch(r"[0-9]+", value):
         raise ValueError("Session ID must be numeric")
@@ -205,18 +217,19 @@ def numeric(value):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("register", "resolve", "resolve-id", "summary", "end", "claude", "tokens"))
+    parser.add_argument("command", choices=("register", "resolve", "resolve-id", "summary", "end", "claude", "codex", "tokens"))
     parser.add_argument("project")
     parser.add_argument("values", nargs="*")
     args = parser.parse_args()
     command, project, values = args.command, args.project, args.values
     conn = None
     try:
-        owner = identity(claude=command in {"claude", "tokens"})
         expected = {"register": (0,), "resolve": (0, 1), "resolve-id": (0,),
-                    "summary": (1, 2), "end": (1,), "claude": (1,), "tokens": (2,)}
+                    "summary": (1, 2), "end": (1,), "claude": (1,), "codex": (1,), "tokens": (2,)}
         if len(values) not in expected[command]:
             raise ValueError("Wrong number of session command arguments")
+        # Hook payloads name the conversation; the environment never does.
+        owner = codex_owner(values[0]) if command == "codex" else identity(claude=command in {"claude", "tokens"})
         requested = numeric(values[0]) if values and command in {"resolve", "summary", "end"} else None
         db = Path.home() / ".claude/prompt-history.db"
         readonly = command in {"resolve", "resolve-id"}
@@ -227,7 +240,7 @@ def main():
             initialize(conn)
         row = None
         consumed_summary = None
-        if command == "register":
+        if command in {"register", "codex"}:
             row = register(conn, project, owner)
         elif command == "claude":
             row = claude_row(conn, project, owner, values[0])
@@ -260,11 +273,11 @@ def main():
                     f"could not be removed: {exc}",
                     file=sys.stderr,
                 )
-        if row is not None and command in {"register", "claude"}:
+        if row is not None and command in {"register", "claude", "codex"}:
             write_pointer(project, owner, row["id"])
         if row is not None and command in {"register", "resolve"}:
             print(f"{row['id']}|{row['started_at']}")
-        elif row is not None and command in {"resolve-id", "claude"}:
+        elif row is not None and command in {"resolve-id", "claude", "codex"}:
             print(row["id"])
         return 0
     except IdentityError as exc:
