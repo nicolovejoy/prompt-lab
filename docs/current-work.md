@@ -14,7 +14,7 @@
    `GC_REQUEST` marker only in the handoff turn. If Codex stays occasional, parking #68
    is a legitimate outcome — until it passes a live trial, Codex's record is its PR.
 3. **#70 closed 2026-09-25:** the history DB is the one session record; no devlog.md.
-   The PR-review rule landed in the shared conventions block (v=`e9c6d7e1aca0`) with
+   The PR-review rule landed in the shared conventions block (v=`28022362f01b`) with
    the Codex command-hygiene change. Nothing pending.
 4. **Codex permissions: installed globally 2026-09-18.** `~/.codex/config.toml` selects the
    `prompt-lab` profile from `workflow/codex-permissions.candidate.toml`, and

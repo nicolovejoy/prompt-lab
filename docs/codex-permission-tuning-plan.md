@@ -31,7 +31,7 @@ Status: **applied 2026-09-25** (laptop), except step 1, which Nico applies by ha
   project is from the Codex docs (learn.chatgpt.com/docs/agent-configuration/rules),
   not tested here. If musicforge's rule never matches, that assumption is the first
   suspect; `codex execpolicy check` only evaluates files passed with `--rules`.
-- Step 4 done: shared block v=`e9c6d7e1aca0` carries the Codex command-hygiene
+- Step 4 done: shared block v=`28022362f01b` carries the Codex command-hygiene
   bullet and the PR-review rule from #70. Other repos pick it up at their next
   readup (`CONVENTIONS … behind`).
 - Step 5 done: posted to `musicforge-prompt-lab.md`.
