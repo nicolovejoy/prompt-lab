@@ -135,9 +135,18 @@ prefix_rule(
 
 # --- Never, even with approval (mirrors the global secrets rule) ------------
 prefix_rule(
-    pattern = ["op", ["read", "item"]],
+    pattern = ["op", ["read", "item", "document"]],
     decision = "forbidden",
     justification = "Secret values never enter the session; use op run/op inject",
-    match = ["op read op://vault/item/field", "op item get x --reveal", "op item list"],
-    not_match = ["op run --env-file=env.tpl -- npm test", "op inject -i env.tpl -o out"],
+    match = ["op read op://vault/item/field", "op item get x --reveal", "op item list",
+             "op document get x"],
+    not_match = ["op run --env-file=env.tpl -- npm test", "op inject -i env.tpl -o out",
+                 "op vault list"],
+)
+prefix_rule(
+    pattern = ["gh", "auth", "token"],
+    decision = "forbidden",
+    justification = "Prints the GitHub token; the global secrets rule already covers it",
+    match = ["gh auth token", "gh auth token --hostname github.com"],
+    not_match = ["gh auth status"],
 )
