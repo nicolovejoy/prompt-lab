@@ -48,20 +48,23 @@ prefix_rule(
     not_match = ["gh auth token"],
 )
 
-# --- GitHub writes: DECISION 2 (outward-facing but reversible) ---------------
+# --- GitHub writes: DECISION 2 revised 2026-09-25 (prompt, not allow) --------
+# These run outside the sandbox and take --body-file <path>, so an allow would
+# let a steered agent post ~/.ssh or ~/.aws contents to a public repo. A
+# published secret is not reversible. Prompt keeps the human in the loop.
 prefix_rule(
     pattern = ["gh", "pr", ["create", "edit", "ready", "comment"]],
-    decision = "allow",
-    justification = "Create or update pull requests; merge and close still ask",
-    match = ["gh pr create --title x --body-file f", "gh pr edit 506 --body-file f"],
-    not_match = ["gh pr merge 506", "gh pr close 506"],
+    decision = "prompt",
+    justification = "Publishes text from any readable file; confirm each time",
+    match = ["gh pr create --title x --body-file f", "gh pr comment 5 --body-file f"],
+    not_match = ["gh pr view 5", "gh pr list"],
 )
 prefix_rule(
     pattern = ["gh", "issue", ["create", "edit", "comment"]],
-    decision = "allow",
-    justification = "Create or update issues; close and delete still ask",
-    match = ["gh issue create --title x --body-file f", "gh issue edit 5 --add-label y"],
-    not_match = ["gh issue close 5", "gh issue delete 5"],
+    decision = "prompt",
+    justification = "Publishes text from any readable file; confirm each time",
+    match = ["gh issue create --title x --body-file f", "gh issue comment 5 --body-file f"],
+    not_match = ["gh issue view 5", "gh issue list"],
 )
 
 # --- git over the network ------------------------------------------------------
@@ -96,12 +99,14 @@ prefix_rule(
 )
 
 # --- Apple toolchain (simulators and DerivedData live outside the repo) -----
+# build/test dropped 2026-09-25: run-script phases and test targets are repo
+# code executing unsandboxed as Nico. They prompt, like every other build.
 prefix_rule(
-    pattern = ["xcodebuild", ["build", "test", "-list", "-showBuildSettings"]],
+    pattern = ["xcodebuild", ["-list", "-showBuildSettings"]],
     decision = "allow",
-    justification = "Xcode builds and tests",
-    match = ["xcodebuild test -scheme App", "xcodebuild -list"],
-    not_match = ["xcodebuild archive"],
+    justification = "Read-only project queries",
+    match = ["xcodebuild -list", "xcodebuild -showBuildSettings -scheme App"],
+    not_match = ["xcodebuild test -scheme App", "xcodebuild build", "xcodebuild archive"],
 )
 prefix_rule(
     pattern = ["xcrun", "simctl", "list"],

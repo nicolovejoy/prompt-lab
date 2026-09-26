@@ -17,9 +17,16 @@ Status: **applied 2026-09-25** (laptop), except step 1, which Nico applies by ha
   `handoff.sh append` means it does not; the entry stays local and the next
   `handoff.sh sync` from a Claude session pushes it.
 - Step 2 done: `default.rules` pruned to `uv venv` and `op vault list`; backup in
-  `~/.codex/backup-2026-09-25/`. Those two are staged in
-  `workflow/codex-rules/reviewed.rules` with examples, **not yet installed** (Nico
-  reviews first, then `cp` to `~/.codex/rules/reviewed.rules`). `git add`,
+  `~/.codex/backup-2026-09-25/`. Those two moved into
+  `workflow/codex-rules/reviewed.rules` with examples. An external review of that
+  file then changed three things (Nico's rulings, 2026-09-25): `gh pr/issue
+  create|edit|comment` went from allow to **prompt** (unsandboxed, `--body-file`
+  can publish any readable file, a leaked key is not reversible); `xcodebuild
+  build|test` lost its allow (repo run-script phases would execute unsandboxed);
+  1Password document access and `gh auth token` are forbidden. `git fetch` stays
+  allowed. Verified that `bash -lc "…"` wrappers match no rule, so compound
+  commands fail closed. Installed to `~/.codex/rules/reviewed.rules` the same day;
+  the previous copy is in the backup dir. `git add`,
   `git merge` and `npm run build` were not promoted: they run sandboxed inside the
   clone and only escalated from worktrees outside it or `> /private/tmp/…`
   redirects, both now forbidden by the conventions block. `git push` prompts again

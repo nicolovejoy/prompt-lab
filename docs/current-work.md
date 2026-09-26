@@ -2,9 +2,8 @@
 
 **Next session, start here (2026-09-25):**
 1. **Codex permission tuning — applied 2026-09-25, see the status block at the top of
-   `docs/codex-permission-tuning-plan.md`.** Left open: (a) Nico installs the reviewed
-   rules after reading them: `cp workflow/codex-rules/reviewed.rules ~/.codex/rules/`;
-   (b) Nico adds node 22 to `~/.zprofile` and verifies `command -v node npm npx` from a
+   `docs/codex-permission-tuning-plan.md`.** Reviewed rules installed 2026-09-25 after
+   Nico's rulings (gh writes prompt, xcodebuild build/test prompt). Left open: (b) Nico adds node 22 to `~/.zprofile` and verifies `command -v node npm npx` from a
    Codex session; (c) does a sandboxed `handoff.sh append` push, or exit 4? First Codex
    append tells; (d) re-measure on ~2026-10-02: `default.rules` should have gained ≤ 3
    rules and no `zsh -lc` / `PATH=` escalations should remain (tally method in the plan).
