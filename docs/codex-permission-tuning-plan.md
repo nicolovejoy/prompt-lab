@@ -1,6 +1,6 @@
 # Codex permission tuning — plan (2026-09-23)
 
-Status: **applied 2026-09-25** (laptop), except step 1, which Nico applies by hand.
+Status: **applied 2026-09-25** (laptop), all five steps plus the handoff writable root.
 
 - Writable root over `~/src/.handoff` (added to the plan on 2026-09-25): in the
   candidate and installed. The sandbox protects `.git` under any writable root, so
@@ -12,10 +12,11 @@ Status: **applied 2026-09-25** (laptop), except step 1, which Nico applies by ha
   block had the same hole and got the same line. `scripts/probe_codex_permissions.py`
   now points the handoff grant at a disposable repo under `~/.cache` and checks
   lock, commit and protection: 95/97 before the grant, 99/99 after (needs
-  Python ≥ 3.11 for `tomllib`; the repo `.venv` is older, use `python3`). Not yet verified: whether the
-  sandboxed push reaches the keychain credential. Exit 4 from a Codex
-  `handoff.sh append` means it does not; the entry stays local and the next
-  `handoff.sh sync` from a Claude session pushes it.
+  Python ≥ 3.11 for `tomllib`; the repo `.venv` is older, use `python3`). Verified 2026-09-25 from a real
+  Codex session in `~/src/prompt-lab-codex`: a sandboxed `handoff.sh append`
+  exited 0 and the commit landed on origin, so the keychain credential is
+  reachable from the sandbox. Exit 4 remains the documented fallback if that
+  ever changes (entry kept local, next `handoff.sh sync` pushes it).
 - Step 2 done: `default.rules` pruned to `uv venv` and `op vault list`; backup in
   `~/.codex/backup-2026-09-25/`. Those two moved into
   `workflow/codex-rules/reviewed.rules` with examples. An external review of that
@@ -42,9 +43,13 @@ Status: **applied 2026-09-25** (laptop), except step 1, which Nico applies by ha
   bullet and the PR-review rule from #70. Other repos pick it up at their next
   readup (`CONVENTIONS … behind`).
 - Step 5 done: posted to `musicforge-prompt-lab.md`.
-- Step 1 pending: Nico adds the nvm node 22 bin to `~/.zprofile`, then verifies
-  `command -v node npm npx` from a Codex session. musicforge's CI pins node 22, and
-  Codex was already prefixing `v22.16.0` by hand.
+- Step 1 done: `~/.zprofile` now puts nvm's v22.16.0 bin first (the login-shell
+  `node` had been Homebrew's node 15.8.0, which crashed on a missing icu4c dylib;
+  that formula is uninstalled). A Codex session resolved `node npm npx` with no
+  prefix, to nvm v20.19.2: Codex inherits the launching terminal's PATH, where
+  `.zshrc`'s nvm default wins. The zprofile line covers a Dock launch. Set
+  `nvm alias default 22.16.0` if terminal-launched Codex should match musicforge's
+  CI (node 22).
 
 Acceptance is re-measured after one week of use (see the end of this file).
 
