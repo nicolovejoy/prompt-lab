@@ -32,6 +32,8 @@
    and accepts appends (verified 2026-09-25). Stars-demo's Sep 17 entries about orphaned
    `scratch` sessions and ibuild4you DNS currently sit in the ibuild4you channel.
 
+**Mini shut down 2026-09-25.** Idle for weeks: no jobs, no containers, no handoff clone; only the parked `disabled-promptlab-20260820` LaunchAgents. Clean shutdown over ssh. Nothing depends on it. Possible future role: an independent watcher for the "cron dead" heartbeat hole. Details in memory `user_two_machines.md`.
+
 **Workflow status (2026-09-19):** `docs/codex-workflow-roadmap.md` is authoritative for current
 implementation and remaining gates; `docs/codex-workflow-validation.md` holds
 smoke tests/results. The paired Songpath test passed. After reinstalling, the
