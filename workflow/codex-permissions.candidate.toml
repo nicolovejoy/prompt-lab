@@ -30,6 +30,19 @@ extends = ":workspace"
 # 1Password desktop-app integration socket: sandboxed `op` must never reach it.
 # (1Password also rejects sandboxed callers today; this makes it structural.)
 "~/Library/Group Containers/2BUA8C4S2C.com.1password" = "deny"
+# Cross-repo handoff log (a git clone outside every workspace): handoff.sh
+# needs its mkdir lock and a local commit to work from inside the sandbox,
+# else it exits 6 "cannot write". Same .git treatment as the workspace: the
+# sandbox protects .git under any writable root, so reopen it for the local
+# commit, but keep hooks, config and commondir read-only (a hook or config
+# planted here would run later, outside the sandbox). The push still needs the keychain
+# credential; when the sandbox cannot reach it, handoff.sh exits 4 and keeps
+# the entry local for the next sync.
+"~/src/.handoff" = "write"
+"~/src/.handoff/.git" = "write"
+"~/src/.handoff/.git/hooks" = "read"
+"~/src/.handoff/.git/config" = "read"
+"~/src/.handoff/.git/commondir" = "read"
 # Raw prompts: reachable only through the reviewed gc-read/gc-write helpers.
 "~/.claude/prompt-history.db" = "deny"
 "~/.claude/prompt-history.db-wal" = "deny"
@@ -48,6 +61,9 @@ extends = ":workspace"
 ".git" = "write"
 ".git/hooks" = "read"
 ".git/config" = "read"
+# .git/commondir redirects git to another gitdir: with .git writable, a copy
+# with a planted hook plus this one file bypasses both carve-outs above.
+".git/commondir" = "read"
 ".codex" = "read"
 ".agents" = "read"
 

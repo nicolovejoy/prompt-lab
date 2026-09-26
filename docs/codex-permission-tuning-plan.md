@@ -1,9 +1,52 @@
 # Codex permission tuning — plan (2026-09-23)
 
-Status: **plan, pending review.** Nico approved steps 1, 2, 4 and 5 in principle on
-2026-09-23. Step 3 (which commands may run outside the sandbox) is **open for
-discussion** and is not to be implemented until decided. Nothing here has been
-applied yet.
+Status: **applied 2026-09-25** (laptop), except step 1, which Nico applies by hand.
+
+- Writable root over `~/src/.handoff` (added to the plan on 2026-09-25): in the
+  candidate and installed. The sandbox protects `.git` under any writable root, so
+  the grant is five lines: the repo and its `.git` as `write`, `.git/hooks`,
+  `.git/config` and `.git/commondir` as `read`. `commondir` matters: with `.git`
+  writable, a copied gitdir with a planted hook plus a one-line `.git/commondir`
+  pointing at it bypasses both other carve-outs on the next unsandboxed git run
+  (review finding, 2026-09-25; git 2.54 honours it in a plain repo). The workspace
+  block had the same hole and got the same line. `scripts/probe_codex_permissions.py`
+  now points the handoff grant at a disposable repo under `~/.cache` and checks
+  lock, commit and protection: 95/97 before the grant, 99/99 after (needs
+  Python ≥ 3.11 for `tomllib`; the repo `.venv` is older, use `python3`). Not yet verified: whether the
+  sandboxed push reaches the keychain credential. Exit 4 from a Codex
+  `handoff.sh append` means it does not; the entry stays local and the next
+  `handoff.sh sync` from a Claude session pushes it.
+- Step 2 done: `default.rules` pruned to `uv venv` and `op vault list`; backup in
+  `~/.codex/backup-2026-09-25/`. Those two moved into
+  `workflow/codex-rules/reviewed.rules` with examples. An external review of that
+  file then changed three things (Nico's rulings, 2026-09-25): `gh pr/issue
+  create|edit|comment` went from allow to **prompt** (unsandboxed, `--body-file`
+  can publish any readable file, a leaked key is not reversible); `xcodebuild
+  build|test` lost its allow (repo run-script phases would execute unsandboxed);
+  1Password document access and `gh auth token` are forbidden. `git fetch` stays
+  allowed. Verified that `bash -lc "…"` wrappers match no rule, so compound
+  commands fail closed. Installed to `~/.codex/rules/reviewed.rules` the same day;
+  the previous copy is in the backup dir. `git add`,
+  `git merge` and `npm run build` were not promoted: they run sandboxed inside the
+  clone and only escalated from worktrees outside it or `> /private/tmp/…`
+  redirects, both now forbidden by the conventions block. `git push` prompts again
+  (verified with `codex execpolicy check`).
+- Step 3 decided (Nico, 2026-09-25): `npm ci` / `npm install` and
+  `firebase emulators:*` keep prompting; `npx playwright test` is allowed per repo,
+  in that repo's own `.codex/rules/`, never in the user layer. musicforge got the
+  rule text. *Unverified:* that Codex loads `<repo>/.codex/rules/` for a trusted
+  project is from the Codex docs (learn.chatgpt.com/docs/agent-configuration/rules),
+  not tested here. If musicforge's rule never matches, that assumption is the first
+  suspect; `codex execpolicy check` only evaluates files passed with `--rules`.
+- Step 4 done: shared block v=`28022362f01b` carries the Codex command-hygiene
+  bullet and the PR-review rule from #70. Other repos pick it up at their next
+  readup (`CONVENTIONS … behind`).
+- Step 5 done: posted to `musicforge-prompt-lab.md`.
+- Step 1 pending: Nico adds the nvm node 22 bin to `~/.zprofile`, then verifies
+  `command -v node npm npx` from a Codex session. musicforge's CI pins node 22, and
+  Codex was already prefixing `v22.16.0` by hand.
+
+Acceptance is re-measured after one week of use (see the end of this file).
 
 ## Problem
 

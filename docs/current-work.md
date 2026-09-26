@@ -1,20 +1,20 @@
 # Current work and deferred decisions
 
 **Next session, start here (2026-09-25):**
-1. **Codex permission tuning — plan in `docs/codex-permission-tuning-plan.md`, pending
-   review; Nico wants this done on Fable.** Steps 1, 2, 4 and 5 are approved in principle.
-   Step 3 (which test and install commands may run outside the sandbox) is open for
-   discussion. Add: a writable root over `~/src/.handoff` so Codex can `handoff.sh append`
-   (without it, handoff.sh now exits 6 "cannot write", #73).
+1. **Codex permission tuning — applied 2026-09-25, see the status block at the top of
+   `docs/codex-permission-tuning-plan.md`.** Reviewed rules installed 2026-09-25 after
+   Nico's rulings (gh writes prompt, xcodebuild build/test prompt). Left open: (b) Nico adds node 22 to `~/.zprofile` and verifies `command -v node npm npx` from a
+   Codex session; (c) does a sandboxed `handoff.sh append` push, or exit 4? First Codex
+   append tells; (d) re-measure on ~2026-10-02: `default.rules` should have gained ≤ 3
+   rules and no `zsh -lc` / `PATH=` escalations should remain (tally method in the plan).
 2. **PR #68 (Codex host bookkeeping consumer): both review blockers fixed (4043d2c),
    devlog.md dropped — awaiting Nico's review.** Live-trial checks: Codex's real
    UserPromptSubmit payload carries `turn_id`; the handoff skill should emit the
    `GC_REQUEST` marker only in the handoff turn. If Codex stays occasional, parking #68
    is a legitimate outcome — until it passes a live trial, Codex's record is its PR.
 3. **#70 closed 2026-09-25:** the history DB is the one session record; no devlog.md.
-   Pending: add to the shared conventions block, with its NEXT change (not a refresh of
-   its own): "A review another agent must act on, or that must outlive the session, goes
-   on the PR as a comment; live in-session reviews stay in chat."
+   The PR-review rule landed in the shared conventions block (v=`28022362f01b`) with
+   the Codex command-hygiene change. Nothing pending.
 4. **Codex permissions: installed globally 2026-09-18.** `~/.codex/config.toml` selects the
    `prompt-lab` profile from `workflow/codex-permissions.candidate.toml`, and
    `~/.codex/rules/reviewed.rules` (from `workflow/codex-rules/`) replaced 170 accumulated

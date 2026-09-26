@@ -244,6 +244,12 @@ prompting. Known wrinkle: repos that still have `.env.tpl` (songpath) print
 `Operation not permitted` from git status and the file can't be edited from the
 sandbox; renaming it to `env.tpl` fixes both.
 
+2026-09-25: the profile gained a writable root over `~/src/.handoff` (repo and
+`.git` write, hooks and config read) so a sandboxed `handoff.sh append` can lock
+and commit, with hooks, config and commondir read-only; the probe covers it (99/99). `default.rules` was pruned and the
+approval-rule follow-up lives in `docs/codex-permission-tuning-plan.md`.
+Backups: `~/.codex/backup-2026-09-25/`.
+
 Pilot, 2026-09-18 (superseded by the install): the candidate was copied to
 `prompt-lab/.codex/config.toml` and applied only to Codex sessions in this repo. A fresh
 `codex exec` in the repo recorded `active_permission_profile: prompt-lab` with every

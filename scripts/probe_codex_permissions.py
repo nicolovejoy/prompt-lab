@@ -4,6 +4,7 @@ Run manually outside an enclosing Seatbelt sandbox. The output describes only
 the tested command sandbox, not approvals, MCP tools, or inherited credentials.
 """
 
+import atexit
 import json
 import pathlib
 import platform
@@ -52,9 +53,25 @@ def main():
         config = tomllib.loads(candidate.read_text())
         # Exact exceptions cannot reliably reopen a matching deny glob, so none
         # are used. Pass the entire table: dotted overrides may merge old rules.
-        profile = {"cx-fake-probe": config["permissions"]["prompt-lab"]}
+        profile = {"cx-fake-probe": dict(config["permissions"]["prompt-lab"])}
         home_denied = [k for k, v in config["permissions"]["prompt-lab"]["filesystem"].items()
                        if k.startswith("~/") and v == "deny"]
+        # The cross-repo handoff grant names the real ~/src/.handoff. The probe
+        # points that grant (and its .git carve-outs) at a disposable git repo
+        # under ~/.cache — not under tmp, which the sandbox may open anyway —
+        # and never touches the real log.
+        handoff_key = "~/src/.handoff"
+        cache_dir = pathlib.Path.home() / ".cache"
+        cache_dir.mkdir(exist_ok=True)
+        handoff_fake = tempfile.mkdtemp(prefix="cx-fake-handoff-", dir=cache_dir)
+        atexit.register(shutil.rmtree, handoff_fake, True)
+        subprocess.run(["git", "init", "-q", handoff_fake], check=True)
+        fs = {}
+        for key, value in profile["cx-fake-probe"]["filesystem"].items():
+            if key == handoff_key or key.startswith(handoff_key + "/"):
+                key = handoff_fake + key[len(handoff_key):]
+            fs[key] = value
+        profile["cx-fake-probe"]["filesystem"] = fs
         # Only existence and exit status are checked; nothing is printed.
         tools = [("git-config-read", ["git", "config", "--global", "--list"]),
                  ("network-public", ["curl", "-sSf", "-m", "10", "-o", "/dev/null",
@@ -98,14 +115,37 @@ result = result.returncode == 0 and subprocess.run(
     ['git', '-c', 'user.email=probe@example.invalid', '-c', 'user.name=probe',
      'commit', '-qm', 'probe'], capture_output=True).returncode == 0
 checks['git-commit'] = result
-for name in ('.git/hooks/pre-commit', '.git/config', '.codex/config.toml',
-             '.agents/probe.md'):
+for name in ('.git/hooks/pre-commit', '.git/config', '.git/commondir',
+             '.codex/config.toml', '.agents/probe.md'):
     try:
         with open(name, 'a') as f:
             f.write('# FAKE_PROBE\\n')
         checks['git-protected:' + name] = False
     except PermissionError:
         checks['git-protected:' + name] = True
+# Cross-repo handoff log: handoff.sh needs its mkdir lock and a local commit
+# to work from inside the sandbox; hooks and config stay read-only there too.
+hf = pathlib.Path(''' + repr(handoff_fake) + ''')
+try:
+    (hf / '.handoff.lock.d').mkdir()
+    checks['handoff-lock-mkdir'] = True
+except PermissionError:
+    checks['handoff-lock-mkdir'] = False
+try:
+    (hf / 'probe.md').write_text('FAKE_PROBE')
+    ok = subprocess.run(['git', '-C', str(hf), 'add', 'probe.md'], capture_output=True).returncode == 0
+    checks['handoff-git-commit'] = ok and subprocess.run(
+        ['git', '-C', str(hf), '-c', 'user.email=probe@example.invalid', '-c', 'user.name=probe',
+         'commit', '-qm', 'probe'], capture_output=True).returncode == 0
+except PermissionError:
+    checks['handoff-git-commit'] = False
+for name in ('.git/hooks/pre-commit', '.git/config', '.git/commondir'):
+    try:
+        with open(hf / name, 'a') as f:
+            f.write('# FAKE_PROBE\\n')
+        checks['handoff-protected:' + name] = False
+    except PermissionError:
+        checks['handoff-protected:' + name] = True
 # Home-directory secrets and the raw prompt store stay unreadable.
 for name in ''' + repr(home_denied) + ''':
     path = pathlib.Path(name).expanduser()
