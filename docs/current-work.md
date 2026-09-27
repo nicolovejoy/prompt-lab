@@ -7,11 +7,15 @@
    terminal's nvm default); a sandboxed Codex `handoff.sh append` pushed with exit 0.
    Left open: re-measure on ~2026-10-02: `default.rules` should have gained ≤ 3
    rules and no `zsh -lc` / `PATH=` escalations should remain (tally method in the plan).
-2. **PR #68 (Codex host bookkeeping consumer): both review blockers fixed (4043d2c),
-   devlog.md dropped — awaiting Nico's review.** Live-trial checks: Codex's real
-   UserPromptSubmit payload carries `turn_id`; the handoff skill should emit the
-   `GC_REQUEST` marker only in the handoff turn. If Codex stays occasional, parking #68
-   is a legitimate outcome — until it passes a live trial, Codex's record is its PR.
+2. **PR #68 (Codex host bookkeeping consumer) merged 2026-09-25 (`ec0385f`); the
+   pilot is NOT enabled.** Until it is, every Codex `/readup` and `/handoff` fails
+   registration with `unable to open database file`: the installed Codex skills
+   (rendered 2026-09-19) still call `gc-write.sh`, which cannot reach
+   `~/.claude/prompt-history.db` from the sandbox, escalated or not (reported by
+   songpath-codex 2026-09-27). Pilot started 2026-09-27: fixture tests + consumer probe
+   pass on codex-cli 0.157.1. Remaining: Step 3 of `docs/codex-workflow-validation.md`.
+   Live-trial checks: Codex's real UserPromptSubmit payload carries `turn_id`; the
+   handoff skill should emit the `GC_REQUEST` marker only in the handoff turn.
 3. **#70 closed 2026-09-25:** the history DB is the one session record; no devlog.md.
    The PR-review rule landed in the shared conventions block (v=`28022362f01b`) with
    the Codex command-hygiene change. Nothing pending.
