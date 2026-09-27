@@ -121,6 +121,37 @@ python3 scripts/stage_codex_bookkeeping.py \
    Expand only after those gates. To disable a failed pilot, restore the prior hook
    configuration and report bookkeeping unavailable; do not expose the database.
 
+## Live pilot — passed 2026-09-27 (prompt-lab-codex, CLI only)
+
+Nico ran Step 3 by hand on the laptop; codex-cli 0.157.1, reviewed source `b82994e`.
+Pre-check from Claude's sandbox: `test_hook_bookkeeping.py` 20/20 groups,
+`probe_codex_hooks.py --consumer --outer-sandbox` continue + reject PASS.
+
+- Bundle staged at `~/.claude/codex-bookkeeping-step2` (config workspaces:
+  `prompt-lab-codex` only), run by Homebrew python3.14 `-I -S`. The stager ran from
+  the main checkout because the clone predated #68; `--workspace` still named the clone.
+- `~/.codex/hooks.json` keeps its four prior hooks and adds `bookkeeping.py` to
+  SessionStart, UserPromptSubmit and Stop. The three generated skills were copied to
+  `~/.agents/skills/`; the retired `prompt-lab-session.rules` was moved out. Backup and
+  restore source: `~/.codex/backup-2026-09-27-pilot/`.
+- Fresh `cx prompt-lab`: readup retained host identity (session 885) and ran no DB
+  helper. Throwaway commit `782bb5c` on `codex/bookkeeping-pilot`. Handoff printed one
+  `GC_REQUEST` marker, reported queued, received `GC_RECEIPT` (status saved,
+  commits_inserted 1) through a Stop block, then acknowledged saved.
+- Read back from the history DB by Claude: session 885 owned by
+  `codex:01a0e3ef-…`, summary + `ended_at` set; commit `782bb5c` on session 885;
+  ledger row `88de0be1…` with the marker's digest; 2 prompts on session 885 (prompt
+  hook and consumer share the identity).
+- Found and fixed: `prompt-lab-codex` and `band-pa-recording-codex` had no project
+  alias; both added 2026-09-27.
+
+Global-scope caveat: hooks and skills are global, but the bundle accepts only its
+configured workspaces. Any Codex session (CLI or Desktop) elsewhere gets
+`Host cwd is outside configured pilot workspaces` as a Stop block every turn. Rollout
+means restaging with every `~/src/*-codex` clone in `--workspace` (the stager refuses
+an existing destination, so a new versioned directory) and repointing the three hook
+commands. Still untested: resume/fork, Claude-pair, Desktop.
+
 ## Hook lifecycle probe — passed 2026-09-19 (fixture only)
 
 `scripts/probe_codex_hooks.py` exercised the installed Codex CLI 0.155.1 against

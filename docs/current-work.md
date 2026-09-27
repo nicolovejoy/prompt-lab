@@ -12,10 +12,11 @@
    registration with `unable to open database file`: the installed Codex skills
    (rendered 2026-09-19) still call `gc-write.sh`, which cannot reach
    `~/.claude/prompt-history.db` from the sandbox, escalated or not (reported by
-   songpath-codex 2026-09-27). Pilot started 2026-09-27: fixture tests + consumer probe
-   pass on codex-cli 0.157.1. Remaining: Step 3 of `docs/codex-workflow-validation.md`.
-   Live-trial checks: Codex's real UserPromptSubmit payload carries `turn_id`; the
-   handoff skill should emit the `GC_REQUEST` marker only in the handoff turn.
+   songpath-codex 2026-09-27). **Live pilot PASSED 2026-09-27 in prompt-lab-codex**
+   (session 885; details under "Live pilot" in `docs/codex-workflow-validation.md`).
+   Bundle accepts only prompt-lab-codex, so Codex anywhere else is blocked every turn
+   until rollout: restage with all `~/src/*-codex` clones, repoint hooks, then tell
+   songpath (and the fleet) registration works.
 3. **#70 closed 2026-09-25:** the history DB is the one session record; no devlog.md.
    The PR-review rule landed in the shared conventions block (v=`28022362f01b`) with
    the Codex command-hygiene change. Nothing pending.
