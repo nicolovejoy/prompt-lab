@@ -14,9 +14,11 @@
    `~/.claude/prompt-history.db` from the sandbox, escalated or not (reported by
    songpath-codex 2026-09-27). **Live pilot PASSED 2026-09-27 in prompt-lab-codex**
    (session 885; details under "Live pilot" in `docs/codex-workflow-validation.md`).
-   Bundle accepts only prompt-lab-codex, so Codex anywhere else is blocked every turn
-   until rollout: restage with all `~/src/*-codex` clones, repoint hooks, then tell
-   songpath (and the fleet) registration works.
+   **Rolled out the same day:** `~/.claude/codex-bookkeeping-step3` accepts all five
+   `~/src/*-codex` clones; songpath-codex registered (session 889) and songpath was told.
+   A new clone must be added by restaging (new versioned dir) + repointing
+   `~/.codex/hooks.json` — outside the list, every Codex turn gets a Stop block. Codex
+   Desktop is unverified. Still untested: resume/fork, Claude-pair (Step 4).
 3. **#70 closed 2026-09-25:** the history DB is the one session record; no devlog.md.
    The PR-review rule landed in the shared conventions block (v=`28022362f01b`) with
    the Codex command-hygiene change. Nothing pending.
