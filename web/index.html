@@ -2142,6 +2142,94 @@
         </div>`;
     }
 
+    // <pure>
+    // Pure helpers: no DOM, no Preact, nothing from outside this block.
+    // scripts/test_frontend_pure.mjs lifts the block out by its markers and
+    // unit-tests it under Node — the only way to test logic in a page that has
+    // no build step. A reference to window, document or html in here fails
+    // that run, which is what keeps the block honest.
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun',
+                    'Jul','Aug','Sep','Oct','Nov','Dec'];
+    function fmtShortDate(iso) {
+      const [, m, d] = iso.split('-');
+      return MONTHS[parseInt(m, 10) - 1] + ' ' + parseInt(d, 10);
+    }
+    function fmtMonth(ym) {
+      const [y, m] = ym.split('-');
+      return MONTHS[parseInt(m, 10) - 1] + ' ' + y;
+    }
+
+    // Calendar arithmetic on YYYY-MM-DD strings. The strings are already
+    // Pacific calendar days; Date.UTC on their parts keeps them that way.
+    // Reading one back through a timezone is how a bucket slides a day.
+    function addDays(iso, n) {
+      const [y, m, d] = iso.split('-').map(Number);
+      const t = new Date(Date.UTC(y, m - 1, d + n));
+      const p = (v) => String(v).padStart(2, '0');
+      return t.getUTCFullYear() + '-' + p(t.getUTCMonth() + 1) + '-' + p(t.getUTCDate());
+    }
+    // Monday-to-Sunday weeks, and a Monday is its own week — the same rule the
+    // SQL rollups use ('weekday 0','-6 days'), so a phone bar and a weekly
+    // rollup never disagree about which week a Monday belongs to.
+    function mondayOf(iso) {
+      const [y, m, d] = iso.split('-').map(Number);
+      const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();   // 0 = Sunday
+      return addDays(iso, -((weekday + 6) % 7));
+    }
+
+    // A phone has room for about fifty bars. 90 days become weeks and a year
+    // becomes months there; a wide screen keeps a bar per day at every window.
+    function bucketSizeFor(days, narrow) {
+      if (!narrow) return 'day';
+      if (days >= 365) return 'month';
+      if (days >= 90) return 'week';
+      return 'day';
+    }
+
+    function bucketLabel(b) {
+      const first = b.dates[0], last = b.dates[b.dates.length - 1];
+      if (b.size === 'month') return fmtMonth(b.key);
+      if (b.size === 'week' && first !== last) {
+        return first.slice(0, 7) === last.slice(0, 7)
+          ? fmtShortDate(first) + '–' + parseInt(last.slice(8), 10)
+          : fmtShortDate(first) + ' – ' + fmtShortDate(last);
+      }
+      return fmtShortDate(first);
+    }
+
+    // `dates` ascending. The first and last bucket are usually partial: a
+    // window rarely starts on a Monday or on the 1st.
+    function bucketDates(dates, size) {
+      const out = [];
+      for (const d of dates) {
+        const key = size === 'month' ? d.slice(0, 7) : size === 'week' ? mondayOf(d) : d;
+        const last = out[out.length - 1];
+        if (last && last.key === key) last.dates.push(d);
+        else out.push({ key, size, dates: [d] });
+      }
+      for (const b of out) b.label = bucketLabel(b);
+      return out;
+    }
+
+    // byDateSeg: { date: { segment: count } }. Counts may arrive as strings.
+    function bucketTotals(bucket, byDateSeg) {
+      const merged = {};
+      for (const d of bucket.dates)
+        for (const [s, v] of Object.entries(byDateSeg[d] || {}))
+          merged[s] = (merged[s] || 0) + (Number(v) || 0);
+      const segs = Object.entries(merged)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      return { total: segs.reduce((t, [, v]) => t + v, 0), segs };
+    }
+
+    // Which bucket is under a pointer `x` pixels into a chart `width` wide.
+    // Clamped, because a finger dragging across a chart slides off its edges.
+    function bucketIndexAt(x, width, count) {
+      if (!(width > 0) || count < 1) return -1;
+      return Math.max(0, Math.min(count - 1, Math.floor((x / width) * count)));
+    }
+    // </pure>
+
     // ---- Costs Overview (all projects, over time) ----
     const COST_PALETTE = ['#6366f1','#22c55e','#eab308','#ef4444','#06b6d4',
                           '#ec4899','#f97316','#a855f7'];
@@ -2157,12 +2245,6 @@
     function fmtUsd(n) {
       return '$' + (Number(n) || 0).toLocaleString('en-US',
         { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-    function fmtShortDate(iso) {
-      const [, m, d] = iso.split('-');
-      const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                      'Jul','Aug','Sep','Oct','Nov','Dec'];
-      return months[parseInt(m, 10) - 1] + ' ' + parseInt(d, 10);
     }
 
     // ---- Shared date axis --------------------------------------------------

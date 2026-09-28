@@ -240,6 +240,11 @@ the SQL because the pause lookup, the freshness lookups and the uptime upsert sh
 `turso_query` and must not be conflated — pause fails open, freshness fails loud, and
 the archive write must be separately observable.
 
+The dashboard is one file with no build step, so its logic cannot be imported by
+a test. Pure helpers live in `web/index.html` between `// <pure>` and
+`// </pure>`; `node scripts/test_frontend_pure.mjs` lifts that block out and
+unit-tests it (CI-gated). Keep the block free of `window`, `document` and `html`.
+
 Phone layout is checked by a separate local runner, because a page that scrolls
 sideways or a control too small to tap is invisible to a source grep:
 
