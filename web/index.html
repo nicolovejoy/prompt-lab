@@ -353,10 +353,75 @@
       .sub-tab { white-space: nowrap; flex-shrink: 0; }
     }
 
-    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    /* minmax(0, …), not a bare 1fr: a 1fr track's minimum is its content, so one
+       long unwrapped hostname set the width of the whole page (767px in a 390px
+       viewport on #/visitors). */
+    .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
     .chart-scroll { overflow-x: auto; }
     @media (max-width: 600px) {
-      .two-col { grid-template-columns: 1fr; }
+      .two-col { grid-template-columns: minmax(0, 1fr); }
+    }
+
+    /* One-line rows with an ellipsis on a wide screen; on a phone the label wraps
+       and its sub-label drops underneath, because an ellipsis there hides the
+       only part of a path that tells two pages apart. */
+    .list-row {
+      display: flex; align-items: center; gap: 8px; padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .list-row-text { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1 1 auto; }
+    .list-row-label { font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .list-row-sub {
+      font-size: 0.85rem; color: var(--text-secondary);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .list-row-value { margin-left: auto; flex: none; font-size: 1.12rem; font-variant-numeric: tabular-nums; }
+    /* A share row centres on one line like any other row; on a phone its name can
+       wrap, so the swatch, share and count pin to the first line instead. */
+    .share-row-head { display: flex; align-items: center; gap: 8px; }
+    @media (max-width: 600px) {
+      .list-row { align-items: flex-start; padding: 8px 0; }
+      .list-row-text { flex-direction: column; gap: 1px; }
+      .list-row-label, .list-row-sub { white-space: normal; overflow-wrap: anywhere; }
+      .share-row-head { align-items: flex-start; }
+      .share-row-swatch { margin-top: 7px; }
+    }
+
+    /* Three lists stacked on a phone ran to 2,800px. Below 600px they share one
+       slot behind a tab bar; above it the bar is hidden and all three show, so
+       the wide layout is exactly what it was. Both markups always render and
+       CSS picks — no viewport state in JS to desync on rotate. */
+    .vis-tabs { display: none; }
+    .page-note-narrow { display: none; }
+    @media (max-width: 600px) {
+      .vis-tabs { display: flex; gap: 4px; margin-top: 4px; }
+      .vis-tabs .sub-tab { flex: 1 1 0; min-height: 44px; padding: 7px 6px; }
+      .vis-panel { display: none; }
+      .vis-panel.active { display: block; }
+      /* The active tab already names the list. */
+      .vis-panel .vis-panel-title { display: none; }
+      .two-col.vis-second { margin-top: 0; }
+
+      .page-note-wide { display: none; }
+      .page-note-narrow { display: block; margin: 0 0 16px; }
+      .page-note-narrow summary {
+        display: flex; align-items: center; min-height: 44px; cursor: pointer;
+        font-size: 1.02rem; color: var(--accent); list-style: none;
+      }
+      /* flex on the summary drops the native triangle; this chevron replaces it,
+         pointing right when closed and down when open. */
+      .page-note-narrow summary::-webkit-details-marker { display: none; }
+      .page-note-narrow summary::after {
+        content: ''; width: 7px; height: 7px; margin-left: 10px;
+        border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent);
+        transform: rotate(-45deg);
+      }
+      .page-note-narrow[open] summary::after { transform: rotate(45deg); }
+      /* !important because the wrapped blocks bring inline margins written for the
+         wide layout (a negative top pulls a note up under its paragraph), and an
+         inline style outranks every selector. Any child, not just a div, so a note
+         wrapped in a p is covered too; the summary keeps its own spacing. */
+      .page-note-narrow > :not(summary) { margin: 0 0 12px !important; }
     }
 
     /* Cards */
@@ -2909,8 +2974,22 @@
         </div>`;
     }
 
+    // A page's standing explanation. On a wide screen it sits above the data as
+    // it always has. On a phone it took the top half of the first screen on
+    // every visit, so it folds behind one line — read once, then out of the way.
+    // Rendered twice and CSS picks, the same idiom as the two navs.
+    function PageNote({ summary = 'About this data', children }) {
+      return html`
+        <div class="page-note-wide" data-test="page-note-wide">${children}</div>
+        <details class="page-note-narrow" data-test="page-note">
+          <summary>${summary}</summary>
+          ${children}
+        </details>`;
+    }
+
     function VisitorsOverview() {
       const [days, setDays] = useState(30);
+      const [tab, setTab] = useState('pages');
       const [data, setData] = useState(() => visitorOverviewMemo.get(30) || null);
       const [loading, setLoading] = useState(!visitorOverviewMemo.has(30));
       const [hovered, setHovered] = useState(null);
@@ -2952,16 +3031,18 @@
           <h1 style="margin: 0; font-size: 1.91rem; color: var(--accent-light)">Visitors</h1>
           ${windowPicker}
         </div>
-        <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
-          Anonymous page views from the first-party beacon — cookie-less, IPs
-          never stored, visitor hashes rotate daily (so uniques are per-day by
-          design). Only instrumented sites appear here.
-        </div>
-        <div class="heatmap-note" style="margin: -12px 0 20px">
-          Browser automation is excluded from ${AGENT_LABEL_DAY} onward. Earlier
-          rows predate the label and may include test traffic — the beacon
-          stores no user-agent, so it can't be sorted out after the fact.
-        </div>`;
+        <${PageNote}>
+          <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
+            Anonymous page views from the first-party beacon — cookie-less, IPs
+            never stored, visitor hashes rotate daily (so uniques are per-day by
+            design). Only instrumented sites appear here.
+          </div>
+          <div class="heatmap-note" style="margin: -12px 0 20px">
+            Browser automation is excluded from ${AGENT_LABEL_DAY} onward. Earlier
+            rows predate the label and may include test traffic — the beacon
+            stores no user-agent, so it can't be sorted out after the fact.
+          </div>
+        <//>`;
 
       if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading visitors…</div></div>`;
       if (!data || data.error) return html`<div>${header}<div class="cost-placeholder">Couldn't load visitors.</div></div>`;
@@ -2974,13 +3055,23 @@
                     font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
           ${t}
         </div>`;
+      const panelTitle = (t) => html`<div class="vis-panel-title">${sectionTitle(t)}</div>`;
+      const TABS = [['pages', 'Pages'], ['referrers', 'Referrers'], ['countries', 'Countries']];
+      const tabBar = html`
+        <div class="sub-tabs vis-tabs" data-test="visitors-tabs" role="group" aria-label="Show list">
+          ${TABS.map(([k, label]) => html`
+            <button class="sub-tab ${tab === k ? 'active' : ''}"
+                    aria-pressed=${tab === k ? 'true' : 'false'} data-test=${'tab-' + k}
+                    onClick=${() => setTab(k)}>${label}</button>`)}
+        </div>`;
+      const panelClass = (k) => 'vis-panel' + (tab === k ? ' active' : '');
       const listRow = (label, sub, v) => html`
-        <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
-                    border-bottom: 1px solid var(--border)">
-          <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${label}</span>
-          ${sub && html`<span style="font-size: 0.85rem; color: var(--text-secondary); overflow: hidden;
-                                     text-overflow: ellipsis; white-space: nowrap">${sub}</span>`}
-          <span style="margin-left: auto; font-size: 1.12rem; font-variant-numeric: tabular-nums">${v.toLocaleString()}</span>
+        <div class="list-row">
+          <div class="list-row-text">
+            <span class="list-row-label">${label}</span>
+            ${sub && html`<span class="list-row-sub">${sub}</span>`}
+          </div>
+          <span class="list-row-value">${v.toLocaleString()}</span>
         </div>`;
 
       // ---- Sign-ins (issue #10) ----
@@ -3070,6 +3161,8 @@
       }
 
       const ranked = Object.entries(bySite).sort((a, b) => b[1] - a[1]);
+      const maxSite = Math.max(...ranked.map(([, v]) => v), 1);
+      const previewHosts = Number(data.preview_hosts);
       const colorOf = {};
       ranked.forEach(([s], i) => { colorOf[s] = i < COST_PALETTE.length ? COST_PALETTE[i] : COST_OTHER; });
       const segColor = (s) => colorOf[s] || COST_OTHER;
@@ -3156,31 +3249,45 @@
           `)}
 
           <div class="two-col">
-            <div>
+            <div data-test="by-site">
               ${sectionTitle('By site')}
               ${ranked.map(([s, v]) => html`
-                <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
-                            border-bottom: 1px solid var(--border)">
-                  <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(s)}; flex: none"></span>
-                  <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${s}</span>
-                  <span style="margin-left: auto; font-size: 0.85rem; color: var(--text-secondary)">${(v / totalViews * 100).toFixed(0)}%</span>
-                  <span style="font-size: 1.12rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${v.toLocaleString()}</span>
+                <div data-test="share-row" class="list-row" style="display: block">
+                  <div class="share-row-head">
+                    <span class="share-row-swatch" style="width: 9px; height: 9px; border-radius: 2px;
+                                 background: ${segColor(s)}; flex: none"></span>
+                    <div class="list-row-text">
+                      <span class="list-row-label">${s}</span>
+                      ${s === 'previews' && Number.isFinite(previewHosts) && previewHosts > 0 && html`
+                        <span class="list-row-sub">
+                          ${previewHosts} preview host${previewHosts === 1 ? '' : 's'}
+                        </span>`}
+                    </div>
+                    <span data-test="share-pct" style="margin-left: auto; flex: none; font-size: 0.85rem; color: var(--text-secondary)">
+                      ${(v / totalViews * 100).toFixed(0)}%</span>
+                    <span data-test="share-value" style="flex: none; font-size: 1.12rem; font-variant-numeric: tabular-nums;
+                                 min-width: 56px; text-align: right">${v.toLocaleString()}</span>
+                  </div>
+                  <div data-test="share-bar" style="height: 3px; border-radius: 2px; margin-top: 3px;
+                              width: ${(v / maxSite * 100).toFixed(1)}%;
+                              background: ${segColor(s)}; opacity: 0.6"></div>
                 </div>`)}
             </div>
-            <div>
-              ${sectionTitle('Top pages')}
+            ${tabBar}
+            <div class=${panelClass('pages')} data-test="panel-pages">
+              ${panelTitle('Top pages')}
               ${paths.map(r => listRow(r.path, r.site, r.views))}
             </div>
           </div>
 
-          <div class="two-col">
-            <div>
-              ${sectionTitle('Referrers')}
+          <div class="two-col vis-second">
+            <div class=${panelClass('referrers')} data-test="panel-referrers">
+              ${panelTitle('Referrers')}
               ${referrers.length ? referrers.map(r => listRow(r.referrer, r.site, r.views))
                 : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">None yet.</div>`}
             </div>
-            <div>
-              ${sectionTitle('Countries')}
+            <div class=${panelClass('countries')} data-test="panel-countries">
+              ${panelTitle('Countries')}
               ${countries.length ? countries.map(r => listRow(r.country, null, r.views))
                 : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">None yet.</div>`}
             </div>

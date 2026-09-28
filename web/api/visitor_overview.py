@@ -2,8 +2,10 @@
 
 Reads the `page_views` table written directly by /api/beacon (issue #9).
 Sites are hostnames (from the Origin header), not project names, so no
-alias folding applies here — the mapping of site → project is a display
-concern for later.
+alias folding applies here. One fold does: preview deployments
+(`*.vercel.app`, `preview.*`) collapse into a single `previews` site, because
+each branch deploy gets its own hostname and a dozen one-view "sites" bury
+the real ones. It is a rule on the hostname's shape, not a list of names.
 
 The four traffic queries all pin `event = 'pageview'`, so `login` rows
 (issue #10) can never inflate a view count — which also means they are
@@ -24,6 +26,35 @@ from access_helper import resolve_access
 from turso_helper import turso_query
 
 LOGIN_ROLES = ("admin", "reader")
+
+PREVIEWS = "previews"
+
+
+def _site_label(host):
+    """A preview deployment's hostname -> "previews"; anything else unchanged."""
+    h = (host or "").lower()
+    if h.endswith(".vercel.app") or h.startswith("preview."):
+        return PREVIEWS
+    return host
+
+
+def _fold(rows, keys, sums):
+    """Relabel each row's site, then merge rows that now share `keys`,
+    adding up `sums`. Counts must already be ints. Summed uniques can count
+    one visitor twice across two preview hosts — accepted: the hash is
+    per-site-per-day by design, so there is nothing to dedupe on."""
+    out, seen = [], {}
+    for row in rows:
+        row = dict(row)
+        row["site"] = _site_label(row.get("site"))
+        key = tuple(row.get(k) for k in keys)
+        if key in seen:
+            for s in sums:
+                seen[key][s] += row[s]
+        else:
+            seen[key] = row
+            out.append(row)
+    return out
 
 
 def _login_role(path):
@@ -129,11 +160,29 @@ class handler(BaseHTTPRequestHandler):
             role = _login_role(r.get("path"))
             by_role[role] = by_role.get(role, 0) + int(r["count"] or 0)
 
+        daily = _ints(daily, ["views", "uniques"])
+        preview_hosts = len({r["site"] for r in daily
+                             if _site_label(r["site"]) == PREVIEWS})
+
+        def by_views(r):
+            return -r["views"]
+
+        # The fold runs after the queries' LIMIT 300 (paths) and LIMIT 200
+        # (referrers), so preview rows past those cutoffs never reach the merged
+        # "previews" row: its counts in these two lists can run low. `daily` has
+        # no limit, so By site, the chart and preview_hosts are exact.
+        folded_paths = sorted(_fold(_ints(paths, ["views"]), ["site", "path"], ["views"]),
+                              key=by_views)
+        folded_referrers = sorted(
+            _fold(_ints(referrers, ["views"]), ["site", "referrer"], ["views"]),
+            key=by_views)
+
         payload = {
-            "daily": _ints(daily, ["views", "uniques"]),
-            "paths": _ints(paths, ["views"]),
-            "referrers": _ints(referrers, ["views"]),
+            "daily": _fold(daily, ["date", "site"], ["views", "uniques"]),
+            "paths": folded_paths,
+            "referrers": folded_referrers,
             "countries": _ints(countries, ["views", "uniques"]),
+            "preview_hosts": preview_hosts,
             "logins": {
                 "by_day": by_day,
                 "by_role": [{"role": k, "count": v} for k, v in
