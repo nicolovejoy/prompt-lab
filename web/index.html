@@ -2251,6 +2251,13 @@
       const k = n / 1000;
       return '$' + (k < 9.95 ? k.toFixed(1).replace(/\.0$/, '') : Math.round(k)) + 'k';
     }
+
+    // A single project's daily spend is often under a cent; at two decimals a
+    // real $0.004 day reads "$0.00", the same as no spend at all.
+    function fmtUsdFine(n) {
+      return '$' + (Number(n) || 0).toLocaleString('en-US',
+        { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+    }
     // </pure>
 
     // ---- Costs Overview (all projects, over time) ----
@@ -4079,7 +4086,13 @@
 
       if (loading) return html`<div class="cost-placeholder">Loading cost…</div>`;
       if (!data || data.error) return null;
-      const costs = data.costs || [];
+      // A continuous 30-day calendar like every other chart here, so a bar's
+      // position is its date and the newest bar is always today. `since` is
+      // inclusive and brings a 31st day; the header total and the legend count
+      // only the days drawn, so "last 30d", the bars and the legend agree.
+      const dates = [];
+      for (let i = 29; i >= 0; i--) dates.push(labDay(i));
+      const costs = (data.costs || []).filter((r) => r.date >= dates[0]);
       if (!costs.length) return html`
         <div class="cost-placeholder">
           No API spend in the last 30 days.
@@ -4089,22 +4102,13 @@
       // Per-day, per-model spend. One colour for every model, as this chart has
       // always drawn it: the model split is in the tooltip, the readout and the
       // legend below, not in the bar.
-      const byDateModel = {};
+      const byDateModel = {}, byModel = {};
       let total = 0;
       for (const r of costs) {
         const v = Number(r.cost_usd) || 0;
         total += v;
         (byDateModel[r.date] ||= {})[r.model] = (byDateModel[r.date]?.[r.model] || 0) + v;
-      }
-      // A continuous 30-day calendar like every other chart here, so a bar's
-      // position is its date and the newest bar is always today.
-      const dates = [];
-      for (let i = 29; i >= 0; i--) dates.push(labDay(i));
-
-      // Per-model totals for legend
-      const byModel = {};
-      for (const r of costs) {
-        byModel[r.model] = (byModel[r.model] || 0) + (Number(r.cost_usd) || 0);
+        byModel[r.model] = (byModel[r.model] || 0) + v;
       }
       const models = Object.entries(byModel).sort((a, b) => b[1] - a[1]);
 
@@ -4119,7 +4123,7 @@
               API cost · last 30d
             </div>
             <div style="display: flex; align-items: baseline; gap: 12px">
-              <div style="font-size: 1.3rem; font-weight: 600">
+              <div data-test="cost-total" style="font-size: 1.3rem; font-weight: 600">
                 $${total.toFixed(2)}
               </div>
               <a href="#/project/${encodeURIComponent(project)}/cost"
@@ -4130,10 +4134,10 @@
             </div>
           </div>
           <${StackedBars} id="project-cost" dates=${dates} days=${30} byDateSeg=${byDateModel}
-            segColor=${() => 'var(--accent)'} fmtValue=${fmtUsd} fmtAxis=${fmtUsdAxis}
+            segColor=${() => 'var(--accent)'} fmtValue=${fmtUsdFine} fmtAxis=${fmtUsdAxis}
             minPeak=${0.0001} chartH=${100} scroll=${false} />
           ${models.length > 0 && html`
-            <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
+            <div data-test="cost-legend" style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
                         font-size: 0.89rem; color: var(--text-secondary);
                         font-family: 'SF Mono', ui-monospace, monospace">
               ${models.map(([m, v]) => html`

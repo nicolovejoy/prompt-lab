@@ -27,7 +27,7 @@ if (src.indexOf('// <pure>', open + 1) >= 0) {
 }
 
 const NAMES = ['fmtShortDate', 'fmtMonth', 'fmtMonthShort', 'addDays', 'mondayOf', 'bucketSizeFor',
-               'bucketDates', 'bucketTotals', 'bucketIndexAt', 'fmtUsdAxis'];
+               'bucketDates', 'bucketTotals', 'bucketIndexAt', 'fmtUsdAxis', 'fmtUsdFine'];
 const pure = new Function(`"use strict";\n${src.slice(open, close)}\nreturn { ${NAMES.join(', ')} };`)();
 
 const tests = [];
@@ -181,6 +181,13 @@ test('fmtUsdAxis on a phone: five characters at most, to fit a 44px gutter', () 
     const s = pure.fmtUsdAxis(n, true);
     assert.ok(s.length <= 5, `${n} -> "${s}" is ${s.length} characters`);
   }
+});
+
+test('fmtUsdFine keeps four decimals, so spend under half a cent is not "$0.00"', () => {
+  const cases = [[0, '$0.0000'], [0.0004, '$0.0004'], [0.00449, '$0.0045'], [1.3766, '$1.3766'],
+                 [1234.5, '$1,234.5000']];
+  for (const [n, want] of cases) assert.equal(pure.fmtUsdFine(n), want, String(n));
+  assert.notEqual(pure.fmtUsdFine(0.004), '$0.00');
 });
 
 let failed = 0;

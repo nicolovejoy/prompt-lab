@@ -1,7 +1,7 @@
 // Layout checks. Each entry loads one route under one device profile.
 // t.ok(condition, message) records an assertion; the runner prints them.
 
-import { LONG_HOST, LONG_PATH, fixtureOptions, labDay } from './fixtures.mjs';
+import { LONG_HOST, LONG_PATH, apiFixture, fixtureOptions, labDay } from './fixtures.mjs';
 
 export async function pageOverflow(page) {
   return page.evaluate(() => ({
@@ -558,7 +558,40 @@ BASELINE_EXTRA['home-desktop'] = async (page, t, ready) => {
   t.ok(await page.getByText('tap a bar for that day').isVisible(), 'home subtitle is unchanged on desktop');
   await desktopChart('home', [['7d', 7], ['30d', 30]], / prompts so far$/)(page, t, ready);
 };
-BASELINE_EXTRA['project-desktop'] = desktopChart('project-cost', [[null, 30]], /^\w{3} \d+ · \$[\d,]+\.\d\d$/);
+// A project's daily spend is often under a cent, so its amounts keep four
+// decimals; "$0.00" for real spend reads as none.
+BASELINE_EXTRA['project-desktop'] = async (page, t, ready) => {
+  await desktopChart('project-cost', [[null, 30]], /^\w{3} \d+ · \$[\d,]+\.\d{4}$/)(page, t, ready);
+
+  // "last 30d" is the 30 days the chart draws, and the per-model legend adds up
+  // to it. The fetch's `since` is inclusive and returns a 31st day, which the
+  // chart does not draw and the total must not count.
+  const { body } = apiFixture('/api/cost_timeline',
+    new URLSearchParams({ project: 'alpha-app', since: labDay(30) }), 'GET');
+  const drawn = body.costs.filter((r) => r.date >= labDay(29)).reduce((s, r) => s + r.cost_usd, 0);
+  const money = (s) => Number(s.replace(/[^\d.]/g, ''));
+  const total = money(await page.locator('[data-test="cost-total"]').innerText());
+  t.ok(total === Number(drawn.toFixed(2)), `cost total is the 30 days drawn ($${total}, expected $${drawn.toFixed(2)})`);
+  const legend = await page.locator('[data-test="cost-legend"] span').allInnerTexts();
+  const sum = legend.reduce((s, x) => s + money(x.split(':').pop()), 0);
+  t.ok(legend.length > 0 && Math.abs(sum - total) < 0.005 * legend.length + 1e-9,
+    `per-model legend sums to the total ($${sum.toFixed(2)} over ${legend.length} models, total $${total})`);
+};
+
+CHECKS.push({
+  name: 'project-cost-chart-fine', profile: 'phone', hash: '#/project/alpha-app', ready: 'text=API cost',
+  async run(page, t) {
+    const chart = page.locator('[data-chart="project-cost"]');
+    await chart.scrollIntoViewIfNeeded();
+    const box = await chartBox(page, 'project-cost');
+    await tapAt(page, box.x + box.width - 3, box.y + box.height / 2);
+    const head = await chart.locator('.chart-readout-head').innerText();
+    const values = await chart.locator('.chart-readout-value').allInnerTexts();
+    t.ok(/ · \$[\d,]+\.\d{4}$/.test(head), `readout total has four decimals ("${head}")`);
+    t.ok(values.length > 0 && values.every((v) => /^\$[\d,]+\.\d{4}$/.test(v)),
+      `readout amounts have four decimals (${values.join(', ')})`);
+  },
+});
 BASELINE_EXTRA.home = async (page, t) => {
   t.ok(await page.getByText('tap a bar for its breakdown').isVisible(), 'home subtitle describes what a tap does on a phone');
 };
