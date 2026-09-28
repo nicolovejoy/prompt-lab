@@ -201,6 +201,11 @@ export const CHECKS = [
       await last.click();
       await page.waitForFunction(() => location.hash.startsWith('#/day/'));
       t.ok(page.url().endsWith('#/day/' + labDay(0)), 'desktop: clicking a bar opens that day');
+      // Back to the chart, so this check's screenshot is the Visitors page:
+      // it is the desktop baseline later chart work is compared against.
+      await page.goBack();
+      await page.locator('text=By site').first().waitFor();
+      await page.mouse.move(0, 0);   // no bar left highlighted in the shot
     },
   },
 ];
