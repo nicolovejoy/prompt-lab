@@ -1152,3 +1152,35 @@ Compare each desktop screenshot against its baseline by eye: the explanations mu
 git add web/index.html scripts/phone/checks.mjs scripts/phone/fixtures.mjs
 git commit -m "feat(phone): page explanations collapse behind one line on every route"
 ```
+
+---
+
+### Task 8: Four phone overflows the new fixtures exposed (runs directly after Task 2)
+
+Added during execution. Task 2's fixtures use a 40-character project name and a project with a site link, and with them four routes overflow a 390px viewport: `home` (529px), `todos` (532px), `day` (485px) and `project` (416px). Real project names are short, which is why the walk with real data did not show it.
+
+**Files:**
+- Modify: `web/index.html`
+- Modify: `scripts/phone/checks.mjs` only if an assertion needs adding; never to loosen one.
+
+**Interfaces:**
+- Consumes: the `home`, `todos`, `day`, `project` baseline checks and their `-desktop` twins from Task 2; `LONG_PROJECT`; the baseline screenshots in `.playwright-mcp/phone/baseline/`.
+- Produces: nothing new. Four failing checks turn green.
+
+**Behaviour:**
+
+1. The home stream row, the Todos project row, the day card header and the project header row each fit a 390px viewport with a 40-character unbroken project name and a site link.
+2. Fix the cause in each: a flex or grid child that cannot shrink (`min-width: 0`), text that cannot wrap (`overflow-wrap: anywhere`) or that should truncate with an ellipsis. A long name wraps where the name is the row's content (stream row, day card header, Todos row) and truncates where it is a label beside controls. Do not hide overflow on a page-level container to mask it.
+3. Counts and controls at the end of a row stay fully visible.
+4. Desktop does not change: compare each desktop screenshot against its baseline.
+
+- [ ] **Step 1: RED.** Run `node scripts/phone/check.mjs home todos day project` and record the four overflow failures with their measured widths.
+- [ ] **Step 2:** For each route, find the element that sets the width (in the page, the widest element whose right edge passes the viewport and that is not inside a horizontal scroller) and fix its cause per Behaviour item 2.
+- [ ] **Step 3: GREEN.** Run `node scripts/phone/check.mjs`. Expected: every check passes.
+- [ ] **Step 4:** Read the four phone screenshots and confirm the long name is readable and nothing is cut off. Compare `home-desktop.png` and `project-desktop.png` against `.playwright-mcp/phone/baseline/`; report any difference. Re-save the baseline copies afterwards, so later tasks compare against the fixed pages.
+- [ ] **Step 5:** Run `node scripts/test_frontend_pure.mjs`, the Python suite and ruff. Commit:
+
+```bash
+git add web/index.html
+git commit -m "fix(phone): four rows that overflowed on a long project name or a site link"
+```
