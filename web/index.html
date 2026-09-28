@@ -1177,7 +1177,7 @@
             </div>`}
           <div class="nav-sep"></div>
           <button class="header-btn ${route.view === 'about' ? 'active' : ''}"
-                  onClick=${() => navigate('#/about')}>About</button>
+                  onClick=${() => { setMenu(false); setMore(false); navigate('#/about'); }}>About</button>
           <div class="nav-sep"></div>
           ${email && html`<span class="header-user">${email}</span>`}
           <button class="header-btn" onClick=${onLogout}>Log out</button>
