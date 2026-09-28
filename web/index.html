@@ -171,6 +171,25 @@
       }
       .nav-drop .header-user { padding: 4px 12px; }
       .nav-more { display: contents; }   /* phone: inline, no second surface */
+      /* One line: the header is a block, so .header-left and .header-right
+         stacked as two rows — right for the wide nav, which needs the whole
+         width, but it put the Menu button a full line under the logo. Here the
+         header is the flex row and .header-right dissolves into it, so the
+         theme toggle and Menu sit beside the logo and the open list, at
+         flex-basis 100%, still wraps below as a full-width row. */
+      header { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; }
+      .header-right { display: contents; }
+      .nav-drop.open { flex-basis: 100%; }
+      /* min-width:0 down the chain so a long project name truncates instead
+         of pushing the buttons off the line. */
+      .header-left { flex: 1 1 0; min-width: 0; }
+      .header-logo { flex: none; display: inline-flex; align-items: center; min-height: 44px; }
+      .header-sep { flex: none; }
+      .picker, .picker-btn { min-width: 0; max-width: 100%; }
+      .picker-btn { min-height: 44px; }
+      .theme-btn { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; }
+      .nav-toggle { min-height: 44px; }
+      .nav-drop .header-btn { min-height: 44px; }
     }
 
     /* Wide screens: the second tier is a panel hanging off "More". */
@@ -227,7 +246,8 @@
       font-weight: 500; color: var(--text-secondary); cursor: pointer; padding: 0;
     }
     .picker-btn:hover { color: var(--accent-light); }
-    .picker-caret { font-size: 0.89rem; opacity: 0.7; }
+    .picker-caret { font-size: 0.89rem; opacity: 0.7; flex: none; }
+    .picker-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .picker-menu {
       position: absolute; top: 100%; left: 0; margin-top: 8px;
       background: var(--card); border: 1px solid var(--border); border-radius: 8px;
@@ -245,6 +265,23 @@
     }
     .picker-item:hover { background: var(--card-hover); }
     .picker-item.active { color: var(--accent-light); font-weight: 600; }
+
+    /* Chart window buttons (WindowPicker). */
+    .win-picker { display: flex; gap: 4px; }
+    .win-btn {
+      font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
+      cursor: pointer; font-family: inherit; border: 1px solid var(--border);
+      background: transparent; color: var(--text-secondary);
+    }
+    .win-btn[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
+    /* A list row that links through (Costs and Activity, By project). */
+    .row-link {
+      display: block; padding: 5px 0; text-decoration: none;
+      color: var(--text); border-bottom: 1px solid var(--border);
+    }
+    .chart-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+
 
     /* Cost placeholder (loading / no-spend states) */
     .cost-placeholder {
@@ -702,6 +739,37 @@
       50% { opacity: 0.3; }
     }
     .skeleton-card { height: 80px; margin-bottom: 10px; }
+
+    /* Tap targets on a phone: 44px tall at least, grown with min-height so the
+       text keeps its size. .tap marks a control whose wide-screen styling is
+       inline; an anchor with no display of its own becomes a flex box so its
+       text centres in the taller box. Inline links in running text are not
+       marked and stay as they are. Last in the sheet, so it outranks the
+       base rules whose boxes it grows. */
+    @media (max-width: 640px) {
+      .tap, .win-btn, .sub-tab, .picker-item, select { min-height: 44px; }
+      /* WebKit draws a native select at a fixed height and ignores min-height
+         and padding, so on a phone every select drops the native look and
+         draws its own box and caret (the project page's metadata selects
+         already had the box; naming them here outranks their own rule). */
+      select, .meta-editor select {
+        -webkit-appearance: none; appearance: none; padding: 0 26px 0 8px;
+        border: 1px solid var(--border); border-radius: 4px;
+        background-color: var(--bg); color: var(--text);
+        background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                          linear-gradient(135deg, currentColor 50%, transparent 50%);
+        background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+        background-size: 5px 5px; background-repeat: no-repeat;
+      }
+      a.tap { display: inline-flex; align-items: center; }
+      .win-btn { min-width: 44px; }
+      /* The legend's row gap was spacing between 18px lines; 44px entries
+         carry their own. */
+      .chart-legend { row-gap: 0; }
+      .row-link { display: flex; flex-direction: column; justify-content: center; min-height: 44px; }
+      /* An ellipsis needs a block box, so these grow by line-height, not flex. */
+      .project-link { min-height: 44px; line-height: 42px; padding-top: 0; padding-bottom: 0; }
+    }
   </style>
 </head>
 <body>
@@ -995,7 +1063,7 @@
       return html`
         <span class="picker" ref=${ref}>
           <button class="picker-btn" onClick=${() => setOpen(o => !o)}>
-            ${current}<span class="picker-caret">▾</span>
+            <span class="picker-name">${current}</span><span class="picker-caret">▾</span>
           </button>
           ${open && html`
             <div class="picker-menu">
@@ -1600,14 +1668,7 @@
                         letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary)">
               Activity · last ${days} days
             </div>
-            <div style="display:flex; gap:4px">
-              ${[7, 30].map(d => html`
-                <button onClick=${() => setDays(d)}
-                  style="font-size:0.92rem; padding:3px 9px; border-radius:4px;
-                         cursor:pointer; font-family:inherit; border:1px solid var(--border);
-                         background:${days === d ? 'var(--accent)' : 'transparent'};
-                         color:${days === d ? '#fff' : 'var(--text-secondary)'}">${d}d</button>`)}
-            </div>
+            <${WindowPicker} days=${days} onChange=${setDays} options=${[7, 30]} />
           </div>
           <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.85rem;
                       color:var(--text-secondary); margin:-8px 0 10px">
@@ -1624,9 +1685,9 @@
               chartH=${120} markToday=${true} gutter=${false} scroll=${false} todaySuffix=" so far" />
           </div>
 
-          <div style="display:flex; flex-wrap:wrap; gap:10px 16px">
+          <div class="chart-legend">
             ${ranked.slice(0, COST_PALETTE.length).map(([p]) => html`
-              <a href=${'#/project/' + encodeURIComponent(p)}
+              <a class="tap" href=${'#/project/' + encodeURIComponent(p)}
                  style="display:inline-flex; align-items:center; gap:6px; text-decoration:none;
                         color:var(--text-secondary); font-size:0.98rem">
                 <span style="width:8px; height:8px; border-radius:2px; background:${segColor(p)}"></span>${p}
@@ -1746,7 +1807,7 @@
 
         ${dormantProjects.length > 0 && html`
           <div style="margin-top: 24px">
-            <button style="font-size: 1.16rem; color: var(--text-secondary); background: none;
+            <button class="tap" style="font-size: 1.16rem; color: var(--text-secondary); background: none;
               border: none; cursor: pointer; font-family: inherit; padding: 6px 0"
               onClick=${() => setShowDormant(!showDormant)}>
               ${showDormant ? 'Hide' : 'Show'} ${dormantProjects.length} dormant project${dormantProjects.length > 1 ? 's' : ''}
@@ -1763,7 +1824,7 @@
 
         ${privateCount > 0 && html`
           <div style="margin-top: 8px">
-            <button style="font-size: 1.16rem; color: var(--text-secondary); background: none;
+            <button class="tap" style="font-size: 1.16rem; color: var(--text-secondary); background: none;
               border: none; cursor: pointer; font-family: inherit; padding: 6px 0"
               onClick=${() => setShowPrivate(v => !v)}>
               ${showPrivate ? 'Hide' : 'Show'} ${privateCount} private project${privateCount > 1 ? 's' : ''}
@@ -2004,7 +2065,7 @@
       const grouper = html`
         <div style="display: flex; gap: 4px; margin-bottom: 12px">
           ${[['repo', 'by project'], ['type', 'by type']].map(([g, lbl]) => html`
-            <button onClick=${() => setGroupBy(g)}
+            <button class="tap" onClick=${() => setGroupBy(g)}
               style="font-size: 0.98rem; padding: 4px 12px; border-radius: 999px; cursor: pointer;
                      font-family: inherit; border: 1px solid var(--border);
                      background: ${groupBy === g ? 'var(--accent)' : 'transparent'};
@@ -2012,7 +2073,7 @@
         </div>`;
 
       const searchBox = html`
-        <input type="text" placeholder="Search issues — title, label, #number, repo"
+        <input class="tap" type="text" placeholder="Search issues — title, label, #number, repo"
           value=${query} onInput=${e => setQuery(e.target.value)}
           style="width: 100%; box-sizing: border-box; margin-bottom: 14px; padding: 8px 12px;
                  font-size: 1.16rem; font-family: inherit; color: var(--text);
@@ -2035,12 +2096,12 @@
                   </div>
                   <div style="margin-left: auto; display: flex; gap: 12px; align-items: baseline">
                     ${(showAll || hiddenRepos > 0) && html`
-                      <button onClick=${() => setShowAll(s => !s)}
+                      <button class="tap" onClick=${() => setShowAll(s => !s)}
                         style="font-size: 0.95rem; color: var(--accent); background: none; border: none;
                                cursor: pointer; font-family: inherit">
                         ${showAll ? 'Tracked only' : `Show all repos (+${hiddenRepos})`}
                       </button>`}
-                    <button onClick=${reclassify}
+                    <button class="tap" onClick=${reclassify}
                       style="font-size: 0.95rem; color: var(--text-secondary); background: none; border: none;
                              cursor: pointer; font-family: inherit" title="Re-run the LLM classification for every issue">
                       ↻ reclassify
@@ -2100,12 +2161,12 @@
             </div>
             <div style="margin-left: auto; display: flex; gap: 12px; align-items: baseline">
               ${(showAll || hiddenRepos > 0) && html`
-                <button onClick=${() => setShowAll(s => !s)}
+                <button class="tap" onClick=${() => setShowAll(s => !s)}
                   style="font-size: 0.95rem; color: var(--accent); background: none; border: none;
                          cursor: pointer; font-family: inherit">
                   ${showAll ? 'Tracked only' : `Show all repos (+${hiddenRepos})`}
                 </button>`}
-              <button onClick=${toggleAll}
+              <button class="tap" onClick=${toggleAll}
                 style="font-size: 0.95rem; color: var(--accent); background: none; border: none;
                        cursor: pointer; font-family: inherit">
                 ${allOpen ? 'Collapse all' : 'Expand all'}
@@ -2125,7 +2186,7 @@
                 <span style="font-size: 1.3rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere">${p}</span>
                 <span style="font-size: 0.95rem; color: var(--text-secondary); flex: none">${issues.length}${q && issues.length !== projects[p].length ? '/' + projects[p].length : ''}</span>
                 ${!isTracked(p) && html`<span style="font-size: 0.79rem; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 0 5px">untracked</span>`}
-                <a onClick=${(e) => { e.stopPropagation(); navigate('#/project/' + encodeURIComponent(p)); }}
+                <a class="tap" onClick=${(e) => { e.stopPropagation(); navigate('#/project/' + encodeURIComponent(p)); }}
                    style="margin-left: auto; flex: none; white-space: nowrap; font-size: 0.9rem; color: var(--accent); cursor: pointer; text-decoration: none">
                   project →
                 </a>
@@ -2658,24 +2719,11 @@
         return () => { alive = false; };
       }, [days]);
 
-      const windowPicker = html`
-        <div style="display: flex; gap: 4px">
-          ${[7, 30, 90, 365].map(d => html`
-            <button onClick=${() => setDays(d)}
-              style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
-                     cursor: pointer; font-family: inherit;
-                     border: 1px solid var(--border);
-                     background: ${days === d ? 'var(--accent)' : 'transparent'};
-                     color: ${days === d ? '#fff' : 'var(--text-secondary)'}">
-              ${d === 365 ? '1y' : d + 'd'}
-            </button>`)}
-        </div>`;
-
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
           <h1 style="margin: 0; font-size: 1.91rem; color: var(--accent-light)">Costs</h1>
-          ${windowPicker}
+          <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
           API spend across all projects. Claude Code (subscription) usage isn't
@@ -2752,7 +2800,7 @@
                             font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase">
                   By project
                 </div>
-                <button onClick=${() => setSortBy(s => s === 'cost' ? 'name' : 'cost')}
+                <button class="tap" onClick=${() => setSortBy(s => s === 'cost' ? 'name' : 'cost')}
                   style="font-size: 0.9rem; color: var(--accent); background: none; border: none;
                          cursor: pointer; font-family: inherit">
                   sort: ${sortBy} ↕
@@ -2760,8 +2808,7 @@
               </div>
               ${legend.map(([p, v]) => html`
                 <a href="#/project/${encodeURIComponent(p)}/cost"
-                   style="display: block; padding: 5px 0;
-                          text-decoration: none; color: var(--text); border-bottom: 1px solid var(--border)">
+                   class="row-link">
                   <div style="display: flex; align-items: center; gap: 8px">
                     <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(p)}; flex: none"></span>
                     <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${p}</span>
@@ -2831,19 +2878,6 @@
 
       const windowLabel = (d) => (d === 365 ? 'year' : d + ' days');
 
-      const windowPicker = html`
-        <div style="display: flex; gap: 4px">
-          ${[7, 30, 90, 365].map(d => html`
-            <button onClick=${() => setDays(d)}
-              style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
-                     cursor: pointer; font-family: inherit;
-                     border: 1px solid var(--border);
-                     background: ${days === d ? 'var(--accent)' : 'transparent'};
-                     color: ${days === d ? '#fff' : 'var(--text-secondary)'}">
-              ${d === 365 ? '1y' : d + 'd'}
-            </button>`)}
-        </div>`;
-
       // Metric switch writes the hash, so the current view is always shareable
       // and the Pulse tiles' #/activity/<metric> deep links round-trip.
       const metricSwitch = html`
@@ -2857,7 +2891,7 @@
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
           <h1 style="margin: 0; font-size: 1.91rem; color: var(--accent-light)">Activity</h1>
-          ${windowPicker}
+          <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 16px">
           Sessions, prompts and commits per day across every project, from the
@@ -2967,7 +3001,7 @@
                             font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase">
                   By project
                 </div>
-                <button onClick=${() => setSortBy(s => nextSort[s] || '30d')}
+                <button class="tap" onClick=${() => setSortBy(s => nextSort[s] || '30d')}
                   style="font-size: 0.9rem; color: var(--accent); background: none; border: none;
                          cursor: pointer; font-family: inherit">
                   sort: ${sortBy} ↕
@@ -2980,8 +3014,7 @@
               </div>
               ${table.map(row => html`
                 <a href="#/project/${encodeURIComponent(row.p)}"
-                   style="display: block; padding: 5px 0;
-                          text-decoration: none; color: var(--text); border-bottom: 1px solid var(--border)">
+                   class="row-link">
                   <div style="display: flex; align-items: center; gap: 8px">
                     <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(row.p)}; flex: none"></span>
                     <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${row.p}</span>
@@ -3009,7 +3042,7 @@
                 Window totals
               </div>
               ${ACTIVITY_METRICS.map(k => html`
-                <a href=${'#/activity/' + k}
+                <a class="tap" href=${'#/activity/' + k}
                    style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
                           text-decoration: none; border-bottom: 1px solid var(--border);
                           color: ${k === m ? 'var(--accent-light)' : 'var(--text)'}">
@@ -3079,7 +3112,7 @@
 
           ${onAsk && html`
             <div style="margin-top:22px; padding-top:18px; border-top:1px solid var(--border)">
-              <button class="header-btn" onClick=${onAsk}
+              <button class="header-btn tap" onClick=${onAsk}
                       style="padding:8px 14px; border:1px solid var(--border); color:var(--accent-light)">
                 Ask a question
               </button>
@@ -3158,7 +3191,7 @@
       return html`
         <div>
           <div style="margin-bottom:6px">
-            <a onClick=${() => history.back()}
+            <a class="tap" onClick=${() => history.back()}
                style="cursor:pointer; color:var(--text-secondary); font-size:0.95rem;
                       text-decoration:none">← back</a>
           </div>
@@ -3199,7 +3232,7 @@
               <div class="card">
                 <div style="display:flex; justify-content:space-between; align-items:baseline;
                             gap:12px; margin-bottom:${p.summary ? '8px' : '0'}">
-                  <a href=${'#/project/' + encodeURIComponent(p.project)}
+                  <a class="tap" href=${'#/project/' + encodeURIComponent(p.project)}
                      style="font-weight:600; color:var(--accent-light); text-decoration:none;
                             min-width:0; overflow-wrap:anywhere">
                     ${p.project}</a>
@@ -3262,6 +3295,17 @@
         </details>`;
     }
 
+    // The chart window buttons, once: five pages had their own copy, and the
+    // copies had drifted (the home pair was a size smaller than the rest).
+    function WindowPicker({ days, onChange, options = [7, 30, 90, 365] }) {
+      return html`
+        <div class="win-picker">
+          ${options.map(d => html`
+            <button class="win-btn" aria-pressed=${days === d ? 'true' : 'false'}
+                    onClick=${() => onChange(d)}>${d === 365 ? '1y' : d + 'd'}</button>`)}
+        </div>`;
+    }
+
     function VisitorsOverview() {
       const [days, setDays] = useState(30);
       const [tab, setTab] = useState('pages');
@@ -3280,24 +3324,11 @@
         return () => { alive = false; };
       }, [days]);
 
-      const windowPicker = html`
-        <div style="display: flex; gap: 4px">
-          ${[7, 30, 90, 365].map(d => html`
-            <button onClick=${() => setDays(d)}
-              style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
-                     cursor: pointer; font-family: inherit;
-                     border: 1px solid var(--border);
-                     background: ${days === d ? 'var(--accent)' : 'transparent'};
-                     color: ${days === d ? '#fff' : 'var(--text-secondary)'}">
-              ${d === 365 ? '1y' : d + 'd'}
-            </button>`)}
-        </div>`;
-
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
           <h1 style="margin: 0; font-size: 1.91rem; color: var(--accent-light)">Visitors</h1>
-          ${windowPicker}
+          <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <${PageNote}>
           <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
@@ -3572,7 +3603,7 @@
                            font-family: 'SF Mono', ui-monospace, monospace">
                 checked ${checkedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
               </span>`}
-            <button onClick=${() => setNonce(n => n + 1)} disabled=${loading}
+            <button class="tap" onClick=${() => setNonce(n => n + 1)} disabled=${loading}
               title="Poll every target again"
               style="font-size: 0.95rem; padding: 4px 12px; border-radius: 4px; cursor: pointer;
                      font-family: inherit; border: 1px solid var(--border);
@@ -4042,24 +4073,11 @@
         return () => { alive = false; };
       }, [days]);
 
-      const windowPicker = html`
-        <div style="display: flex; gap: 4px">
-          ${[7, 30, 90, 365].map(d => html`
-            <button onClick=${() => setDays(d)}
-              style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
-                     cursor: pointer; font-family: inherit;
-                     border: 1px solid var(--border);
-                     background: ${days === d ? 'var(--accent)' : 'transparent'};
-                     color: ${days === d ? '#fff' : 'var(--text-secondary)'}">
-              ${d === 365 ? '1y' : d + 'd'}
-            </button>`)}
-        </div>`;
-
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: 8px 12px; margin-bottom: 4px">
           <h2 style="margin: 0; font-size: 1.3rem">Uptime archive</h2>
-          ${windowPicker}
+          <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <div style="font-size: 1.02rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5">
           What UptimeRobot saw, kept past its 3-month retention — one row per
@@ -4273,7 +4291,7 @@
               <div data-test="cost-total" style="font-size: 1.3rem; font-weight: 600">
                 $${total.toFixed(2)}
               </div>
-              <a href="#/project/${encodeURIComponent(project)}/cost"
+              <a class="tap" href="#/project/${encodeURIComponent(project)}/cost"
                  style="font-size: 0.95rem; color: var(--accent); text-decoration: none;
                         font-family: 'SF Mono', ui-monospace, monospace">
                 details →
@@ -4345,7 +4363,7 @@
       return html`
         <div>
           <div style="display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px">
-            <a href="#/project/${encodeURIComponent(project)}"
+            <a class="tap" href="#/project/${encodeURIComponent(project)}"
                style="color: var(--text-secondary); text-decoration: none; font-size: 1.16rem">
               ← ${project}
             </a>
@@ -4672,7 +4690,7 @@
             })}
           `)}
           ${hiddenCount > 0 && html`
-            <button onClick=${() => setShowAll(true)}
+            <button class="tap" onClick=${() => setShowAll(true)}
                     style="margin-top: 12px; padding: 6px 12px;
                            background: transparent;
                            border: 1px solid var(--border);
@@ -4684,7 +4702,7 @@
             </button>
           `}
           ${showAll && allItems.length > TIMELINE_CAP && html`
-            <button onClick=${() => setShowAll(false)}
+            <button class="tap" onClick=${() => setShowAll(false)}
                     style="margin-top: 12px; padding: 6px 12px;
                            background: transparent;
                            border: 1px solid var(--border);

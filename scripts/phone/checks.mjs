@@ -1,7 +1,7 @@
 // Layout checks. Each entry loads one route under one device profile.
 // t.ok(condition, message) records an assertion; the runner prints them.
 
-import { LONG_HOST, LONG_PATH, apiFixture, fixtureOptions, labDay } from './fixtures.mjs';
+import { LONG_HOST, LONG_PATH, LONG_PROJECT, apiFixture, fixtureOptions, labDay } from './fixtures.mjs';
 
 export async function pageOverflow(page) {
   return page.evaluate(() => ({
@@ -124,6 +124,9 @@ export const CHECKS = [
         `first note block starts below the summary (${noteBoxes.blocks.length} blocks, top ${Math.round(noteBoxes.blocks[0]?.top)}, summary bottom ${Math.round(noteBoxes.summary.bottom)})`);
       const gaps = noteBoxes.blocks.slice(1).map((b, i) => Math.round((b.top - noteBoxes.blocks[i].bottom) * 10) / 10);
       t.ok(gaps.length > 0 && gaps.every((g) => Math.abs(g - 12) <= 1), `note blocks are 12px apart (${gaps.join(', ')})`);
+      const small = await smallTargets(page);
+      t.ok(small.length === 0, `every tap target is at least 44px tall (${small.length} too small: ${
+        small.slice(0, 6).map((s) => `${s.what} ${s.w}x${s.h}`).join('; ')})`);
     },
   },
   {
@@ -236,6 +239,21 @@ function baseline([name, hash, ready], profile) {
       t.ok(m.doc <= m.vw, `no horizontal page overflow (document ${m.doc}px, viewport ${m.vw}px)`);
       const errors = await page.evaluate(() => /Couldn't load|no fixture for/.test(document.body.innerText));
       t.ok(!errors, 'page rendered its data, not an error placeholder');
+      if (profile === 'phone') {
+        const small = await smallTargets(page);
+        t.ok(small.length === 0, `every tap target is at least 44px tall (${small.length} too small: ${
+          small.slice(0, 6).map((s) => `${s.what} ${s.w}x${s.h}`).join('; ')})`);
+        const header = await page.evaluate(() => {
+          const h = document.querySelector('header').getBoundingClientRect();
+          const logo = document.querySelector('.header-logo').getBoundingClientRect();
+          const menu = document.querySelector('.nav-toggle').getBoundingClientRect();
+          return { height: Math.round(h.height), sameLine: Math.abs((logo.top + logo.bottom) / 2 - (menu.top + menu.bottom) / 2) < 12,
+                   menuRight: Math.round(menu.right), vw: window.innerWidth };
+        });
+        t.ok(header.sameLine, 'logo and Menu share one line');
+        t.ok(header.height <= 76, `header is one line tall (${header.height}px)`);
+        t.ok(header.menuRight <= header.vw, `Menu is inside the viewport (right edge ${header.menuRight}px)`);
+      }
       await BASELINE_EXTRA[checkName]?.(page, t, ready);
     },
   };
@@ -659,3 +677,49 @@ BASELINE_EXTRA['health-desktop'] = async (page, t, ready) => {
   await page.locator(ready).first().waitFor();
   await page.mouse.move(0, 0);
 };
+
+CHECKS.push({
+  name: 'header-menu', profile: 'phone', hash: '#/', ready: 'text=Active projects',
+  async run(page, t) {
+    await page.locator('.nav-toggle').tap();
+    const entries = page.locator('.nav-drop.open .header-btn');
+    const labels = (await entries.allInnerTexts()).map((s) => s.trim());
+    t.ok(['Activity', 'Todos', 'Costs', 'Visitors', 'Health'].every((l) => labels.includes(l)),
+      `admin menu lists the five destinations (${labels.join(', ')})`);
+    const small = await smallTargets(page);
+    t.ok(small.length === 0, `open menu: every entry is at least 44px tall (${small.map((s) => `${s.what} ${s.h}`).join('; ')})`);
+    const m = await pageOverflow(page);
+    t.ok(m.doc <= m.vw, `open menu: no horizontal page overflow (${m.doc}px)`);
+    await page.locator('.nav-drop.open .header-btn', { hasText: 'Costs' }).tap();
+    await page.waitForFunction(() => location.hash === '#/costs');
+    t.ok(!(await page.locator('.nav-drop.open').isVisible()), 'choosing a destination closes the menu');
+  },
+});
+
+CHECKS.push({
+  name: 'header-reader', profile: 'phone', hash: '#/', ready: 'text=Active projects',
+  async before() { fixtureOptions.role = 'reader'; },
+  async after() { fixtureOptions.role = 'admin'; },
+  async run(page, t) {
+    await page.locator('.nav-toggle').tap();
+    const labels = (await page.locator('.nav-drop.open .header-btn').allInnerTexts()).map((s) => s.trim());
+    t.ok(!labels.includes('Visitors') && !labels.includes('Health'), `a reader is offered no Visitors or Health (${labels.join(', ')})`);
+    t.ok(['Activity', 'Todos', 'Costs'].every((l) => labels.includes(l)), 'a reader keeps Activity, Todos and Costs');
+  },
+});
+
+CHECKS.push({
+  name: 'header-long-project', profile: 'phone',
+  hash: '#/project/' + encodeURIComponent(LONG_PROJECT), ready: 'text=Trajectory',
+  async run(page, t) {
+    const header = await page.evaluate(() => {
+      const h = document.querySelector('header').getBoundingClientRect();
+      const menu = document.querySelector('.nav-toggle').getBoundingClientRect();
+      return { height: Math.round(h.height), menuRight: Math.round(menu.right), vw: window.innerWidth };
+    });
+    t.ok(header.height <= 76, `a 40-character project name does not wrap the header (${header.height}px)`);
+    t.ok(header.menuRight <= header.vw, `and Menu stays on screen (right edge ${header.menuRight}px)`);
+    const m = await pageOverflow(page);
+    t.ok(m.doc <= m.vw, `no horizontal page overflow (${m.doc}px)`);
+  },
+});
