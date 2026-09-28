@@ -124,6 +124,10 @@ export const CHECKS = [
         `first note block starts below the summary (${noteBoxes.blocks.length} blocks, top ${Math.round(noteBoxes.blocks[0]?.top)}, summary bottom ${Math.round(noteBoxes.summary.bottom)})`);
       const gaps = noteBoxes.blocks.slice(1).map((b, i) => Math.round((b.top - noteBoxes.blocks[i].bottom) * 10) / 10);
       t.ok(gaps.length > 0 && gaps.every((g) => Math.abs(g - 12) <= 1), `note blocks are 12px apart (${gaps.join(', ')})`);
+      // The one two-block note, so the shared overlap check has something to compare.
+      // Closed again first: pageNotes expects every note to start collapsed.
+      await note.locator('summary').tap();
+      await pageNotes(page, t, 'visitors', 'phone');
       const small = await smallTargets(page);
       t.ok(small.length === 0, `every tap target is at least 44px tall (${small.length} too small: ${
         small.slice(0, 6).map((s) => `${s.what} ${s.w}x${s.h}`).join('; ')})`);
@@ -263,7 +267,7 @@ function baseline([name, hash, ready], profile) {
 
 // Standing explanations per route. On a phone each folds behind one line; on a
 // wide screen it sits in full where it always did.
-const NOTES = { home: 1, activity: 1, costs: 1, health: 2, project: 1, about: 0, day: 0, todos: 0 };
+const NOTES = { visitors: 1, home: 1, activity: 1, costs: 1, health: 2, project: 1, about: 0, day: 0, todos: 0 };
 
 async function pageNotes(page, t, name, profile) {
   const want = NOTES[name];
