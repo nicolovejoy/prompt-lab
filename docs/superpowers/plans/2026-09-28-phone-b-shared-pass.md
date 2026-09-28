@@ -374,7 +374,7 @@ git commit -m "test: pure bucketing helpers with a Node runner that lifts them f
 - Modify: `scripts/phone/checks.mjs`
 
 **Interfaces:**
-- Consumes: `apiFixture(pathname, searchParams, method)`, `fixtureOptions`, `labDay(i)`, `CHECKS`, `pageOverflow(page)` and the `before`/`after` hooks from PR A.
+- Consumes: `apiFixture(pathname, searchParams, method)`, `fixtureOptions`, `resetFixtureOptions()`, `labDay(i)`, `CHECKS`, `pageOverflow(page)` and the `before`/`after` hooks from PR A. The runner already fails a check when the page requests an API route that has no fixture, and resets `fixtureOptions` after every check; add any new option to the defaults that `resetFixtureOptions()` restores.
 - Produces: fixtures for `/api/overview`, `/api/info`, `/api/activity_timeline`, `/api/cost_overview`, `/api/cost_timeline`, `/api/project`, `/api/day`, `/api/todos`, `/api/health_report`, `/api/uptime_overview`. `fixtureOptions.role` (`'admin'` default, or `'reader'`) controls what `/api/login` returns.
 - Produces: checks named `home`, `activity`, `costs`, `todos`, `health`, `about`, `day`, `project`, each under profile `phone`, and the same eight with the suffix `-desktop` under profile `desktop`. Exported helper `smallTargets(page)` returning `[{ what, w, h }]` for every tap target under 44px tall per the Global Constraints rule.
 - Produces: invented project names used by later tasks: `alpha-app`, `bravo-site`, `charlie-tool`, `delta-lab` plus eight more, so a chart has more than eight segments and one folds into "other".
@@ -719,6 +719,7 @@ git commit -m "feat(charts): bucketed bars and touch selection with a readout, o
    - `CostChart` (project page): `id="project-cost"`, `fmtValue=${fmtUsd}`, `unit=""`.
 3. The home chart's subtitle reads "prompts per day, stacked by project · tap a bar for that day". On a phone a tap now shows a breakdown first, so render the subtitle as "prompts per day, stacked by project · tap a bar for its breakdown" when `useNarrow()` is true and keep today's wording otherwise.
 4. Nothing else about these four pages changes: legends, sort toggles, totals and lists stay as they are.
+5. One cleanup carried over from PR A's review: the Visitors "By site" rows reuse `class="list-row"` and then override its `display` with an inline `display: block`. Give them their own `.share-row` class holding only the border and padding they need, and drop the inline override. The `visitors` and `visitors-desktop` checks pin that nothing moves.
 
 - [ ] **Step 1: Write the failing checks**
 
