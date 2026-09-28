@@ -363,3 +363,69 @@ CHECKS.push({
     t.ok(!/NaN|undefined/.test(text), 'and is well formed');
   },
 });
+
+// Playwright's touchscreen can only tap, so a drag is dispatched as the
+// pointer events the chart listens to. Each case starts from a fresh load.
+CHECKS.push({
+  name: 'visitors-chart-drag', profile: 'phone', hash: '#/visitors', ready: 'text=By site',
+  async run(page, t) {
+    const chart = page.locator('[data-chart="visitors"]');
+    const fresh = async () => {
+      await page.reload();
+      await page.locator('text=By site').first().waitFor();
+      await chart.scrollIntoViewIfNeeded();
+      const n = await chart.locator('[data-test="chart-bar"][data-selected="true"]').count();
+      return { box: await chartBox(page, 'visitors'), none: n === 0 };
+    };
+    const send = (steps) => chart.locator('[data-test="chart-bars"]').evaluate((row, steps) => {
+      for (const [type, clientX, clientY] of steps) {
+        row.dispatchEvent(new PointerEvent(type, {
+          pointerType: 'touch', pointerId: 1, clientX, clientY, bubbles: true, isPrimary: true,
+        }));
+      }
+    }, steps);
+    // Settle the render before reading, then name the bar drawn as selected
+    // and the bar under an x, both by data-key.
+    const selectedKey = async () => {
+      await page.waitForTimeout(100);
+      const sel = chart.locator('[data-test="chart-bar"][data-selected="true"]');
+      return (await sel.count()) === 1 ? sel.getAttribute('data-key') : null;
+    };
+    const keyAt = (x) => chart.locator('[data-test="chart-bar"]').evaluateAll((bars, x) => {
+      const hit = bars.find((b) => { const r = b.getBoundingClientRect(); return x >= r.left && x < r.right; });
+      return hit ? hit.dataset.key : null;
+    }, x);
+
+    // 1. A horizontal drag scrubs: the selection follows to where it ends.
+    let { box, none } = await fresh();
+    let y = box.y + box.height / 2;
+    let x0 = box.x + box.width * 0.25 + 2, x1 = box.x + box.width * 0.75 + 2;
+    await send([['pointerdown', x0, y], ['pointermove', x1, y], ['pointerup', x1, y]]);
+    let want = await keyAt(x1), got = await selectedKey();
+    t.ok(none && want && got === want && want !== await keyAt(x0),
+      `a horizontal drag selects the bar under its end (${got}, expected ${want})`);
+
+    // 2. A drag that drifts 30px down is a scroll: the selection stays put.
+    ({ box, none } = await fresh());
+    y = box.y + box.height / 2;
+    x0 = box.x + box.width * 0.25 + 2;
+    await send([['pointerdown', x0, y], ['pointermove', x0 + 80, y + 30]]);
+    want = await keyAt(x0); got = await selectedKey();
+    t.ok(none && want && got === want && want !== await keyAt(x0 + 80),
+      `a vertical drift keeps the bar under pointerdown (${got}, expected ${want})`);
+
+    // 3. ...and for the rest of that gesture, even back on the original line.
+    await send([['pointermove', x0 + 160, y], ['pointerup', x0 + 160, y]]);
+    got = await selectedKey();
+    t.ok(got === want, `after drifting, the gesture no longer moves the selection (${got}, expected ${want})`);
+
+    // 4. pointercancel (the browser taking the gesture) ends following too.
+    ({ box, none } = await fresh());
+    y = box.y + box.height / 2;
+    x0 = box.x + box.width * 0.25 + 2;
+    await send([['pointerdown', x0, y], ['pointercancel', x0, y], ['pointermove', x0 + 120, y]]);
+    want = await keyAt(x0); got = await selectedKey();
+    t.ok(none && want && got === want && want !== await keyAt(x0 + 120),
+      `after pointercancel a move does not change the selection (${got}, expected ${want})`);
+  },
+});

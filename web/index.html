@@ -2471,7 +2471,7 @@
         const tipAnchor = edge < 0.15 ? 'left: 0' : edge > 0.85 ? 'right: 0' : 'left: 50%; transform: translateX(-50%)';
         const isToday = markToday && size === 'day' && i === n - 1;
         return html`
-          <div data-test="chart-bar" data-key=${b.key}
+          <div data-test="chart-bar" data-key=${b.key} data-selected=${selected === i ? 'true' : undefined}
                style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
                onPointerEnter=${(e) => { prefetchDay(b.dates[b.dates.length - 1]); if (e.pointerType === 'mouse') setHovered(i); }}
                onPointerLeave=${() => setHovered((h2) => (h2 === i ? null : h2))}
