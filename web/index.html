@@ -260,10 +260,16 @@
 
     /* Project page */
     .project-header { margin-bottom: 24px; }
-    .project-title-row { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
-    .project-name { font-size: 1.91rem; font-weight: 600; letter-spacing: -0.3px; color: var(--accent-light); }
-    .project-links { display: flex; gap: 8px; align-items: center; }
+    /* The row wraps, so on a phone the links drop under the name instead of
+       pushing past the edge (a site link alone did, at 390px). The name is the
+       page's title, so a long one wraps; the site link is a label, so it keeps
+       one line and truncates. On a wide screen everything fits on one line. */
+    .project-title-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+    .project-name { font-size: 1.91rem; font-weight: 600; letter-spacing: -0.3px; color: var(--accent-light);
+                    min-width: 0; overflow-wrap: anywhere; }
+    .project-links { display: flex; gap: 8px; align-items: center; min-width: 0; max-width: 100%; }
     .project-link {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       font-size: 0.98rem; color: var(--text-secondary); text-decoration: none;
       padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px;
       font-family: "SF Mono", ui-monospace, monospace; transition: border-color 0.15s;
@@ -571,8 +577,11 @@
     .section-label:first-child { margin-top: 0; }
 
     /* Stream (home cross-project feed) */
+    /* A project name with no break point would set the row's width; let it
+       break anywhere so it wraps like the phrase after it. */
     .stream-project {
       font-weight: 600; color: var(--text); cursor: pointer; text-decoration: none;
+      overflow-wrap: anywhere;
     }
     .stream-project:hover { color: var(--accent-light); }
     .dormant-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
@@ -2115,11 +2124,11 @@
               <div style="display: flex; align-items: center; gap: 8px; padding: 10px 0; cursor: pointer"
                    onClick=${() => toggle(p)}>
                 <span style="font-size: 0.95rem; color: var(--text-secondary); width: 10px; flex: none">${isOpen ? '▾' : '▸'}</span>
-                <span style="font-size: 1.3rem; font-weight: 600">${p}</span>
-                <span style="font-size: 0.95rem; color: var(--text-secondary)">${issues.length}${q && issues.length !== projects[p].length ? '/' + projects[p].length : ''}</span>
+                <span style="font-size: 1.3rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere">${p}</span>
+                <span style="font-size: 0.95rem; color: var(--text-secondary); flex: none">${issues.length}${q && issues.length !== projects[p].length ? '/' + projects[p].length : ''}</span>
                 ${!isTracked(p) && html`<span style="font-size: 0.79rem; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 0 5px">untracked</span>`}
                 <a onClick=${(e) => { e.stopPropagation(); navigate('#/project/' + encodeURIComponent(p)); }}
-                   style="margin-left: auto; font-size: 0.9rem; color: var(--accent); cursor: pointer; text-decoration: none">
+                   style="margin-left: auto; flex: none; white-space: nowrap; font-size: 0.9rem; color: var(--accent); cursor: pointer; text-decoration: none">
                   project →
                 </a>
               </div>
@@ -3008,7 +3017,8 @@
                 <div style="display:flex; justify-content:space-between; align-items:baseline;
                             gap:12px; margin-bottom:${p.summary ? '8px' : '0'}">
                   <a href=${'#/project/' + encodeURIComponent(p.project)}
-                     style="font-weight:600; color:var(--accent-light); text-decoration:none">
+                     style="font-weight:600; color:var(--accent-light); text-decoration:none;
+                            min-width:0; overflow-wrap:anywhere">
                     ${p.project}</a>
                   <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.82rem;
                               color:var(--text-secondary); white-space:nowrap;
@@ -4397,7 +4407,7 @@
               ${meta.private && html`<span class="badge badge-private">private</span>`}
               ${meta.category && html`<span class="badge">${meta.category}</span>`}
               <div class="project-links">
-                ${githubUrl && html`<a class="project-link" href=${githubUrl} target="_blank" rel="noopener">GitHub</a>`}
+                ${githubUrl && html`<a class="project-link" style="flex: none" href=${githubUrl} target="_blank" rel="noopener">GitHub</a>`}
                 ${siteLabel && html`<a class="project-link" href=${siteUrl} target="_blank" rel="noopener">${siteLabel}</a>`}
               </div>
             </div>
