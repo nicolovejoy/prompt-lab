@@ -23,9 +23,10 @@ const PROJECTS = [
 export const PROJECT_NAMES = PROJECTS.map(([p]) => p);
 
 // Flipped by a check to reproduce a payload from before preview_hosts existed,
-// or one with an empty list, or a reader's session. The runner resets them
-// after every check.
-const DEFAULT_OPTIONS = { omitPreviewHosts: false, noReferrers: false, role: 'admin' };
+// or one with an empty list, or a reader's session, or a site that only began
+// reporting 40 days ago (so the oldest buckets of a 90-day chart are empty).
+// The runner resets them after every check.
+const DEFAULT_OPTIONS = { omitPreviewHosts: false, noReferrers: false, role: 'admin', quietStart: false };
 export const fixtureOptions = { ...DEFAULT_OPTIONS };
 export function resetFixtureOptions() { Object.assign(fixtureOptions, DEFAULT_OPTIONS); }
 
@@ -329,7 +330,8 @@ function visitorOverview(since) {
     }
   }
   const out = {
-    daily: daily.filter(r => !since || r.date >= since),
+    daily: daily.filter(r => (!since || r.date >= since)
+      && (!fixtureOptions.quietStart || r.date >= labDay(40))),
     paths: [
       ['/', 'musicforge.example', 406], ['/', 'bakery.example', 159],
       [LONG_PATH, 'builder.example', 52], ['/dashboard', 'musicforge.example', 110],

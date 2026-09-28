@@ -185,6 +185,22 @@ export const CHECKS = [
         t.ok(await page.locator('[data-test^="panel-"]').getByText(title, { exact: true }).first().isVisible(),
           `desktop keeps the "${title}" heading`);
       }
+
+      const chart = page.locator('[data-chart="visitors"]');
+      for (const [label, n] of [['30d', 30], ['90d', 90], ['1y', 365]]) {
+        await page.getByRole('button', { name: label, exact: true }).click();
+        await page.waitForTimeout(400);
+        const bars = await chart.locator('[data-test="chart-bar"]').count();
+        t.ok(bars === n, `desktop ${label}: a bar per day (${bars})`);
+      }
+      await page.getByRole('button', { name: '30d', exact: true }).click();
+      await page.waitForTimeout(400);
+      const last = chart.locator('[data-test="chart-bar"]').last();
+      await last.hover();
+      t.ok(await chart.getByText(/views/).first().isVisible(), 'desktop: hovering a bar shows the tooltip');
+      await last.click();
+      await page.waitForFunction(() => location.hash.startsWith('#/day/'));
+      t.ok(page.url().endsWith('#/day/' + labDay(0)), 'desktop: clicking a bar opens that day');
     },
   },
 ];
@@ -219,3 +235,131 @@ function baseline([name, hash, ready], profile) {
 }
 
 CHECKS.push(...ROUTES.flatMap((r) => [baseline(r, 'phone'), baseline(r, 'desktop')]));
+
+// Drive a chart the way a thumb does. Returns the bar-row box.
+async function chartBox(page, id) {
+  return page.locator(`[data-chart="${id}"] [data-test="chart-bars"]`).boundingBox();
+}
+async function tapAt(page, x, y) { await page.touchscreen.tap(x, y); }
+
+function chartCheck({ name, hash, ready, id, windows }) {
+  return {
+    name, profile: 'phone', hash, ready,
+    async run(page, t) {
+      for (const [label, expectMin, expectMax] of windows) {
+        await page.getByRole('button', { name: label, exact: true }).tap();
+        await page.waitForTimeout(400);
+        const chart = page.locator(`[data-chart="${id}"]`);
+        const bars = await chart.locator('[data-test="chart-bar"]').count();
+        t.ok(bars >= expectMin && bars <= expectMax, `${label}: ${bars} bars (expected ${expectMin}–${expectMax})`);
+        const scroll = await chart.evaluate((root) => Math.max(0, ...[...root.querySelectorAll('*')]
+          .map((e) => e.scrollWidth - e.clientWidth)));
+        t.ok(scroll <= 1, `${label}: nothing inside the chart scrolls sideways (overflow ${scroll}px)`);
+        const m = await pageOverflow(page);
+        t.ok(m.doc <= m.vw, `${label}: no horizontal page overflow (${m.doc}px)`);
+
+        await chart.scrollIntoViewIfNeeded();
+        const box = await chartBox(page, id);
+        const before = page.url();
+        await tapAt(page, box.x + box.width - 3, box.y + box.height / 2);   // the newest bar
+        t.ok(page.url() === before, `${label}: tapping a bar does not leave the page`);
+        const readout = chart.locator('[data-test="chart-readout"]');
+        t.ok(await readout.isVisible(), `${label}: tapping a bar shows the readout`);
+        const text = (await readout.innerText()).replace(/\s+/g, ' ');
+        t.ok(!/NaN|undefined/.test(text), `${label}: readout is well formed ("${text.slice(0, 60)}")`);
+        const fixed = await readout.evaluate((e) => {
+          for (let n = e; n; n = n.parentElement) {
+            if (getComputedStyle(n).position === 'fixed') return true;
+          }
+          return false;
+        });
+        t.ok(!fixed, `${label}: readout is in page flow, not a fixed overlay`);
+
+        if (label === '7d' || label === '30d') {                // daily buckets
+          const open = readout.locator('[data-test="open-day"]');
+          const h = await open.evaluate((e) => Math.round(e.getBoundingClientRect().height));
+          t.ok(h >= 44, `${label}: Open day is at least 44px tall (${h})`);
+        } else {
+          const chips = readout.locator('[data-test="day-chip"]');
+          const n = await chips.count();
+          const sizes = await chips.evaluateAll((els) => els.map((e) => {
+            const r = e.getBoundingClientRect(); return Math.min(Math.round(r.width), Math.round(r.height));
+          }));
+          t.ok(n >= 1 && n <= 31, `${label}: readout lists the bucket's days (${n})`);
+          t.ok(sizes.every((s) => s >= 44), `${label}: day chips are at least 44px (${Math.min(...sizes)})`);
+        }
+      }
+    },
+  };
+}
+
+CHECKS.push(chartCheck({
+  name: 'visitors-chart', hash: '#/visitors', ready: 'text=By site', id: 'visitors',
+  // window label, fewest and most bars it may draw on a phone
+  windows: [['30d', 30, 30], ['90d', 13, 14], ['1y', 12, 13], ['7d', 7, 7]],
+}));
+
+CHECKS.push({
+  name: 'visitors-chart-navigate', profile: 'phone', hash: '#/visitors', ready: 'text=By site',
+  async run(page, t) {
+    const chart = page.locator('[data-chart="visitors"]');
+    await chart.scrollIntoViewIfNeeded();
+    const box = await chartBox(page, 'visitors');
+    await tapAt(page, box.x + box.width - 3, box.y + box.height / 2);
+    await chart.locator('[data-test="open-day"]').tap();
+    await page.waitForFunction(() => location.hash.startsWith('#/day/'));
+    t.ok(/#\/day\/\d{4}-\d{2}-\d{2}$/.test(page.url()), `Open day goes to the day page (${page.url().split('#')[1]})`);
+
+    await page.goto(page.url().split('#')[0] + '#/visitors');
+    await page.locator('text=By site').first().waitFor();
+    await page.getByRole('button', { name: '90d', exact: true }).tap();
+    await page.waitForTimeout(400);
+    await chart.scrollIntoViewIfNeeded();
+    const wide = await chartBox(page, 'visitors');
+    await tapAt(page, wide.x + wide.width / 2, wide.y + wide.height / 2);
+    const chip = chart.locator('[data-test="day-chip"]').first();
+    const date = await chip.getAttribute('data-date');
+    await chip.tap();
+    await page.waitForFunction(() => location.hash.startsWith('#/day/'));
+    t.ok(page.url().endsWith('#/day/' + date), `a day chip goes to its own day (${date})`);
+  },
+});
+
+CHECKS.push({
+  name: 'visitors-chart-scroll', profile: 'phone', hash: '#/visitors', ready: 'text=By site',
+  async run(page, t) {
+    const chart = page.locator('[data-chart="visitors"]');
+    await chart.scrollIntoViewIfNeeded();
+    const action = await chart.locator('[data-test="chart-bars"]').evaluate((e) => getComputedStyle(e).touchAction);
+    t.ok(action === 'pan-y', `bar row leaves vertical scrolling to the page (touch-action: ${action})`);
+
+    // A selection, then a rotation: the chart re-buckets and must drop it.
+    await page.getByRole('button', { name: '90d', exact: true }).tap();
+    await page.waitForTimeout(400);
+    const box = await chartBox(page, 'visitors');
+    await tapAt(page, box.x + box.width / 2, box.y + box.height / 2);
+    t.ok(await chart.locator('[data-test="chart-readout"]').isVisible(), 'a weekly bucket is selected');
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.waitForTimeout(400);
+    const bars = await chart.locator('[data-test="chart-bar"]').count();
+    t.ok(bars === 90, `landscape is wide: a bar per day (${bars})`);
+    t.ok(!(await chart.locator('[data-test="chart-readout"]').isVisible()), 'the stale selection is cleared on rotate');
+  },
+});
+
+CHECKS.push({
+  name: 'visitors-chart-empty-bucket', profile: 'phone', hash: '#/visitors', ready: 'text=By site',
+  async before() { fixtureOptions.quietStart = true; },
+  async after() { fixtureOptions.quietStart = false; },
+  async run(page, t) {
+    await page.getByRole('button', { name: '90d', exact: true }).tap();
+    await page.waitForTimeout(400);
+    const chart = page.locator('[data-chart="visitors"]');
+    await chart.scrollIntoViewIfNeeded();
+    const box = await chartBox(page, 'visitors');
+    await tapAt(page, box.x + 3, box.y + box.height / 2);              // the oldest bucket: no data
+    const text = (await chart.locator('[data-test="chart-readout"]').innerText()).replace(/\s+/g, ' ');
+    t.ok(/\b0\b/.test(text) && /Nothing recorded\./.test(text), `an empty bucket reads as zero ("${text.slice(0, 60)}")`);
+    t.ok(!/NaN|undefined/.test(text), 'and is well formed');
+  },
+});

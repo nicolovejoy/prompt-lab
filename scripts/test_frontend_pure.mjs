@@ -26,7 +26,7 @@ if (src.indexOf('// <pure>', open + 1) >= 0) {
   process.exit(1);
 }
 
-const NAMES = ['fmtShortDate', 'fmtMonth', 'addDays', 'mondayOf', 'bucketSizeFor',
+const NAMES = ['fmtShortDate', 'fmtMonth', 'fmtMonthShort', 'addDays', 'mondayOf', 'bucketSizeFor',
                'bucketDates', 'bucketTotals', 'bucketIndexAt'];
 const pure = new Function(`"use strict";\n${src.slice(open, close)}\nreturn { ${NAMES.join(', ')} };`)();
 
@@ -122,6 +122,20 @@ test('bucketTotals merges segments, coerces strings, sorts largest first', () =>
     '2026-09-20': { a: 100 },                // outside the bucket: ignored
   });
   assert.deepEqual(got, { total: 11, segs: [['a', 5], ['b', 5], ['c', 1]] });
+});
+
+// The wide chart stacked a day's segments by value with ties left in the
+// order the rows arrived; a shared chart that reordered ties would repaint
+// every desktop bar that has two equal slices.
+test('bucketTotals: ties keep the order the segments first arrived in', () => {
+  const [day] = pure.bucketDates(['2026-09-07'], 'day');
+  const got = pure.bucketTotals(day, { '2026-09-07': { zed: 3, alpha: 1, mid: 3 } });
+  assert.deepEqual(got.segs, [['zed', 3], ['mid', 3], ['alpha', 1]]);
+});
+
+test('fmtMonthShort fits a month axis: "Sep \'25"', () => {
+  assert.equal(pure.fmtMonthShort('2025-09'), "Sep '25");
+  assert.equal(pure.fmtMonthShort('2026-01'), "Jan '26");
 });
 
 test('bucketTotals: a bucket with no data is zero, not NaN', () => {
