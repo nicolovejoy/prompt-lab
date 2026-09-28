@@ -1691,10 +1691,12 @@
             ${'prompts per day, stacked by project · tap a bar for '
               + (narrow ? 'its breakdown' : 'that day')}
           </div>
-          <div style="font-size:0.8rem; color:var(--text-secondary); margin:0 0 10px">
-            Today (outlined) fills in as sessions are summarized — a session still
-            running isn't counted yet.
-          </div>
+          <${PageNote} summary="About this chart">
+            <div style="font-size:0.8rem; color:var(--text-secondary); margin:0 0 10px">
+              Today (outlined) fills in as sessions are summarized — a session still
+              running isn't counted yet.
+            </div>
+          <//>
           <div style="margin-bottom:12px">
             <${StackedBars} id="home" dates=${dates} days=${days} byDateSeg=${byDateProject}
               segColor=${segColor} fmtValue=${(v) => String(Math.round(v))} unit="prompts"
@@ -1931,14 +1933,16 @@
               </div>
             </div>
           </div>
-          <div class="heatmap-note">
-            Counts before ${CAPTURE_FIX_DAY} exclude prompts under 20
-            characters, which the logger discarded at write time. Short prompts
-            are mostly steering — "yes", "go ahead" — so supervision-heavy days
-            are undercounted before that date and complete after it. The step is
-            the fix, not a change in activity. Not backfillable: the dropped
-            prompts were never stored.
-          </div>
+          <${PageNote} summary="About these counts">
+            <div class="heatmap-note">
+              Counts before ${CAPTURE_FIX_DAY} exclude prompts under 20
+              characters, which the logger discarded at write time. Short prompts
+              are mostly steering — "yes", "go ahead" — so supervision-heavy days
+              are undercounted before that date and complete after it. The step is
+              the fix, not a change in activity. Not backfillable: the dropped
+              prompts were never stored.
+            </div>
+          <//>
         </div>
       `;
     }
@@ -2741,11 +2745,13 @@
           <h1 style="margin: 0; font-size: 1.91rem; color: var(--accent-light)">Costs</h1>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
-        <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
-          API spend across all projects. Claude Code (subscription) usage isn't
-          attributable per project, so subscription-only projects read $0 here —
-          these totals are API spend, not all spend.
-        </div>`;
+        <${PageNote}>
+          <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
+            API spend across all projects. Claude Code (subscription) usage isn't
+            attributable per project, so subscription-only projects read $0 here —
+            these totals are API spend, not all spend.
+          </div>
+        <//>`;
 
       if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading costs…</div></div>`;
       if (!data || data.error) return html`<div>${header}<div class="cost-placeholder">Couldn't load costs.</div></div>`;
@@ -2909,11 +2915,13 @@
           <h1 style="margin: 0; font-size: 1.91rem; color: var(--accent-light)">Activity</h1>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
-        <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 16px">
-          Sessions, prompts and commits per day across every project, from the
-          nightly daily summaries. Counts follow project renames (aliases are
-          folded into the canonical name).
-        </div>
+        <${PageNote}>
+          <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 16px">
+            Sessions, prompts and commits per day across every project, from the
+            nightly daily summaries. Counts follow project renames (aliases are
+            folded into the canonical name).
+          </div>
+        <//>
         ${metricSwitch}`;
 
       if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading activity…</div></div>`;
@@ -3629,11 +3637,13 @@
             </button>
           </div>
         </div>
-        <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 18px">
-          Live poll of each target's health endpoint — the same check behind the
-          daily 8am Pacific email. Alerting lives in UptimeRobot, deliberately
-          off this stack; this page is the read-only view.
-        </div>`;
+        <${PageNote}>
+          <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 18px">
+            Live poll of each target's health endpoint — the same check behind the
+            daily 8am Pacific email. Alerting lives in UptimeRobot, deliberately
+            off this stack; this page is the read-only view.
+          </div>
+        <//>`;
 
       if (loading && !data) return html`<div>${header}
         <div class="cost-placeholder">Polling targets…</div></div>`;
@@ -4095,12 +4105,14 @@
           <h2 style="margin: 0; font-size: 1.3rem">Uptime archive</h2>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
-        <div style="font-size: 1.02rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5">
-          What UptimeRobot saw, kept past its 3-month retention — one row per
-          monitor per day, written by the same 8am cron. The 1d / 7d / 30d
-          figures are its rolling ratios at the last pull, so they don't move
-          with the window above; the strip and the trend do.
-        </div>`;
+        <${PageNote}>
+          <div style="font-size: 1.02rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5">
+            What UptimeRobot saw, kept past its 3-month retention — one row per
+            monitor per day, written by the same 8am cron. The 1d / 7d / 30d
+            figures are its rolling ratios at the last pull, so they don't move
+            with the window above; the strip and the trend do.
+          </div>
+        <//>`;
 
       const section = (children) => html`<div style="margin-top: 26px">${header}${children}</div>`;
 

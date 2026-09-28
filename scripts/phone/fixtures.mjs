@@ -292,7 +292,8 @@ function healthReport() {
       name, max_age_days: max, last: labDay(age), age_days: age, ok: age <= max,
       note: age > max ? 'older than its ' + max + '-day limit' : '',
     })),
-    paused_until: null,
+    // In the future, so Health renders its paused banner.
+    paused_until: new Date(Date.now() + 3 * 86400000).toISOString(),
     would_send: true,
   };
 }

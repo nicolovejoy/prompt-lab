@@ -255,8 +255,41 @@ function baseline([name, hash, ready], profile) {
         t.ok(header.menuRight <= header.vw, `Menu is inside the viewport (right edge ${header.menuRight}px)`);
       }
       await BASELINE_EXTRA[checkName]?.(page, t, ready);
+      // Last, because it opens every note: the phone screenshot shows them expanded.
+      await pageNotes(page, t, name, profile);
     },
   };
+}
+
+// Standing explanations per route. On a phone each folds behind one line; on a
+// wide screen it sits in full where it always did.
+const NOTES = { home: 1, activity: 1, costs: 1, health: 2, project: 1, about: 0, day: 0, todos: 0 };
+
+async function pageNotes(page, t, name, profile) {
+  const want = NOTES[name];
+  if (profile === 'phone') {
+    const notes = page.locator('[data-test="page-note"]');
+    const n = await notes.count();
+    t.ok(n === want, `${want} collapsed page note(s) (${n})`);
+    const openNow = await notes.evaluateAll((els) => els.filter((e) => e.open).length);
+    t.ok(openNow === 0, `notes start collapsed (${openNow} open)`);
+    for (let i = 0; i < n; i++) {
+      await notes.nth(i).locator('summary').tap();
+      const overlap = await notes.nth(i).evaluate((d) => {
+        const kids = [...d.children].filter((c) => c.tagName !== 'SUMMARY').map((c) => c.getBoundingClientRect());
+        return kids.some((r, k) => k > 0 && r.top < kids[k - 1].bottom - 1);
+      });
+      t.ok(!overlap, `note ${i + 1}: its blocks do not overlap when expanded`);
+    }
+    const m2 = await pageOverflow(page);
+    t.ok(m2.doc <= m2.vw, `no horizontal page overflow with notes expanded (${m2.doc}px)`);
+  } else {
+    const wide = await page.locator('[data-test="page-note-wide"]').evaluateAll(
+      (els) => els.filter((e) => e.getBoundingClientRect().height > 0).length);
+    t.ok(wide === want, `desktop shows ${want} explanation(s) in full (${wide})`);
+    t.ok(!(await page.locator('[data-test="page-note"]').first().isVisible().catch(() => false)),
+      'desktop has no disclosure');
+  }
 }
 
 // Route-specific assertions riding on a baseline check, keyed by check name.
@@ -678,6 +711,11 @@ CHECKS.push({
     t.ok(m.doc <= m.vw, `no horizontal page overflow (${m.doc}px)`);
   },
 });
+
+// A pause is a status, not an explanation: it must not fold away with the note.
+BASELINE_EXTRA.health = async (page, t) => {
+  t.ok(await page.getByText(/Health emails paused/).isVisible(), 'the paused-emails status stays visible on a phone');
+};
 
 // A wide screen keeps every card open, as it always was.
 BASELINE_EXTRA['health-desktop'] = async (page, t, ready) => {
