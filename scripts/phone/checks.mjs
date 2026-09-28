@@ -769,6 +769,46 @@ CHECKS.push({
   },
 });
 
+// The `← project / Cost detail / total` row is a no-wrap flex row with no
+// min-width on the project link, so a 40-character project name pushes the
+// row wide instead of breaking.
+CHECKS.push({
+  name: 'cost-detail-long', profile: 'phone',
+  hash: '#/project/' + encodeURIComponent(LONG_PROJECT) + '/cost', ready: 'text=Cost detail',
+  async run(page, t) {
+    const m = await pageOverflow(page);
+    t.ok(m.doc <= m.vw, `no horizontal page overflow (document ${m.doc}px, viewport ${m.vw}px)`);
+    const small = await smallTargets(page);
+    t.ok(small.length === 0, `every tap target is at least 44px tall (${small.length} too small: ${
+      small.slice(0, 6).map((s) => `${s.what} ${s.w}x${s.h}`).join('; ')})`);
+  },
+});
+
+// An ordinary short name shows the same bug at a smaller scale (three columns
+// squeezed onto one line), so it is checked too, not just the extreme case.
+CHECKS.push({
+  name: 'cost-detail', profile: 'phone',
+  hash: '#/project/alpha-app/cost', ready: 'text=Cost detail',
+  async run(page, t) {
+    const m = await pageOverflow(page);
+    t.ok(m.doc <= m.vw, `no horizontal page overflow (document ${m.doc}px, viewport ${m.vw}px)`);
+    const small = await smallTargets(page);
+    t.ok(small.length === 0, `every tap target is at least 44px tall (${small.length} too small: ${
+      small.slice(0, 6).map((s) => `${s.what} ${s.w}x${s.h}`).join('; ')})`);
+  },
+});
+
+// Desktop baseline for the same route, read before and after the CSS change
+// to confirm the wide layout is unaffected.
+CHECKS.push({
+  name: 'cost-detail-desktop', profile: 'desktop',
+  hash: '#/project/alpha-app/cost', ready: 'text=Cost detail',
+  async run(page, t) {
+    const m = await pageOverflow(page);
+    t.ok(m.doc <= m.vw, `no horizontal page overflow (document ${m.doc}px, viewport ${m.vw}px)`);
+  },
+});
+
 CHECKS.push({
   name: 'header-long-project', profile: 'phone',
   hash: '#/project/' + encodeURIComponent(LONG_PROJECT), ready: 'text=Trajectory',

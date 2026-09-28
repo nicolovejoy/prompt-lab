@@ -4390,9 +4390,10 @@
 
       return html`
         <div>
-          <div style="display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px">
+          <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px; margin-bottom: 16px">
             <a class="tap" href="#/project/${encodeURIComponent(project)}"
-               style="color: var(--text-secondary); text-decoration: none; font-size: 1.16rem">
+               style="color: var(--text-secondary); text-decoration: none; font-size: 1.16rem;
+                      min-width: 0; overflow-wrap: anywhere">
               ← ${project}
             </a>
             <h2 style="margin: 0; font-size: 1.57rem">Cost detail</h2>

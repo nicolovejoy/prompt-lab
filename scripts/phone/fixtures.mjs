@@ -172,6 +172,31 @@ function costTimeline(project, since) {
   return { costs, usage: [] };
 }
 
+// Per-request rows for the cost detail page (`detail=1`): token type, service
+// tier and context window on top of the date/model/cost the chart uses.
+const TOKEN_TYPES = ['input', 'output', 'cache_read'];
+const SERVICE_TIERS = ['standard', 'priority'];
+const CONTEXT_WINDOWS = ['0-200k', '200k-1M'];
+
+function costDetail(project, since) {
+  const detail = [];
+  for (const row of costRows(since, [project])) {
+    const rnd = seeded(seedOf('detail' + row.date + row.model));
+    for (const tokenType of TOKEN_TYPES) {
+      const share = tokenType === 'input' ? 0.5 : tokenType === 'output' ? 0.4 : 0.1;
+      const cost_usd = Math.round(row.cost_usd * share * 1e6) / 1e6;
+      if (cost_usd <= 0) continue;
+      detail.push({
+        date: row.date, model: row.model, token_type: tokenType,
+        service_tier: SERVICE_TIERS[Math.floor(rnd() * SERVICE_TIERS.length)],
+        context_window: CONTEXT_WINDOWS[Math.floor(rnd() * CONTEXT_WINDOWS.length)],
+        cost_usd,
+      });
+    }
+  }
+  return { detail };
+}
+
 function projectPage(name) {
   const rnd = seeded(seedOf('project' + name));
   const activity = [];
@@ -367,6 +392,9 @@ export function apiFixture(pathname, searchParams, method = 'GET') {
   if (pathname === '/api/activity_timeline') return ok(activityTimeline(searchParams.get('days')));
   if (pathname === '/api/cost_overview') return ok({ rows: costRows(searchParams.get('since')) });
   if (pathname === '/api/cost_timeline') {
+    if (searchParams.get('detail') === '1') {
+      return ok(costDetail(searchParams.get('project'), searchParams.get('since')));
+    }
     return ok(costTimeline(searchParams.get('project'), searchParams.get('since')));
   }
   // The app prefetches the most recently active project at idle, whatever the
