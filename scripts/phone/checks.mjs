@@ -1,13 +1,31 @@
 // Layout checks. Each entry loads one route under one device profile.
 // t.ok(condition, message) records an assertion; the runner prints them.
 
-import { LONG_HOST, LONG_PATH, fixtureOptions } from './fixtures.mjs';
+import { LONG_HOST, LONG_PATH, fixtureOptions, labDay } from './fixtures.mjs';
 
 export async function pageOverflow(page) {
   return page.evaluate(() => ({
     doc: document.documentElement.scrollWidth,
     vw: window.innerWidth,
   }));
+}
+
+// Tap targets under 44px tall. Inline links inside running text are exempt:
+// padding them to 44px would tear the paragraph apart, and WCAG exempts them.
+export async function smallTargets(page) {
+  return page.evaluate(() => {
+    const out = [];
+    for (const el of document.querySelectorAll('button, summary, select, [role=tab], a')) {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) continue;                      // not rendered
+      if (el.tagName === 'A' && getComputedStyle(el).display === 'inline') continue;
+      if (r.height < 44) {
+        out.push({ what: (el.innerText || el.getAttribute('aria-label') || el.tagName).trim().slice(0, 24),
+                   w: Math.round(r.width), h: Math.round(r.height) });
+      }
+    }
+    return out;
+  });
 }
 
 export const CHECKS = [
@@ -170,3 +188,34 @@ export const CHECKS = [
     },
   },
 ];
+
+// One baseline per route and profile. Each `ready` selector waits on
+// something that only renders once the route's own data has arrived, so a
+// check never measures a skeleton or a loading placeholder. The obvious
+// labels ("Active projects", "back", "Uptime archive") render before the data
+// does, or on the error path, so they are not used.
+const ROUTES = [
+  ['home', '#/', '.timeline-entry'],                   // the stream needs /api/overview
+  ['activity', '#/activity', 'text=By project'],
+  ['costs', '#/costs', 'text=By project'],
+  ['todos', '#/todos', 'text=open across'],
+  ['health', '#/health', 'text=Reading the strip'],    // needs the report AND the archive
+  ['about', '#/about', 'text=Ask a question'],         // needs the admin login
+  ['day', '#/day/' + labDay(1), 'text=API spend'],
+  ['project', '#/project/alpha-app', 'text=API cost'], // needs the project AND its costs
+];
+
+function baseline([name, hash, ready], profile) {
+  return {
+    name: profile === 'phone' ? name : `${name}-${profile}`,
+    profile, hash, ready,
+    async run(page, t) {
+      const m = await pageOverflow(page);
+      t.ok(m.doc <= m.vw, `no horizontal page overflow (document ${m.doc}px, viewport ${m.vw}px)`);
+      const errors = await page.evaluate(() => /Couldn't load|no fixture for/.test(document.body.innerText));
+      t.ok(!errors, 'page rendered its data, not an error placeholder');
+    },
+  };
+}
+
+CHECKS.push(...ROUTES.flatMap((r) => [baseline(r, 'phone'), baseline(r, 'desktop')]));
