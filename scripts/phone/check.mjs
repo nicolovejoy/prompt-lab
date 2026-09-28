@@ -25,6 +25,10 @@ const SHOTS = path.join(ROOT, '.playwright-mcp', 'phone');
 const PROFILES = {
   phone: { engine: webkit, options: { ...devices['iPhone 14'] } },
   desktop: { engine: chromium, options: { viewport: { width: 1280, height: 800 } } },
+  // Launched from the home screen. iOS reports it through navigator.standalone;
+  // Playwright cannot put a page in display-mode: standalone, so the check
+  // sets the property the page reads.
+  standalone: { engine: webkit, options: { ...devices['iPhone 14'] }, standalone: true },
 };
 
 const TYPES = {
@@ -78,6 +82,11 @@ async function runCheck(check, base, browsers, results) {
   if (!profile) throw new Error(`unknown profile "${check.profile}"`);
   if (!browsers[check.profile]) browsers[check.profile] = await profile.engine.launch();
   const context = await browsers[check.profile].newContext(profile.options);
+  if (profile.standalone) {
+    await context.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true });
+    });
+  }
   const missing = new Set();
   await context.route('**/api/**', (route) => {
     const url = new URL(route.request().url());

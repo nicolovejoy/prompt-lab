@@ -1,7 +1,13 @@
 // Layout checks. Each entry loads one route under one device profile.
 // t.ok(condition, message) records an assertion; the runner prints them.
 
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { LONG_HOST, LONG_PATH, LONG_PROJECT, apiFixture, fixtureOptions, labDay } from './fixtures.mjs';
+
+// The runner's full-page shots place a fixed element oddly; a check that
+// needs to show one takes its own viewport shot here.
+const SHOTS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '.playwright-mcp', 'phone');
 
 export async function pageOverflow(page) {
   return page.evaluate(() => ({
@@ -611,6 +617,8 @@ BASELINE_EXTRA['activity-desktop'] = async (page, t, ready) => {
 };
 BASELINE_EXTRA['home-desktop'] = async (page, t, ready) => {
   t.ok(await page.getByText('tap a bar for that day').isVisible(), 'home subtitle is unchanged on desktop');
+  t.ok(await page.locator('[data-test="tab-bar"]').count() === 1
+    && !(await page.locator('[data-test="tab-bar"]').isVisible()), 'desktop has no tab bar (rendered, hidden by CSS)');
   await desktopChart('home', [['7d', 7], ['30d', 30]], / prompts so far$/)(page, t, ready);
 };
 // A project's daily spend is often under a cent, so its amounts keep four
@@ -822,5 +830,109 @@ CHECKS.push({
     t.ok(header.menuRight <= header.vw, `and Menu stays on screen (right edge ${header.menuRight}px)`);
     const m = await pageOverflow(page);
     t.ok(m.doc <= m.vw, `no horizontal page overflow (${m.doc}px)`);
+  },
+});
+
+// Launched from the home screen, a bottom tab bar replaces the Menu button.
+const TABS = ['home', 'activity', 'todos', 'costs', 'more'];
+
+CHECKS.push({
+  name: 'tabbar', profile: 'standalone', hash: '#/', ready: 'text=Active projects',
+  async run(page, t) {
+    const bar = page.locator('[data-test="tab-bar"]');
+    t.ok(await bar.isVisible(), 'the tab bar shows when launched from the home screen');
+    await page.screenshot({ path: path.join(SHOTS, 'tabbar-viewport.png') });
+    const views = await bar.locator('[data-test="tab"]').evaluateAll((els) => els.map((e) => e.dataset.view));
+    t.ok(JSON.stringify(views) === JSON.stringify(TABS), `tabs in order (${views.join(', ')})`);
+    const boxes = await bar.locator('[data-test="tab"]').evaluateAll((els) => els.map((e) => {
+      const r = e.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right) };
+    }));
+    t.ok(boxes.every((b) => b.h >= 44), `every tab is at least 44px tall (${boxes.map((b) => b.h).join(', ')})`);
+    t.ok(Math.max(...boxes.map((b) => b.w)) - Math.min(...boxes.map((b) => b.w)) <= 2, 'tabs are equal width');
+    t.ok(boxes.every((b) => b.right <= 390), 'all five fit the screen');
+    const pinned = await bar.evaluate((e) => ({
+      position: getComputedStyle(e).position,
+      gap: Math.round(window.innerHeight - e.getBoundingClientRect().bottom),
+    }));
+    t.ok(pinned.position === 'fixed' && pinned.gap === 0, `the bar is pinned to the bottom edge (${pinned.position}, gap ${pinned.gap}px)`);
+    t.ok(await bar.locator('[data-view="home"]').getAttribute('aria-current') === 'page', 'Home is current on the home page');
+    t.ok(!(await page.locator('.nav-toggle').isVisible()), 'the Menu button is hidden: the bar replaces it');
+
+    // The end of a long page must clear the bar.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForTimeout(200);
+    const clear = await page.evaluate(() => {
+      const barTop = document.querySelector('[data-test="tab-bar"]').getBoundingClientRect().top;
+      // Descend through the last child that is in the flow and drawn. The bar
+      // is #app's last child and is fixed; stopping there would measure #app,
+      // whose box includes the very padding that clears the bar.
+      const inFlow = (el) => el.getBoundingClientRect().height > 0
+        && !['fixed', 'absolute'].includes(getComputedStyle(el).position);
+      let last = document.querySelector('#app') || document.body;
+      for (;;) {
+        const next = [...last.children].reverse().find(inFlow);
+        if (!next) break;
+        last = next;
+      }
+      return { barTop: Math.round(barTop), lastBottom: Math.round(last.getBoundingClientRect().bottom), what: last.tagName + (last.className ? "." + String(last.className).split(" ")[0] : "") };
+    });
+    t.ok(clear.lastBottom <= clear.barTop, `the last content clears the bar (${clear.what} ends ${clear.lastBottom}px, bar starts ${clear.barTop}px)`);
+
+    for (const [view, hash] of [['activity', '#/activity'], ['todos', '#/todos'], ['costs', '#/costs'], ['more', '#/more'], ['home', '#/']]) {
+      await bar.locator(`[data-view="${view}"]`).tap();
+      await page.waitForFunction((h) => (location.hash || '#/') === h, hash);
+      t.ok(await bar.locator(`[data-view="${view}"]`).getAttribute('aria-current') === 'page', `${view}: tab goes there and becomes current`);
+      const m = await pageOverflow(page);
+      t.ok(m.doc <= m.vw, `${view}: no horizontal page overflow (${m.doc}px)`);
+    }
+  },
+});
+
+CHECKS.push({
+  name: 'more-admin', profile: 'standalone', hash: '#/more', ready: '[data-test="more-list"]',
+  async run(page, t) {
+    // The runner's shot comes after the tap below, on Visitors.
+    await page.screenshot({ path: path.join(SHOTS, 'more-admin-viewport.png') });
+    const text = await page.locator('[data-test="more-list"]').innerText();
+    for (const label of ['Visitors', 'Health', 'About', 'Log out']) t.ok(text.includes(label), `More lists ${label}`);
+    const small = await smallTargets(page);
+    t.ok(small.length === 0, `every row is at least 44px tall (${small.map((s) => `${s.what} ${s.h}`).join('; ')})`);
+    await page.locator('[data-test="more-list"]').getByText('Visitors', { exact: true }).tap();
+    await page.waitForFunction(() => location.hash === '#/visitors');
+    t.ok(await page.locator('[data-test="tab-bar"] [data-view="more"]').getAttribute('aria-current') === 'page',
+      'Visitors keeps More highlighted');
+  },
+});
+
+CHECKS.push({
+  name: 'more-reader', profile: 'standalone', hash: '#/more', ready: '[data-test="more-list"]',
+  async before() { fixtureOptions.role = 'reader'; },
+  async after() { fixtureOptions.role = 'admin'; },
+  async run(page, t) {
+    const text = await page.locator('[data-test="more-list"]').innerText();
+    t.ok(!text.includes('Visitors') && !text.includes('Health'), 'a reader is offered no Visitors or Health');
+    t.ok(text.includes('About') && text.includes('Log out'), 'a reader keeps About and Log out');
+  },
+});
+
+CHECKS.push({
+  name: 'tabbar-browser-tab', profile: 'phone', hash: '#/', ready: 'text=Active projects',
+  async run(page, t) {
+    // Rendered on every route and hidden by CSS, so "not visible" is only
+    // meaningful once the element exists.
+    t.ok(await page.locator('[data-test="tab-bar"]').count() === 1, 'the bar is in the page, for CSS to hide');
+    t.ok(!(await page.locator('[data-test="tab-bar"]').isVisible()), 'in a browser tab there is no tab bar');
+    t.ok(await page.locator('.nav-toggle').isVisible(), 'and the Menu button is there as before');
+  },
+});
+
+CHECKS.push({
+  name: 'tabbar-project', profile: 'standalone', hash: '#/project/alpha-app', ready: 'text=Trajectory',
+  async run(page, t) {
+    // Without the bar there, "no tab is current" would pass on zero tabs.
+    t.ok(await page.locator('[data-test="tab-bar"]').isVisible()
+      && await page.locator('[data-test="tab"]').count() === TABS.length, 'the bar shows with its five tabs');
+    const current = await page.locator('[data-test="tab"][aria-current="page"]').count();
+    t.ok(current === 0, `a project page highlights no tab (${current})`);
   },
 });
