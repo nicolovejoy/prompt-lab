@@ -410,10 +410,13 @@
     }
     .list-row-value { margin-left: auto; flex: none; font-size: 1.12rem; font-variant-numeric: tabular-nums; }
     /* A share row centres on one line like any other row; on a phone its name can
-       wrap, so the swatch, share and count pin to the first line instead. */
+       wrap, so the swatch, share and count pin to the first line instead. It is a
+       block (its head line over its share bar), with a list row's rule and spacing. */
+    .share-row { padding: 5px 0; border-bottom: 1px solid var(--border); }
     .share-row-head { display: flex; align-items: center; gap: 8px; }
     @media (max-width: 600px) {
       .list-row { align-items: flex-start; padding: 8px 0; }
+      .share-row { padding: 8px 0; }
       .list-row-text { flex-direction: column; gap: 1px; }
       .list-row-label, .list-row-sub { white-space: normal; overflow-wrap: anywhere; }
       .share-row-head { align-items: flex-start; }
@@ -1547,7 +1550,7 @@
     // point of the toggle is that the name never appears on screen, and a
     // legend entry would defeat that.
     function CrossProjectActivity({ overview, hide }) {
-      const [hovered, setHovered] = useState(null);
+      const narrow = useNarrow();
       // 7 | 30 only: this chart reads the `overview` payload, which is capped at
       // 30 days and deliberately kept lean because it's what paints the home
       // page. Longer windows are what #/activity is for, and the tile above
@@ -1578,9 +1581,6 @@
       const dates = [];
       for (let i = days - 1; i >= 0; i--)
         dates.push(labDay(i));
-      const dayTotal = d => Object.values(byDateProject[d] || {}).reduce((s, v) => s + v, 0);
-      const peak = Math.max(...dates.map(dayTotal), 1);
-      const CHART_H = 120, n = dates.length;
 
       return html`
         <div style="margin-bottom:26px; padding:16px; background:var(--card);
@@ -1601,57 +1601,18 @@
           </div>
           <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.85rem;
                       color:var(--text-secondary); margin:-8px 0 10px">
-            prompts per day, stacked by project · tap a bar for that day
+            ${'prompts per day, stacked by project · tap a bar for '
+              + (narrow ? 'its breakdown' : 'that day')}
           </div>
           <div style="font-size:0.8rem; color:var(--text-secondary); margin:0 0 10px">
             Today (outlined) fills in as sessions are summarized — a session still
             running isn't counted yet.
           </div>
-          <div style="display:flex; gap:2px; align-items:stretch; height:${CHART_H}px;
-                      border-bottom:1px solid var(--border)">
-            ${dates.map((d, i) => {
-              const total = dayTotal(d);
-              const barH = total > 0 ? Math.max(1, Math.round((total / peak) * (CHART_H - 4))) : 0;
-              const isH = hovered === i;
-              const isToday = i === n - 1;
-              const edge = n > 1 ? i / (n - 1) : 0.5;
-              const anchor = edge < 0.15 ? 'left:0' : edge > 0.85 ? 'right:0' : 'left:50%; transform:translateX(-50%)';
-              const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
-              return html`
-                <div style="flex:1; min-width:3px; height:100%; position:relative;
-                            cursor:pointer"
-                     onMouseEnter=${() => setHovered(i)}
-                     onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
-                     onPointerEnter=${() => prefetchDay(d)}
-                     onClick=${() => navigate('#/day/' + d)}>
-                  ${isToday && html`
-                    <div style="position:absolute; left:0; right:0; bottom:0; top:0;
-                                border:1px dashed var(--border); border-bottom:none;
-                                border-radius:2px 2px 0 0; pointer-events:none"></div>`}
-                  <div style="position:absolute; left:0; right:0; bottom:0; height:${barH}px;
-                              display:flex; flex-direction:column-reverse; border-radius:2px 2px 0 0;
-                              overflow:hidden; opacity:${isH ? 1 : 0.85}; transition:opacity 0.1s">
-                    ${segs.map(([p, v]) => html`
-                      <div style="height:${(v / total) * 100}%; background:${segColor(p)}"></div>`)}
-                  </div>
-                  ${CAN_HOVER && isH && total > 0 && html`
-                    <div style="position:absolute; bottom:100%; z-index:5; margin-bottom:4px; ${anchor};
-                                background:var(--bg); border:1px solid var(--border); border-radius:6px;
-                                padding:8px 10px; white-space:nowrap; box-shadow:0 4px 16px rgba(0,0,0,0.4);
-                                font-size:0.95rem">
-                      <div style="font-weight:600; margin-bottom:4px">${fmtShortDate(d)} · ${total} prompts${isToday ? ' so far' : ''}</div>
-                      ${segs.slice(0, 6).map(([p, v]) => html`
-                        <div style="display:flex; align-items:center; gap:6px; color:var(--text-secondary)">
-                          <span style="width:8px; height:8px; border-radius:2px; background:${segColor(p)}; display:inline-block"></span>
-                          <span style="color:var(--text)">${p}</span>
-                          <span style="margin-left:auto">${v}</span>
-                        </div>`)}
-                      ${segs.length > 6 && html`<div style="color:var(--text-secondary)">+${segs.length - 6} more</div>`}
-                    </div>`}
-                </div>`;
-            })}
+          <div style="margin-bottom:12px">
+            <${StackedBars} id="home" dates=${dates} days=${days} byDateSeg=${byDateProject}
+              segColor=${segColor} fmtValue=${(v) => String(Math.round(v))} unit="prompts"
+              chartH=${120} markToday=${true} gutter=${false} scroll=${false} todaySuffix=" so far" />
           </div>
-          <${DateAxis} dates=${dates} style="margin-top:4px; margin-bottom:12px" />
 
           <div style="display:flex; flex-wrap:wrap; gap:10px 16px">
             ${ranked.slice(0, COST_PALETTE.length).map(([p]) => html`
@@ -2272,6 +2233,24 @@
       if (!(width > 0) || count < 1) return -1;
       return Math.max(0, Math.min(count - 1, Math.floor((x / width) * count)));
     }
+
+    // A money chart's y-axis labels. Wide: the labels the cost charts always
+    // had, cents included and a bare "$0" at the baseline. Compact: a phone's
+    // gutter is 44px, five monospace characters, so "$11.31" or a monthly
+    // "$1,234.56" would spill out of it; cents go at $10, thousands become k.
+    // The readout under the chart still shows the exact amount.
+    function fmtUsdAxis(n, compact) {
+      n = Number(n) || 0;
+      if (n === 0) return '$0';
+      if (!compact) {
+        return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+      if (n < 9.995) return '$' + n.toFixed(2);
+      const whole = Math.round(n);
+      if (whole < 1000) return '$' + whole;
+      const k = n / 1000;
+      return '$' + (k < 9.95 ? k.toFixed(1).replace(/\.0$/, '') : Math.round(k)) + 'k';
+    }
     // </pure>
 
     // ---- Costs Overview (all projects, over time) ----
@@ -2391,11 +2370,24 @@
       return narrow;
     }
 
-    const withUnit = (text, unit) => (unit ? text + ' ' + unit : text);
     const MONO = "font-family: 'SF Mono', ui-monospace, monospace";
 
+    // The props after markToday exist for particular charts, and each default
+    // leaves every other chart as it was:
+    //   gutter      false drops the y-axis (the home chart never had one).
+    //   scroll      false drops the wide chart's sideways scroller, for a chart
+    //               whose window is never longer than 30 days: its bars always
+    //               fit, and outside a scroller its tooltip is not clipped.
+    //   fmtAxis     (value, narrow) -> gutter label, for money that needs
+    //               shorter labels on a phone than in the readout.
+    //   minPeak     the smallest full-height value; a cost chart's is a
+    //               fraction of a cent, so a quiet month still fills the chart.
+    //   tailSeg     the segment a caller folds its tail into ("other"): it
+    //               stacks on top and lists last whatever its size.
+    //   todaySuffix appended to today's heading while today is still counting.
     function StackedBars({ id, dates, days, byDateSeg, segColor, fmtValue = (n) => Math.round(n).toLocaleString(),
-                           unit = '', chartH = 140, markToday = false }) {
+                           unit = '', chartH = 140, markToday = false, gutter = true, scroll = true, fmtAxis = fmtValue,
+                           minPeak = 1, tailSeg = null, todaySuffix = '' }) {
       const narrow = useNarrow();
       const [hovered, setHovered] = useState(null);
       // A selection is an index, and an index means a different bucket once the
@@ -2416,9 +2408,20 @@
 
       const size = bucketSizeFor(days, narrow);
       const buckets = bucketDates(dates, size);
-      const totals = buckets.map((b) => bucketTotals(b, byDateSeg));
-      const peak = Math.max(...totals.map((t) => t.total), 1);
+      const totals = buckets.map((b) => {
+        const t = bucketTotals(b, byDateSeg);
+        const tail = tailSeg == null ? -1 : t.segs.findIndex(([s]) => s === tailSeg);
+        if (tail >= 0) t.segs.push(...t.segs.splice(tail, 1));
+        return t;
+      });
+      const peak = Math.max(...totals.map((t) => t.total), minPeak);
       const n = buckets.length;
+      const today = dates[dates.length - 1];
+      // Parts, not one joined string: each renders as its own text node, as the
+      // old tooltips did. Joined, the home tooltip came out 0.03px narrower and
+      // every glyph under its heading moved.
+      const heading = (b, total) => [b.label, ' · ', fmtValue(total), unit ? ' ' + unit : '',
+        b.size === 'day' && b.key === today ? todaySuffix : ''];
       const label = {};
       // An axis label names where a bucket starts, in as few characters as
       // will do. A week's full label ("Jul 28 – Aug 3") and a month's
@@ -2496,7 +2499,7 @@
                           background: var(--bg); border: 1px solid var(--border);
                           border-radius: 6px; padding: 8px 10px; white-space: nowrap;
                           box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
-                <div style="font-weight: 600; margin-bottom: 4px">${b.label} · ${withUnit(fmtValue(total), unit)}</div>
+                <div style="font-weight: 600; margin-bottom: 4px">${heading(b, total)}</div>
                 ${segs.slice(0, 6).map(([s, v]) => html`
                   <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
                     <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(s)}; display: inline-block"></span>
@@ -2520,26 +2523,29 @@
                                      style="margin-top: 4px" />`;
       const sel = selected != null ? buckets[selected] : null;
 
+      const plot = narrow || !scroll
+        ? html`<div>${row}${axis}</div>`
+        : html`
+          <div class="chart-scroll" ref=${scrollRef}>
+            <div style="min-width: ${n * 7}px">${row}${axis}</div>
+          </div>`;
+
       return html`
         <div data-test="chart" data-chart=${id}>
-          <div style="display: grid; grid-template-columns: ${narrow ? 44 : 56}px minmax(0, 1fr); gap: 8px">
-            <div style="display: flex; flex-direction: column; justify-content: space-between;
-                        align-items: flex-end; height: ${chartH}px; font-size: 0.85rem;
-                        color: var(--text-secondary); ${MONO}">
-              <span>${fmtValue(peak)}</span>
-              <span>${fmtValue(peak / 2)}</span>
-              <span>${fmtValue(0)}</span>
-            </div>
-            ${narrow
-              ? html`<div>${row}${axis}</div>`
-              : html`
-                <div class="chart-scroll" ref=${scrollRef}>
-                  <div style="min-width: ${n * 7}px">${row}${axis}</div>
-                </div>`}
-          </div>
-          ${sel && html`<${ChartReadout} bucket=${sel} total=${totals[selected].total}
+          ${gutter ? html`
+            <div style="display: grid; grid-template-columns: ${narrow ? 44 : 56}px minmax(0, 1fr); gap: 8px">
+              <div style="display: flex; flex-direction: column; justify-content: space-between;
+                          align-items: flex-end; height: ${chartH}px; font-size: 0.85rem;
+                          color: var(--text-secondary); ${MONO}">
+                <span>${fmtAxis(peak, narrow)}</span>
+                <span>${fmtAxis(peak / 2, narrow)}</span>
+                <span>${fmtAxis(0, narrow)}</span>
+              </div>
+              ${plot}
+            </div>` : plot}
+          ${sel && html`<${ChartReadout} bucket=${sel} heading=${heading(sel, totals[selected].total)}
                           segs=${totals[selected].segs} segColor=${segColor} fmtValue=${fmtValue}
-                          unit=${unit} byDateTotal=${(d) => bucketTotals({ dates: [d] }, byDateSeg).total} />`}
+                          byDateTotal=${(d) => bucketTotals({ dates: [d] }, byDateSeg).total} />`}
         </div>`;
     }
 
@@ -2547,11 +2553,11 @@
     // way into the day(s) behind the bar. In flow, not floating: a floating box
     // is clipped by the chart's own panel on a phone and covers what it explains.
     const READOUT_SEGS = 6;
-    function ChartReadout({ bucket, total, segs, segColor, fmtValue = (n) => Math.round(n).toLocaleString(),
-                            unit = '', byDateTotal }) {
+    function ChartReadout({ bucket, heading, segs, segColor, fmtValue = (n) => Math.round(n).toLocaleString(),
+                            byDateTotal }) {
       return html`
         <div data-test="chart-readout" class="chart-readout">
-          <div class="chart-readout-head">${bucket.label} · ${withUnit(fmtValue(total), unit)}</div>
+          <div class="chart-readout-head">${heading}</div>
           ${segs.length
             ? html`
               ${segs.slice(0, READOUT_SEGS).map(([s, v]) => html`
@@ -2584,8 +2590,6 @@
       const [data, setData] = useState(() => costOverviewMemo.get(30) || null);
       const [loading, setLoading] = useState(!costOverviewMemo.has(30));
       const [sortBy, setSortBy] = useState('cost');  // 'cost' | 'name'
-      const [hovered, setHovered] = useState(null);   // date index
-      const scrollRef = useRef(null);
 
       useEffect(() => {
         const cached = costOverviewMemo.get(days);
@@ -2598,11 +2602,6 @@
           .catch(e => { if (alive && !cached) { setData({ error: e.message }); setLoading(false); } });
         return () => { alive = false; };
       }, [days]);
-
-
-      useEffect(() => {
-        if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
-      }, [data, days]);
 
       const windowPicker = html`
         <div style="display: flex; gap: 4px">
@@ -2637,12 +2636,11 @@
         <div class="cost-placeholder">No API spend in this window.</div></div>`;
 
       // Aggregate.
-      const byProject = {}, byModel = {}, byDate = {}, byDateProject = {};
+      const byProject = {}, byModel = {}, byDateProject = {};
       for (const r of rows) {
         const v = Number(r.cost_usd) || 0;
         byProject[r.project] = (byProject[r.project] || 0) + v;
         byModel[r.model] = (byModel[r.model] || 0) + v;
-        byDate[r.date] = (byDate[r.date] || 0) + v;
         (byDateProject[r.date] ||= {})[r.project] =
           (byDateProject[r.date]?.[r.project] || 0) + v;
       }
@@ -2664,9 +2662,6 @@
       for (let i = days - 1; i >= 0; i--) {
         dates.push(labDay(i));
       }
-      const peak = Math.max(...Object.values(byDate), 0.0001);
-      const CHART_H = 140;
-      const n = dates.length;
 
       // Legend rows (sortable).
       const legend = [...ranked];
@@ -2691,61 +2686,8 @@
           </div>
 
           ${panel(html`
-            <div style="display: grid; grid-template-columns: 56px 1fr; gap: 8px">
-              <div style="display: flex; flex-direction: column; justify-content: space-between;
-                          align-items: flex-end; height: ${CHART_H}px; font-size: 0.85rem;
-                          color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace">
-                <span>${fmtUsd(peak)}</span>
-                <span>${fmtUsd(peak / 2)}</span>
-                <span>$0</span>
-              </div>
-              <div class="chart-scroll" ref=${scrollRef}>
-                <div style="min-width: ${n * 7}px">
-                  <div style="display: flex; gap: 2px; align-items: stretch; height: ${CHART_H}px;
-                              border-bottom: 1px solid var(--border)">
-                    ${dates.map((d, i) => {
-                      const dayTotal = byDate[d] || 0;
-                      const barH = dayTotal > 0 ? Math.max(1, Math.round((dayTotal / peak) * (CHART_H - 4))) : 0;
-                      const isHovered = hovered === i;
-                      const edge = n > 1 ? i / (n - 1) : 0.5;
-                      const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
-                      // Stack segments within the bar, biggest project at the bottom.
-                      const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
-                      return html`
-                        <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
-                             onMouseEnter=${() => setHovered(i)}
-                             onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
-                             onPointerEnter=${() => prefetchDay(d)}
-                             onClick=${() => navigate('#/day/' + d)}>
-                          <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
-                                      display: flex; flex-direction: column-reverse;
-                                      border-radius: 2px 2px 0 0; overflow: hidden;
-                                      opacity: ${isHovered ? 1 : 0.85}; transition: opacity 0.1s">
-                            ${segs.map(([p, v]) => html`
-                              <div style="height: ${(v / dayTotal) * 100}%; background: ${segColor(p)}"></div>`)}
-                          </div>
-                          ${CAN_HOVER && isHovered && dayTotal > 0 && html`
-                            <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
-                                        ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
-                                        background: var(--bg); border: 1px solid var(--border);
-                                        border-radius: 6px; padding: 8px 10px; white-space: nowrap;
-                                        box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
-                              <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${fmtUsd(dayTotal)}</div>
-                              ${segs.slice(0, 6).map(([p, v]) => html`
-                                <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-                                  <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(p)}; display: inline-block"></span>
-                                  <span style="color: var(--text)">${p}</span>
-                                  <span style="margin-left: auto">${fmtUsd(v)}</span>
-                                </div>`)}
-                              ${segs.length > 6 && html`<div style="color: var(--text-secondary)">+${segs.length - 6} more</div>`}
-                            </div>`}
-                        </div>`;
-                    })}
-                  </div>
-                  <${DateAxis} dates=${dates} style="margin-top: 4px" />
-                </div>
-              </div>
-            </div>
+            <${StackedBars} id="costs" dates=${dates} days=${days} byDateSeg=${byDateProject}
+              segColor=${segColor} fmtValue=${fmtUsd} fmtAxis=${fmtUsdAxis} minPeak=${0.0001} />
           `)}
 
           <div class="two-col">
@@ -2820,8 +2762,6 @@
       const [data, setData] = useState(() => activityTimelineMemo.get(30) || null);
       const [loading, setLoading] = useState(!activityTimelineMemo.has(30));
       const [sortBy, setSortBy] = useState('30d');   // '30d' | '7d' | 'name'
-      const [hovered, setHovered] = useState(null);   // date index
-      const scrollRef = useRef(null);
 
       useEffect(() => {
         const cached = activityTimelineMemo.get(days);
@@ -2833,13 +2773,6 @@
           .catch(e => { if (alive && !cached) { setData({ error: e.message }); setLoading(false); } });
         return () => { alive = false; };
       }, [days]);
-
-
-      // Charts open at the recent (right) end — browsers default scrollLeft to 0,
-      // which would show the oldest, usually emptiest slice (issue #19).
-      useEffect(() => {
-        if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
-      }, [data, days, m]);
 
       const windowLabel = (d) => (d === 365 ? 'year' : d + ' days');
 
@@ -2889,7 +2822,7 @@
       const val = (r) => Number(r[m]) || 0;
 
       // Aggregate the selected metric.
-      const byProject = {}, byDate = {}, byDateProject = {};
+      const byProject = {}, byDateProject = {};
       const totals = { sessions: 0, prompts: 0, commits: 0 };
       const day = (i) => labDay(i);
       const cut7 = day(6), cut30 = day(29);
@@ -2898,7 +2831,6 @@
         const v = val(r);
         for (const k of ACTIVITY_METRICS) totals[k] += Number(r[k]) || 0;
         byProject[r.project] = (byProject[r.project] || 0) + v;
-        byDate[r.date] = (byDate[r.date] || 0) + v;
         (byDateProject[r.date] ||= {})[r.project] = (byDateProject[r.date]?.[r.project] || 0) + v;
         if (r.date >= cut7) per7[r.project] = (per7[r.project] || 0) + v;
         if (r.date >= cut30) per30[r.project] = (per30[r.project] || 0) + v;
@@ -2940,9 +2872,8 @@
       // so a sparse window still reads as a calendar rather than a few fat bars.
       const dates = [];
       for (let i = effDays - 1; i >= 0; i--) dates.push(day(i));
-      const peak = Math.max(...Object.values(byDate), 1);
-      const CHART_H = 140;
-      const n = dates.length;
+      const byDateSeg = {};
+      for (const d of dates) byDateSeg[d] = Object.fromEntries(segsFor(d));
 
       // Table rows: every project the window saw, sortable. 7d/30d are fixed
       // windows (not the chart window) so the columns mean the same thing at
@@ -2958,13 +2889,6 @@
         <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated, var(--card));
                     border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
 
-      const breakdown = (d) => segsFor(d).slice(0, 6).map(([p, v]) => html`
-        <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-          <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(p)}; display: inline-block; flex: none"></span>
-          <span style="color: var(--text)">${p}</span>
-          <span style="margin-left: auto">${fmtInt(v)}</span>
-        </div>`);
-
       return html`
         <div>
           ${header}
@@ -2977,56 +2901,8 @@
           </div>
 
           ${panel(html`
-            <div style="display: grid; grid-template-columns: 56px 1fr; gap: 8px">
-              <div style="display: flex; flex-direction: column; justify-content: space-between;
-                          align-items: flex-end; height: ${CHART_H}px; font-size: 0.85rem;
-                          color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace">
-                <span>${fmtInt(peak)}</span>
-                <span>${fmtInt(Math.round(peak / 2))}</span>
-                <span>0</span>
-              </div>
-              <div class="chart-scroll" ref=${scrollRef}>
-                <div style="min-width: ${n * 7}px">
-                  <div style="display: flex; gap: 2px; align-items: stretch; height: ${CHART_H}px;
-                              border-bottom: 1px solid var(--border)">
-                    ${dates.map((d, i) => {
-                      const dayTotal = byDate[d] || 0;
-                      const barH = dayTotal > 0 ? Math.max(1, Math.round((dayTotal / peak) * (CHART_H - 4))) : 0;
-                      const isHovered = hovered === i;
-                      const edge = n > 1 ? i / (n - 1) : 0.5;
-                      const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
-                      const segs = segsFor(d);
-                      return html`
-                        <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
-                             onMouseEnter=${() => setHovered(i)}
-                             onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
-                             onPointerEnter=${() => prefetchDay(d)}
-                             onClick=${() => navigate('#/day/' + d)}>
-                          <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
-                                      display: flex; flex-direction: column-reverse;
-                                      border-radius: 2px 2px 0 0; overflow: hidden;
-                                      opacity: ${isHovered ? 1 : 0.85}; transition: opacity 0.1s">
-                            ${segs.map(([p, v]) => html`
-                              <div style="height: ${(v / dayTotal) * 100}%; background: ${segColor(p)}"></div>`)}
-                          </div>
-                          ${CAN_HOVER && isHovered && dayTotal > 0 && html`
-                            <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
-                                        ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
-                                        background: var(--bg); border: 1px solid var(--border);
-                                        border-radius: 6px; padding: 8px 10px; white-space: nowrap;
-                                        box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
-                              <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${fmtInt(dayTotal)} ${m}</div>
-                              ${breakdown(d)}
-                              ${segsFor(d).length > 6 && html`
-                                <div style="color: var(--text-secondary)">+${segsFor(d).length - 6} more</div>`}
-                            </div>`}
-                        </div>`;
-                    })}
-                  </div>
-                  <${DateAxis} dates=${dates} style="margin-top: 4px" />
-                </div>
-              </div>
-            </div>
+            <${StackedBars} id="activity" dates=${dates} days=${effDays} byDateSeg=${byDateSeg}
+              segColor=${segColor} fmtValue=${(v) => fmtInt(Math.round(v))} unit=${m} tailSeg=${otherLabel} />
           `)}
 
           <div class="two-col">
@@ -3533,7 +3409,7 @@
             <div data-test="by-site">
               ${sectionTitle('By site')}
               ${ranked.map(([s, v]) => html`
-                <div data-test="share-row" class="list-row" style="display: block">
+                <div data-test="share-row" class="share-row">
                   <div class="share-row-head">
                     <span class="share-row-swatch" style="width: 9px; height: 9px; border-radius: 2px;
                                  background: ${segColor(s)}; flex: none"></span>
@@ -4185,7 +4061,6 @@
     function CostChart({ project }) {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
-      const [hovered, setHovered] = useState(null);  // bar index or null
 
       useEffect(() => {
         // Memoized cost (instant on revisit), then revalidate in background.
@@ -4211,19 +4086,20 @@
           <span style="opacity: 0.7">Claude Code (subscription) work isn't attributed per project.</span>
         </div>`;
 
-      // Aggregate per-date totals across models. byDateModel keeps the
-      // per-model split so the hover tooltip can show a breakdown.
-      const byDate = {};
+      // Per-day, per-model spend. One colour for every model, as this chart has
+      // always drawn it: the model split is in the tooltip, the readout and the
+      // legend below, not in the bar.
       const byDateModel = {};
+      let total = 0;
       for (const r of costs) {
         const v = Number(r.cost_usd) || 0;
-        byDate[r.date] = (byDate[r.date] || 0) + v;
-        (byDateModel[r.date] ||= []).push({ model: r.model, cost: v });
+        total += v;
+        (byDateModel[r.date] ||= {})[r.model] = (byDateModel[r.date]?.[r.model] || 0) + v;
       }
-      for (const d in byDateModel) byDateModel[d].sort((a, b) => b.cost - a.cost);
-      const dates = Object.keys(byDate).sort();
-      const total = dates.reduce((s, d) => s + byDate[d], 0);
-      const peak = Math.max(...Object.values(byDate), 0.0001);
+      // A continuous 30-day calendar like every other chart here, so a bar's
+      // position is its date and the newest bar is always today.
+      const dates = [];
+      for (let i = 29; i >= 0; i--) dates.push(labDay(i));
 
       // Per-model totals for legend
       const byModel = {};
@@ -4231,15 +4107,6 @@
         byModel[r.model] = (byModel[r.model] || 0) + (Number(r.cost_usd) || 0);
       }
       const models = Object.entries(byModel).sort((a, b) => b[1] - a[1]);
-
-      const CHART_H = 100;
-      const n = dates.length;
-      const fmtShort = (iso) => {
-        const [, m, d] = iso.split('-');
-        const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                        'Jul','Aug','Sep','Oct','Nov','Dec'];
-        return months[parseInt(m, 10) - 1] + ' ' + parseInt(d, 10);
-      };
 
       return html`
         <div style="margin-top: 16px; padding: 12px; background: var(--bg-elevated);
@@ -4262,79 +4129,9 @@
               </a>
             </div>
           </div>
-          <div style="display: grid; grid-template-columns: 52px 1fr; gap: 8px">
-            <!-- Y axis labels -->
-            <div style="display: flex; flex-direction: column;
-                        justify-content: space-between; align-items: flex-end;
-                        height: ${CHART_H}px; font-size: 0.85rem;
-                        color: var(--text-secondary);
-                        font-family: 'SF Mono', ui-monospace, monospace">
-              <span>$${peak.toFixed(2)}</span>
-              <span>$${(peak / 2).toFixed(2)}</span>
-              <span>$0</span>
-            </div>
-            <!-- Bars + X axis labels -->
-            <div>
-              <div style="display: flex; gap: 2px; align-items: stretch;
-                          height: ${CHART_H}px;
-                          border-bottom: 1px solid var(--border)">
-                ${dates.map((d, i) => {
-                  const v = byDate[d];
-                  const h = Math.max(1, Math.round((v / peak) * (CHART_H - 4)));
-                  const isHovered = hovered === i;
-                  // Anchor tooltip left/right when near the chart edges so it
-                  // doesn't get clipped. ~10% on each side feels right at 30 bars.
-                  const edge = n > 0 ? i / (n - 1) : 0.5;
-                  const tipAnchor = edge < 0.15 ? 'left'
-                                   : edge > 0.85 ? 'right'
-                                   : 'center';
-                  return html`
-                    <div style="flex: 1; min-width: 4px; height: 100%;
-                                position: relative; cursor: default"
-                         onMouseEnter=${() => setHovered(i)}
-                         onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}>
-                      <div style="position: absolute; left: 0; right: 0; bottom: 0;
-                                  height: ${h}px;
-                                  background: var(--accent);
-                                  opacity: ${isHovered ? 1.0 : (v > 0 ? 0.85 : 0.15)};
-                                  border-radius: 2px 2px 0 0;
-                                  transition: opacity 0.1s"></div>
-                      ${isHovered && html`
-                        <div style="position: absolute; bottom: 100%;
-                                    ${tipAnchor === 'left' ? 'left: 0'
-                                      : tipAnchor === 'right' ? 'right: 0'
-                                      : 'left: 50%; transform: translateX(-50%)'};
-                                    margin-bottom: 6px;
-                                    background: var(--bg);
-                                    color: var(--text);
-                                    border: 1px solid var(--border);
-                                    border-radius: 4px;
-                                    padding: 6px 8px;
-                                    font-family: 'SF Mono', ui-monospace, monospace;
-                                    font-size: 0.95rem;
-                                    line-height: 1.4;
-                                    white-space: nowrap;
-                                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                                    pointer-events: none;
-                                    z-index: 10">
-                          <div style="font-weight: 600; margin-bottom: 2px">
-                            ${fmtShort(d)} · $${v.toFixed(4)}
-                          </div>
-                          ${(byDateModel[d] || []).length > 1
-                            && byDateModel[d].map(m => html`
-                              <div style="color: var(--text-secondary)">
-                                ${m.model}: $${m.cost.toFixed(4)}
-                              </div>
-                            `)}
-                        </div>
-                      `}
-                    </div>
-                  `;
-                })}
-              </div>
-              <${DateAxis} dates=${dates} fmt=${fmtShort} style="margin-top: 4px" />
-            </div>
-          </div>
+          <${StackedBars} id="project-cost" dates=${dates} days=${30} byDateSeg=${byDateModel}
+            segColor=${() => 'var(--accent)'} fmtValue=${fmtUsd} fmtAxis=${fmtUsdAxis}
+            minPeak=${0.0001} chartH=${100} scroll=${false} />
           ${models.length > 0 && html`
             <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
                         font-size: 0.89rem; color: var(--text-secondary);

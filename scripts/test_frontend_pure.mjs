@@ -27,7 +27,7 @@ if (src.indexOf('// <pure>', open + 1) >= 0) {
 }
 
 const NAMES = ['fmtShortDate', 'fmtMonth', 'fmtMonthShort', 'addDays', 'mondayOf', 'bucketSizeFor',
-               'bucketDates', 'bucketTotals', 'bucketIndexAt'];
+               'bucketDates', 'bucketTotals', 'bucketIndexAt', 'fmtUsdAxis'];
 const pure = new Function(`"use strict";\n${src.slice(open, close)}\nreturn { ${NAMES.join(', ')} };`)();
 
 const tests = [];
@@ -164,6 +164,23 @@ test('bucketIndexAt clamps to the chart and refuses an empty one', () => {
   assert.equal(pure.bucketIndexAt(155, 300, 30), 15);
   assert.equal(pure.bucketIndexAt(10, 0, 30), -1);       // not measured yet
   assert.equal(pure.bucketIndexAt(10, 300, 0), -1);      // no buckets
+});
+
+test('fmtUsdAxis on a wide screen: exact cents, and a bare "$0" at the baseline', () => {
+  const cases = [[0, '$0'], [0.5, '$0.50'], [3.8, '$3.80'], [99.99, '$99.99'], [100, '$100.00'],
+                 [240.4, '$240.40'], [999.5, '$999.50'], [1000, '$1,000.00'], [1234.56, '$1,234.56'],
+                 [12500, '$12,500.00']];
+  for (const [n, want] of cases) assert.equal(pure.fmtUsdAxis(n, false), want, String(n));
+});
+
+test('fmtUsdAxis on a phone: five characters at most, to fit a 44px gutter', () => {
+  const cases = [[0, '$0'], [0.5, '$0.50'], [3.8, '$3.80'], [99.99, '$100'], [100, '$100'],
+                 [240.4, '$240'], [999.5, '$1k'], [1000, '$1k'], [1234.56, '$1.2k'], [12500, '$13k']];
+  for (const [n, want] of cases) assert.equal(pure.fmtUsdAxis(n, true), want, String(n));
+  for (const n of [0.004, 9.994, 9.995, 10, 11.31, 99.5, 9949, 9950, 99999, 999000]) {
+    const s = pure.fmtUsdAxis(n, true);
+    assert.ok(s.length <= 5, `${n} -> "${s}" is ${s.length} characters`);
+  }
 });
 
 let failed = 0;

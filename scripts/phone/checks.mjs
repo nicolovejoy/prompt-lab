@@ -227,17 +227,23 @@ const ROUTES = [
 ];
 
 function baseline([name, hash, ready], profile) {
+  const checkName = profile === 'phone' ? name : `${name}-${profile}`;
   return {
-    name: profile === 'phone' ? name : `${name}-${profile}`,
+    name: checkName,
     profile, hash, ready,
     async run(page, t) {
       const m = await pageOverflow(page);
       t.ok(m.doc <= m.vw, `no horizontal page overflow (document ${m.doc}px, viewport ${m.vw}px)`);
       const errors = await page.evaluate(() => /Couldn't load|no fixture for/.test(document.body.innerText));
       t.ok(!errors, 'page rendered its data, not an error placeholder');
+      await BASELINE_EXTRA[checkName]?.(page, t, ready);
     },
   };
 }
+
+// Route-specific assertions riding on a baseline check, keyed by check name.
+// Filled in below, next to the chart checks they belong with.
+const BASELINE_EXTRA = {};
 
 CHECKS.push(...ROUTES.flatMap((r) => [baseline(r, 'phone'), baseline(r, 'desktop')]));
 
@@ -247,12 +253,26 @@ async function chartBox(page, id) {
 }
 async function tapAt(page, x, y) { await page.touchscreen.tap(x, y); }
 
-function chartCheck({ name, hash, ready, id, windows }) {
+// A window button, looked up inside the innermost element holding both the
+// chart and a button with that label: the home page and the project page carry
+// more than one chart, and a bare label could name another chart's button.
+function windowButton(page, id, label) {
+  const button = () => page.getByRole('button', { name: label, exact: true });
+  return page.locator('div')
+    .filter({ has: page.locator(`[data-chart="${id}"]`) })
+    .filter({ has: button() })
+    .last()
+    .getByRole('button', { name: label, exact: true });
+}
+
+// `picker: false` is a chart with one fixed window and no buttons (the
+// project page's cost chart): its single entry is checked as it loads.
+function chartCheck({ name, hash, ready, id, windows, picker = true }) {
   return {
     name, profile: 'phone', hash, ready,
     async run(page, t) {
       for (const [label, expectMin, expectMax] of windows) {
-        await page.getByRole('button', { name: label, exact: true }).tap();
+        if (picker) await windowButton(page, id, label).tap();
         await page.waitForTimeout(400);
         const chart = page.locator(`[data-chart="${id}"]`);
         const bars = await chart.locator('[data-test="chart-bar"]').count();
@@ -453,3 +473,92 @@ CHECKS.push({
       `after pointercancel a move does not change the selection (${got}, expected ${want})`);
   },
 });
+
+// The four charts that moved onto StackedBars after Visitors. The window
+// buttons each page offers, with the bars a phone draws for each.
+CHECKS.push(
+  chartCheck({ name: 'costs-chart', hash: '#/costs', ready: 'text=By project', id: 'costs',
+    windows: [['30d', 30, 30], ['90d', 13, 14], ['1y', 12, 13], ['7d', 7, 7]] }),
+  chartCheck({ name: 'activity-chart', hash: '#/activity', ready: 'text=By project', id: 'activity',
+    windows: [['30d', 30, 30], ['90d', 13, 14], ['1y', 12, 13], ['7d', 7, 7]] }),
+  chartCheck({ name: 'home-chart', hash: '#/', ready: '.timeline-entry', id: 'home',
+    windows: [['30d', 30, 30], ['7d', 7, 7]] }),
+  // The project page's cost chart has one fixed 30-day window and no buttons.
+  chartCheck({ name: 'project-cost-chart', hash: '#/project/alpha-app', ready: 'text=API cost', id: 'project-cost',
+    windows: [['30d', 30, 30]], picker: false }),
+);
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const shortDate = (iso) => MONTHS[Number(iso.slice(5, 7)) - 1] + ' ' + Number(iso.slice(8));
+
+// Today's bar on the home chart is still filling in; its readout says so, as
+// the desktop tooltip always has, and yesterday's does not.
+CHECKS.push({
+  name: 'home-chart-today', profile: 'phone', hash: '#/', ready: '.timeline-entry',
+  async run(page, t) {
+    const chart = page.locator('[data-chart="home"]');
+    await chart.scrollIntoViewIfNeeded();
+    const head = chart.locator('.chart-readout-head');
+    const box = await chartBox(page, 'home');
+    await tapAt(page, box.x + box.width - 3, box.y + box.height / 2);
+    const today = await head.innerText();
+    t.ok(today.startsWith(shortDate(labDay(0)) + ' · ') && today.endsWith(' prompts so far'),
+      `today's readout ends "so far" ("${today}")`);
+    const yesterday = await chart.locator(`[data-test="chart-bar"][data-key="${labDay(1)}"]`).boundingBox();
+    await tapAt(page, yesterday.x + yesterday.width / 2, box.y + box.height / 2);
+    const prev = await head.innerText();
+    t.ok(prev.startsWith(shortDate(labDay(1)) + ' · ') && !/so far/.test(prev),
+      `yesterday's readout does not ("${prev}")`);
+  },
+});
+
+// Desktop keeps the old chart: a bar per day at every window, a hover tooltip,
+// and a click that opens the day. `windows` ends on the page's default, so the
+// check's screenshot is the page as it loads.
+function desktopChart(id, windows, tip) {
+  return async (page, t, ready) => {
+    const chart = page.locator(`[data-chart="${id}"]`);
+    for (const [label, n] of windows) {
+      if (label) await windowButton(page, id, label).click();
+      await page.waitForTimeout(400);
+      const bars = await chart.locator('[data-test="chart-bar"]').count();
+      t.ok(bars === n, `desktop ${label || 'chart'}: a bar per day (${bars}, expected ${n})`);
+    }
+    const heading = chart.getByText(new RegExp('^' + shortDate(labDay(0)) + ' · '));
+    t.ok(!(await heading.first().isVisible()), 'desktop: no tooltip before hovering');
+    const last = chart.locator('[data-test="chart-bar"]').last();
+    await last.hover();
+    const text = (await heading.first().isVisible()) ? await heading.first().innerText() : '';
+    t.ok(tip.test(text), `desktop: hovering the newest bar shows its tooltip ("${text}")`);
+    await last.click();
+    await page.waitForFunction(() => location.hash.startsWith('#/day/'));
+    t.ok(page.url().endsWith('#/day/' + labDay(0)), 'desktop: clicking the newest bar opens today');
+    await page.goBack();
+    await page.locator(ready).first().waitFor();
+    await page.mouse.move(0, 0);   // no bar left highlighted in the shot
+  };
+}
+
+BASELINE_EXTRA['costs-desktop'] = desktopChart('costs',
+  [['7d', 7], ['90d', 90], ['1y', 365], ['30d', 30]], /^\w{3} \d+ · \$[\d,]+\.\d\d$/);
+BASELINE_EXTRA['activity-desktop'] = async (page, t, ready) => {
+  await desktopChart('activity', [['7d', 7], ['90d', 90], ['1y', 365], ['30d', 30]], / sessions$/)(page, t, ready);
+  // The unit follows the metric sub-tab.
+  await page.locator('.sub-tab', { hasText: 'commits' }).click();
+  await page.waitForTimeout(400);
+  const chart = page.locator('[data-chart="activity"]');
+  await chart.locator('[data-test="chart-bar"]').last().hover();
+  const tipText = await chart.getByText(new RegExp('^' + shortDate(labDay(0)) + ' · ')).first().innerText();
+  t.ok(/ commits$/.test(tipText), `desktop: the tooltip's unit follows the metric ("${tipText}")`);
+  await page.locator('.sub-tab', { hasText: 'sessions' }).click();
+  await page.locator(ready).first().waitFor();
+  await page.mouse.move(0, 0);
+};
+BASELINE_EXTRA['home-desktop'] = async (page, t, ready) => {
+  t.ok(await page.getByText('tap a bar for that day').isVisible(), 'home subtitle is unchanged on desktop');
+  await desktopChart('home', [['7d', 7], ['30d', 30]], / prompts so far$/)(page, t, ready);
+};
+BASELINE_EXTRA['project-desktop'] = desktopChart('project-cost', [[null, 30]], /^\w{3} \d+ · \$[\d,]+\.\d\d$/);
+BASELINE_EXTRA.home = async (page, t) => {
+  t.ok(await page.getByText('tap a bar for its breakdown').isVisible(), 'home subtitle describes what a tap does on a phone');
+};
