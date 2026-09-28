@@ -16,3 +16,4 @@ reports/
 
 # Codex CLI per-repo local state
 .codex/
+node_modules/

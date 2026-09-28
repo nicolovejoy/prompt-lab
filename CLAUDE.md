@@ -240,6 +240,20 @@ the SQL because the pause lookup, the freshness lookups and the uptime upsert sh
 `turso_query` and must not be conflated — pause fails open, freshness fails loud, and
 the archive write must be separately observable.
 
+Phone layout is checked by a separate local runner, because a page that scrolls
+sideways or a control too small to tap is invisible to a source grep:
+
+```bash
+cd scripts/phone && npm install && npx playwright install webkit chromium   # once
+node scripts/phone/check.mjs
+```
+
+It serves `web/` locally, stubs `/api/**` with synthetic fixtures
+(`scripts/phone/fixtures.mjs` — the repo is public, so never real data), loads
+each route under Playwright's `iPhone 14` profile, and writes screenshots to the
+gitignored `.playwright-mcp/phone/`. It is not CI-gated: it needs browser
+binaries and the esm.sh CDN.
+
 ### Settled — don't re-litigate
 
 - **UptimeRobot is the sensor AND the pager; prompt-lab samples nothing and pages for
