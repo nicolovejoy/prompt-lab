@@ -61,12 +61,14 @@ async function runCheck(check, base, browsers, results) {
   const page = await context.newPage();
   const t = { ok: (cond, msg) => results.push({ check: check.name, pass: Boolean(cond), msg }) };
   try {
+    await check.before?.();
     await page.goto(`${base}/${check.hash}`);
     await page.locator(check.ready).first().waitFor({ timeout: 15000 });
     await check.run(page, t);
   } catch (e) {
     results.push({ check: check.name, pass: false, msg: `check crashed: ${e.message.split('\n')[0]}` });
   } finally {
+    await check.after?.();
     await page.screenshot({ path: path.join(SHOTS, `${check.name}-${check.profile}.png`), fullPage: true })
       .catch(() => {});
     await context.close();

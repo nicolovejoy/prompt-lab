@@ -9,6 +9,9 @@ export const labDay = (i) => PACIFIC.format(new Date(Date.now() - i * 86400000))
 export const LONG_HOST = 'offer-builder-staging-environment-for-the-spring-launch.shop.example';
 export const LONG_PATH = '/projects/a-very-long-project-slug-that-keeps-going-and-going-without-a-break';
 
+// Flipped by a check to reproduce a payload from before preview_hosts existed.
+export const fixtureOptions = { omitPreviewHosts: false };
+
 const SITES = [
   ['musicforge.example', 40], ['bakery.example', 22], ['builder.example', 14],
   ['previews', 5], [LONG_HOST, 3], ['piano.example', 2],
@@ -29,7 +32,7 @@ function visitorOverview(since) {
       if (views > 0) daily.push({ date: labDay(i), site, views, uniques: Math.ceil(views * 0.6) });
     }
   }
-  return {
+  const out = {
     daily: daily.filter(r => !since || r.date >= since),
     paths: [
       ['/', 'musicforge.example', 406], ['/', 'bakery.example', 159],
@@ -50,6 +53,8 @@ function visitorOverview(since) {
       by_day: [0, 12, 17, 27].map((i, k) => ({ date: labDay(i), count: k === 1 ? 2 : 1 })),
     },
   };
+  if (fixtureOptions.omitPreviewHosts) delete out.preview_hosts;
+  return out;
 }
 
 export function apiFixture(pathname, searchParams, method = 'GET') {

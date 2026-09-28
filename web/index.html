@@ -353,10 +353,33 @@
       .sub-tab { white-space: nowrap; flex-shrink: 0; }
     }
 
-    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    /* minmax(0, …), not a bare 1fr: a 1fr track's minimum is its content, so one
+       long unwrapped hostname set the width of the whole page (767px in a 390px
+       viewport on #/visitors). */
+    .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
     .chart-scroll { overflow-x: auto; }
     @media (max-width: 600px) {
-      .two-col { grid-template-columns: 1fr; }
+      .two-col { grid-template-columns: minmax(0, 1fr); }
+    }
+
+    /* One-line rows with an ellipsis on a wide screen; on a phone the label wraps
+       and its sub-label drops underneath, because an ellipsis there hides the
+       only part of a path that tells two pages apart. */
+    .list-row {
+      display: flex; align-items: center; gap: 8px; padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .list-row-text { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1 1 auto; }
+    .list-row-label { font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .list-row-sub {
+      font-size: 0.85rem; color: var(--text-secondary);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .list-row-value { margin-left: auto; flex: none; font-size: 1.12rem; font-variant-numeric: tabular-nums; }
+    @media (max-width: 600px) {
+      .list-row { align-items: flex-start; padding: 8px 0; }
+      .list-row-text { flex-direction: column; gap: 1px; }
+      .list-row-label, .list-row-sub { white-space: normal; overflow-wrap: anywhere; }
     }
 
     /* Cards */
@@ -2975,12 +2998,12 @@
           ${t}
         </div>`;
       const listRow = (label, sub, v) => html`
-        <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
-                    border-bottom: 1px solid var(--border)">
-          <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${label}</span>
-          ${sub && html`<span style="font-size: 0.85rem; color: var(--text-secondary); overflow: hidden;
-                                     text-overflow: ellipsis; white-space: nowrap">${sub}</span>`}
-          <span style="margin-left: auto; font-size: 1.12rem; font-variant-numeric: tabular-nums">${v.toLocaleString()}</span>
+        <div class="list-row">
+          <div class="list-row-text">
+            <span class="list-row-label">${label}</span>
+            ${sub && html`<span class="list-row-sub">${sub}</span>`}
+          </div>
+          <span class="list-row-value">${v.toLocaleString()}</span>
         </div>`;
 
       // ---- Sign-ins (issue #10) ----
@@ -3070,6 +3093,7 @@
       }
 
       const ranked = Object.entries(bySite).sort((a, b) => b[1] - a[1]);
+      const maxSite = Math.max(...ranked.map(([, v]) => v), 1);
       const colorOf = {};
       ranked.forEach(([s], i) => { colorOf[s] = i < COST_PALETTE.length ? COST_PALETTE[i] : COST_OTHER; });
       const segColor = (s) => colorOf[s] || COST_OTHER;
@@ -3156,15 +3180,28 @@
           `)}
 
           <div class="two-col">
-            <div>
+            <div data-test="by-site">
               ${sectionTitle('By site')}
               ${ranked.map(([s, v]) => html`
-                <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
-                            border-bottom: 1px solid var(--border)">
-                  <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(s)}; flex: none"></span>
-                  <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${s}</span>
-                  <span style="margin-left: auto; font-size: 0.85rem; color: var(--text-secondary)">${(v / totalViews * 100).toFixed(0)}%</span>
-                  <span style="font-size: 1.12rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${v.toLocaleString()}</span>
+                <div data-test="share-row" class="list-row" style="display: block">
+                  <div style="display: flex; align-items: flex-start; gap: 8px">
+                    <span style="width: 9px; height: 9px; border-radius: 2px; margin-top: 7px;
+                                 background: ${segColor(s)}; flex: none"></span>
+                    <div class="list-row-text">
+                      <span class="list-row-label">${s}</span>
+                      ${s === 'previews' && Number.isFinite(Number(data.preview_hosts)) && Number(data.preview_hosts) > 0 && html`
+                        <span class="list-row-sub">
+                          ${Number(data.preview_hosts)} preview host${Number(data.preview_hosts) === 1 ? '' : 's'}
+                        </span>`}
+                    </div>
+                    <span style="margin-left: auto; flex: none; font-size: 0.85rem; color: var(--text-secondary)">
+                      ${(v / totalViews * 100).toFixed(0)}%</span>
+                    <span data-test="share-value" style="flex: none; font-size: 1.12rem; font-variant-numeric: tabular-nums;
+                                 min-width: 56px; text-align: right">${v.toLocaleString()}</span>
+                  </div>
+                  <div data-test="share-bar" style="height: 3px; border-radius: 2px; margin-top: 3px;
+                              width: ${(v / maxSite * 100).toFixed(1)}%;
+                              background: ${segColor(s)}; opacity: 0.6"></div>
                 </div>`)}
             </div>
             <div>
