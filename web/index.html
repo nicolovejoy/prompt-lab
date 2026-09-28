@@ -2399,11 +2399,15 @@
       const narrow = useNarrow();
       const [hovered, setHovered] = useState(null);
       // A selection is an index, and an index means a different bucket once the
-      // window or the bucket size changes — so it carries the layout it was made
-      // in and reads as nothing under any other.
+      // window or the bucket size changes. It carries the layout it was made in
+      // and reads as nothing under any other, so the first render after a
+      // change never draws it against the new buckets; the effect then drops
+      // it, so returning to the old layout (rotating back, or a cached window
+      // that keeps this chart mounted) does not bring it back.
       const layout = days + '|' + dates.length + '|' + narrow;
       const [picked, setPicked] = useState(null);
       const selected = picked && picked.layout === layout ? picked.i : null;
+      useEffect(() => { setPicked((p) => (p && p.layout !== layout ? null : p)); }, [layout]);
       const select = (i) => { if (i >= 0) setPicked({ layout, i }); };
       const scrollRef = useRef(null);
       const rowRef = useRef(null);

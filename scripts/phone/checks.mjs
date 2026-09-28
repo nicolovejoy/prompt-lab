@@ -349,6 +349,25 @@ CHECKS.push({
     const bars = await chart.locator('[data-test="chart-bar"]').count();
     t.ok(bars === 90, `landscape is wide: a bar per day (${bars})`);
     t.ok(!(await chart.locator('[data-test="chart-readout"]').isVisible()), 'the stale selection is cleared on rotate');
+
+    // Cleared, not hidden: rotating back must not bring the old week back.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(400);
+    t.ok(!(await chart.locator('[data-test="chart-readout"]').isVisible()), 'rotating back does not restore the readout');
+    const back = await chart.locator('[data-test="chart-bar"][data-selected="true"]').count();
+    t.ok(back === 0, `rotating back leaves no bar selected (${back})`);
+
+    // Same for a window round trip: a cached window keeps the chart mounted.
+    const again = await chartBox(page, 'visitors');
+    await tapAt(page, again.x + again.width / 2, again.y + again.height / 2);
+    t.ok(await chart.locator('[data-test="chart-readout"]').isVisible(), 'a weekly bucket is selected again');
+    await page.getByRole('button', { name: '30d', exact: true }).tap();
+    await page.waitForTimeout(400);
+    await page.getByRole('button', { name: '90d', exact: true }).tap();
+    await page.waitForTimeout(400);
+    const round = await chart.locator('[data-test="chart-bar"][data-selected="true"]').count();
+    t.ok(round === 0 && !(await chart.locator('[data-test="chart-readout"]').isVisible()),
+      `90d -> 30d -> 90d leaves nothing selected (${round} selected)`);
   },
 });
 
