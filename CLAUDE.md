@@ -17,6 +17,13 @@ Env vars needed in Vercel: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `AUTH_SECRE
 
 To self-host: fork the repo, create a Turso database, set the env vars above, deploy `web/` to Vercel.
 
+**Installing on a phone.** The dashboard installs to an iPhone home screen from
+Safari or Chrome (Share, then "Add to Home Screen"). Launched from there it gets a
+bottom tab bar; in a browser tab it keeps the Menu button. There is deliberately
+no service worker: the dashboard is live and auth-protected, and an offline
+cache would show remembered state as current. Icons are generated from
+`web/icons/icon.svg` by `node scripts/phone/make-icons.mjs` and committed.
+
 ## Architecture
 
 - `store/` — backend-agnostic KnowledgeStore ABC + SQLite (default) and Turso implementations

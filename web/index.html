@@ -4,9 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+  <!-- Both capable metas: the unprefixed one is current, older iOS reads only
+       the Apple one. -->
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Prompt Lab">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#111">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/icon-180.png">
   <title>Prompt Lab</title>
   <script>
     // Applied synchronously, before first paint, so a saved theme choice
@@ -15,6 +21,15 @@
       const saved = localStorage.getItem('promptlab_theme');
       if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
     } catch { /* localStorage unavailable (private mode, etc.) — fall back to OS preference */ }
+    // Launched from the home screen: CSS swaps the Menu button for a bottom
+    // tab bar. Safari reports it through navigator.standalone, Chrome through
+    // the display-mode query. Its own try, so a failure here cannot stop the
+    // theme above from applying.
+    try {
+      if (matchMedia('(display-mode: standalone)').matches || navigator.standalone === true) {
+        document.documentElement.dataset.standalone = '1';
+      }
+    } catch { /* no matchMedia — a browser tab, which is the default */ }
   </script>
   <script defer src="/beacon.js"></script>
   <script defer src="/_vercel/insights/script.js"></script>
@@ -37,6 +52,7 @@
       --red-dim: rgba(239, 68, 68, 0.15);
       --safe-top: env(safe-area-inset-top, 0px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --tabbar-h: 50px;
       --radius: 8px;
     }
     /* Light palette applies when the OS prefers it (no explicit in-app choice yet)
@@ -202,6 +218,45 @@
       }
       .nav-drop .header-btn { min-height: 44px; }
     }
+
+    /* Home-screen tab bar. Hidden unless launched from the home screen on a
+       narrow screen (data-standalone is set by the head script), where it
+       replaces the Menu button. */
+    .tab-bar { display: none; }
+    @media (max-width: 640px) {
+      html[data-standalone] .tab-bar {
+        display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+        background: var(--bg); border-top: 1px solid var(--border);
+        /* One number for the bar and the page's clearance: the height
+           includes the top border (box-sizing is border-box everywhere). */
+        height: calc(var(--tabbar-h) + var(--safe-bottom));
+        padding-bottom: var(--safe-bottom);
+      }
+      html[data-standalone] .tab {
+        flex: 1 1 0; min-width: 0; min-height: 44px;
+        background: none; border: none; font-family: inherit; font-size: 0.95rem;
+        color: var(--text-secondary); cursor: pointer;
+      }
+      html[data-standalone] .tab.current { color: var(--accent-light); font-weight: 600; }
+      /* The page's end must clear the fixed bar and the home indicator. */
+      html[data-standalone] .app-main { padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom)); }
+      html[data-standalone] .nav-toggle,
+      html[data-standalone] .nav-drop { display: none; }
+    }
+    .more-list { display: flex; flex-direction: column; }
+    .more-row {
+      display: flex; align-items: center; width: 100%; min-height: 44px; padding: 0 12px;
+      text-align: left; font-family: inherit; font-size: 1.09rem; color: var(--text);
+      background: none; border: none; border-bottom: 1px solid var(--border); cursor: pointer;
+    }
+    button.more-row:hover { background: var(--card); }
+    .more-text { cursor: default; font-size: 0.85rem; color: var(--text-secondary);
+      font-family: "SF Mono", ui-monospace, monospace; }
+    .more-text.fresh { color: var(--green); }
+    /* Every row already carries a rule, so the way out is set apart by a gap
+       and its own rule above rather than a second line under the last row. */
+    .more-sep { height: 16px; }
+    .more-sep + .more-row { border-top: 1px solid var(--border); }
 
     /* Wide screens: the second tier is a panel hanging off "More". */
     .nav-more {
@@ -831,6 +886,7 @@
       if (parts[0] === 'visitors') return { view: 'visitors' };
       if (parts[0] === 'todos') return { view: 'todos' };
       if (parts[0] === 'health') return { view: 'health' };
+      if (parts[0] === 'more') return { view: 'more' };
       return { view: 'home' };
     }
 
@@ -1118,14 +1174,34 @@
       ['health',   'Health',   '#/health'],
     ];
 
+    // Health and Visitors map everything Nico runs and have no per-project
+    // filter (decision 3, garm-consumer plan) — a reader never sees them in
+    // nav. This is UX only: the API 403s a reader who hits the route
+    // directly, so hiding the button here is not the enforcement. Shared by
+    // the header and the More page so the two can't disagree on who sees what.
+    function navFor(role) {
+      return role === 'admin' ? NAV : NAV.filter(([view]) => view !== 'visitors' && view !== 'health');
+    }
+
+    // build_time arrives as ISO 8601 UTC; show it in Pacific time
+    // (PDT/PST handled automatically by the Intl API).
+    function formatBuildTime(buildTime) {
+      if (!buildTime) return '';
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+          hour12: false,
+          timeZone: 'America/Los_Angeles',
+          timeZoneName: 'short',
+        }).format(new Date(buildTime));
+      } catch { return buildTime; }
+    }
+
     function Header({ route, info, role, email, onLogout, active, dormant, refreshing, theme, onToggleTheme }) {
       const [menu, setMenu] = useState(false);
       const [more, setMore] = useState(false);
-      // Health and Visitors map everything Nico runs and have no per-project
-      // filter (decision 3, garm-consumer plan) — a reader never sees them in
-      // nav. This is UX only: the API 403s a reader who hits the route
-      // directly, so hiding the button here is not the enforcement.
-      const nav = role === 'admin' ? NAV : NAV.filter(([view]) => view !== 'visitors' && view !== 'health');
+      const nav = navFor(role);
       // Any navigation closes it — otherwise the panel stays open over the page
       // you just asked for, which reads as the tap not having worked.
       // A menu entry also closes it in its own handler: the effect runs after
@@ -1148,21 +1224,7 @@
         return () => document.removeEventListener('pointerdown', onDown, true);
       }, [menu, more]);
       const freshness = info?.data_freshness ? timeAgo(info.data_freshness) : null;
-      // build_time arrives as ISO 8601 UTC; show it in Pacific time
-      // (PDT/PST handled automatically by the Intl API).
-      let buildTime = '';
-      if (info?.build_time) {
-        try {
-          const d = new Date(info.build_time);
-          buildTime = new Intl.DateTimeFormat('en-US', {
-            month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit',
-            hour12: false,
-            timeZone: 'America/Los_Angeles',
-            timeZoneName: 'short',
-          }).format(d);
-        } catch { buildTime = info.build_time; }
-      }
+      const buildTime = formatBuildTime(info?.build_time);
 
       // The second tier: housekeeping you touch once a week or once ever.
       // Built once and rendered in both navs so the two can't drift.
@@ -1241,6 +1303,64 @@
           </div>
         </header>
       `;
+    }
+
+    // ---- Home-screen tab bar ----
+    // Launched from the home screen there is no browser chrome, and the Menu
+    // button in the top corner is the far reach for a thumb. Four primary
+    // views plus More sit at the bottom instead. Always rendered; CSS shows it
+    // only under html[data-standalone] on a narrow screen, so a browser tab and
+    // every wide screen are exactly as before.
+    const TAB_VIEWS = ['activity', 'todos', 'costs'];
+    const TABS = [
+      ['home', 'Home', '#/'],
+      ...NAV.filter(([view]) => TAB_VIEWS.includes(view)),
+      ['more', 'More', '#/more'],
+    ];
+    // Everything the bar doesn't name lives behind More. A project or a day
+    // page is reached from inside a view, so it highlights nothing rather than
+    // pretending to belong to one tab.
+    const MORE_VIEWS = ['more', 'visitors', 'health', 'about'];
+    function currentTab(view) {
+      if (MORE_VIEWS.includes(view)) return 'more';
+      return TABS.some(([v]) => v === view) ? view : null;
+    }
+
+    function TabBar({ route }) {
+      const current = currentTab(route.view);
+      return html`
+        <nav class="tab-bar" data-test="tab-bar" aria-label="Sections">
+          ${TABS.map(([view, label, hash]) => html`
+            <button class="tab ${current === view ? 'current' : ''}" data-test="tab" data-view=${view}
+                    aria-current=${current === view ? 'page' : null}
+                    onClick=${() => navigate(hash)}>${label}</button>`)}
+        </nav>`;
+    }
+
+    // The header's second tier as a page, for the tab bar's More. A plain
+    // route, so it works at any width; only the tab bar links to it.
+    function MoreView({ role, email, info, theme, onToggleTheme, onLogout }) {
+      const extra = navFor(role).filter(([view]) => !TAB_VIEWS.includes(view));
+      const buildTime = formatBuildTime(info?.build_time);
+      return html`
+        <div style="max-width:640px">
+          <h1 style="margin:0 0 12px; font-size:1.7rem; color:var(--accent-light)">More</h1>
+          <div class="more-list" data-test="more-list">
+            ${extra.map(([view, label, hash]) => html`
+              <button class="more-row" onClick=${() => navigate(hash)}>${label}</button>`)}
+            <button class="more-row" onClick=${() => navigate('#/about')}>About</button>
+            <button class="more-row" onClick=${onToggleTheme}>
+              ${theme === 'light' ? '\u263E  Switch to dark mode' : '\u2600  Switch to light mode'}
+            </button>
+            ${email && html`<div class="more-row more-text">${email}</div>`}
+            ${buildTime && html`
+              <div class="more-row more-text ${freshClass(info.build_time)}">
+                <span class="nav-build-label">Built</span> ${buildTime}
+              </div>`}
+            <div class="more-sep"></div>
+            <button class="more-row" onClick=${onLogout}>Log out</button>
+          </div>
+        </div>`;
     }
 
     // ---- Skeleton Loaders ----
@@ -1398,7 +1518,8 @@
       const dormant = known.filter(p => projectStatus(overview, p) !== 'active').sort();
 
       return html`
-        <div class="container">
+        <${Fragment}>
+        <div class="container app-main">
           <${Header} route=${route} info=${info} role=${role} email=${email} onLogout=${logout}
             active=${active} dormant=${dormant} refreshing=${refreshing}
             theme=${theme} onToggleTheme=${toggleTheme} />
@@ -1433,8 +1554,13 @@
             ? html`<${HealthView} onUnauthorized=${() => setAuthed(false)} />`
             : html`<p style="color: var(--text-secondary); padding: 24px 0">Admins only.</p>`)}
 
+          ${route.view === 'more' && html`<${MoreView} role=${role} email=${email} info=${info}
+            theme=${theme} onToggleTheme=${toggleTheme} onLogout=${logout} />`}
+
           ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
         </div>
+        <${TabBar} route=${route} />
+        <//>
       `;
     }
 

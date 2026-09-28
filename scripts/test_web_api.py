@@ -5704,5 +5704,92 @@ def main() -> int:
     return 0 if failed == 0 else 1
 
 
+# === PWA install: manifest, icons, rewrites ===
+
+def _png_size(path):
+    """(width, height) from a PNG's IHDR chunk. No image library: the header
+    is fixed-layout, and a wrong-size icon is the failure worth catching."""
+    import struct
+    data = path.read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", f"{path.name} is not a PNG"
+    assert data[12:16] == b"IHDR", f"{path.name} has no IHDR chunk first"
+    return struct.unpack(">II", data[16:24])
+
+
+@test("pwa: manifest is valid and says what the spec says")
+def _():
+    m = json.loads((ROOT / "web" / "manifest.webmanifest").read_text())
+    assert m["name"] == "Prompt Lab"
+    assert m["short_name"] == "Prompt Lab"
+    assert m["display"] == "standalone"
+    assert m["start_url"] == "/"
+    assert m["scope"] == "/"
+    assert m["background_color"] == "#111111"
+    assert m["theme_color"] == "#111111"
+    got = {(i["src"], i["sizes"], i["type"]) for i in m["icons"]}
+    assert got == {
+        ("/icons/icon-192.png", "192x192", "image/png"),
+        ("/icons/icon-512.png", "512x512", "image/png"),
+    }, f"manifest icons: {got}"
+
+
+@test("pwa: every icon exists at the size its name claims, with no transparency")
+def _():
+    for size in (180, 192, 512):
+        path = ROOT / "web" / "icons" / f"icon-{size}.png"
+        assert path.exists(), f"missing {path.name}"
+        assert _png_size(path) == (size, size), f"{path.name} is {_png_size(path)}"
+        # Colour type lives at byte 25: 2 is RGB, 6 is RGBA. iOS paints
+        # transparent pixels black, so the icon must carry no alpha channel.
+        assert path.read_bytes()[25] == 2, (
+            f"{path.name} has colour type {path.read_bytes()[25]}, expected 2 (RGB, no alpha)")
+
+
+@test("pwa: the page head links the manifest and the touch icon")
+def _():
+    src = (ROOT / "web" / "index.html").read_text()
+    head = src[:src.index("</head>")]
+    assert '<link rel="manifest" href="/manifest.webmanifest">' in head
+    assert '<link rel="apple-touch-icon" href="/icons/icon-180.png">' in head
+    assert '<meta name="mobile-web-app-capable" content="yes">' in head
+    assert '<meta name="apple-mobile-web-app-capable" content="yes">' in head, (
+        "keep the Apple meta: older iOS reads only that one")
+    assert '<meta name="apple-mobile-web-app-title" content="Prompt Lab">' in head
+
+
+@test("pwa: no service worker is registered")
+def _():
+    src = (ROOT / "web" / "index.html").read_text()
+    assert "serviceWorker" not in src, (
+        "the dashboard is live and auth-protected — an offline cache would "
+        "show remembered state as current")
+
+
+@test("pwa: manifest and icons are rewritten to themselves before the SPA catch-all")
+def _():
+    cfg = json.loads((ROOT / "web" / "vercel.json").read_text())
+    sources = [r["source"] for r in cfg["rewrites"]]
+    catch_all = sources.index("/(.*)")
+    for source, dest in (("/manifest.webmanifest", "/manifest.webmanifest"),
+                         ("/icons/(.*)", "/icons/$1")):
+        assert source in sources, f"no rewrite for {source}"
+        assert sources.index(source) < catch_all, (
+            f"{source} sits after the catch-all, which would answer with index.html")
+        rule = cfg["rewrites"][sources.index(source)]
+        assert rule["destination"] == dest, f"{source} -> {rule['destination']}"
+    assert sources[-1] == "/(.*)", "the catch-all must stay last"
+    assert not any(s.startswith("/api/") for s in ("/manifest.webmanifest", "/icons/")), (
+        "install assets are fetched without the session cookie: never behind /api/")
+
+
+@test("pwa: the manifest is served with the manifest content type")
+def _():
+    cfg = json.loads((ROOT / "web" / "vercel.json").read_text())
+    rule = next((h for h in cfg["headers"] if h["source"] == "/manifest.webmanifest"), None)
+    assert rule is not None, "no headers rule for /manifest.webmanifest"
+    got = {h["key"]: h["value"] for h in rule["headers"]}
+    assert got.get("Content-Type") == "application/manifest+json", got
+
+
 if __name__ == "__main__":
     sys.exit(main())
