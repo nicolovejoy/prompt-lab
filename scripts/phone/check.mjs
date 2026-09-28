@@ -69,7 +69,9 @@ async function runCheck(check, base, browsers, results) {
     results.push({ check: check.name, pass: false, msg: `check crashed: ${e.message.split('\n')[0]}` });
   } finally {
     await check.after?.();
-    await page.screenshot({ path: path.join(SHOTS, `${check.name}-${check.profile}.png`), fullPage: true })
+    // A check already named for its profile (visitors-desktop) keeps its name as is.
+    const shot = check.name.endsWith(`-${check.profile}`) ? check.name : `${check.name}-${check.profile}`;
+    await page.screenshot({ path: path.join(SHOTS, `${shot}.png`), fullPage: true })
       .catch(() => {});
     await context.close();
   }

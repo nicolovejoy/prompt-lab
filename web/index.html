@@ -376,10 +376,15 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .list-row-value { margin-left: auto; flex: none; font-size: 1.12rem; font-variant-numeric: tabular-nums; }
+    /* A share row centres on one line like any other row; on a phone its name can
+       wrap, so the swatch, share and count pin to the first line instead. */
+    .share-row-head { display: flex; align-items: center; gap: 8px; }
     @media (max-width: 600px) {
       .list-row { align-items: flex-start; padding: 8px 0; }
       .list-row-text { flex-direction: column; gap: 1px; }
       .list-row-label, .list-row-sub { white-space: normal; overflow-wrap: anywhere; }
+      .share-row-head { align-items: flex-start; }
+      .share-row-swatch { margin-top: 7px; }
     }
 
     /* Cards */
@@ -3184,8 +3189,8 @@
               ${sectionTitle('By site')}
               ${ranked.map(([s, v]) => html`
                 <div data-test="share-row" class="list-row" style="display: block">
-                  <div style="display: flex; align-items: flex-start; gap: 8px">
-                    <span style="width: 9px; height: 9px; border-radius: 2px; margin-top: 7px;
+                  <div class="share-row-head">
+                    <span class="share-row-swatch" style="width: 9px; height: 9px; border-radius: 2px;
                                  background: ${segColor(s)}; flex: none"></span>
                     <div class="list-row-text">
                       <span class="list-row-label">${s}</span>
@@ -3194,7 +3199,7 @@
                           ${Number(data.preview_hosts)} preview host${Number(data.preview_hosts) === 1 ? '' : 's'}
                         </span>`}
                     </div>
-                    <span style="margin-left: auto; flex: none; font-size: 0.85rem; color: var(--text-secondary)">
+                    <span data-test="share-pct" style="margin-left: auto; flex: none; font-size: 0.85rem; color: var(--text-secondary)">
                       ${(v / totalViews * 100).toFixed(0)}%</span>
                     <span data-test="share-value" style="flex: none; font-size: 1.12rem; font-variant-numeric: tabular-nums;
                                  min-width: 56px; text-align: right">${v.toLocaleString()}</span>

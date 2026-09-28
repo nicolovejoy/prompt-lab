@@ -71,6 +71,14 @@ export const CHECKS = [
       const tops = await row.locator('.list-row-label, .list-row-sub').evaluateAll(
         (els) => els.map((e) => Math.round(e.getBoundingClientRect().bottom)));
       t.ok(tops.length === 2 && Math.abs(tops[0] - tops[1]) <= 4, `label and sub-label sit on one line (bottoms ${tops.join(', ')})`);
+
+      // Desktop By site rows stay vertically centred; only a phone top-aligns them.
+      // 1px, not 3: top-aligning moved the smaller share text by exactly 3px.
+      const share = page.locator('[data-test="share-row"]').first();
+      const mids = await share.locator('.list-row-label, [data-test="share-pct"], [data-test="share-value"]').evaluateAll(
+        (els) => els.map((e) => { const r = e.getBoundingClientRect(); return Math.round(r.top + r.height / 2); }));
+      t.ok(mids.length === 3 && Math.max(...mids) - Math.min(...mids) <= 1,
+        `By site name, share and count are centred on one line (centres ${mids.join(', ')})`);
     },
   },
 ];
