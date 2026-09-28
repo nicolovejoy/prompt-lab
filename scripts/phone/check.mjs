@@ -27,7 +27,14 @@ const PROFILES = {
   desktop: { engine: chromium, options: { viewport: { width: 1280, height: 800 } } },
 };
 
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.txt': 'text/plain' };
+const TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript',
+  '.txt': 'text/plain',
+  '.webmanifest': 'application/manifest+json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+};
 
 function serveWeb() {
   const index = () => readFile(path.join(WEB, 'index.html'));
