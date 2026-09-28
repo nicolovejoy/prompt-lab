@@ -57,9 +57,19 @@ export const CHECKS = [
         (e) => ({ scroll: e.scrollWidth, client: e.clientWidth }));
       t.ok(tabsBox.scroll <= tabsBox.client + 1, `all three tabs fit without scrolling (${tabsBox.scroll} in ${tabsBox.client}px)`);
 
+      // aria-pressed, not tab roles: on desktop all three lists show at once, so
+      // the buttons are toggles for a phone view, not a true tablist.
+      const pressed = () => page.locator('[data-test="visitors-tabs"] button[aria-pressed="true"]').evaluateAll(
+        (els) => els.map((e) => e.dataset.test));
+      const pressedBefore = await pressed();
+      t.ok(pressedBefore.length === 1 && pressedBefore[0] === 'tab-pages',
+        `exactly one tab is pressed, Pages by default (${pressedBefore.join(', ') || 'none'})`);
       await page.locator('[data-test="tab-referrers"]').tap();
       t.ok(await visible('[data-test="panel-referrers"]') && !(await visible('[data-test="panel-pages"]')),
         'tapping Referrers swaps the list');
+      const pressedAfter = await pressed();
+      t.ok(pressedAfter.length === 1 && pressedAfter[0] === 'tab-referrers',
+        `pressed state follows the tap (${pressedAfter.join(', ') || 'none'})`);
       await page.locator('[data-test="tab-countries"]').tap();
       t.ok(await visible('[data-test="panel-countries"]'), 'tapping Countries shows countries');
       const after = await pageOverflow(page);
@@ -71,8 +81,18 @@ export const CHECKS = [
       t.ok(!(await note.getByText('cookie-less', { exact: false }).isVisible()), 'explanation is collapsed by default');
       const summaryHeight = await note.locator('summary').evaluate((e) => Math.round(e.getBoundingClientRect().height));
       t.ok(summaryHeight >= 44, `disclosure is at least 44px tall (${summaryHeight})`);
+      // flex on summary drops the native triangle, so the chevron is the only sign it opens.
+      const chevron = () => note.locator('summary').evaluate((e) => {
+        const cs = getComputedStyle(e, '::after');
+        return { content: cs.content, transform: cs.transform };
+      });
+      const closedChevron = await chevron();
+      t.ok(!['none', 'normal', ''].includes(closedChevron.content), `disclosure shows a chevron (content ${closedChevron.content})`);
       await note.locator('summary').tap();
       t.ok(await note.getByText('cookie-less', { exact: false }).isVisible(), 'tapping it shows the explanation');
+      const openChevron = await chevron();
+      t.ok(openChevron.transform !== closedChevron.transform,
+        `chevron turns when opened (${closedChevron.transform} -> ${openChevron.transform})`);
       // Wrapped blocks bring inline margins written for the wide layout; inside the
       // disclosure they must stack below the summary with an even 12px between them.
       const noteBoxes = await note.evaluate((d) => {
