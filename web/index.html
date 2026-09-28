@@ -1117,6 +1117,9 @@
       const nav = role === 'admin' ? NAV : NAV.filter(([view]) => view !== 'visitors' && view !== 'health');
       // Any navigation closes it — otherwise the panel stays open over the page
       // you just asked for, which reads as the tap not having worked.
+      // A menu entry also closes it in its own handler: the effect runs after
+      // paint, so the page you asked for would otherwise show a frame under
+      // the still-open list.
       useEffect(() => { setMenu(false); setMore(false); }, [route.view, route.project]);
       // Clicking anywhere outside the nav closes it too. Listen on the capture
       // phase of pointerdown, not click: a click inside the page can re-render
@@ -1215,7 +1218,7 @@
             <div class="nav-drop ${menu ? 'open' : ''}">
               ${nav.map(([view, label, hash]) => html`
                 <button class="header-btn ${route.view === view ? 'active' : ''}"
-                        onClick=${() => navigate(hash)}>${label}</button>`)}
+                        onClick=${() => { setMenu(false); navigate(hash); }}>${label}</button>`)}
               <div class="nav-sep"></div>
               <button class="header-btn" onClick=${() => setMore(m => !m)}>
                 More ${more ? '\u25B4' : '\u25BE'}
