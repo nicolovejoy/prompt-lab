@@ -408,7 +408,11 @@
         display: flex; align-items: center; min-height: 44px; cursor: pointer;
         font-size: 1.02rem; color: var(--accent);
       }
-      .page-note-narrow > div { margin: 0 0 12px; }
+      /* !important because the wrapped blocks bring inline margins written for the
+         wide layout (a negative top pulls a note up under its paragraph), and an
+         inline style outranks every selector. Any child, not just a div, so a note
+         wrapped in a p is covered too; the summary keeps its own spacing. */
+      .page-note-narrow > :not(summary) { margin: 0 0 12px !important; }
     }
 
     /* Cards */

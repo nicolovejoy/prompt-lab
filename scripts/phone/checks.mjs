@@ -73,6 +73,19 @@ export const CHECKS = [
       t.ok(summaryHeight >= 44, `disclosure is at least 44px tall (${summaryHeight})`);
       await note.locator('summary').tap();
       t.ok(await note.getByText('cookie-less', { exact: false }).isVisible(), 'tapping it shows the explanation');
+      // Wrapped blocks bring inline margins written for the wide layout; inside the
+      // disclosure they must stack below the summary with an even 12px between them.
+      const noteBoxes = await note.evaluate((d) => {
+        const box = (e) => { const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; };
+        return {
+          summary: box(d.querySelector(':scope > summary')),
+          blocks: [...d.children].filter((e) => e.tagName !== 'SUMMARY').map(box),
+        };
+      });
+      t.ok(noteBoxes.blocks.length >= 2 && noteBoxes.blocks[0].top >= noteBoxes.summary.bottom - 0.5,
+        `first note block starts below the summary (${noteBoxes.blocks.length} blocks, top ${Math.round(noteBoxes.blocks[0]?.top)}, summary bottom ${Math.round(noteBoxes.summary.bottom)})`);
+      const gaps = noteBoxes.blocks.slice(1).map((b, i) => Math.round((b.top - noteBoxes.blocks[i].bottom) * 10) / 10);
+      t.ok(gaps.length > 0 && gaps.every((g) => Math.abs(g - 12) <= 1), `note blocks are 12px apart (${gaps.join(', ')})`);
     },
   },
   {
