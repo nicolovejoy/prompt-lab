@@ -304,7 +304,7 @@ binaries and the esm.sh CDN.
 - **Prompt ratings are abandoned (2026-08-14)** — columns exist, 0 rows ever rated, no code
   ever wrote them. They stay (harmless); don't revive without a new idea.
 - **Ask is mothballed, not deleted** — `web/api/ask.py` and the modal are reachable from
-  `#/about`, and deleting it wouldn't even drop `ANTHROPIC_API_KEY` (Todos holds it).
+  `#/about`, and deleting it would not drop `ANTHROPIC_API_KEY` (the health email's joke uses it; the Todos by-type classifier that also did was removed 2026-09-28).
 - **Any future account split must *move* `~/.claude/prompt-history.db`, never copy it** — a
   second copy of every raw prompt is a privacy regression.
 - **The recountly.org UptimeRobot monitor stays until raconte posts teardown notice** in the
