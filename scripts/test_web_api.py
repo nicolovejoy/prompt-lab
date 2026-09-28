@@ -1449,6 +1449,108 @@ def _():
         restore_q()
 
 
+# === visitor_overview: preview hosts fold into one row ===
+
+def _visov_fold(daily=(), paths=(), referrers=()):
+    """Invoke visitor_overview with the three site-bearing queries stubbed.
+    Turso hands counts back as strings, so the stubs do too."""
+    mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_fold")
+
+    def fake_turso(sql, args=None):
+        if "'login'" in sql:
+            return []
+        if "GROUP BY date, site" in sql:
+            return [dict(r) for r in daily]
+        if "GROUP BY site, path" in sql:
+            return [dict(r) for r in paths]
+        if "GROUP BY site, referrer" in sql:
+            return [dict(r) for r in referrers]
+        return []
+
+    restore_q = patch_turso_query(mod, fake_turso)
+    restore_a = patch(mod, resolve_access=lambda h: access_helper.Access(
+        "admin", "a@b.c", None, None))
+    try:
+        h = invoke(mod, "/api/visitor_overview")
+        assert h.status_code == 200, f"got {h.status_code}"
+        return mod, h.body
+    finally:
+        restore_a()
+        restore_q()
+
+
+@test("visitor_overview fold: _site_label recognises preview hosts only")
+def _():
+    mod = load_endpoint("web/api/visitor_overview.py", "endpoint_visov_label")
+    label = mod._site_label
+    assert label("app-git-feat-x-someone.vercel.app") == "previews"
+    assert label("APP.VERCEL.APP") == "previews", "hostname match must ignore case"
+    assert label("preview.musicforge.example") == "previews"
+    # Near misses stay themselves: a suffix or prefix that merely resembles one.
+    assert label("notvercel.app") == "notvercel.app"
+    assert label("previews.example.com") == "previews.example.com"
+    assert label("musicforge.example") == "musicforge.example"
+    assert label(None) is None
+    assert label("") == ""
+
+
+@test("visitor_overview fold: daily rows merge per date, real sites untouched")
+def _():
+    _, body = _visov_fold(daily=[
+        {"date": "2026-09-01", "site": "a-git-x.vercel.app", "views": "2", "uniques": "1"},
+        {"date": "2026-09-01", "site": "musicforge.example", "views": "40", "uniques": "9"},
+        {"date": "2026-09-01", "site": "preview.musicforge.example", "views": "3", "uniques": "2"},
+        {"date": "2026-09-02", "site": "a-git-x.vercel.app", "views": "1", "uniques": "1"},
+    ])
+    rows = {(r["date"], r["site"]): r for r in body["daily"]}
+    assert len(body["daily"]) == 3, f"expected 3 rows after folding: {body['daily']}"
+    assert rows[("2026-09-01", "previews")]["views"] == 5
+    assert rows[("2026-09-01", "previews")]["uniques"] == 3
+    assert rows[("2026-09-02", "previews")]["views"] == 1
+    assert rows[("2026-09-01", "musicforge.example")]["views"] == 40, (
+        "folding must never change a real site's numbers")
+    assert body["preview_hosts"] == 2, f"distinct folded hosts: {body['preview_hosts']}"
+    assert isinstance(body["preview_hosts"], int)
+
+
+@test("visitor_overview fold: paths merge on (site, path) and stay sorted by views")
+def _():
+    _, body = _visov_fold(paths=[
+        {"site": "musicforge.example", "path": "/", "views": "10"},
+        {"site": "a-git-x.vercel.app", "path": "/", "views": "7"},
+        {"site": "b-git-y.vercel.app", "path": "/", "views": "6"},
+        {"site": "a-git-x.vercel.app", "path": "/settings", "views": "1"},
+    ])
+    got = [(r["site"], r["path"], r["views"]) for r in body["paths"]]
+    assert got == [
+        ("previews", "/", 13),
+        ("musicforge.example", "/", 10),
+        ("previews", "/settings", 1),
+    ], f"paths after fold: {got}"
+
+
+@test("visitor_overview fold: referrers relabel and merge")
+def _():
+    _, body = _visov_fold(referrers=[
+        {"site": "a-git-x.vercel.app", "referrer": "github.com", "views": "2"},
+        {"site": "b-git-y.vercel.app", "referrer": "github.com", "views": "3"},
+        {"site": "musicforge.example", "referrer": "github.com", "views": "4"},
+    ])
+    got = [(r["site"], r["referrer"], r["views"]) for r in body["referrers"]]
+    assert got == [("previews", "github.com", 5), ("musicforge.example", "github.com", 4)], (
+        f"referrers after fold: {got}")
+
+
+@test("visitor_overview fold: no preview hosts means zero and unchanged rows")
+def _():
+    _, body = _visov_fold(daily=[
+        {"date": "2026-09-01", "site": "musicforge.example", "views": "40", "uniques": "9"},
+    ])
+    assert body["preview_hosts"] == 0
+    assert body["daily"] == [
+        {"date": "2026-09-01", "site": "musicforge.example", "views": 40, "uniques": 9}]
+
+
 @test("day #52: the visitors block excludes agent-flagged rows")
 def _():
     import re
