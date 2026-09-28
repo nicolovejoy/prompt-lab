@@ -167,6 +167,10 @@ class handler(BaseHTTPRequestHandler):
         def by_views(r):
             return -r["views"]
 
+        # The fold runs after the queries' LIMIT 300 (paths) and LIMIT 200
+        # (referrers), so preview rows past those cutoffs never reach the merged
+        # "previews" row: its counts in these two lists can run low. `daily` has
+        # no limit, so By site, the chart and preview_hosts are exact.
         folded_paths = sorted(_fold(_ints(paths, ["views"]), ["site", "path"], ["views"]),
                               key=by_views)
         folded_referrers = sorted(
