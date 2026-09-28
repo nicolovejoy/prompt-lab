@@ -497,7 +497,9 @@ In `do_GET`, replace the `payload = {` block's first three entries so the folded
         daily = _ints(daily, ["views", "uniques"])
         preview_hosts = len({r["site"] for r in daily
                              if _site_label(r["site"]) == PREVIEWS})
-        by_views = lambda r: -r["views"]  # noqa: E731
+        def by_views(r):
+            return -r["views"]
+
         folded_paths = sorted(_fold(_ints(paths, ["views"]), ["site", "path"], ["views"]),
                               key=by_views)
         folded_referrers = sorted(
@@ -514,8 +516,6 @@ and change the payload entries to:
             "countries": _ints(countries, ["views", "uniques"]),
             "preview_hosts": preview_hosts,
 ```
-
-If ruff rejects the `lambda` assignment even with `noqa`, replace it with a nested `def by_views(r): return -r["views"]`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -780,14 +780,12 @@ Add to the `visitors` (phone) check's `run`:
 
       const note = page.locator('[data-test="page-note"]');
       t.ok(await note.isVisible(), 'page note disclosure is visible on a phone');
-      t.ok(!(await page.getByText('cookie-less', { exact: false }).first().isVisible()), 'explanation is collapsed by default');
+      // Scoped to the disclosure: the wide copy of the same text is always in the DOM.
+      t.ok(!(await note.getByText('cookie-less', { exact: false }).isVisible()), 'explanation is collapsed by default');
       const summaryHeight = await note.locator('summary').evaluate((e) => Math.round(e.getBoundingClientRect().height));
       t.ok(summaryHeight >= 44, `disclosure is at least 44px tall (${summaryHeight})`);
       await note.locator('summary').tap();
       t.ok(await note.getByText('cookie-less', { exact: false }).isVisible(), 'tapping it shows the explanation');
-      const dataTop = await page.getByText('page views', { exact: false }).first().evaluate(
-        (e) => Math.round(e.getBoundingClientRect().top + window.scrollY));
-      t.ok(dataTop > 0, `first number position recorded (${dataTop}px from top, note expanded)`);
 ```
 
 Add to the `visitors-desktop` check's `run`:
