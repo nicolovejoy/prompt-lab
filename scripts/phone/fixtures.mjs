@@ -9,8 +9,11 @@ export const labDay = (i) => PACIFIC.format(new Date(Date.now() - i * 86400000))
 export const LONG_HOST = 'offer-builder-staging-environment-for-the-spring-launch.shop.example';
 export const LONG_PATH = '/projects/a-very-long-project-slug-that-keeps-going-and-going-without-a-break';
 
-// Flipped by a check to reproduce a payload from before preview_hosts existed.
-export const fixtureOptions = { omitPreviewHosts: false, noReferrers: false };
+// Flipped by a check to reproduce a payload from before preview_hosts existed,
+// or one with an empty list. The runner resets them after every check.
+const DEFAULT_OPTIONS = { omitPreviewHosts: false, noReferrers: false };
+export const fixtureOptions = { ...DEFAULT_OPTIONS };
+export function resetFixtureOptions() { Object.assign(fixtureOptions, DEFAULT_OPTIONS); }
 
 const SITES = [
   ['musicforge.example', 40], ['bakery.example', 22], ['builder.example', 14],
@@ -65,6 +68,17 @@ export function apiFixture(pathname, searchParams, method = 'GET') {
   if (pathname === '/api/overview') return ok({ by_project: {}, all_projects: [], project_metadata: {} });
   if (pathname === '/api/beacon') return ok({});
   if (pathname === '/api/visitor_overview') return ok(visitorOverview(searchParams.get('since')));
-  // Anything a check did not plan for fails loudly in the page, not silently.
-  return { status: 404, body: { error: 'no fixture for ' + method + ' ' + pathname } };
+  // The app prefetches today and the two days before it at idle on every page,
+  // so any check that stays open long enough sees these. An empty day, in the
+  // real shape, so the cache it warms holds nothing a later check could misread.
+  if (pathname === '/api/day') {
+    const date = searchParams.get('date');
+    return ok({
+      date, totals: { prompts: 0, sessions: 0, commits: 0 }, projects: [],
+      spend: null, visitors: null, uptime: null, provisional: date === labDay(0),
+    });
+  }
+  // Anything a check did not plan for is marked missing; the runner turns each
+  // one into a failed result, since a page that degrades quietly would pass.
+  return { status: 404, body: { error: 'no fixture for ' + method + ' ' + pathname }, missing: true };
 }

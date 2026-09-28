@@ -13,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, devices, webkit } from 'playwright';
 import { CHECKS } from './checks.mjs';
-import { apiFixture } from './fixtures.mjs';
+import { apiFixture, resetFixtureOptions } from './fixtures.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -53,9 +53,12 @@ async function runCheck(check, base, browsers, results) {
   if (!profile) throw new Error(`unknown profile "${check.profile}"`);
   if (!browsers[check.profile]) browsers[check.profile] = await profile.engine.launch();
   const context = await browsers[check.profile].newContext(profile.options);
+  const missing = new Set();
   await context.route('**/api/**', (route) => {
     const url = new URL(route.request().url());
-    const { status, body } = apiFixture(url.pathname, url.searchParams, route.request().method());
+    const method = route.request().method();
+    const { status, body, missing: unplanned } = apiFixture(url.pathname, url.searchParams, method);
+    if (unplanned) missing.add(`${method} ${url.pathname}`);
     return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
   });
   const page = await context.newPage();
@@ -68,7 +71,16 @@ async function runCheck(check, base, browsers, results) {
   } catch (e) {
     results.push({ check: check.name, pass: false, msg: `check crashed: ${e.message.split('\n')[0]}` });
   } finally {
-    await check.after?.();
+    // A throwing hook must not skip the screenshot and close, and no check may
+    // leak a fixture flag into the next one, whatever its hooks did.
+    try {
+      await check.after?.();
+    } catch (e) {
+      results.push({ check: check.name, pass: false, msg: `after hook crashed: ${e.message.split('\n')[0]}` });
+    }
+    resetFixtureOptions();
+    // Reported even when the check crashed: a missing fixture is often why.
+    for (const route of missing) t.ok(false, `no fixture for ${route}`);
     // A check already named for its profile (visitors-desktop) keeps its name as is.
     const shot = check.name.endsWith(`-${check.profile}`) ? check.name : `${check.name}-${check.profile}`;
     await page.screenshot({ path: path.join(SHOTS, `${shot}.png`), fullPage: true })
