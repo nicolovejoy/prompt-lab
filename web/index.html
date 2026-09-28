@@ -387,6 +387,30 @@
       .share-row-swatch { margin-top: 7px; }
     }
 
+    /* Three lists stacked on a phone ran to 2,800px. Below 600px they share one
+       slot behind a tab bar; above it the bar is hidden and all three show, so
+       the wide layout is exactly what it was. Both markups always render and
+       CSS picks — no viewport state in JS to desync on rotate. */
+    .vis-tabs { display: none; }
+    .page-note-narrow { display: none; }
+    @media (max-width: 600px) {
+      .vis-tabs { display: flex; gap: 4px; margin-top: 4px; }
+      .vis-tabs .sub-tab { flex: 1 1 0; min-height: 44px; padding: 7px 6px; }
+      .vis-panel { display: none; }
+      .vis-panel.active { display: block; }
+      /* The active tab already names the list. */
+      .vis-panel .vis-panel-title { display: none; }
+      .two-col.vis-second { margin-top: 0; }
+
+      .page-note-wide { display: none; }
+      .page-note-narrow { display: block; margin: 0 0 16px; }
+      .page-note-narrow summary {
+        display: flex; align-items: center; min-height: 44px; cursor: pointer;
+        font-size: 1.02rem; color: var(--accent);
+      }
+      .page-note-narrow > div { margin: 0 0 12px; }
+    }
+
     /* Cards */
     .card {
       background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
@@ -2937,8 +2961,22 @@
         </div>`;
     }
 
+    // A page's standing explanation. On a wide screen it sits above the data as
+    // it always has. On a phone it took the top half of the first screen on
+    // every visit, so it folds behind one line — read once, then out of the way.
+    // Rendered twice and CSS picks, the same idiom as the two navs.
+    function PageNote({ summary = 'About this data', children }) {
+      return html`
+        <div class="page-note-wide" data-test="page-note-wide">${children}</div>
+        <details class="page-note-narrow" data-test="page-note">
+          <summary>${summary}</summary>
+          ${children}
+        </details>`;
+    }
+
     function VisitorsOverview() {
       const [days, setDays] = useState(30);
+      const [tab, setTab] = useState('pages');
       const [data, setData] = useState(() => visitorOverviewMemo.get(30) || null);
       const [loading, setLoading] = useState(!visitorOverviewMemo.has(30));
       const [hovered, setHovered] = useState(null);
@@ -2980,16 +3018,18 @@
           <h1 style="margin: 0; font-size: 1.91rem; color: var(--accent-light)">Visitors</h1>
           ${windowPicker}
         </div>
-        <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
-          Anonymous page views from the first-party beacon — cookie-less, IPs
-          never stored, visitor hashes rotate daily (so uniques are per-day by
-          design). Only instrumented sites appear here.
-        </div>
-        <div class="heatmap-note" style="margin: -12px 0 20px">
-          Browser automation is excluded from ${AGENT_LABEL_DAY} onward. Earlier
-          rows predate the label and may include test traffic — the beacon
-          stores no user-agent, so it can't be sorted out after the fact.
-        </div>`;
+        <${PageNote}>
+          <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
+            Anonymous page views from the first-party beacon — cookie-less, IPs
+            never stored, visitor hashes rotate daily (so uniques are per-day by
+            design). Only instrumented sites appear here.
+          </div>
+          <div class="heatmap-note" style="margin: -12px 0 20px">
+            Browser automation is excluded from ${AGENT_LABEL_DAY} onward. Earlier
+            rows predate the label and may include test traffic — the beacon
+            stores no user-agent, so it can't be sorted out after the fact.
+          </div>
+        <//>`;
 
       if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading visitors…</div></div>`;
       if (!data || data.error) return html`<div>${header}<div class="cost-placeholder">Couldn't load visitors.</div></div>`;
@@ -3002,6 +3042,16 @@
                     font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
           ${t}
         </div>`;
+      const panelTitle = (t) => html`<div class="vis-panel-title">${sectionTitle(t)}</div>`;
+      const TABS = [['pages', 'Pages'], ['referrers', 'Referrers'], ['countries', 'Countries']];
+      const tabBar = html`
+        <div class="sub-tabs vis-tabs" data-test="visitors-tabs" role="tablist">
+          ${TABS.map(([k, label]) => html`
+            <button class="sub-tab ${tab === k ? 'active' : ''}" role="tab"
+                    aria-selected=${tab === k} data-test=${'tab-' + k}
+                    onClick=${() => setTab(k)}>${label}</button>`)}
+        </div>`;
+      const panelClass = (k) => 'vis-panel' + (tab === k ? ' active' : '');
       const listRow = (label, sub, v) => html`
         <div class="list-row">
           <div class="list-row-text">
@@ -3209,20 +3259,21 @@
                               background: ${segColor(s)}; opacity: 0.6"></div>
                 </div>`)}
             </div>
-            <div>
-              ${sectionTitle('Top pages')}
+            ${tabBar}
+            <div class=${panelClass('pages')} data-test="panel-pages">
+              ${panelTitle('Top pages')}
               ${paths.map(r => listRow(r.path, r.site, r.views))}
             </div>
           </div>
 
-          <div class="two-col">
-            <div>
-              ${sectionTitle('Referrers')}
+          <div class="two-col vis-second">
+            <div class=${panelClass('referrers')} data-test="panel-referrers">
+              ${panelTitle('Referrers')}
               ${referrers.length ? referrers.map(r => listRow(r.referrer, r.site, r.views))
                 : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">None yet.</div>`}
             </div>
-            <div>
-              ${sectionTitle('Countries')}
+            <div class=${panelClass('countries')} data-test="panel-countries">
+              ${panelTitle('Countries')}
               ${countries.length ? countries.map(r => listRow(r.country, null, r.views))
                 : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">None yet.</div>`}
             </div>

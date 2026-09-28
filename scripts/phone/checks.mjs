@@ -43,6 +43,36 @@ export const CHECKS = [
 
       const previews = page.locator('[data-test="share-row"]', { hasText: 'previews' });
       t.ok((await previews.innerText()).includes('4 preview hosts'), 'previews row says how many hosts it folds');
+
+      const visible = async (sel) => page.locator(sel).first().isVisible();
+      t.ok(await visible('[data-test="visitors-tabs"]'), 'tab bar is visible on a phone');
+      t.ok(await visible('[data-test="panel-pages"]'), 'Pages is the default list');
+      t.ok(!(await visible('[data-test="panel-referrers"]')) && !(await visible('[data-test="panel-countries"]')),
+        'the other two lists are hidden until chosen');
+
+      const tabHeights = await page.locator('[data-test="visitors-tabs"] button').evaluateAll(
+        (els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+      t.ok(tabHeights.length === 3 && tabHeights.every((h) => h >= 44), `tabs are at least 44px tall (${tabHeights.join(', ')})`);
+      const tabsBox = await page.locator('[data-test="visitors-tabs"]').evaluate(
+        (e) => ({ scroll: e.scrollWidth, client: e.clientWidth }));
+      t.ok(tabsBox.scroll <= tabsBox.client + 1, `all three tabs fit without scrolling (${tabsBox.scroll} in ${tabsBox.client}px)`);
+
+      await page.locator('[data-test="tab-referrers"]').tap();
+      t.ok(await visible('[data-test="panel-referrers"]') && !(await visible('[data-test="panel-pages"]')),
+        'tapping Referrers swaps the list');
+      await page.locator('[data-test="tab-countries"]').tap();
+      t.ok(await visible('[data-test="panel-countries"]'), 'tapping Countries shows countries');
+      const after = await pageOverflow(page);
+      t.ok(after.doc <= after.vw, `still no page overflow after switching tabs (${after.doc}px)`);
+
+      const note = page.locator('[data-test="page-note"]');
+      t.ok(await note.isVisible(), 'page note disclosure is visible on a phone');
+      // Scoped to the disclosure: the wide copy of the same text is always in the DOM.
+      t.ok(!(await note.getByText('cookie-less', { exact: false }).isVisible()), 'explanation is collapsed by default');
+      const summaryHeight = await note.locator('summary').evaluate((e) => Math.round(e.getBoundingClientRect().height));
+      t.ok(summaryHeight >= 44, `disclosure is at least 44px tall (${summaryHeight})`);
+      await note.locator('summary').tap();
+      t.ok(await note.getByText('cookie-less', { exact: false }).isVisible(), 'tapping it shows the explanation');
     },
   },
   {
@@ -56,6 +86,20 @@ export const CHECKS = [
       const text = await page.locator('[data-test="share-row"]', { hasText: 'previews' }).innerText();
       t.ok(!/undefined|NaN/.test(text), `previews row renders without preview_hosts ("${text.replace(/\s+/g, ' ')}")`);
       t.ok(!/preview hosts/.test(text), 'previews row shows no host count when the payload has none');
+    },
+  },
+  {
+    name: 'visitors-no-referrers',
+    profile: 'phone',
+    hash: '#/visitors',
+    ready: 'text=By site',
+    async before() { fixtureOptions.noReferrers = true; },
+    async after() { fixtureOptions.noReferrers = false; },
+    async run(page, t) {
+      await page.locator('[data-test="tab-referrers"]').tap();
+      const panel = page.locator('[data-test="panel-referrers"]');
+      t.ok(await panel.isVisible(), 'Referrers panel shows when chosen');
+      t.ok((await panel.innerText()).includes('None yet.'), 'an empty list says "None yet." rather than showing nothing');
     },
   },
   {
@@ -79,6 +123,17 @@ export const CHECKS = [
         (els) => els.map((e) => { const r = e.getBoundingClientRect(); return Math.round(r.top + r.height / 2); }));
       t.ok(mids.length === 3 && Math.max(...mids) - Math.min(...mids) <= 1,
         `By site name, share and count are centred on one line (centres ${mids.join(', ')})`);
+
+      const shown = async (sel) => page.locator(sel).first().isVisible();
+      t.ok(!(await shown('[data-test="visitors-tabs"]')), 'tab bar is hidden on desktop');
+      t.ok(await shown('[data-test="panel-pages"]') && await shown('[data-test="panel-referrers"]')
+        && await shown('[data-test="panel-countries"]'), 'all three lists show at once on desktop');
+      t.ok(await shown('[data-test="page-note-wide"]') && !(await shown('[data-test="page-note"]')),
+        'desktop shows the explanation in full, no disclosure');
+      for (const title of ['Top pages', 'Referrers', 'Countries']) {
+        t.ok(await page.locator('[data-test^="panel-"]').getByText(title, { exact: true }).first().isVisible(),
+          `desktop keeps the "${title}" heading`);
+      }
     },
   },
 ];

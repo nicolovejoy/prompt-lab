@@ -10,7 +10,7 @@ export const LONG_HOST = 'offer-builder-staging-environment-for-the-spring-launc
 export const LONG_PATH = '/projects/a-very-long-project-slug-that-keeps-going-and-going-without-a-break';
 
 // Flipped by a check to reproduce a payload from before preview_hosts existed.
-export const fixtureOptions = { omitPreviewHosts: false };
+export const fixtureOptions = { omitPreviewHosts: false, noReferrers: false };
 
 const SITES = [
   ['musicforge.example', 40], ['bakery.example', 22], ['builder.example', 14],
@@ -54,6 +54,7 @@ function visitorOverview(since) {
     },
   };
   if (fixtureOptions.omitPreviewHosts) delete out.preview_hosts;
+  if (fixtureOptions.noReferrers) out.referrers = [];
   return out;
 }
 
