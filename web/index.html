@@ -128,6 +128,7 @@
       cursor: pointer; color: var(--text); text-decoration: none;
     }
     .header-sep { color: var(--text-secondary); font-size: 1.36rem; }
+    .logo-short { display: none; }
     .breadcrumb { font-size: 1.36rem; color: var(--text-secondary); font-weight: 500; }
     .breadcrumb a { color: var(--text-secondary); text-decoration: none; cursor: pointer; }
     .breadcrumb a:hover { color: var(--accent-light); }
@@ -184,11 +185,21 @@
          of pushing the buttons off the line. */
       .header-left { flex: 1 1 0; min-width: 0; }
       .header-logo { flex: none; display: inline-flex; align-items: center; min-height: 44px; }
+      /* Beside the project picker the wordmark shrinks to "PL", so an ordinary
+         project name reads in full; the name is the page's subject there. */
+      .has-picker .logo-full { display: none; }
+      .has-picker .logo-short { display: inline; }
       .header-sep { flex: none; }
       .picker, .picker-btn { min-width: 0; max-width: 100%; }
       .picker-btn { min-height: 44px; }
       .theme-btn { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; }
-      .nav-toggle { min-height: 44px; }
+      /* Icon only: the word cost 45px the project name needs. It stays in the
+         accessibility tree, and the button keeps aria-label="Menu". */
+      .nav-toggle { min-height: 44px; min-width: 44px; justify-content: center; }
+      .nav-toggle-label {
+        position: absolute; width: 1px; height: 1px; overflow: hidden;
+        clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+      }
       .nav-drop .header-btn { min-height: 44px; }
     }
 
@@ -1184,8 +1195,10 @@
 
       return html`
         <header>
-          <div class="header-left">
-            <a class="header-logo" onClick=${() => navigate('#/')}>Prompt Lab</a>
+          <div class="header-left ${route.view === 'project' ? 'has-picker' : ''}">
+            <a class="header-logo" aria-label="Prompt Lab" onClick=${() => navigate('#/')}>
+              <span class="logo-full">Prompt Lab</span><span class="logo-short" aria-hidden="true">PL</span>
+            </a>
             ${route.view === 'project' && html`
               <span class="header-sep">/</span>
               <${ProjectPicker} current=${route.project} active=${active} dormant=${dormant} />
@@ -1212,7 +1225,7 @@
                 <span style="width:16px; height:2px; background:currentColor; border-radius:1px"></span>
                 <span style="width:16px; height:2px; background:currentColor; border-radius:1px"></span>
               </span>
-              ${menu ? 'Close' : 'Menu'}
+              <span class="nav-toggle-label">${menu ? 'Close' : 'Menu'}</span>
             </button>
 
             <div class="nav-drop ${menu ? 'open' : ''}">

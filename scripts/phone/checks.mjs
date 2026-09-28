@@ -610,6 +610,25 @@ CHECKS.push({
       `readout amounts have four decimals (${values.join(', ')})`);
   },
 });
+// Only a long name truncates in the header picker; an ordinary one reads in full.
+BASELINE_EXTRA.project = async (page, t) => {
+  const name = await page.locator('header .picker-name').evaluate((e) => ({
+    text: e.textContent, scroll: e.scrollWidth, client: e.clientWidth }));
+  t.ok(name.text === 'alpha-app' && name.scroll <= name.client,
+    `header picker shows "${name.text}" in full (${name.scroll} in ${name.client}px)`);
+  // No fixture name is 16 characters, so one is measured in the picker's own
+  // box and font, then the real name is put back.
+  const SIXTEEN = 'november-console';
+  const fit = await page.locator('header .picker-name').evaluate((e, probe) => {
+    const real = e.textContent;
+    e.textContent = probe;
+    const out = { scroll: e.scrollWidth, client: e.clientWidth, len: probe.length };
+    e.textContent = real;
+    return out;
+  }, SIXTEEN);
+  t.ok(fit.len === 16 && fit.scroll <= fit.client,
+    `a 16-character name fits the header picker too (${fit.scroll} in ${fit.client}px)`);
+};
 BASELINE_EXTRA.home = async (page, t) => {
   t.ok(await page.getByText('tap a bar for its breakdown').isVisible(), 'home subtitle describes what a tap does on a phone');
 };
