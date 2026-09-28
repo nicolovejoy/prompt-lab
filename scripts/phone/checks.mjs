@@ -595,3 +595,67 @@ CHECKS.push({
 BASELINE_EXTRA.home = async (page, t) => {
   t.ok(await page.getByText('tap a bar for its breakdown').isVisible(), 'home subtitle describes what a tap does on a phone');
 };
+
+// Twelve uptime cards, each fully expanded with its own chart, made Health
+// more than eight screens long on a phone. There they collapse to one row
+// each, and the chart inside an opened card buckets like every other chart.
+CHECKS.push({
+  name: 'health-cards', profile: 'phone', hash: '#/health', ready: 'text=Reading the strip',
+  async run(page, t) {
+    const cards = page.locator('[data-test="uptime-card"]');
+    const n = await cards.count();
+    t.ok(n === 12, `twelve uptime cards (${n})`);
+    const open = await page.locator('[data-test="uptime-detail"]').evaluateAll(
+      (els) => els.filter((e) => e.getBoundingClientRect().height > 0).length);
+    t.ok(open === 0, `every card starts collapsed on a phone (${open} open)`);
+    const heights = await page.locator('[data-test="uptime-toggle"]').evaluateAll(
+      (els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+    t.ok(heights.length === 12 && heights.every((h) => h >= 44 && h <= 72), `each collapsed row is one tappable line (${Math.min(...heights)}–${Math.max(...heights)}px)`);
+    const pageH = await page.evaluate(() => document.documentElement.scrollHeight);
+    t.ok(pageH < 844 * 5, `the page is under five screens tall (${pageH}px, ${(pageH / 844).toFixed(1)} screens)`);
+
+    const first = cards.first();
+    const name = await first.getAttribute('data-monitor');
+    await first.locator('[data-test="uptime-toggle"]').tap();
+    t.ok(await first.locator('[data-test="uptime-detail"]').isVisible(), 'tapping a row expands its card');
+    t.ok(await first.locator('[data-test="uptime-toggle"]').getAttribute('aria-expanded') === 'true', 'and says so to assistive tech');
+
+    for (const label of ['90d', '1y']) {
+      await page.locator('text=Uptime archive').locator('..').getByRole('button', { name: label, exact: true }).tap();
+      await page.waitForTimeout(400);
+      const chart = page.locator(`[data-chart="uptime-${name}"]`);
+      const scroll = await chart.evaluate((root) => Math.max(0, ...[...root.querySelectorAll('*')]
+        .map((e) => e.scrollWidth - e.clientWidth)));
+      t.ok(scroll <= 1, `${label}: the uptime chart does not scroll sideways (overflow ${scroll}px)`);
+    }
+    const chart = page.locator(`[data-chart="uptime-${name}"]`);
+    await chart.scrollIntoViewIfNeeded();
+    const box = await chartBox(page, `uptime-${name}`);
+    await tapAt(page, box.x + box.width - 3, box.y + box.height / 2);
+    const text = (await chart.locator('[data-test="chart-readout"]').innerText()).replace(/\s+/g, ' ');
+    t.ok(/uptime|not archived/.test(text) && !/NaN|undefined/.test(text), `uptime readout is well formed ("${text.slice(0, 60)}")`);
+
+    await first.locator('[data-test="uptime-toggle"]').tap();
+    t.ok(!(await first.locator('[data-test="uptime-detail"]').isVisible()), 'tapping again collapses it');
+    const m = await pageOverflow(page);
+    t.ok(m.doc <= m.vw, `no horizontal page overflow (${m.doc}px)`);
+  },
+});
+
+// A wide screen keeps every card open, as it always was.
+BASELINE_EXTRA['health-desktop'] = async (page, t, ready) => {
+  const details = await page.locator('[data-test="uptime-detail"]').evaluateAll(
+    (els) => els.filter((e) => e.getBoundingClientRect().height > 0).length);
+  t.ok(details === 12, `desktop shows every uptime card expanded (${details} of 12)`);
+  t.ok(await page.locator('[data-test="uptime-toggle"]').count() === 0
+    || !(await page.locator('[data-test="uptime-toggle"]').first().isVisible()), 'desktop has no collapse toggle');
+  const chart = page.locator('[data-test="uptime-card"]').first().locator('[data-test="chart"]');
+  const bars = await chart.locator('[data-test="chart-bar"]').count();
+  t.ok(bars === 30, `desktop uptime chart: a column per day (${bars})`);
+  await chart.locator('[data-test="chart-bar"]').last().click();
+  await page.waitForFunction(() => location.hash.startsWith('#/day/'));
+  t.ok(page.url().endsWith('#/day/' + labDay(0)), 'desktop: clicking an uptime column opens that day');
+  await page.goBack();
+  await page.locator(ready).first().waitFor();
+  await page.mouse.move(0, 0);
+};

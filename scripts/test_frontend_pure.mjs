@@ -27,7 +27,7 @@ if (src.indexOf('// <pure>', open + 1) >= 0) {
 }
 
 const NAMES = ['fmtShortDate', 'fmtMonth', 'fmtMonthShort', 'addDays', 'mondayOf', 'bucketSizeFor',
-               'bucketDates', 'bucketTotals', 'bucketIndexAt', 'fmtUsdAxis', 'fmtUsdFine'];
+               'bucketDates', 'bucketTotals', 'bucketIndexAt', 'fmtUsdAxis', 'fmtUsdFine', 'bucketUptime'];
 const pure = new Function(`"use strict";\n${src.slice(open, close)}\nreturn { ${NAMES.join(', ')} };`)();
 
 const tests = [];
@@ -188,6 +188,29 @@ test('fmtUsdFine keeps four decimals, so spend under half a cent is not "$0.00"'
                  [1234.5, '$1,234.5000']];
   for (const [n, want] of cases) assert.equal(pure.fmtUsdFine(n), want, String(n));
   assert.notEqual(pure.fmtUsdFine(0.004), '$0.00');
+});
+
+test('bucketUptime: the worst day decides, response is the mean, gaps are not zero', () => {
+  const [week] = pure.bucketDates(days('2026-09-07', 7), 'week');
+  assert.deepEqual(pure.bucketUptime(week, {
+    '2026-09-07': { uptime: 100, ms: 100 },
+    '2026-09-08': { uptime: 97.5, ms: 300 },
+    '2026-09-09': { uptime: 100, ms: null },      // up, but no response sample
+    '2026-09-20': { uptime: 0, ms: 9999 },        // outside the bucket
+  }), { uptime: 97.5, ms: 200, days: 3 });
+});
+
+test('bucketUptime: no data is null, never 0% and never NaN', () => {
+  const [week] = pure.bucketDates(days('2026-09-07', 7), 'week');
+  assert.deepEqual(pure.bucketUptime(week, {}), { uptime: null, ms: null, days: 0 });
+  assert.deepEqual(pure.bucketUptime(week, { '2026-09-07': { uptime: null, ms: null } }),
+    { uptime: null, ms: null, days: 0 });
+});
+
+test('bucketUptime: string values from the API are coerced', () => {
+  const [day] = pure.bucketDates(['2026-09-07'], 'day');
+  assert.deepEqual(pure.bucketUptime(day, { '2026-09-07': { uptime: '99.9', ms: '120' } }),
+    { uptime: 99.9, ms: 120, days: 1 });
 });
 
 let failed = 0;
