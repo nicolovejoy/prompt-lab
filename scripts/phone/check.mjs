@@ -48,6 +48,24 @@ function serveWeb() {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
+// Chromium takes a full-page screenshot by briefly resizing the viewport
+// (it reports 1x1 for a moment), which fires the page's (max-width: 640px)
+// query and re-buckets every chart mid-capture as if on a phone. So desktop
+// grows its viewport to the whole document instead and takes a plain shot.
+// WebKit on the phone profile fires no media-query change during a
+// full-page capture (checked), so phone keeps fullPage.
+const DESKTOP_SHOT_MAX_H = 16000;
+async function screenshot(page, profile, file) {
+  if (profile !== 'desktop') return page.screenshot({ path: file, fullPage: true });
+  const { width } = page.viewportSize();
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  await page.setViewportSize({ width, height: Math.min(Math.max(height, 1), DESKTOP_SHOT_MAX_H) });
+  // Two frames for layout and paint, then the charts' 0.1s opacity transitions.
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await page.waitForTimeout(250);
+  return page.screenshot({ path: file });
+}
+
 async function runCheck(check, base, browsers, results) {
   const profile = PROFILES[check.profile];
   if (!profile) throw new Error(`unknown profile "${check.profile}"`);
@@ -83,8 +101,7 @@ async function runCheck(check, base, browsers, results) {
     for (const route of missing) t.ok(false, `no fixture for ${route}`);
     // A check already named for its profile (visitors-desktop) keeps its name as is.
     const shot = check.name.endsWith(`-${check.profile}`) ? check.name : `${check.name}-${check.profile}`;
-    await page.screenshot({ path: path.join(SHOTS, `${shot}.png`), fullPage: true })
-      .catch(() => {});
+    await screenshot(page, check.profile, path.join(SHOTS, `${shot}.png`)).catch(() => {});
     await context.close();
   }
 }

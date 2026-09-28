@@ -128,6 +128,7 @@
       cursor: pointer; color: var(--text); text-decoration: none;
     }
     .header-sep { color: var(--text-secondary); font-size: 1.36rem; }
+    .logo-short { display: none; }
     .breadcrumb { font-size: 1.36rem; color: var(--text-secondary); font-weight: 500; }
     .breadcrumb a { color: var(--text-secondary); text-decoration: none; cursor: pointer; }
     .breadcrumb a:hover { color: var(--accent-light); }
@@ -171,6 +172,35 @@
       }
       .nav-drop .header-user { padding: 4px 12px; }
       .nav-more { display: contents; }   /* phone: inline, no second surface */
+      /* One line: the header is a block, so .header-left and .header-right
+         stacked as two rows — right for the wide nav, which needs the whole
+         width, but it put the Menu button a full line under the logo. Here the
+         header is the flex row and .header-right dissolves into it, so the
+         theme toggle and Menu sit beside the logo and the open list, at
+         flex-basis 100%, still wraps below as a full-width row. */
+      header { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; }
+      .header-right { display: contents; }
+      .nav-drop.open { flex-basis: 100%; }
+      /* min-width:0 down the chain so a long project name truncates instead
+         of pushing the buttons off the line. */
+      .header-left { flex: 1 1 0; min-width: 0; }
+      .header-logo { flex: none; display: inline-flex; align-items: center; min-height: 44px; }
+      /* Beside the project picker the wordmark shrinks to "PL", so an ordinary
+         project name reads in full; the name is the page's subject there. */
+      .has-picker .logo-full { display: none; }
+      .has-picker .logo-short { display: inline; }
+      .header-sep { flex: none; }
+      .picker, .picker-btn { min-width: 0; max-width: 100%; }
+      .picker-btn { min-height: 44px; }
+      .theme-btn { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; }
+      /* Icon only: the word cost 45px the project name needs. It stays in the
+         accessibility tree, and the button keeps aria-label="Menu". */
+      .nav-toggle { min-height: 44px; min-width: 44px; justify-content: center; }
+      .nav-toggle-label {
+        position: absolute; width: 1px; height: 1px; overflow: hidden;
+        clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+      }
+      .nav-drop .header-btn { min-height: 44px; }
     }
 
     /* Wide screens: the second tier is a panel hanging off "More". */
@@ -227,7 +257,8 @@
       font-weight: 500; color: var(--text-secondary); cursor: pointer; padding: 0;
     }
     .picker-btn:hover { color: var(--accent-light); }
-    .picker-caret { font-size: 0.89rem; opacity: 0.7; }
+    .picker-caret { font-size: 0.89rem; opacity: 0.7; flex: none; }
+    .picker-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .picker-menu {
       position: absolute; top: 100%; left: 0; margin-top: 8px;
       background: var(--card); border: 1px solid var(--border); border-radius: 8px;
@@ -246,6 +277,23 @@
     .picker-item:hover { background: var(--card-hover); }
     .picker-item.active { color: var(--accent-light); font-weight: 600; }
 
+    /* Chart window buttons (WindowPicker). */
+    .win-picker { display: flex; gap: 4px; }
+    .win-btn {
+      font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
+      cursor: pointer; font-family: inherit; border: 1px solid var(--border);
+      background: transparent; color: var(--text-secondary);
+    }
+    .win-btn[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
+    /* A list row that links through (Costs and Activity, By project). */
+    .row-link {
+      display: block; padding: 5px 0; text-decoration: none;
+      color: var(--text); border-bottom: 1px solid var(--border);
+    }
+    .chart-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+
+
     /* Cost placeholder (loading / no-spend states) */
     .cost-placeholder {
       margin-top: 16px; padding: 16px; background: var(--card);
@@ -260,10 +308,16 @@
 
     /* Project page */
     .project-header { margin-bottom: 24px; }
-    .project-title-row { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
-    .project-name { font-size: 1.91rem; font-weight: 600; letter-spacing: -0.3px; color: var(--accent-light); }
-    .project-links { display: flex; gap: 8px; align-items: center; }
+    /* The row wraps, so on a phone the links drop under the name instead of
+       pushing past the edge (a site link alone did, at 390px). The name is the
+       page's title, so a long one wraps; the site link is a label, so it keeps
+       one line and truncates. On a wide screen everything fits on one line. */
+    .project-title-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+    .project-name { font-size: 1.91rem; font-weight: 600; letter-spacing: -0.3px; color: var(--accent-light);
+                    min-width: 0; overflow-wrap: anywhere; }
+    .project-links { display: flex; gap: 8px; align-items: center; min-width: 0; max-width: 100%; }
     .project-link {
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       font-size: 0.98rem; color: var(--text-secondary); text-decoration: none;
       padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px;
       font-family: "SF Mono", ui-monospace, monospace; transition: border-color 0.15s;
@@ -358,6 +412,43 @@
        viewport on #/visitors). */
     .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
     .chart-scroll { overflow-x: auto; }
+    /* A phone chart's row keeps vertical swipes for the page and horizontal
+       drags for scrubbing the selection. Only narrow: a wide chart scrolls
+       sideways inside .chart-scroll, and a finger must still be able to pan it. */
+    .chart-bars.narrow { touch-action: pan-y; }
+    .chart-readout {
+      margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+      font-size: 0.95rem; min-width: 0;
+    }
+    .chart-readout-head { font-weight: 600; margin-bottom: 6px; overflow-wrap: anywhere; }
+    .chart-readout-row {
+      display: flex; align-items: center; gap: 8px; padding: 2px 0; color: var(--text-secondary);
+    }
+    .chart-readout-swatch { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+    /* Hostnames arrive as 70-character tokens with no break point. */
+    .chart-readout-name { color: var(--text); flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .chart-readout-value { flex: none; font-variant-numeric: tabular-nums; }
+    .chart-readout-more { color: var(--text-secondary); padding: 2px 0; }
+    .chart-open-day, .chart-day-chip {
+      min-height: 44px; border: 1px solid var(--border); border-radius: 6px;
+      background: transparent; color: var(--accent); font: inherit; cursor: pointer;
+    }
+    .chart-open-day { display: block; width: 100%; margin-top: 10px; }
+    .chart-day-chips {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+      gap: 6px; margin-top: 10px;
+    }
+    .chart-day-chip { min-width: 44px; padding: 0; font-variant-numeric: tabular-nums; }
+    /* A collapsed uptime card on a phone: one row, one tap target. */
+    .uptime-toggle {
+      display: flex; align-items: center; gap: 8px; width: 100%; min-height: 48px;
+      padding: 8px 0; background: none; border: 0; color: inherit;
+      font: inherit; font-size: 1.02rem; text-align: left; cursor: pointer;
+    }
+    .uptime-toggle-name {
+      flex: 1; min-width: 0; font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
     @media (max-width: 600px) {
       .two-col { grid-template-columns: minmax(0, 1fr); }
     }
@@ -377,10 +468,13 @@
     }
     .list-row-value { margin-left: auto; flex: none; font-size: 1.12rem; font-variant-numeric: tabular-nums; }
     /* A share row centres on one line like any other row; on a phone its name can
-       wrap, so the swatch, share and count pin to the first line instead. */
+       wrap, so the swatch, share and count pin to the first line instead. It is a
+       block (its head line over its share bar), with a list row's rule and spacing. */
+    .share-row { padding: 5px 0; border-bottom: 1px solid var(--border); }
     .share-row-head { display: flex; align-items: center; gap: 8px; }
     @media (max-width: 600px) {
       .list-row { align-items: flex-start; padding: 8px 0; }
+      .share-row { padding: 8px 0; }
       .list-row-text { flex-direction: column; gap: 1px; }
       .list-row-label, .list-row-sub { white-space: normal; overflow-wrap: anywhere; }
       .share-row-head { align-items: flex-start; }
@@ -571,8 +665,11 @@
     .section-label:first-child { margin-top: 0; }
 
     /* Stream (home cross-project feed) */
+    /* A project name with no break point would set the row's width; let it
+       break anywhere so it wraps like the phrase after it. */
     .stream-project {
       font-weight: 600; color: var(--text); cursor: pointer; text-decoration: none;
+      overflow-wrap: anywhere;
     }
     .stream-project:hover { color: var(--accent-light); }
     .dormant-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
@@ -653,6 +750,37 @@
       50% { opacity: 0.3; }
     }
     .skeleton-card { height: 80px; margin-bottom: 10px; }
+
+    /* Tap targets on a phone: 44px tall at least, grown with min-height so the
+       text keeps its size. .tap marks a control whose wide-screen styling is
+       inline; an anchor with no display of its own becomes a flex box so its
+       text centres in the taller box. Inline links in running text are not
+       marked and stay as they are. Last in the sheet, so it outranks the
+       base rules whose boxes it grows. */
+    @media (max-width: 640px) {
+      .tap, .win-btn, .sub-tab, .picker-item, select { min-height: 44px; }
+      /* WebKit draws a native select at a fixed height and ignores min-height
+         and padding, so on a phone every select drops the native look and
+         draws its own box and caret (the project page's metadata selects
+         already had the box; naming them here outranks their own rule). */
+      select, .meta-editor select {
+        -webkit-appearance: none; appearance: none; padding: 0 26px 0 8px;
+        border: 1px solid var(--border); border-radius: 4px;
+        background-color: var(--bg); color: var(--text);
+        background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                          linear-gradient(135deg, currentColor 50%, transparent 50%);
+        background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+        background-size: 5px 5px; background-repeat: no-repeat;
+      }
+      a.tap { display: inline-flex; align-items: center; }
+      .win-btn { min-width: 44px; }
+      /* The legend's row gap was spacing between 18px lines; 44px entries
+         carry their own. */
+      .chart-legend { row-gap: 0; }
+      .row-link { display: flex; flex-direction: column; justify-content: center; min-height: 44px; }
+      /* An ellipsis needs a block box, so these grow by line-height, not flex. */
+      .project-link { min-height: 44px; line-height: 42px; padding-top: 0; padding-bottom: 0; }
+    }
   </style>
 </head>
 <body>
@@ -946,7 +1074,7 @@
       return html`
         <span class="picker" ref=${ref}>
           <button class="picker-btn" onClick=${() => setOpen(o => !o)}>
-            ${current}<span class="picker-caret">▾</span>
+            <span class="picker-name">${current}</span><span class="picker-caret">▾</span>
           </button>
           ${open && html`
             <div class="picker-menu">
@@ -1000,6 +1128,9 @@
       const nav = role === 'admin' ? NAV : NAV.filter(([view]) => view !== 'visitors' && view !== 'health');
       // Any navigation closes it — otherwise the panel stays open over the page
       // you just asked for, which reads as the tap not having worked.
+      // A menu entry also closes it in its own handler: the effect runs after
+      // paint, so the page you asked for would otherwise show a frame under
+      // the still-open list.
       useEffect(() => { setMenu(false); setMore(false); }, [route.view, route.project]);
       // Clicking anywhere outside the nav closes it too. Listen on the capture
       // phase of pointerdown, not click: a click inside the page can re-render
@@ -1046,7 +1177,7 @@
             </div>`}
           <div class="nav-sep"></div>
           <button class="header-btn ${route.view === 'about' ? 'active' : ''}"
-                  onClick=${() => navigate('#/about')}>About</button>
+                  onClick=${() => { setMenu(false); setMore(false); navigate('#/about'); }}>About</button>
           <div class="nav-sep"></div>
           ${email && html`<span class="header-user">${email}</span>`}
           <button class="header-btn" onClick=${onLogout}>Log out</button>
@@ -1064,8 +1195,10 @@
 
       return html`
         <header>
-          <div class="header-left">
-            <a class="header-logo" onClick=${() => navigate('#/')}>Prompt Lab</a>
+          <div class="header-left ${route.view === 'project' ? 'has-picker' : ''}">
+            <a class="header-logo" aria-label="Prompt Lab" onClick=${() => navigate('#/')}>
+              <span class="logo-full">Prompt Lab</span><span class="logo-short" aria-hidden="true">PL</span>
+            </a>
             ${route.view === 'project' && html`
               <span class="header-sep">/</span>
               <${ProjectPicker} current=${route.project} active=${active} dormant=${dormant} />
@@ -1092,13 +1225,13 @@
                 <span style="width:16px; height:2px; background:currentColor; border-radius:1px"></span>
                 <span style="width:16px; height:2px; background:currentColor; border-radius:1px"></span>
               </span>
-              ${menu ? 'Close' : 'Menu'}
+              <span class="nav-toggle-label">${menu ? 'Close' : 'Menu'}</span>
             </button>
 
             <div class="nav-drop ${menu ? 'open' : ''}">
               ${nav.map(([view, label, hash]) => html`
                 <button class="header-btn ${route.view === view ? 'active' : ''}"
-                        onClick=${() => navigate(hash)}>${label}</button>`)}
+                        onClick=${() => { setMenu(false); navigate(hash); }}>${label}</button>`)}
               <div class="nav-sep"></div>
               <button class="header-btn" onClick=${() => setMore(m => !m)}>
                 More ${more ? '\u25B4' : '\u25BE'}
@@ -1511,7 +1644,7 @@
     // point of the toggle is that the name never appears on screen, and a
     // legend entry would defeat that.
     function CrossProjectActivity({ overview, hide }) {
-      const [hovered, setHovered] = useState(null);
+      const narrow = useNarrow();
       // 7 | 30 only: this chart reads the `overview` payload, which is capped at
       // 30 days and deliberately kept lean because it's what paints the home
       // page. Longer windows are what #/activity is for, and the tile above
@@ -1542,9 +1675,6 @@
       const dates = [];
       for (let i = days - 1; i >= 0; i--)
         dates.push(labDay(i));
-      const dayTotal = d => Object.values(byDateProject[d] || {}).reduce((s, v) => s + v, 0);
-      const peak = Math.max(...dates.map(dayTotal), 1);
-      const CHART_H = 120, n = dates.length;
 
       return html`
         <div style="margin-bottom:26px; padding:16px; background:var(--card);
@@ -1554,72 +1684,28 @@
                         letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary)">
               Activity · last ${days} days
             </div>
-            <div style="display:flex; gap:4px">
-              ${[7, 30].map(d => html`
-                <button onClick=${() => setDays(d)}
-                  style="font-size:0.92rem; padding:3px 9px; border-radius:4px;
-                         cursor:pointer; font-family:inherit; border:1px solid var(--border);
-                         background:${days === d ? 'var(--accent)' : 'transparent'};
-                         color:${days === d ? '#fff' : 'var(--text-secondary)'}">${d}d</button>`)}
-            </div>
+            <${WindowPicker} days=${days} onChange=${setDays} options=${[7, 30]} />
           </div>
           <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.85rem;
                       color:var(--text-secondary); margin:-8px 0 10px">
-            prompts per day, stacked by project · tap a bar for that day
+            ${'prompts per day, stacked by project · tap a bar for '
+              + (narrow ? 'its breakdown' : 'that day')}
           </div>
-          <div style="font-size:0.8rem; color:var(--text-secondary); margin:0 0 10px">
-            Today (outlined) fills in as sessions are summarized — a session still
-            running isn't counted yet.
+          <${PageNote} summary="About this chart">
+            <div style="font-size:0.8rem; color:var(--text-secondary); margin:0 0 10px">
+              Today (outlined) fills in as sessions are summarized — a session still
+              running isn't counted yet.
+            </div>
+          <//>
+          <div style="margin-bottom:12px">
+            <${StackedBars} id="home" dates=${dates} days=${days} byDateSeg=${byDateProject}
+              segColor=${segColor} fmtValue=${(v) => String(Math.round(v))} unit="prompts"
+              chartH=${120} markToday=${true} gutter=${false} scroll=${false} todaySuffix=" so far" />
           </div>
-          <div style="display:flex; gap:2px; align-items:stretch; height:${CHART_H}px;
-                      border-bottom:1px solid var(--border)">
-            ${dates.map((d, i) => {
-              const total = dayTotal(d);
-              const barH = total > 0 ? Math.max(1, Math.round((total / peak) * (CHART_H - 4))) : 0;
-              const isH = hovered === i;
-              const isToday = i === n - 1;
-              const edge = n > 1 ? i / (n - 1) : 0.5;
-              const anchor = edge < 0.15 ? 'left:0' : edge > 0.85 ? 'right:0' : 'left:50%; transform:translateX(-50%)';
-              const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
-              return html`
-                <div style="flex:1; min-width:3px; height:100%; position:relative;
-                            cursor:pointer"
-                     onMouseEnter=${() => setHovered(i)}
-                     onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
-                     onPointerEnter=${() => prefetchDay(d)}
-                     onClick=${() => navigate('#/day/' + d)}>
-                  ${isToday && html`
-                    <div style="position:absolute; left:0; right:0; bottom:0; top:0;
-                                border:1px dashed var(--border); border-bottom:none;
-                                border-radius:2px 2px 0 0; pointer-events:none"></div>`}
-                  <div style="position:absolute; left:0; right:0; bottom:0; height:${barH}px;
-                              display:flex; flex-direction:column-reverse; border-radius:2px 2px 0 0;
-                              overflow:hidden; opacity:${isH ? 1 : 0.85}; transition:opacity 0.1s">
-                    ${segs.map(([p, v]) => html`
-                      <div style="height:${(v / total) * 100}%; background:${segColor(p)}"></div>`)}
-                  </div>
-                  ${CAN_HOVER && isH && total > 0 && html`
-                    <div style="position:absolute; bottom:100%; z-index:5; margin-bottom:4px; ${anchor};
-                                background:var(--bg); border:1px solid var(--border); border-radius:6px;
-                                padding:8px 10px; white-space:nowrap; box-shadow:0 4px 16px rgba(0,0,0,0.4);
-                                font-size:0.95rem">
-                      <div style="font-weight:600; margin-bottom:4px">${fmtShortDate(d)} · ${total} prompts${isToday ? ' so far' : ''}</div>
-                      ${segs.slice(0, 6).map(([p, v]) => html`
-                        <div style="display:flex; align-items:center; gap:6px; color:var(--text-secondary)">
-                          <span style="width:8px; height:8px; border-radius:2px; background:${segColor(p)}; display:inline-block"></span>
-                          <span style="color:var(--text)">${p}</span>
-                          <span style="margin-left:auto">${v}</span>
-                        </div>`)}
-                      ${segs.length > 6 && html`<div style="color:var(--text-secondary)">+${segs.length - 6} more</div>`}
-                    </div>`}
-                </div>`;
-            })}
-          </div>
-          <${DateAxis} dates=${dates} style="margin-top:4px; margin-bottom:12px" />
 
-          <div style="display:flex; flex-wrap:wrap; gap:10px 16px">
+          <div class="chart-legend">
             ${ranked.slice(0, COST_PALETTE.length).map(([p]) => html`
-              <a href=${'#/project/' + encodeURIComponent(p)}
+              <a class="tap" href=${'#/project/' + encodeURIComponent(p)}
                  style="display:inline-flex; align-items:center; gap:6px; text-decoration:none;
                         color:var(--text-secondary); font-size:0.98rem">
                 <span style="width:8px; height:8px; border-radius:2px; background:${segColor(p)}"></span>${p}
@@ -1739,7 +1825,7 @@
 
         ${dormantProjects.length > 0 && html`
           <div style="margin-top: 24px">
-            <button style="font-size: 1.16rem; color: var(--text-secondary); background: none;
+            <button class="tap" style="font-size: 1.16rem; color: var(--text-secondary); background: none;
               border: none; cursor: pointer; font-family: inherit; padding: 6px 0"
               onClick=${() => setShowDormant(!showDormant)}>
               ${showDormant ? 'Hide' : 'Show'} ${dormantProjects.length} dormant project${dormantProjects.length > 1 ? 's' : ''}
@@ -1756,7 +1842,7 @@
 
         ${privateCount > 0 && html`
           <div style="margin-top: 8px">
-            <button style="font-size: 1.16rem; color: var(--text-secondary); background: none;
+            <button class="tap" style="font-size: 1.16rem; color: var(--text-secondary); background: none;
               border: none; cursor: pointer; font-family: inherit; padding: 6px 0"
               onClick=${() => setShowPrivate(v => !v)}>
               ${showPrivate ? 'Hide' : 'Show'} ${privateCount} private project${privateCount > 1 ? 's' : ''}
@@ -1847,14 +1933,16 @@
               </div>
             </div>
           </div>
-          <div class="heatmap-note">
-            Counts before ${CAPTURE_FIX_DAY} exclude prompts under 20
-            characters, which the logger discarded at write time. Short prompts
-            are mostly steering — "yes", "go ahead" — so supervision-heavy days
-            are undercounted before that date and complete after it. The step is
-            the fix, not a change in activity. Not backfillable: the dropped
-            prompts were never stored.
-          </div>
+          <${PageNote} summary="About these counts">
+            <div class="heatmap-note">
+              Counts before ${CAPTURE_FIX_DAY} exclude prompts under 20
+              characters, which the logger discarded at write time. Short prompts
+              are mostly steering — "yes", "go ahead" — so supervision-heavy days
+              are undercounted before that date and complete after it. The step is
+              the fix, not a change in activity. Not backfillable: the dropped
+              prompts were never stored.
+            </div>
+          <//>
         </div>
       `;
     }
@@ -1997,7 +2085,7 @@
       const grouper = html`
         <div style="display: flex; gap: 4px; margin-bottom: 12px">
           ${[['repo', 'by project'], ['type', 'by type']].map(([g, lbl]) => html`
-            <button onClick=${() => setGroupBy(g)}
+            <button class="tap" onClick=${() => setGroupBy(g)}
               style="font-size: 0.98rem; padding: 4px 12px; border-radius: 999px; cursor: pointer;
                      font-family: inherit; border: 1px solid var(--border);
                      background: ${groupBy === g ? 'var(--accent)' : 'transparent'};
@@ -2005,7 +2093,7 @@
         </div>`;
 
       const searchBox = html`
-        <input type="text" placeholder="Search issues — title, label, #number, repo"
+        <input class="tap" type="text" placeholder="Search issues — title, label, #number, repo"
           value=${query} onInput=${e => setQuery(e.target.value)}
           style="width: 100%; box-sizing: border-box; margin-bottom: 14px; padding: 8px 12px;
                  font-size: 1.16rem; font-family: inherit; color: var(--text);
@@ -2028,12 +2116,12 @@
                   </div>
                   <div style="margin-left: auto; display: flex; gap: 12px; align-items: baseline">
                     ${(showAll || hiddenRepos > 0) && html`
-                      <button onClick=${() => setShowAll(s => !s)}
+                      <button class="tap" onClick=${() => setShowAll(s => !s)}
                         style="font-size: 0.95rem; color: var(--accent); background: none; border: none;
                                cursor: pointer; font-family: inherit">
                         ${showAll ? 'Tracked only' : `Show all repos (+${hiddenRepos})`}
                       </button>`}
-                    <button onClick=${reclassify}
+                    <button class="tap" onClick=${reclassify}
                       style="font-size: 0.95rem; color: var(--text-secondary); background: none; border: none;
                              cursor: pointer; font-family: inherit" title="Re-run the LLM classification for every issue">
                       ↻ reclassify
@@ -2093,12 +2181,12 @@
             </div>
             <div style="margin-left: auto; display: flex; gap: 12px; align-items: baseline">
               ${(showAll || hiddenRepos > 0) && html`
-                <button onClick=${() => setShowAll(s => !s)}
+                <button class="tap" onClick=${() => setShowAll(s => !s)}
                   style="font-size: 0.95rem; color: var(--accent); background: none; border: none;
                          cursor: pointer; font-family: inherit">
                   ${showAll ? 'Tracked only' : `Show all repos (+${hiddenRepos})`}
                 </button>`}
-              <button onClick=${toggleAll}
+              <button class="tap" onClick=${toggleAll}
                 style="font-size: 0.95rem; color: var(--accent); background: none; border: none;
                        cursor: pointer; font-family: inherit">
                 ${allOpen ? 'Collapse all' : 'Expand all'}
@@ -2115,11 +2203,11 @@
               <div style="display: flex; align-items: center; gap: 8px; padding: 10px 0; cursor: pointer"
                    onClick=${() => toggle(p)}>
                 <span style="font-size: 0.95rem; color: var(--text-secondary); width: 10px; flex: none">${isOpen ? '▾' : '▸'}</span>
-                <span style="font-size: 1.3rem; font-weight: 600">${p}</span>
-                <span style="font-size: 0.95rem; color: var(--text-secondary)">${issues.length}${q && issues.length !== projects[p].length ? '/' + projects[p].length : ''}</span>
+                <span style="font-size: 1.3rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere">${p}</span>
+                <span style="font-size: 0.95rem; color: var(--text-secondary); flex: none">${issues.length}${q && issues.length !== projects[p].length ? '/' + projects[p].length : ''}</span>
                 ${!isTracked(p) && html`<span style="font-size: 0.79rem; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 0 5px">untracked</span>`}
-                <a onClick=${(e) => { e.stopPropagation(); navigate('#/project/' + encodeURIComponent(p)); }}
-                   style="margin-left: auto; font-size: 0.9rem; color: var(--accent); cursor: pointer; text-decoration: none">
+                <a class="tap" onClick=${(e) => { e.stopPropagation(); navigate('#/project/' + encodeURIComponent(p)); }}
+                   style="margin-left: auto; flex: none; white-space: nowrap; font-size: 0.9rem; color: var(--accent); cursor: pointer; text-decoration: none">
                   project →
                 </a>
               </div>
@@ -2142,6 +2230,149 @@
         </div>`;
     }
 
+    // <pure>
+    // Pure helpers: no DOM, no Preact, nothing from outside this block.
+    // scripts/test_frontend_pure.mjs lifts the block out by its markers and
+    // unit-tests it under Node — the only way to test logic in a page that has
+    // no build step. A reference to window, document or html in here fails
+    // that run, which is what keeps the block honest.
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun',
+                    'Jul','Aug','Sep','Oct','Nov','Dec'];
+    function fmtShortDate(iso) {
+      const [, m, d] = iso.split('-');
+      return MONTHS[parseInt(m, 10) - 1] + ' ' + parseInt(d, 10);
+    }
+    function fmtMonth(ym) {
+      const [y, m] = ym.split('-');
+      return MONTHS[parseInt(m, 10) - 1] + ' ' + y;
+    }
+    // A month axis on a phone has ~20px per bucket; "Sep 2025" ran into its
+    // neighbour, and a bare "Sep" can't tell this September from last.
+    function fmtMonthShort(ym) {
+      const [y, m] = ym.split('-');
+      return MONTHS[parseInt(m, 10) - 1] + " '" + y.slice(2);
+    }
+
+    // Calendar arithmetic on YYYY-MM-DD strings. The strings are already
+    // Pacific calendar days; Date.UTC on their parts keeps them that way.
+    // Reading one back through a timezone is how a bucket slides a day.
+    function addDays(iso, n) {
+      const [y, m, d] = iso.split('-').map(Number);
+      const t = new Date(Date.UTC(y, m - 1, d + n));
+      const p = (v) => String(v).padStart(2, '0');
+      return t.getUTCFullYear() + '-' + p(t.getUTCMonth() + 1) + '-' + p(t.getUTCDate());
+    }
+    // Monday-to-Sunday weeks, and a Monday is its own week — the same rule the
+    // SQL rollups use ('weekday 0','-6 days'), so a phone bar and a weekly
+    // rollup never disagree about which week a Monday belongs to.
+    function mondayOf(iso) {
+      const [y, m, d] = iso.split('-').map(Number);
+      const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();   // 0 = Sunday
+      return addDays(iso, -((weekday + 6) % 7));
+    }
+
+    // A phone has room for about fifty bars. 90 days become weeks and a year
+    // becomes months there; a wide screen keeps a bar per day at every window.
+    function bucketSizeFor(days, narrow) {
+      if (!narrow) return 'day';
+      if (days >= 365) return 'month';
+      if (days >= 90) return 'week';
+      return 'day';
+    }
+
+    function bucketLabel(b) {
+      const first = b.dates[0], last = b.dates[b.dates.length - 1];
+      if (b.size === 'month') return fmtMonth(b.key);
+      if (b.size === 'week' && first !== last) {
+        return first.slice(0, 7) === last.slice(0, 7)
+          ? fmtShortDate(first) + '–' + parseInt(last.slice(8), 10)
+          : fmtShortDate(first) + ' – ' + fmtShortDate(last);
+      }
+      return fmtShortDate(first);
+    }
+
+    // `dates` ascending. The first and last bucket are usually partial: a
+    // window rarely starts on a Monday or on the 1st.
+    function bucketDates(dates, size) {
+      const out = [];
+      for (const d of dates) {
+        const key = size === 'month' ? d.slice(0, 7) : size === 'week' ? mondayOf(d) : d;
+        const last = out[out.length - 1];
+        if (last && last.key === key) last.dates.push(d);
+        else out.push({ key, size, dates: [d] });
+      }
+      for (const b of out) b.label = bucketLabel(b);
+      return out;
+    }
+
+    // byDateSeg: { date: { segment: count } }. Counts may arrive as strings.
+    function bucketTotals(bucket, byDateSeg) {
+      const merged = {};
+      for (const d of bucket.dates)
+        for (const [s, v] of Object.entries(byDateSeg[d] || {}))
+          merged[s] = (merged[s] || 0) + (Number(v) || 0);
+      // Stable sort, so ties keep first-seen order: that is how every chart
+      // stacked a day before buckets existed, and a single-day bucket must
+      // paint exactly the same bar.
+      const segs = Object.entries(merged).sort((a, b) => b[1] - a[1]);
+      return { total: segs.reduce((t, [, v]) => t + v, 0), segs };
+    }
+
+    // Which bucket is under a pointer `x` pixels into a chart `width` wide.
+    // Clamped, because a finger dragging across a chart slides off its edges.
+    function bucketIndexAt(x, width, count) {
+      if (!(width > 0) || count < 1) return -1;
+      return Math.max(0, Math.min(count - 1, Math.floor((x / width) * count)));
+    }
+
+    // A money chart's y-axis labels. Wide: the labels the cost charts always
+    // had, cents included and a bare "$0" at the baseline. Compact: a phone's
+    // gutter is 44px, five monospace characters, so "$11.31" or a monthly
+    // "$1,234.56" would spill out of it; cents go at $10, thousands become k.
+    // The readout under the chart still shows the exact amount.
+    function fmtUsdAxis(n, compact) {
+      n = Number(n) || 0;
+      if (n === 0) return '$0';
+      if (!compact) {
+        return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+      if (n < 9.995) return '$' + n.toFixed(2);
+      const whole = Math.round(n);
+      if (whole < 1000) return '$' + whole;
+      const k = n / 1000;
+      return '$' + (k < 9.95 ? k.toFixed(1).replace(/\.0$/, '') : Math.round(k)) + 'k';
+    }
+
+    // A single project's daily spend is often under a cent; at two decimals a
+    // real $0.004 day reads "$0.00", the same as no spend at all.
+    function fmtUsdFine(n) {
+      return '$' + (Number(n) || 0).toLocaleString('en-US',
+        { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+    }
+
+    // An uptime bucket takes its WORST day, not its average: averaging paints a
+    // week with one bad day green, and a gap in the archive is missing data,
+    // never 0% — so days without a reading are skipped, not counted as down.
+    function bucketUptime(bucket, byDate) {
+      const ups = [], mss = [];
+      let days = 0;
+      for (const d of bucket.dates) {
+        const v = byDate[d];
+        if (!v) continue;
+        const up = v.uptime == null ? NaN : Number(v.uptime);
+        const ms = v.ms == null ? NaN : Number(v.ms);
+        if (Number.isFinite(up)) ups.push(up);
+        if (Number.isFinite(ms)) mss.push(ms);
+        if (Number.isFinite(up) || Number.isFinite(ms)) days++;
+      }
+      return {
+        uptime: ups.length ? Math.min(...ups) : null,
+        ms: mss.length ? mss.reduce((s, v) => s + v, 0) / mss.length : null,
+        days,
+      };
+    }
+    // </pure>
+
     // ---- Costs Overview (all projects, over time) ----
     const COST_PALETTE = ['#6366f1','#22c55e','#eab308','#ef4444','#06b6d4',
                           '#ec4899','#f97316','#a855f7'];
@@ -2157,12 +2388,6 @@
     function fmtUsd(n) {
       return '$' + (Number(n) || 0).toLocaleString('en-US',
         { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-    function fmtShortDate(iso) {
-      const [, m, d] = iso.split('-');
-      const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                      'Jul','Aug','Sep','Oct','Nov','Dec'];
-      return months[parseInt(m, 10) - 1] + ' ' + parseInt(d, 10);
     }
 
     // ---- Shared date axis --------------------------------------------------
@@ -2236,13 +2461,271 @@
         </div>`;
     }
 
+    // ---- Shared stacked bar chart ------------------------------------------
+    // Five charts carried their own copy of a daily stacked bar. On a phone a
+    // 90-day or 1-year window scrolled sideways through up to ten panel widths,
+    // each bar was a 5px target, and the per-day breakdown lived in a hover
+    // tooltip a finger never raises. This one buckets days into weeks or months
+    // when the screen is narrow, lets a thumb select a bar, and prints the
+    // selection under the chart. A wide screen gets exactly the old chart.
+    const NARROW_QUERY = '(max-width: 640px)';
+
+    // The only way JS learns "narrow": it follows the media query, so a
+    // rotation re-buckets the chart instead of leaving it laid out for the
+    // old width.
+    function useNarrow() {
+      const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches);
+      useEffect(() => {
+        const mq = window.matchMedia(NARROW_QUERY);
+        const update = () => setNarrow(mq.matches);
+        update();
+        // Safari before 14 only has the deprecated addListener.
+        if (mq.addEventListener) {
+          mq.addEventListener('change', update);
+          return () => mq.removeEventListener('change', update);
+        }
+        mq.addListener(update);
+        return () => mq.removeListener(update);
+      }, []);
+      return narrow;
+    }
+
+    const MONO = "font-family: 'SF Mono', ui-monospace, monospace";
+
+    // An axis label names where a bucket starts, in as few characters as
+    // will do. A week's full label ("Jul 28 – Aug 3") and a month's
+    // ("Sep 2025") are too wide for a phone axis and live in the readout.
+    function axisLabel(b) {
+      return b.size === 'week' ? fmtShortDate(b.dates[0])
+        : b.size === 'month' ? fmtMonthShort(b.key) : b.label;
+    }
+
+    // How a bar chart's bars are selected, shared by every chart that has a
+    // readout, so a thumb gets the same rules on each of them. The caller
+    // puts rowRef and the pointer handlers on the row of bars, and
+    // onBarClick(e, i) on each bar.
+    //
+    // A selection is an index, and an index means a different bucket once the
+    // window or the bucket size changes. It carries the layout it was made in
+    // and reads as nothing under any other, so the first render after a
+    // change never draws it against the new buckets; the effect then drops
+    // it, so returning to the old layout (rotating back, or a cached window
+    // that keeps this chart mounted) does not bring it back.
+    function useBarSelection(layout, buckets) {
+      const [picked, setPicked] = useState(null);
+      const selected = picked && picked.layout === layout ? picked.i : null;
+      useEffect(() => { setPicked((p) => (p && p.layout !== layout ? null : p)); }, [layout]);
+      const select = (i) => { if (i >= 0) setPicked({ layout, i }); };
+      const rowRef = useRef(null);
+      const gesture = useRef(null);
+      const lastTouch = useRef(-Infinity);
+
+      // Touch selects; a mouse hovers and clicks. Decided per event from
+      // pointerType, because a hover media query says what the device CAN do,
+      // not what just touched it.
+      const isFinger = (e) => e.pointerType === 'touch' || e.pointerType === 'pen';
+      const indexAt = (clientX) => {
+        const r = rowRef.current.getBoundingClientRect();
+        return bucketIndexAt(clientX - r.left, r.width, buckets.length);
+      };
+      const onPointerDown = (e) => {
+        if (!isFinger(e)) return;
+        lastTouch.current = e.timeStamp;
+        gesture.current = { id: e.pointerId, y: e.clientY };
+        select(indexAt(e.clientX));
+      };
+      // A drag along the row scrubs the selection; one that wanders off
+      // vertically is the page scrolling, and the selection stays where it was
+      // for the rest of that gesture.
+      const onPointerMove = (e) => {
+        const g = gesture.current;
+        if (!g || g.id !== e.pointerId) return;
+        if (Math.abs(e.clientY - g.y) > 10) { gesture.current = null; return; }
+        select(indexAt(e.clientX));
+      };
+      const endGesture = () => { gesture.current = null; };
+      const onBarClick = (e, i) => {
+        // A tap ends in a synthesized click; the tap already selected, and a
+        // day page opening under the thumb is exactly what the readout avoids.
+        if (isFinger(e) || e.timeStamp - lastTouch.current < 1000) return;
+        const b = buckets[i];
+        if (b.size === 'day' && CAN_HOVER) navigate('#/day/' + b.key);
+        else select(i);
+      };
+      return { selected, rowRef, onPointerDown, onPointerMove, endGesture, onBarClick };
+    }
+
+    // The props after markToday exist for particular charts, and each default
+    // leaves every other chart as it was:
+    //   gutter      false drops the y-axis (the home chart never had one).
+    //   scroll      false drops the wide chart's sideways scroller, for a chart
+    //               whose window is never longer than 30 days: its bars always
+    //               fit, and outside a scroller its tooltip is not clipped.
+    //   fmtAxis     (value, narrow) -> gutter label, for money that needs
+    //               shorter labels on a phone than in the readout.
+    //   minPeak     the smallest full-height value; a cost chart's is a
+    //               fraction of a cent, so a quiet month still fills the chart.
+    //   tailSeg     the segment a caller folds its tail into ("other"): it
+    //               stacks on top and lists last whatever its size.
+    //   todaySuffix appended to today's heading while today is still counting.
+    function StackedBars({ id, dates, days, byDateSeg, segColor, fmtValue = (n) => Math.round(n).toLocaleString(),
+                           unit = '', chartH = 140, markToday = false, gutter = true, scroll = true, fmtAxis = fmtValue,
+                           minPeak = 1, tailSeg = null, todaySuffix = '' }) {
+      const narrow = useNarrow();
+      const [hovered, setHovered] = useState(null);
+      const layout = days + '|' + dates.length + '|' + narrow;
+      const scrollRef = useRef(null);
+
+      const size = bucketSizeFor(days, narrow);
+      const buckets = bucketDates(dates, size);
+      const { selected, rowRef, onPointerDown, onPointerMove, endGesture, onBarClick } =
+        useBarSelection(layout, buckets);
+      const totals = buckets.map((b) => {
+        const t = bucketTotals(b, byDateSeg);
+        const tail = tailSeg == null ? -1 : t.segs.findIndex(([s]) => s === tailSeg);
+        if (tail >= 0) t.segs.push(...t.segs.splice(tail, 1));
+        return t;
+      });
+      const peak = Math.max(...totals.map((t) => t.total), minPeak);
+      const n = buckets.length;
+      const today = dates[dates.length - 1];
+      // Parts, not one joined string: each renders as its own text node, as the
+      // old tooltips did. Joined, the home tooltip came out 0.03px narrower and
+      // every glyph under its heading moved.
+      const heading = (b, total) => [b.label, ' · ', fmtValue(total), unit ? ' ' + unit : '',
+        b.size === 'day' && b.key === today ? todaySuffix : ''];
+      const label = {};
+      for (const b of buckets) label[b.key] = axisLabel(b);
+
+      // The wide chart opens at its newest day, as every chart here always has.
+      useEffect(() => {
+        if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+      }, [layout, dates[dates.length - 1]]);
+
+      const bars = buckets.map((b, i) => {
+        const { total, segs } = totals[i];
+        const barH = total > 0 ? Math.max(1, Math.round((total / peak) * (chartH - 4))) : 0;
+        const isHovered = hovered === i;
+        const opacity = selected != null ? (selected === i ? 1 : 0.45) : (isHovered ? 1 : 0.85);
+        const edge = n > 1 ? i / (n - 1) : 0.5;
+        const tipAnchor = edge < 0.15 ? 'left: 0' : edge > 0.85 ? 'right: 0' : 'left: 50%; transform: translateX(-50%)';
+        const isToday = markToday && size === 'day' && i === n - 1;
+        return html`
+          <div data-test="chart-bar" data-key=${b.key} data-selected=${selected === i ? 'true' : undefined}
+               style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
+               onPointerEnter=${(e) => { prefetchDay(b.dates[b.dates.length - 1]); if (e.pointerType === 'mouse') setHovered(i); }}
+               onPointerLeave=${() => setHovered((h2) => (h2 === i ? null : h2))}
+               onClick=${(e) => onBarClick(e, i)}>
+            ${isToday && html`
+              <div style="position: absolute; left: 0; right: 0; bottom: 0; top: 0;
+                          border: 1px dashed var(--border); border-bottom: none;
+                          border-radius: 2px 2px 0 0; pointer-events: none"></div>`}
+            <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
+                        display: flex; flex-direction: column-reverse;
+                        border-radius: 2px 2px 0 0; overflow: hidden;
+                        opacity: ${opacity}; transition: opacity 0.1s">
+              ${segs.map(([s, v]) => html`
+                <div style="height: ${(v / total) * 100}%; background: ${segColor(s)}"></div>`)}
+            </div>
+            ${CAN_HOVER && isHovered && total > 0 && html`
+              <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px; ${tipAnchor};
+                          background: var(--bg); border: 1px solid var(--border);
+                          border-radius: 6px; padding: 8px 10px; white-space: nowrap;
+                          box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
+                <div style="font-weight: 600; margin-bottom: 4px">${heading(b, total)}</div>
+                ${segs.slice(0, 6).map(([s, v]) => html`
+                  <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
+                    <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(s)}; display: inline-block"></span>
+                    <span style="color: var(--text)">${s}</span>
+                    <span style="margin-left: auto">${fmtValue(v)}</span>
+                  </div>`)}
+                ${segs.length > 6 && html`<div style="color: var(--text-secondary)">+${segs.length - 6} more</div>`}
+              </div>`}
+          </div>`;
+      });
+
+      const row = html`
+        <div data-test="chart-bars" ref=${rowRef} class=${narrow ? 'chart-bars narrow' : 'chart-bars'}
+             style="display: flex; gap: 2px; align-items: stretch; height: ${chartH}px;
+                    border-bottom: 1px solid var(--border)"
+             onPointerDown=${onPointerDown} onPointerMove=${onPointerMove}
+             onPointerUp=${endGesture} onPointerCancel=${endGesture}>
+          ${bars}
+        </div>`;
+      const axis = html`<${DateAxis} dates=${buckets.map((b) => b.key)} fmt=${(k) => label[k]}
+                                     style="margin-top: 4px" />`;
+      const sel = selected != null ? buckets[selected] : null;
+
+      const plot = narrow || !scroll
+        ? html`<div>${row}${axis}</div>`
+        : html`
+          <div class="chart-scroll" ref=${scrollRef}>
+            <div style="min-width: ${n * 7}px">${row}${axis}</div>
+          </div>`;
+
+      return html`
+        <div data-test="chart" data-chart=${id}>
+          ${gutter ? html`
+            <div style="display: grid; grid-template-columns: ${narrow ? 44 : 56}px minmax(0, 1fr); gap: 8px">
+              <div style="display: flex; flex-direction: column; justify-content: space-between;
+                          align-items: flex-end; height: ${chartH}px; font-size: 0.85rem;
+                          color: var(--text-secondary); ${MONO}">
+                <span>${fmtAxis(peak, narrow)}</span>
+                <span>${fmtAxis(peak / 2, narrow)}</span>
+                <span>${fmtAxis(0, narrow)}</span>
+              </div>
+              ${plot}
+            </div>` : plot}
+          ${sel && html`<${ChartReadout} bucket=${sel} heading=${heading(sel, totals[selected].total)}
+                          segs=${totals[selected].segs} segColor=${segColor} fmtValue=${fmtValue}
+                          byDateTotal=${(d) => bucketTotals({ dates: [d] }, byDateSeg).total} />`}
+        </div>`;
+    }
+
+    // What a hover tooltip used to say, in page flow under the chart, plus the
+    // way into the day(s) behind the bar. In flow, not floating: a floating box
+    // is clipped by the chart's own panel on a phone and covers what it explains.
+    // `body`, when given, replaces the segment rows: a chart whose bucket is not
+    // a sum of segments (the uptime strip) says what it has to say there, and
+    // keeps the same heading and the same way into its days.
+    const READOUT_SEGS = 6;
+    function ChartReadout({ bucket, heading, segs, segColor, fmtValue = (n) => Math.round(n).toLocaleString(),
+                            byDateTotal, body = null }) {
+      return html`
+        <div data-test="chart-readout" class="chart-readout">
+          <div class="chart-readout-head">${heading}</div>
+          ${body || (segs.length
+            ? html`
+              ${segs.slice(0, READOUT_SEGS).map(([s, v]) => html`
+                <div class="chart-readout-row">
+                  <span class="chart-readout-swatch" style="background: ${segColor(s)}"></span>
+                  <span class="chart-readout-name">${s}</span>
+                  <span class="chart-readout-value">${fmtValue(v)}</span>
+                </div>`)}
+              ${segs.length > READOUT_SEGS && html`
+                <div class="chart-readout-more">+${segs.length - READOUT_SEGS} more</div>`}`
+            : html`<div class="chart-readout-more">Nothing recorded.</div>`)}
+          ${bucket.size === 'day'
+            ? html`
+              <button class="chart-open-day" data-test="open-day"
+                      onClick=${() => navigate('#/day/' + bucket.key)}>Open day →</button>`
+            : html`
+              <div class="chart-day-chips">
+                ${bucket.dates.map((d) => html`
+                  <button class="chart-day-chip" data-test="day-chip" data-date=${d}
+                          aria-label=${fmtShortDate(d)}
+                          style=${byDateTotal(d) > 0 ? '' : 'opacity: 0.45'}
+                          onPointerEnter=${() => prefetchDay(d)}
+                          onClick=${() => navigate('#/day/' + d)}>${parseInt(d.slice(8), 10)}</button>`)}
+              </div>`}
+        </div>`;
+    }
+
     function CostsOverview() {
       const [days, setDays] = useState(30);
       const [data, setData] = useState(() => costOverviewMemo.get(30) || null);
       const [loading, setLoading] = useState(!costOverviewMemo.has(30));
       const [sortBy, setSortBy] = useState('cost');  // 'cost' | 'name'
-      const [hovered, setHovered] = useState(null);   // date index
-      const scrollRef = useRef(null);
 
       useEffect(() => {
         const cached = costOverviewMemo.get(days);
@@ -2256,35 +2739,19 @@
         return () => { alive = false; };
       }, [days]);
 
-
-      useEffect(() => {
-        if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
-      }, [data, days]);
-
-      const windowPicker = html`
-        <div style="display: flex; gap: 4px">
-          ${[7, 30, 90, 365].map(d => html`
-            <button onClick=${() => setDays(d)}
-              style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
-                     cursor: pointer; font-family: inherit;
-                     border: 1px solid var(--border);
-                     background: ${days === d ? 'var(--accent)' : 'transparent'};
-                     color: ${days === d ? '#fff' : 'var(--text-secondary)'}">
-              ${d === 365 ? '1y' : d + 'd'}
-            </button>`)}
-        </div>`;
-
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
           <h1 style="margin: 0; font-size: 1.91rem; color: var(--accent-light)">Costs</h1>
-          ${windowPicker}
+          <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
-        <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
-          API spend across all projects. Claude Code (subscription) usage isn't
-          attributable per project, so subscription-only projects read $0 here —
-          these totals are API spend, not all spend.
-        </div>`;
+        <${PageNote}>
+          <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
+            API spend across all projects. Claude Code (subscription) usage isn't
+            attributable per project, so subscription-only projects read $0 here —
+            these totals are API spend, not all spend.
+          </div>
+        <//>`;
 
       if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading costs…</div></div>`;
       if (!data || data.error) return html`<div>${header}<div class="cost-placeholder">Couldn't load costs.</div></div>`;
@@ -2294,12 +2761,11 @@
         <div class="cost-placeholder">No API spend in this window.</div></div>`;
 
       // Aggregate.
-      const byProject = {}, byModel = {}, byDate = {}, byDateProject = {};
+      const byProject = {}, byModel = {}, byDateProject = {};
       for (const r of rows) {
         const v = Number(r.cost_usd) || 0;
         byProject[r.project] = (byProject[r.project] || 0) + v;
         byModel[r.model] = (byModel[r.model] || 0) + v;
-        byDate[r.date] = (byDate[r.date] || 0) + v;
         (byDateProject[r.date] ||= {})[r.project] =
           (byDateProject[r.date]?.[r.project] || 0) + v;
       }
@@ -2321,9 +2787,6 @@
       for (let i = days - 1; i >= 0; i--) {
         dates.push(labDay(i));
       }
-      const peak = Math.max(...Object.values(byDate), 0.0001);
-      const CHART_H = 140;
-      const n = dates.length;
 
       // Legend rows (sortable).
       const legend = [...ranked];
@@ -2348,61 +2811,8 @@
           </div>
 
           ${panel(html`
-            <div style="display: grid; grid-template-columns: 56px 1fr; gap: 8px">
-              <div style="display: flex; flex-direction: column; justify-content: space-between;
-                          align-items: flex-end; height: ${CHART_H}px; font-size: 0.85rem;
-                          color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace">
-                <span>${fmtUsd(peak)}</span>
-                <span>${fmtUsd(peak / 2)}</span>
-                <span>$0</span>
-              </div>
-              <div class="chart-scroll" ref=${scrollRef}>
-                <div style="min-width: ${n * 7}px">
-                  <div style="display: flex; gap: 2px; align-items: stretch; height: ${CHART_H}px;
-                              border-bottom: 1px solid var(--border)">
-                    ${dates.map((d, i) => {
-                      const dayTotal = byDate[d] || 0;
-                      const barH = dayTotal > 0 ? Math.max(1, Math.round((dayTotal / peak) * (CHART_H - 4))) : 0;
-                      const isHovered = hovered === i;
-                      const edge = n > 1 ? i / (n - 1) : 0.5;
-                      const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
-                      // Stack segments within the bar, biggest project at the bottom.
-                      const segs = Object.entries(byDateProject[d] || {}).sort((a, b) => b[1] - a[1]);
-                      return html`
-                        <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
-                             onMouseEnter=${() => setHovered(i)}
-                             onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
-                             onPointerEnter=${() => prefetchDay(d)}
-                             onClick=${() => navigate('#/day/' + d)}>
-                          <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
-                                      display: flex; flex-direction: column-reverse;
-                                      border-radius: 2px 2px 0 0; overflow: hidden;
-                                      opacity: ${isHovered ? 1 : 0.85}; transition: opacity 0.1s">
-                            ${segs.map(([p, v]) => html`
-                              <div style="height: ${(v / dayTotal) * 100}%; background: ${segColor(p)}"></div>`)}
-                          </div>
-                          ${CAN_HOVER && isHovered && dayTotal > 0 && html`
-                            <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
-                                        ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
-                                        background: var(--bg); border: 1px solid var(--border);
-                                        border-radius: 6px; padding: 8px 10px; white-space: nowrap;
-                                        box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
-                              <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${fmtUsd(dayTotal)}</div>
-                              ${segs.slice(0, 6).map(([p, v]) => html`
-                                <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-                                  <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(p)}; display: inline-block"></span>
-                                  <span style="color: var(--text)">${p}</span>
-                                  <span style="margin-left: auto">${fmtUsd(v)}</span>
-                                </div>`)}
-                              ${segs.length > 6 && html`<div style="color: var(--text-secondary)">+${segs.length - 6} more</div>`}
-                            </div>`}
-                        </div>`;
-                    })}
-                  </div>
-                  <${DateAxis} dates=${dates} style="margin-top: 4px" />
-                </div>
-              </div>
-            </div>
+            <${StackedBars} id="costs" dates=${dates} days=${days} byDateSeg=${byDateProject}
+              segColor=${segColor} fmtValue=${fmtUsd} fmtAxis=${fmtUsdAxis} minPeak=${0.0001} />
           `)}
 
           <div class="two-col">
@@ -2412,7 +2822,7 @@
                             font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase">
                   By project
                 </div>
-                <button onClick=${() => setSortBy(s => s === 'cost' ? 'name' : 'cost')}
+                <button class="tap" onClick=${() => setSortBy(s => s === 'cost' ? 'name' : 'cost')}
                   style="font-size: 0.9rem; color: var(--accent); background: none; border: none;
                          cursor: pointer; font-family: inherit">
                   sort: ${sortBy} ↕
@@ -2420,8 +2830,7 @@
               </div>
               ${legend.map(([p, v]) => html`
                 <a href="#/project/${encodeURIComponent(p)}/cost"
-                   style="display: block; padding: 5px 0;
-                          text-decoration: none; color: var(--text); border-bottom: 1px solid var(--border)">
+                   class="row-link">
                   <div style="display: flex; align-items: center; gap: 8px">
                     <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(p)}; flex: none"></span>
                     <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${p}</span>
@@ -2477,8 +2886,6 @@
       const [data, setData] = useState(() => activityTimelineMemo.get(30) || null);
       const [loading, setLoading] = useState(!activityTimelineMemo.has(30));
       const [sortBy, setSortBy] = useState('30d');   // '30d' | '7d' | 'name'
-      const [hovered, setHovered] = useState(null);   // date index
-      const scrollRef = useRef(null);
 
       useEffect(() => {
         const cached = activityTimelineMemo.get(days);
@@ -2491,27 +2898,7 @@
         return () => { alive = false; };
       }, [days]);
 
-
-      // Charts open at the recent (right) end — browsers default scrollLeft to 0,
-      // which would show the oldest, usually emptiest slice (issue #19).
-      useEffect(() => {
-        if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
-      }, [data, days, m]);
-
       const windowLabel = (d) => (d === 365 ? 'year' : d + ' days');
-
-      const windowPicker = html`
-        <div style="display: flex; gap: 4px">
-          ${[7, 30, 90, 365].map(d => html`
-            <button onClick=${() => setDays(d)}
-              style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
-                     cursor: pointer; font-family: inherit;
-                     border: 1px solid var(--border);
-                     background: ${days === d ? 'var(--accent)' : 'transparent'};
-                     color: ${days === d ? '#fff' : 'var(--text-secondary)'}">
-              ${d === 365 ? '1y' : d + 'd'}
-            </button>`)}
-        </div>`;
 
       // Metric switch writes the hash, so the current view is always shareable
       // and the Pulse tiles' #/activity/<metric> deep links round-trip.
@@ -2526,13 +2913,15 @@
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
           <h1 style="margin: 0; font-size: 1.91rem; color: var(--accent-light)">Activity</h1>
-          ${windowPicker}
+          <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
-        <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 16px">
-          Sessions, prompts and commits per day across every project, from the
-          nightly daily summaries. Counts follow project renames (aliases are
-          folded into the canonical name).
-        </div>
+        <${PageNote}>
+          <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 16px">
+            Sessions, prompts and commits per day across every project, from the
+            nightly daily summaries. Counts follow project renames (aliases are
+            folded into the canonical name).
+          </div>
+        <//>
         ${metricSwitch}`;
 
       if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading activity…</div></div>`;
@@ -2546,7 +2935,7 @@
       const val = (r) => Number(r[m]) || 0;
 
       // Aggregate the selected metric.
-      const byProject = {}, byDate = {}, byDateProject = {};
+      const byProject = {}, byDateProject = {};
       const totals = { sessions: 0, prompts: 0, commits: 0 };
       const day = (i) => labDay(i);
       const cut7 = day(6), cut30 = day(29);
@@ -2555,7 +2944,6 @@
         const v = val(r);
         for (const k of ACTIVITY_METRICS) totals[k] += Number(r[k]) || 0;
         byProject[r.project] = (byProject[r.project] || 0) + v;
-        byDate[r.date] = (byDate[r.date] || 0) + v;
         (byDateProject[r.date] ||= {})[r.project] = (byDateProject[r.date]?.[r.project] || 0) + v;
         if (r.date >= cut7) per7[r.project] = (per7[r.project] || 0) + v;
         if (r.date >= cut30) per30[r.project] = (per30[r.project] || 0) + v;
@@ -2597,9 +2985,8 @@
       // so a sparse window still reads as a calendar rather than a few fat bars.
       const dates = [];
       for (let i = effDays - 1; i >= 0; i--) dates.push(day(i));
-      const peak = Math.max(...Object.values(byDate), 1);
-      const CHART_H = 140;
-      const n = dates.length;
+      const byDateSeg = {};
+      for (const d of dates) byDateSeg[d] = Object.fromEntries(segsFor(d));
 
       // Table rows: every project the window saw, sortable. 7d/30d are fixed
       // windows (not the chart window) so the columns mean the same thing at
@@ -2615,13 +3002,6 @@
         <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated, var(--card));
                     border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
 
-      const breakdown = (d) => segsFor(d).slice(0, 6).map(([p, v]) => html`
-        <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-          <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(p)}; display: inline-block; flex: none"></span>
-          <span style="color: var(--text)">${p}</span>
-          <span style="margin-left: auto">${fmtInt(v)}</span>
-        </div>`);
-
       return html`
         <div>
           ${header}
@@ -2634,56 +3014,8 @@
           </div>
 
           ${panel(html`
-            <div style="display: grid; grid-template-columns: 56px 1fr; gap: 8px">
-              <div style="display: flex; flex-direction: column; justify-content: space-between;
-                          align-items: flex-end; height: ${CHART_H}px; font-size: 0.85rem;
-                          color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace">
-                <span>${fmtInt(peak)}</span>
-                <span>${fmtInt(Math.round(peak / 2))}</span>
-                <span>0</span>
-              </div>
-              <div class="chart-scroll" ref=${scrollRef}>
-                <div style="min-width: ${n * 7}px">
-                  <div style="display: flex; gap: 2px; align-items: stretch; height: ${CHART_H}px;
-                              border-bottom: 1px solid var(--border)">
-                    ${dates.map((d, i) => {
-                      const dayTotal = byDate[d] || 0;
-                      const barH = dayTotal > 0 ? Math.max(1, Math.round((dayTotal / peak) * (CHART_H - 4))) : 0;
-                      const isHovered = hovered === i;
-                      const edge = n > 1 ? i / (n - 1) : 0.5;
-                      const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
-                      const segs = segsFor(d);
-                      return html`
-                        <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
-                             onMouseEnter=${() => setHovered(i)}
-                             onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
-                             onPointerEnter=${() => prefetchDay(d)}
-                             onClick=${() => navigate('#/day/' + d)}>
-                          <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
-                                      display: flex; flex-direction: column-reverse;
-                                      border-radius: 2px 2px 0 0; overflow: hidden;
-                                      opacity: ${isHovered ? 1 : 0.85}; transition: opacity 0.1s">
-                            ${segs.map(([p, v]) => html`
-                              <div style="height: ${(v / dayTotal) * 100}%; background: ${segColor(p)}"></div>`)}
-                          </div>
-                          ${CAN_HOVER && isHovered && dayTotal > 0 && html`
-                            <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
-                                        ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
-                                        background: var(--bg); border: 1px solid var(--border);
-                                        border-radius: 6px; padding: 8px 10px; white-space: nowrap;
-                                        box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
-                              <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${fmtInt(dayTotal)} ${m}</div>
-                              ${breakdown(d)}
-                              ${segsFor(d).length > 6 && html`
-                                <div style="color: var(--text-secondary)">+${segsFor(d).length - 6} more</div>`}
-                            </div>`}
-                        </div>`;
-                    })}
-                  </div>
-                  <${DateAxis} dates=${dates} style="margin-top: 4px" />
-                </div>
-              </div>
-            </div>
+            <${StackedBars} id="activity" dates=${dates} days=${effDays} byDateSeg=${byDateSeg}
+              segColor=${segColor} fmtValue=${(v) => fmtInt(Math.round(v))} unit=${m} tailSeg=${otherLabel} />
           `)}
 
           <div class="two-col">
@@ -2693,7 +3025,7 @@
                             font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase">
                   By project
                 </div>
-                <button onClick=${() => setSortBy(s => nextSort[s] || '30d')}
+                <button class="tap" onClick=${() => setSortBy(s => nextSort[s] || '30d')}
                   style="font-size: 0.9rem; color: var(--accent); background: none; border: none;
                          cursor: pointer; font-family: inherit">
                   sort: ${sortBy} ↕
@@ -2706,8 +3038,7 @@
               </div>
               ${table.map(row => html`
                 <a href="#/project/${encodeURIComponent(row.p)}"
-                   style="display: block; padding: 5px 0;
-                          text-decoration: none; color: var(--text); border-bottom: 1px solid var(--border)">
+                   class="row-link">
                   <div style="display: flex; align-items: center; gap: 8px">
                     <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(row.p)}; flex: none"></span>
                     <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${row.p}</span>
@@ -2735,7 +3066,7 @@
                 Window totals
               </div>
               ${ACTIVITY_METRICS.map(k => html`
-                <a href=${'#/activity/' + k}
+                <a class="tap" href=${'#/activity/' + k}
                    style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
                           text-decoration: none; border-bottom: 1px solid var(--border);
                           color: ${k === m ? 'var(--accent-light)' : 'var(--text)'}">
@@ -2805,7 +3136,7 @@
 
           ${onAsk && html`
             <div style="margin-top:22px; padding-top:18px; border-top:1px solid var(--border)">
-              <button class="header-btn" onClick=${onAsk}
+              <button class="header-btn tap" onClick=${onAsk}
                       style="padding:8px 14px; border:1px solid var(--border); color:var(--accent-light)">
                 Ask a question
               </button>
@@ -2884,7 +3215,7 @@
       return html`
         <div>
           <div style="margin-bottom:6px">
-            <a onClick=${() => history.back()}
+            <a class="tap" onClick=${() => history.back()}
                style="cursor:pointer; color:var(--text-secondary); font-size:0.95rem;
                       text-decoration:none">← back</a>
           </div>
@@ -2925,8 +3256,9 @@
               <div class="card">
                 <div style="display:flex; justify-content:space-between; align-items:baseline;
                             gap:12px; margin-bottom:${p.summary ? '8px' : '0'}">
-                  <a href=${'#/project/' + encodeURIComponent(p.project)}
-                     style="font-weight:600; color:var(--accent-light); text-decoration:none">
+                  <a class="tap" href=${'#/project/' + encodeURIComponent(p.project)}
+                     style="font-weight:600; color:var(--accent-light); text-decoration:none;
+                            min-width:0; overflow-wrap:anywhere">
                     ${p.project}</a>
                   <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.82rem;
                               color:var(--text-secondary); white-space:nowrap;
@@ -2987,13 +3319,22 @@
         </details>`;
     }
 
+    // The chart window buttons, once: five pages had their own copy, and the
+    // copies had drifted (the home pair was a size smaller than the rest).
+    function WindowPicker({ days, onChange, options = [7, 30, 90, 365] }) {
+      return html`
+        <div class="win-picker">
+          ${options.map(d => html`
+            <button class="win-btn" aria-pressed=${days === d ? 'true' : 'false'}
+                    onClick=${() => onChange(d)}>${d === 365 ? '1y' : d + 'd'}</button>`)}
+        </div>`;
+    }
+
     function VisitorsOverview() {
       const [days, setDays] = useState(30);
       const [tab, setTab] = useState('pages');
       const [data, setData] = useState(() => visitorOverviewMemo.get(30) || null);
       const [loading, setLoading] = useState(!visitorOverviewMemo.has(30));
-      const [hovered, setHovered] = useState(null);
-      const scrollRef = useRef(null);
 
       useEffect(() => {
         const cached = visitorOverviewMemo.get(days);
@@ -3007,29 +3348,11 @@
         return () => { alive = false; };
       }, [days]);
 
-
-      useEffect(() => {
-        if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
-      }, [data, days]);
-
-      const windowPicker = html`
-        <div style="display: flex; gap: 4px">
-          ${[7, 30, 90, 365].map(d => html`
-            <button onClick=${() => setDays(d)}
-              style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
-                     cursor: pointer; font-family: inherit;
-                     border: 1px solid var(--border);
-                     background: ${days === d ? 'var(--accent)' : 'transparent'};
-                     color: ${days === d ? '#fff' : 'var(--text-secondary)'}">
-              ${d === 365 ? '1y' : d + 'd'}
-            </button>`)}
-        </div>`;
-
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
           <h1 style="margin: 0; font-size: 1.91rem; color: var(--accent-light)">Visitors</h1>
-          ${windowPicker}
+          <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <${PageNote}>
           <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
@@ -3150,13 +3473,12 @@
         instrumented sites report. Roll out beacon.js to more sites to see them here.</div>
         ${signIns}</div>`;
 
-      const bySite = {}, byDate = {}, byDateSite = {};
+      const bySite = {}, byDateSite = {};
       let totalViews = 0;
       for (const r of daily) {
         const v = Number(r.views) || 0;
         totalViews += v;
         bySite[r.site] = (bySite[r.site] || 0) + v;
-        byDate[r.date] = (byDate[r.date] || 0) + v;
         (byDateSite[r.date] ||= {})[r.site] = ((byDateSite[r.date]?.[r.site]) || 0) + v;
       }
 
@@ -3171,9 +3493,6 @@
       for (let i = days - 1; i >= 0; i--) {
         dates.push(labDay(i));
       }
-      const peak = Math.max(...Object.values(byDate), 1);
-      const CHART_H = 140;
-      const n = dates.length;
 
       const paths = (data.paths || []).slice(0, 15);
       const referrers = (data.referrers || []).slice(0, 10);
@@ -3192,67 +3511,15 @@
           </div>
 
           ${panel(html`
-            <div style="display: grid; grid-template-columns: 56px 1fr; gap: 8px">
-              <div style="display: flex; flex-direction: column; justify-content: space-between;
-                          align-items: flex-end; height: ${CHART_H}px; font-size: 0.85rem;
-                          color: var(--text-secondary); font-family: 'SF Mono', ui-monospace, monospace">
-                <span>${peak.toLocaleString()}</span>
-                <span>${Math.round(peak / 2).toLocaleString()}</span>
-                <span>0</span>
-              </div>
-              <div class="chart-scroll" ref=${scrollRef}>
-                <div style="min-width: ${n * 7}px">
-                  <div style="display: flex; gap: 2px; align-items: stretch; height: ${CHART_H}px;
-                              border-bottom: 1px solid var(--border)">
-                    ${dates.map((d, i) => {
-                      const dayTotal = byDate[d] || 0;
-                      const barH = dayTotal > 0 ? Math.max(1, Math.round((dayTotal / peak) * (CHART_H - 4))) : 0;
-                      const isHovered = hovered === i;
-                      const edge = n > 1 ? i / (n - 1) : 0.5;
-                      const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
-                      const segs = Object.entries(byDateSite[d] || {}).sort((a, b) => b[1] - a[1]);
-                      return html`
-                        <div style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
-                             onMouseEnter=${() => setHovered(i)}
-                             onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}
-                             onPointerEnter=${() => prefetchDay(d)}
-                             onClick=${() => navigate('#/day/' + d)}>
-                          <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
-                                      display: flex; flex-direction: column-reverse;
-                                      border-radius: 2px 2px 0 0; overflow: hidden;
-                                      opacity: ${isHovered ? 1 : 0.85}; transition: opacity 0.1s">
-                            ${segs.map(([s, v]) => html`
-                              <div style="height: ${(v / dayTotal) * 100}%; background: ${segColor(s)}"></div>`)}
-                          </div>
-                          ${CAN_HOVER && isHovered && dayTotal > 0 && html`
-                            <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
-                                        ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
-                                        background: var(--bg); border: 1px solid var(--border);
-                                        border-radius: 6px; padding: 8px 10px; white-space: nowrap;
-                                        box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
-                              <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)} · ${dayTotal.toLocaleString()} views</div>
-                              ${segs.slice(0, 6).map(([s, v]) => html`
-                                <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-                                  <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(s)}; display: inline-block"></span>
-                                  <span style="color: var(--text)">${s}</span>
-                                  <span style="margin-left: auto">${v.toLocaleString()}</span>
-                                </div>`)}
-                              ${segs.length > 6 && html`<div style="color: var(--text-secondary)">+${segs.length - 6} more</div>`}
-                            </div>`}
-                        </div>`;
-                    })}
-                  </div>
-                  <${DateAxis} dates=${dates} style="margin-top: 4px" />
-                </div>
-              </div>
-            </div>
+            <${StackedBars} id="visitors" dates=${dates} days=${days} byDateSeg=${byDateSite}
+              segColor=${segColor} fmtValue=${(v) => Math.round(v).toLocaleString()} unit="views" />
           `)}
 
           <div class="two-col">
             <div data-test="by-site">
               ${sectionTitle('By site')}
               ${ranked.map(([s, v]) => html`
-                <div data-test="share-row" class="list-row" style="display: block">
+                <div data-test="share-row" class="share-row">
                   <div class="share-row-head">
                     <span class="share-row-swatch" style="width: 9px; height: 9px; border-radius: 2px;
                                  background: ${segColor(s)}; flex: none"></span>
@@ -3360,7 +3627,7 @@
                            font-family: 'SF Mono', ui-monospace, monospace">
                 checked ${checkedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
               </span>`}
-            <button onClick=${() => setNonce(n => n + 1)} disabled=${loading}
+            <button class="tap" onClick=${() => setNonce(n => n + 1)} disabled=${loading}
               title="Poll every target again"
               style="font-size: 0.95rem; padding: 4px 12px; border-radius: 4px; cursor: pointer;
                      font-family: inherit; border: 1px solid var(--border);
@@ -3370,11 +3637,13 @@
             </button>
           </div>
         </div>
-        <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 18px">
-          Live poll of each target's health endpoint — the same check behind the
-          daily 8am Pacific email. Alerting lives in UptimeRobot, deliberately
-          off this stack; this page is the read-only view.
-        </div>`;
+        <${PageNote}>
+          <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 18px">
+            Live poll of each target's health endpoint — the same check behind the
+            daily 8am Pacific email. Alerting lives in UptimeRobot, deliberately
+            off this stack; this page is the read-only view.
+          </div>
+        <//>`;
 
       if (loading && !data) return html`<div>${header}
         <div class="cost-placeholder">Polling targets…</div></div>`;
@@ -3559,29 +3828,41 @@
 
     // One card per monitor: rolling ratios, a per-day uptime strip, and the
     // response-time trend under it on the same axis and the same scroll.
-    function MonitorUptimeCard({ monitor, dates }) {
+    //
+    // On a phone twelve open cards made Health eight screens long, so each
+    // card starts as one row (name, status, 30d ratio) and opens in place.
+    // Its chart buckets like every other chart; a bucket's strip colour is its
+    // WORST day and its response bar the mean (see bucketUptime).
+    function MonitorUptimeCard({ monitor, dates, days, open = false, onToggle }) {
+      const narrow = useNarrow();
       const scrollRef = useRef(null);
       const [hovered, setHovered] = useState(null);
 
-      const n = dates.length;
+      const size = bucketSizeFor(days, narrow);
+      const buckets = bucketDates(dates, size);
+      const n = buckets.length;
+      const { selected, rowRef, onPointerDown, onPointerMove, endGesture, onBarClick } =
+        useBarSelection(days + '|' + dates.length + '|' + narrow, buckets);
 
       // Charts open at the recent (right) end — browsers default scrollLeft to
       // 0, which on a young archive is nothing but grey (issue #19).
       useEffect(() => {
         if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
-      }, [n, monitor.name, (monitor.series || []).length]);
+      }, [n, monitor.name, (monitor.series || []).length, open]);
 
       // The series is sparse by construction (only days the cron ran), so index
       // it and read the zero-filled calendar axis off `dates`. Number() on every
       // field: Turso hands aggregates back as strings and a string here would
-      // silently break both the color buckets and the bar math.
+      // silently break both the color buckets and the bar math. A missing
+      // response is null, not 0, so it cannot pull a bucket's mean down.
       const byDate = {};
       for (const p of (Array.isArray(monitor.series) ? monitor.series : [])) {
         if (!p || !p.date) continue;
         const u = p.uptime == null ? null : Number(p.uptime);
+        const ms = p.ms == null ? null : Number(p.ms);
         byDate[p.date] = {
           uptime: Number.isFinite(u) ? u : null,
-          ms: Number.isFinite(Number(p.ms)) ? Number(p.ms) : 0,
+          ms: Number.isFinite(ms) ? ms : null,
         };
       }
       const points = Object.keys(byDate).length;
@@ -3600,24 +3881,62 @@
                        color: ${color || 'var(--text)'}">${value}</span>
         </div>`;
 
-      const head = html`
-        <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap">
-          <span style="font-size: 1.13rem; font-weight: 600; word-break: break-word">${monitor.name}</span>
-          <span style="font-size: 0.89rem; font-weight: 700; letter-spacing: 0.06em;
-                       padding: 2px 8px; border-radius: 3px; white-space: nowrap;
-                       background: ${chipBg}; color: ${chipColor}">${status || '—'}</span>
-        </div>
+      const badge = html`
+        <span style="font-size: 0.89rem; font-weight: 700; letter-spacing: 0.06em;
+                     padding: 2px 8px; border-radius: 3px; white-space: nowrap;
+                     background: ${chipBg}; color: ${chipColor}">${status || '—'}</span>`;
+      const stats = html`
         <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px">
           ${stat('1d', fmtPct(monitor.uptime_1d), uptimeColor(monitor.uptime_1d))}
           ${stat('7d', fmtPct(monitor.uptime_7d), uptimeColor(monitor.uptime_7d))}
           ${stat('30d', fmtPct(monitor.uptime_30d), uptimeColor(monitor.uptime_30d))}
           ${stat('avg response', fmtMs(monitor.avg_response_ms))}
         </div>`;
+      const head = html`
+        <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap">
+          <span style="font-size: 1.13rem; font-weight: 600; word-break: break-word">${monitor.name}</span>
+          ${badge}
+        </div>
+        ${stats}`;
 
-      const card = (children) => html`
-        <div style="background: var(--card); border: 1px solid var(--border);
-                    border-left: 3px solid ${chipColor}; border-radius: var(--radius);
-                    padding: 13px 15px; margin-top: 10px">${head}${children}</div>`;
+      // A collapsed row must still show a problem: a 30d ratio under 100 is
+      // drawn in the warning colour (red under 99, as the strip does), so a bad
+      // month is visible without opening anything.
+      const r30 = Number(monitor.uptime_30d);
+      const r30Color = monitor.uptime_30d == null || !Number.isFinite(r30) ? 'var(--text-secondary)'
+        : r30 < 99 ? 'var(--red)' : r30 < 100 ? 'var(--yellow)' : 'var(--text-secondary)';
+      const toggle = html`
+        <button data-test="uptime-toggle" class="uptime-toggle" aria-expanded=${open ? 'true' : 'false'}
+                onClick=${onToggle}>
+          <span class="uptime-toggle-name">${monitor.name}</span>
+          ${badge}
+          <span style="font-variant-numeric: tabular-nums; color: ${r30Color}">
+            ${fmtPct(monitor.uptime_30d)}
+          </span>
+          <span aria-hidden="true" style="color: var(--text-secondary); width: 1em; text-align: center">
+            ${open ? '▾' : '▸'}
+          </span>
+        </button>`;
+
+      // Wide: the card as it always was. Narrow: the one-line row, and under
+      // it, only once opened, the ratios and the chart.
+      const card = (children) => narrow
+        ? html`
+          <div data-test="uptime-card" data-monitor=${monitor.name}
+               style="background: var(--card); border: 1px solid var(--border);
+                      border-left: 3px solid ${chipColor}; border-radius: var(--radius);
+                      padding: 0 12px; margin-top: 10px">
+            ${toggle}
+            ${open && html`
+              <div data-test="uptime-detail" style="padding-bottom: 13px">
+                <div style="margin-top: -8px">${stats}</div>${children}
+              </div>`}
+          </div>`
+        : html`
+          <div data-test="uptime-card" data-monitor=${monitor.name}
+               style="background: var(--card); border: 1px solid var(--border);
+                      border-left: 3px solid ${chipColor}; border-radius: var(--radius);
+                      padding: 13px 15px; margin-top: 10px">${head}<div data-test="uptime-detail">${children}</div></div>`;
 
       // A monitor the archive hasn't reached yet gets a sentence, not an empty
       // chart — the grid would otherwise read as "all down".
@@ -3629,7 +3948,13 @@
       }
 
       const STRIP_H = 22, MS_H = 54;
-      const peakMs = Math.max(...Object.values(byDate).map(v => v.ms), 1);
+      const cells = buckets.map((b) => ({
+        ...bucketUptime(b, byDate),
+        // "Archived" is whether the day has a row at all, as before buckets:
+        // a row with no reading still is not a gap.
+        has: b.dates.some((d) => byDate[d]),
+      }));
+      const peakMs = Math.max(...cells.map((c) => c.ms || 0), 1);
 
       const detail = (d) => {
         const v = byDate[d];
@@ -3651,57 +3976,90 @@
             : html`<div style="color: var(--text-secondary)">not archived</div>`}`;
       };
 
+      // The readout's rows for a selected bucket. "lowest of N days" says why a
+      // week with one bad day is not green.
+      const readoutBody = (c, b) => (c.has ? html`
+        <div class="chart-readout-row">
+          <span class="chart-readout-swatch" style="background: ${uptimeColor(c.uptime)}"></span>
+          <span class="chart-readout-name">uptime${b.dates.length > 1 && c.days > 0 ? html`
+            <span style="color: var(--text-secondary)"> · lowest of ${c.days} day${c.days === 1 ? '' : 's'}</span>` : ''}</span>
+          <span class="chart-readout-value">${fmtPct(c.uptime)}</span>
+        </div>
+        <div class="chart-readout-row">
+          <span class="chart-readout-swatch" style="background: var(--accent)"></span>
+          <span class="chart-readout-name">response${b.dates.length > 1 && c.ms != null ? html`
+            <span style="color: var(--text-secondary)"> · mean</span>` : ''}</span>
+          <span class="chart-readout-value">${fmtMs(c.ms)}</span>
+        </div>`
+        : html`<div class="chart-readout-more">not archived</div>`);
+
+      const row = html`
+        <div data-test="chart-bars" ref=${rowRef} class=${narrow ? 'chart-bars narrow' : 'chart-bars'}
+             style="display: flex; gap: 2px; border-bottom: 1px solid var(--border)"
+             onPointerDown=${onPointerDown} onPointerMove=${onPointerMove}
+             onPointerUp=${endGesture} onPointerCancel=${endGesture}>
+          ${buckets.map((b, i) => {
+            const c = cells[i];
+            const msH = c.ms > 0 ? Math.max(1, Math.round((c.ms / peakMs) * (MS_H - 2))) : 0;
+            const active = hovered === i || selected === i;
+            const dim = selected != null && selected !== i;
+            const edge = n > 1 ? i / (n - 1) : 0.5;
+            const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
+            return html`
+              <div data-test="chart-bar" data-key=${b.key} data-selected=${selected === i ? 'true' : undefined}
+                   style="flex: 1; min-width: 3px; position: relative; cursor: pointer"
+                   onPointerEnter=${(e) => { prefetchDay(b.dates[b.dates.length - 1]); if (e.pointerType === 'mouse') setHovered(i); }}
+                   onPointerLeave=${() => setHovered(h => h === i ? null : h)}
+                   onClick=${(e) => onBarClick(e, i)}>
+                <div style="height: ${STRIP_H}px; border-radius: 2px;
+                            background: ${uptimeColor(c.has ? c.uptime : null)};
+                            opacity: ${dim ? 0.45 : c.has ? (active ? 1 : 0.85) : (active ? 0.85 : NO_DATA_OPACITY)};
+                            transition: opacity 0.1s"></div>
+                <div style="height: ${MS_H}px; margin-top: 6px; position: relative">
+                  <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${msH}px;
+                              background: var(--accent); border-radius: 2px 2px 0 0;
+                              opacity: ${dim ? 0.35 : active ? 1 : 0.75}; transition: opacity 0.1s"></div>
+                </div>
+                ${CAN_HOVER && hovered === i && b.size === 'day' && html`
+                  <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
+                              ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
+                              background: var(--bg); border: 1px solid var(--border);
+                              border-radius: 6px; padding: 8px 10px; white-space: nowrap;
+                              box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
+                    ${detail(b.key)}
+                  </div>`}
+              </div>`;
+          })}
+        </div>`;
+      const axis = html`<${DateAxis} dates=${buckets.map((b) => b.key)}
+                                     fmt=${(k) => axisLabel(buckets.find((b) => b.key === k))}
+                                     style="margin-top: 4px" />`;
+      const sel = selected != null ? buckets[selected] : null;
+
       return card(html`
-        <div style="margin-top: 10px; display: grid; grid-template-columns: 56px 1fr; gap: 8px">
-          <div style="font-size: 0.75rem; color: var(--text-secondary);
-                      font-family: 'SF Mono', ui-monospace, monospace">
-            <div style="height: ${STRIP_H}px; display: flex; align-items: center; justify-content: flex-end">
-              uptime
-            </div>
-            <div style="height: ${MS_H}px; margin-top: 6px; display: flex; flex-direction: column;
-                        justify-content: space-between; align-items: flex-end">
-              <span>${Math.round(peakMs).toLocaleString('en-US')}ms</span>
-              <span>0</span>
-            </div>
-          </div>
-          <div class="chart-scroll" ref=${scrollRef}>
-            <div style="min-width: ${n * 7}px">
-              <div style="display: flex; gap: 2px; border-bottom: 1px solid var(--border)">
-                ${dates.map((d, i) => {
-                  const v = byDate[d];
-                  const msH = v && v.ms > 0 ? Math.max(1, Math.round((v.ms / peakMs) * (MS_H - 2))) : 0;
-                  const active = hovered === i;
-                  const edge = n > 1 ? i / (n - 1) : 0.5;
-                  const tipAnchor = edge < 0.15 ? 'left' : edge > 0.85 ? 'right' : 'center';
-                  return html`
-                    <div style="flex: 1; min-width: 3px; position: relative; cursor: pointer"
-                         onMouseEnter=${() => setHovered(i)}
-                         onMouseLeave=${() => setHovered(h => h === i ? null : h)}
-                         onPointerEnter=${() => prefetchDay(d)}
-                         onClick=${() => navigate('#/day/' + d)}>
-                      <div style="height: ${STRIP_H}px; border-radius: 2px;
-                                  background: ${uptimeColor(v ? v.uptime : null)};
-                                  opacity: ${v ? (active ? 1 : 0.85) : (active ? 0.85 : NO_DATA_OPACITY)};
-                                  transition: opacity 0.1s"></div>
-                      <div style="height: ${MS_H}px; margin-top: 6px; position: relative">
-                        <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${msH}px;
-                                    background: var(--accent); border-radius: 2px 2px 0 0;
-                                    opacity: ${active ? 1 : 0.75}; transition: opacity 0.1s"></div>
-                      </div>
-                      ${CAN_HOVER && hovered === i && html`
-                        <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
-                                    ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
-                                    background: var(--bg); border: 1px solid var(--border);
-                                    border-radius: 6px; padding: 8px 10px; white-space: nowrap;
-                                    box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: 0.95rem">
-                          ${detail(d)}
-                        </div>`}
-                    </div>`;
-                })}
+        <div data-test="chart" data-chart=${'uptime-' + monitor.name}>
+          <div style="margin-top: 10px; display: grid; grid-template-columns: 56px ${narrow ? 'minmax(0, 1fr)' : '1fr'}; gap: 8px">
+            <div style="font-size: 0.75rem; color: var(--text-secondary);
+                        font-family: 'SF Mono', ui-monospace, monospace">
+              <div style="height: ${STRIP_H}px; display: flex; align-items: center; justify-content: flex-end">
+                uptime
               </div>
-              <${DateAxis} dates=${dates} style="margin-top: 4px" />
+              <div style="height: ${MS_H}px; margin-top: 6px; display: flex; flex-direction: column;
+                          justify-content: space-between; align-items: flex-end">
+                <span>${Math.round(peakMs).toLocaleString('en-US')}ms</span>
+                <span>0</span>
+              </div>
             </div>
+            ${narrow
+              ? html`<div>${row}${axis}</div>`
+              : html`
+                <div class="chart-scroll" ref=${scrollRef}>
+                  <div style="min-width: ${n * 7}px">${row}${axis}</div>
+                </div>`}
           </div>
+          ${sel && html`<${ChartReadout} bucket=${sel} heading=${sel.label} segs=${[]}
+                          body=${readoutBody(cells[selected], sel)}
+                          byDateTotal=${(d) => (byDate[d] ? 1 : 0)} />`}
         </div>
 `);
     }
@@ -3711,6 +4069,15 @@
       const [data, setData] = useState(() => uptimeOverviewMemo.get(30) || null);
       const [loading, setLoading] = useState(!uptimeOverviewMemo.has(30));
       const [error, setError] = useState(null);
+      // Which cards a phone has opened. Held here, not in each card: a new
+      // window shows a loading placeholder in place of the cards, and a card
+      // that owned its own state would come back closed.
+      const [openCards, setOpenCards] = useState(() => new Set());
+      const toggleCard = (name) => setOpenCards((prev) => {
+        const next = new Set(prev);
+        if (next.has(name)) next.delete(name); else next.add(name);
+        return next;
+      });
 
       useEffect(() => {
         const cached = uptimeOverviewMemo.get(days);
@@ -3732,31 +4099,20 @@
         return () => { alive = false; };
       }, [days]);
 
-      const windowPicker = html`
-        <div style="display: flex; gap: 4px">
-          ${[7, 30, 90, 365].map(d => html`
-            <button onClick=${() => setDays(d)}
-              style="font-size: 0.98rem; padding: 4px 10px; border-radius: 4px;
-                     cursor: pointer; font-family: inherit;
-                     border: 1px solid var(--border);
-                     background: ${days === d ? 'var(--accent)' : 'transparent'};
-                     color: ${days === d ? '#fff' : 'var(--text-secondary)'}">
-              ${d === 365 ? '1y' : d + 'd'}
-            </button>`)}
-        </div>`;
-
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: 8px 12px; margin-bottom: 4px">
           <h2 style="margin: 0; font-size: 1.3rem">Uptime archive</h2>
-          ${windowPicker}
+          <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
-        <div style="font-size: 1.02rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5">
-          What UptimeRobot saw, kept past its 3-month retention — one row per
-          monitor per day, written by the same 8am cron. The 1d / 7d / 30d
-          figures are its rolling ratios at the last pull, so they don't move
-          with the window above; the strip and the trend do.
-        </div>`;
+        <${PageNote}>
+          <div style="font-size: 1.02rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5">
+            What UptimeRobot saw, kept past its 3-month retention — one row per
+            monitor per day, written by the same 8am cron. The 1d / 7d / 30d
+            figures are its rolling ratios at the last pull, so they don't move
+            with the window above; the strip and the trend do.
+          </div>
+        <//>`;
 
       const section = (children) => html`<div style="margin-top: 26px">${header}${children}</div>`;
 
@@ -3846,7 +4202,8 @@
           <div style="font-size: 1.02rem; color: var(--text-secondary)">${summary}</div>
         </div>
 
-        ${monitors.map(m => html`<${MonitorUptimeCard} key=${m.name} monitor=${m} dates=${dates} />`)}
+        ${monitors.map(m => html`<${MonitorUptimeCard} key=${m.name} monitor=${m} dates=${dates} days=${effDays}
+                                             open=${openCards.has(m.name)} onToggle=${() => toggleCard(m.name)} />`)}
 
         <div class="two-col">
           <!-- min-width: 0 on both tracks: monitor names are URLs, and a grid
@@ -3904,7 +4261,6 @@
     function CostChart({ project }) {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
-      const [hovered, setHovered] = useState(null);  // bar index or null
 
       useEffect(() => {
         // Memoized cost (instant on revisit), then revalidate in background.
@@ -3923,42 +4279,31 @@
 
       if (loading) return html`<div class="cost-placeholder">Loading cost…</div>`;
       if (!data || data.error) return null;
-      const costs = data.costs || [];
+      // A continuous 30-day calendar like every other chart here, so a bar's
+      // position is its date and the newest bar is always today. `since` is
+      // inclusive and brings a 31st day; the header total and the legend count
+      // only the days drawn, so "last 30d", the bars and the legend agree.
+      const dates = [];
+      for (let i = 29; i >= 0; i--) dates.push(labDay(i));
+      const costs = (data.costs || []).filter((r) => r.date >= dates[0]);
       if (!costs.length) return html`
         <div class="cost-placeholder">
           No API spend in the last 30 days.
           <span style="opacity: 0.7">Claude Code (subscription) work isn't attributed per project.</span>
         </div>`;
 
-      // Aggregate per-date totals across models. byDateModel keeps the
-      // per-model split so the hover tooltip can show a breakdown.
-      const byDate = {};
-      const byDateModel = {};
+      // Per-day, per-model spend. One colour for every model, as this chart has
+      // always drawn it: the model split is in the tooltip, the readout and the
+      // legend below, not in the bar.
+      const byDateModel = {}, byModel = {};
+      let total = 0;
       for (const r of costs) {
         const v = Number(r.cost_usd) || 0;
-        byDate[r.date] = (byDate[r.date] || 0) + v;
-        (byDateModel[r.date] ||= []).push({ model: r.model, cost: v });
-      }
-      for (const d in byDateModel) byDateModel[d].sort((a, b) => b.cost - a.cost);
-      const dates = Object.keys(byDate).sort();
-      const total = dates.reduce((s, d) => s + byDate[d], 0);
-      const peak = Math.max(...Object.values(byDate), 0.0001);
-
-      // Per-model totals for legend
-      const byModel = {};
-      for (const r of costs) {
-        byModel[r.model] = (byModel[r.model] || 0) + (Number(r.cost_usd) || 0);
+        total += v;
+        (byDateModel[r.date] ||= {})[r.model] = (byDateModel[r.date]?.[r.model] || 0) + v;
+        byModel[r.model] = (byModel[r.model] || 0) + v;
       }
       const models = Object.entries(byModel).sort((a, b) => b[1] - a[1]);
-
-      const CHART_H = 100;
-      const n = dates.length;
-      const fmtShort = (iso) => {
-        const [, m, d] = iso.split('-');
-        const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                        'Jul','Aug','Sep','Oct','Nov','Dec'];
-        return months[parseInt(m, 10) - 1] + ' ' + parseInt(d, 10);
-      };
 
       return html`
         <div style="margin-top: 16px; padding: 12px; background: var(--bg-elevated);
@@ -3971,91 +4316,21 @@
               API cost · last 30d
             </div>
             <div style="display: flex; align-items: baseline; gap: 12px">
-              <div style="font-size: 1.3rem; font-weight: 600">
+              <div data-test="cost-total" style="font-size: 1.3rem; font-weight: 600">
                 $${total.toFixed(2)}
               </div>
-              <a href="#/project/${encodeURIComponent(project)}/cost"
+              <a class="tap" href="#/project/${encodeURIComponent(project)}/cost"
                  style="font-size: 0.95rem; color: var(--accent); text-decoration: none;
                         font-family: 'SF Mono', ui-monospace, monospace">
                 details →
               </a>
             </div>
           </div>
-          <div style="display: grid; grid-template-columns: 52px 1fr; gap: 8px">
-            <!-- Y axis labels -->
-            <div style="display: flex; flex-direction: column;
-                        justify-content: space-between; align-items: flex-end;
-                        height: ${CHART_H}px; font-size: 0.85rem;
-                        color: var(--text-secondary);
-                        font-family: 'SF Mono', ui-monospace, monospace">
-              <span>$${peak.toFixed(2)}</span>
-              <span>$${(peak / 2).toFixed(2)}</span>
-              <span>$0</span>
-            </div>
-            <!-- Bars + X axis labels -->
-            <div>
-              <div style="display: flex; gap: 2px; align-items: stretch;
-                          height: ${CHART_H}px;
-                          border-bottom: 1px solid var(--border)">
-                ${dates.map((d, i) => {
-                  const v = byDate[d];
-                  const h = Math.max(1, Math.round((v / peak) * (CHART_H - 4)));
-                  const isHovered = hovered === i;
-                  // Anchor tooltip left/right when near the chart edges so it
-                  // doesn't get clipped. ~10% on each side feels right at 30 bars.
-                  const edge = n > 0 ? i / (n - 1) : 0.5;
-                  const tipAnchor = edge < 0.15 ? 'left'
-                                   : edge > 0.85 ? 'right'
-                                   : 'center';
-                  return html`
-                    <div style="flex: 1; min-width: 4px; height: 100%;
-                                position: relative; cursor: default"
-                         onMouseEnter=${() => setHovered(i)}
-                         onMouseLeave=${() => setHovered(h2 => h2 === i ? null : h2)}>
-                      <div style="position: absolute; left: 0; right: 0; bottom: 0;
-                                  height: ${h}px;
-                                  background: var(--accent);
-                                  opacity: ${isHovered ? 1.0 : (v > 0 ? 0.85 : 0.15)};
-                                  border-radius: 2px 2px 0 0;
-                                  transition: opacity 0.1s"></div>
-                      ${isHovered && html`
-                        <div style="position: absolute; bottom: 100%;
-                                    ${tipAnchor === 'left' ? 'left: 0'
-                                      : tipAnchor === 'right' ? 'right: 0'
-                                      : 'left: 50%; transform: translateX(-50%)'};
-                                    margin-bottom: 6px;
-                                    background: var(--bg);
-                                    color: var(--text);
-                                    border: 1px solid var(--border);
-                                    border-radius: 4px;
-                                    padding: 6px 8px;
-                                    font-family: 'SF Mono', ui-monospace, monospace;
-                                    font-size: 0.95rem;
-                                    line-height: 1.4;
-                                    white-space: nowrap;
-                                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                                    pointer-events: none;
-                                    z-index: 10">
-                          <div style="font-weight: 600; margin-bottom: 2px">
-                            ${fmtShort(d)} · $${v.toFixed(4)}
-                          </div>
-                          ${(byDateModel[d] || []).length > 1
-                            && byDateModel[d].map(m => html`
-                              <div style="color: var(--text-secondary)">
-                                ${m.model}: $${m.cost.toFixed(4)}
-                              </div>
-                            `)}
-                        </div>
-                      `}
-                    </div>
-                  `;
-                })}
-              </div>
-              <${DateAxis} dates=${dates} fmt=${fmtShort} style="margin-top: 4px" />
-            </div>
-          </div>
+          <${StackedBars} id="project-cost" dates=${dates} days=${30} byDateSeg=${byDateModel}
+            segColor=${() => 'var(--accent)'} fmtValue=${fmtUsdFine} fmtAxis=${fmtUsdAxis}
+            minPeak=${0.0001} chartH=${100} scroll=${false} />
           ${models.length > 0 && html`
-            <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
+            <div data-test="cost-legend" style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
                         font-size: 0.89rem; color: var(--text-secondary);
                         font-family: 'SF Mono', ui-monospace, monospace">
               ${models.map(([m, v]) => html`
@@ -4115,9 +4390,10 @@
 
       return html`
         <div>
-          <div style="display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px">
-            <a href="#/project/${encodeURIComponent(project)}"
-               style="color: var(--text-secondary); text-decoration: none; font-size: 1.16rem">
+          <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px; margin-bottom: 16px">
+            <a class="tap" href="#/project/${encodeURIComponent(project)}"
+               style="color: var(--text-secondary); text-decoration: none; font-size: 1.16rem;
+                      min-width: 0; overflow-wrap: anywhere">
               ← ${project}
             </a>
             <h2 style="margin: 0; font-size: 1.57rem">Cost detail</h2>
@@ -4315,7 +4591,7 @@
               ${meta.private && html`<span class="badge badge-private">private</span>`}
               ${meta.category && html`<span class="badge">${meta.category}</span>`}
               <div class="project-links">
-                ${githubUrl && html`<a class="project-link" href=${githubUrl} target="_blank" rel="noopener">GitHub</a>`}
+                ${githubUrl && html`<a class="project-link" style="flex: none" href=${githubUrl} target="_blank" rel="noopener">GitHub</a>`}
                 ${siteLabel && html`<a class="project-link" href=${siteUrl} target="_blank" rel="noopener">${siteLabel}</a>`}
               </div>
             </div>
@@ -4443,7 +4719,7 @@
             })}
           `)}
           ${hiddenCount > 0 && html`
-            <button onClick=${() => setShowAll(true)}
+            <button class="tap" onClick=${() => setShowAll(true)}
                     style="margin-top: 12px; padding: 6px 12px;
                            background: transparent;
                            border: 1px solid var(--border);
@@ -4455,7 +4731,7 @@
             </button>
           `}
           ${showAll && allItems.length > TIMELINE_CAP && html`
-            <button onClick=${() => setShowAll(false)}
+            <button class="tap" onClick=${() => setShowAll(false)}
                     style="margin-top: 12px; padding: 6px 12px;
                            background: transparent;
                            border: 1px solid var(--border);

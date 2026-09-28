@@ -64,6 +64,9 @@ jobs:
       - name: Web API unit tests
         run: python scripts/test_web_api.py
 
+      - name: Frontend pure-helper tests
+        run: node scripts/test_frontend_pure.mjs
+
       - name: Public draft/publish tests
         run: python scripts/test_public_draft.py
 
