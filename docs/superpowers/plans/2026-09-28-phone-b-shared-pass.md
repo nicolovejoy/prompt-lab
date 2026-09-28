@@ -463,15 +463,7 @@ Copy the nine desktop and phone screenshots of `home`, `activity`, `costs`, `hea
 
 - [ ] **Step 5: Record the current small targets**
 
-Run this once and paste its output into your report; it is the list later tasks must empty:
-
-```bash
-node -e "
-import('./scripts/phone/checks.mjs').then(async (m) => { console.log(m.CHECKS.map(c => c.name).join(' ')); });
-"
-```
-
-Then add a temporary, non-failing probe: in the `baseline` factory, for the `phone` profile only, log (with `console.log`, not `t.ok`) `smallTargets(page)` grouped as `<name>: <count> targets under 44px` plus the distinct `what` labels. Run `node scripts/phone/check.mjs`, copy the lines into the report, then remove the probe before committing. Task 6 adds the real assertion.
+The list of controls under 44px is what Task 6 must empty, so record it now. Add a temporary, non-failing probe: in the `baseline` factory, for the `phone` profile only, log (with `console.log`, not `t.ok`) `smallTargets(page)` grouped as `<name>: <count> targets under 44px` plus the distinct `what` labels. Run `node scripts/phone/check.mjs`, copy the lines into the report, then remove the probe before committing. Task 6 adds the real assertion.
 
 - [ ] **Step 6: Commit**
 
@@ -510,7 +502,7 @@ git commit -m "test: phone check fixtures and baseline overflow checks for every
 2. `StackedBars` computes `size = bucketSizeFor(days, narrow)`, `buckets = bucketDates(dates, size)`, and each bucket's `bucketTotals`. The y-axis gutter shows the peak bucket total, half of it, and zero, formatted with `fmtValue`.
 3. Wide screen (`!narrow`): render exactly what the Visitors chart renders today — the `56px 1fr` grid, the `.chart-scroll` container opening at its right end, `min-width: n * 7px`, the hover tooltip gated by `CAN_HOVER`, `prefetchDay` on pointer enter, and a click on a bar navigating to `#/day/<date>`. Compare against `.playwright-mcp/phone/baseline/` and the `visitors-desktop` screenshot.
 4. Narrow screen: no `min-width` on the bar row and no horizontal scroll; the bars share the available width. The gutter is `44px` wide.
-5. Selection. The bar row has `touch-action: pan-y`, so a vertical swipe scrolls the page and a horizontal drag stays with the chart. On `pointerdown` and `pointermove` with `pointerType === 'touch'` (or `'pen'`), select `bucketIndexAt(clientX - rowLeft, rowWidth, buckets.length)`. Do not select on a touch that turns into a vertical scroll: start selecting only once the pointer has moved less than 10px vertically from its `pointerdown` point, and stop following it after `pointercancel` (the browser fires that when it takes the gesture for scrolling). A plain tap (down and up without moving) selects.
+5. Selection. The bar row has `touch-action: pan-y`, so a vertical swipe scrolls the page and a horizontal drag stays with the chart. On `pointerdown` and `pointermove` with `pointerType === 'touch'` (or `'pen'`), select `bucketIndexAt(clientX - rowLeft, rowWidth, buckets.length)`. A touch that turns into a vertical scroll must not drag the selection with it: remember the `pointerdown` point, follow the pointer only while it stays within 10px vertically of that point, and stop following for the rest of the gesture once it moves further or `pointercancel` fires (the browser fires that when it takes the gesture for scrolling). A plain tap (down and up without moving) selects.
 6. A click on a bar (mouse) navigates when the bucket is a single day and `CAN_HOVER` is true; otherwise it selects. So a narrow desktop window with weekly buckets selects rather than guessing a day.
 7. The selected bar is drawn at full opacity with the others at `0.45`; with nothing selected all bars are at `0.85` as today.
 8. `ChartReadout` renders under the date axis, in normal flow, when a bucket is selected: a heading `<label> · <fmtValue(total)> <unit>`; up to six segment rows (swatch, name, value) and `+N more`; and then either
@@ -565,7 +557,7 @@ function chartCheck({ name, hash, ready, id, windows }) {
         });
         t.ok(!fixed, `${label}: readout is in page flow, not a fixed overlay`);
 
-        if (bars === expectMax && label !== '90d' && label !== '1y') {
+        if (label === '7d' || label === '30d') {                // daily buckets
           const open = readout.locator('[data-test="open-day"]');
           const h = await open.evaluate((e) => Math.round(e.getBoundingClientRect().height));
           t.ok(h >= 44, `${label}: Open day is at least 44px tall (${h})`);
@@ -776,8 +768,8 @@ Compare by eye, Read tool, each pair: `.playwright-mcp/phone/baseline/home-deskt
 
 - [ ] **Step 4: Confirm the duplication is gone**
 
-Run: `grep -c "onMouseEnter=\${() => setHovered(i)}" web/index.html`
-Expected: `2` — one in `StackedBars` and one in `MonitorUptimeCard`, which Task 5 handles.
+Run: `grep -c "onMouseEnter" web/index.html`
+Expected: `2` or fewer — `StackedBars` and `MonitorUptimeCard` (which Task 5 handles). Before this plan there were six. If the number is higher, a chart still carries its own copy of the bar markup.
 
 - [ ] **Step 5: Commit**
 
@@ -1075,7 +1067,7 @@ git commit -m "feat(phone): one-line header, shared WindowPicker, 44px tap targe
 ### Task 7: `PageNote` on every page that opens with an explanation
 
 **Files:**
-- Modify: `web/index.html` — `ActivityOverview`, `CostsOverview`, `HealthView`, `UptimeArchive`, `CrossProjectActivity`, `ProjectPage` (the trajectory note), `TodosView` only if its opening text is longer than one line at 390px.
+- Modify: `web/index.html` — `ActivityOverview`, `CostsOverview`, `HealthView`, `UptimeArchive`, `CrossProjectActivity`, and the project page's trajectory note (in `ActivityHeatmap`).
 - Modify: `scripts/phone/checks.mjs`
 
 **Interfaces:**
@@ -1090,8 +1082,8 @@ git commit -m "feat(phone): one-line header, shared WindowPicker, 44px tap targe
    - Uptime archive: the paragraph beginning "What UptimeRobot saw".
    - Home chart: the note beginning "Today (outlined) fills in". The one-line subtitle above it stays visible.
    - Project page: the trajectory note beginning "Counts before 2026-08-14".
-   - Activity's footnote beginning "Bar is each project's share" and "All three over the last 30 days".
-2. Use a `summary` that says what is behind it where the default is vague: `About these counts` for the trajectory note and the Activity footnotes, `About this chart` for the home chart note. The default `About this data` fits the rest.
+   Footnotes that sit below a list (Activity's "Bar is each project's share" and "All three over the last 30 days") stay as they are: they are under the data, not in front of it.
+2. Use a `summary` that says what is behind it where the default is vague: `About these counts` for the trajectory note, `About this chart` for the home chart note. The default `About this data` fits the rest.
 3. Health's "Health emails paused until …" banner is a status, not an explanation. It stays visible.
 4. Negative margins that pull a note up under its paragraph must not make blocks overlap inside the phone disclosure. PR A's `.page-note-narrow > div` rule resets them; extend it if a note uses another element.
 
@@ -1100,7 +1092,7 @@ git commit -m "feat(phone): one-line header, shared WindowPicker, 44px tap targe
 Add to the `baseline` factory, with a per-route expectation:
 
 ```js
-const NOTES = { home: 1, activity: 2, costs: 1, health: 2, project: 1, about: 0, day: 0, todos: 0 };
+const NOTES = { home: 1, activity: 1, costs: 1, health: 2, project: 1, about: 0, day: 0, todos: 0 };
 ```
 
 ```js
