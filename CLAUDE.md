@@ -244,7 +244,8 @@ Phone layout is checked by a separate local runner, because a page that scrolls
 sideways or a control too small to tap is invisible to a source grep:
 
 ```bash
-cd scripts/phone && npm install && npx playwright install webkit chromium   # once
+npm --prefix scripts/phone install                                  # once
+npx --prefix scripts/phone playwright install webkit chromium       # once
 node scripts/phone/check.mjs
 ```
 
