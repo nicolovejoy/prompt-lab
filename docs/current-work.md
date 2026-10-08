@@ -17,13 +17,7 @@
    registered (session 889). A new clone must be added by restaging (new versioned dir)
    + repointing `~/.codex/hooks.json` — outside the list, every Codex turn gets a Stop
    block. Codex Desktop is unverified. Still untested: resume/fork, Claude-pair (Step 4).
-3. **#70 closed 2026-09-25, but `devlog.md` is still tracked on `main`.** The decision
-   was that the history DB is the one session record and there is no devlog.md. The
-   commit that drops the file (`5265ab0`) sits on the local branch
-   `codex/hook-request-consumer`, one commit past PR #68's head, and was never merged;
-   keep that branch until it lands. The PR-review rule itself did land in the shared
-   conventions block (v=`28022362f01b`) with the Codex command-hygiene change.
-4. **Codex permissions: installed globally 2026-09-18.** `~/.codex/config.toml` selects the
+3. **Codex permissions: installed globally 2026-09-18.** `~/.codex/config.toml` selects the
    `prompt-lab` profile from `workflow/codex-permissions.candidate.toml`, and
    `~/.codex/rules/reviewed.rules` (from `workflow/codex-rules/`) replaced 170 accumulated
    approvals. Backups: `~/.codex/backup-2026-09-18/`; any rollback now requires the
@@ -34,7 +28,7 @@
    handoff correctly stopped. Further rollout is on hold pending the reviewed
    bookkeeping interface and staged end-to-end gates. Details:
    `docs/codex-workflow-roadmap.md`. Branch `claude/codex-permissions` is unpushed.
-5. **Onboard stars-demo.** It shows up only as a grey "+15 more" entry in the dashboard
+4. **Onboard stars-demo.** It shows up only as a grey "+15 more" entry in the dashboard
    chart (24 prompts on Sep 17). Find out what's missing from the dashboard for it, e.g.
    project metadata or colour, and add it. The `stars-demo-prompt-lab.md` channel exists
    and accepts appends (verified 2026-09-25). Stars-demo's Sep 17 entries about orphaned
