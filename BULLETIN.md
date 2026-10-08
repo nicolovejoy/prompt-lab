@@ -10,6 +10,34 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-10-08 — Prod smoke tests: drive the real signed-in Chrome, ask once per session
+
+Scope: any web app with sign-in, when a Claude Code session needs to confirm a change is live in prod
+
+**The session runs the prod smokes itself** through the claude-in-chrome extension,
+which drives Nico's real Chrome with his real signed-in session, instead of handing
+him steps to click through. Assert against the DOM with `javascript_tool` (heading
+text, hrefs, `title` attributes, empty-state copy), take one screenshot where layout
+order matters, and report each smoke as pass or fail with that evidence. First used
+in musicforge on 2026-09-17: five dashboard smokes cleared in a few minutes.
+
+**Ask once per session, before the first use:** which account that Chrome is signed
+into, and whether it is OK to drive it. After a yes, the rest of that session's
+smokes run without asking again. A step that needs a second device, or that other
+people can see (starting a live session, posting, sending), still goes to Nico or
+gets its own confirmation.
+
+**Why not the alternatives:**
+- Playwright opens a fresh, signed-out browser, and Google/Apple sign-in can't
+  realistically be automated.
+- A prod "test admin" account is a standing reader over real users' data. It needs
+  allowlist, rules and deploy changes, and the session can't read its password anyway.
+- A fake admin is fine for an emulator-backed e2e test with seeded data. That covers
+  regressions, not "is it live in prod".
+
+When a step does go to Nico, the self-contained smoke-test rule in the shared
+conventions block still applies.
+
 ## 2026-09-20 — Two Home Assistant panels that read stale, not wrong
 
 Scope: home-assistant, and anything that authenticates against it
