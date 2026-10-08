@@ -43,16 +43,21 @@ its SSH add-on).
   the token is a compose file secret at `/run/secrets/tunnel_token`, the
   command is `tunnel --no-autoupdate run --token-file …`, and `env_file` is
   gone. Verified: `docker inspect` shows only the path; env holds `PATH` and
-  `SSL_CERT_FILE`. **The token was not rotated** (SPAN's call: one connector
-  registered, no sign of a leak); rotating means a Cloudflare-dashboard
-  action plus a hand edit to `pi/.env` on the Pi.
+  `SSL_CERT_FILE`. **The token was rotated 2026-09-19 09:48 PDT (16:48Z)**;
+  all four tunnel connections re-registered on the new one. It lives in
+  1Password (`dev-secrets`, item `phrpi-cloudflared-tunnel-token`), with the
+  live copy in `pi/.env` on the Pi (no `op` there). To rotate again: "Refresh
+  token" on the tunnel's Overview page, update both copies, then
+  `docker compose up -d --force-recreate --no-deps cloudflared` in
+  `/home/nico/SPAN/pi` (a value-only change is not picked up otherwise).
   Hostname → service map (dashboard-managed routes, read by SPAN 2026-09-19):
   - `grafana.pianohouseproject.org` → `grafana:3000` (answers 302, looks Access-gated)
   - `influx.pianohouseproject.org` → `influxdb:8086` (Access-gated, `span-web` service token)
-  - `span.pianohouseproject.org` → `web:3000` — **stale route**: `web` retired
-    2026-08-13 and DNS now points at Vercel; SPAN's cleanup
-  - `koma.pianohouseproject.org` → `nudge-board:80` (Access unchecked)
-  - `michael.pianohouseproject.org` → `nudge-board:80` (Access unchecked)
+  - `span.pianohouseproject.org` → `web:3000` — **route deleted 2026-09-19**
+    (`web` retired 2026-08-13; the hostname is served by Vercel)
+  - `koma.pianohouseproject.org` → `nudge-board:80` (**not** behind Access:
+    answers directly, per SPAN 2026-09-19; whether that is intended is nudge's call)
+  - `michael.pianohouseproject.org` → `nudge-board:80` (same: not behind Access)
   - catch-all → 404
   **The tunnel is shared beyond SPAN:** `nudge-board` lives in the nudge
   project's own compose project (`deploy`) but joins SPAN's `pi_default`

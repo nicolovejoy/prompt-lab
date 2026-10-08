@@ -1,27 +1,28 @@
 # Current work and deferred decisions
 
-**Next session, start here (2026-09-25):**
+**Next session, start here (2026-10-08):**
 1. **Codex permission tuning — applied 2026-09-25, see the status block at the top of
    `docs/codex-permission-tuning-plan.md`.** Reviewed rules installed 2026-09-25 after
    Nico's rulings (gh writes prompt, xcodebuild build/test prompt). zprofile edited and Codex resolves node with no prefix (v20, its
    terminal's nvm default); a sandboxed Codex `handoff.sh append` pushed with exit 0.
    Left open: re-measure on ~2026-10-02: `default.rules` should have gained ≤ 3
    rules and no `zsh -lc` / `PATH=` escalations should remain (tally method in the plan).
-2. **PR #68 (Codex host bookkeeping consumer) merged 2026-09-25 (`ec0385f`); the
-   pilot is NOT enabled.** Until it is, every Codex `/readup` and `/handoff` fails
-   registration with `unable to open database file`: the installed Codex skills
-   (rendered 2026-09-19) still call `gc-write.sh`, which cannot reach
-   `~/.claude/prompt-history.db` from the sandbox, escalated or not (reported by
-   songpath-codex 2026-09-27). **Live pilot PASSED 2026-09-27 in prompt-lab-codex**
-   (session 885; details under "Live pilot" in `docs/codex-workflow-validation.md`).
-   **Rolled out the same day:** `~/.claude/codex-bookkeeping-step3` accepts all five
-   `~/src/*-codex` clones; songpath-codex registered (session 889) and songpath was told.
-   A new clone must be added by restaging (new versioned dir) + repointing
-   `~/.codex/hooks.json` — outside the list, every Codex turn gets a Stop block. Codex
-   Desktop is unverified. Still untested: resume/fork, Claude-pair (Step 4).
-3. **#70 closed 2026-09-25:** the history DB is the one session record; no devlog.md.
-   The PR-review rule landed in the shared conventions block (v=`28022362f01b`) with
-   the Codex command-hygiene change. Nothing pending.
+   Checked 2026-10-08: `default.rules` has 5 `prefix_rule` entries (2 after the 09-25
+   prune), last modified 09-27, so +3 and at the limit. The escalation tally has not
+   been run.
+2. **Codex host bookkeeping is live in all five `~/src/*-codex` clones (2026-09-27).**
+   PR #68 merged 2026-09-25 (`ec0385f`); the live pilot passed in prompt-lab-codex
+   (session 885; details under "Live pilot" in `docs/codex-workflow-validation.md`);
+   `~/.claude/codex-bookkeeping-step3` accepts all five clones and songpath-codex
+   registered (session 889). A new clone must be added by restaging (new versioned dir)
+   + repointing `~/.codex/hooks.json` — outside the list, every Codex turn gets a Stop
+   block. Codex Desktop is unverified. Still untested: resume/fork, Claude-pair (Step 4).
+3. **#70 closed 2026-09-25, but `devlog.md` is still tracked on `main`.** The decision
+   was that the history DB is the one session record and there is no devlog.md. The
+   commit that drops the file (`5265ab0`) sits on the local branch
+   `codex/hook-request-consumer`, one commit past PR #68's head, and was never merged;
+   keep that branch until it lands. The PR-review rule itself did land in the shared
+   conventions block (v=`28022362f01b`) with the Codex command-hygiene change.
 4. **Codex permissions: installed globally 2026-09-18.** `~/.codex/config.toml` selects the
    `prompt-lab` profile from `workflow/codex-permissions.candidate.toml`, and
    `~/.codex/rules/reviewed.rules` (from `workflow/codex-rules/`) replaced 170 accumulated
@@ -111,7 +112,8 @@ fixed 2026-08-14 (byside) and 2026-08-18 (garm). Nothing alarms on the number.
 touching phrpi or homeassistant.local. Two leftovers from the 2026-08-13 closet move, neither
 of them our code, both filed in `~/src/.handoff`: a laptop SSH key into HA's add-on (highest
 leverage) and repointing hardcoded `192.168.5.34` → `homeassistant.local`. The third,
-`cloudflared`'s token in argv, was fixed by SPAN 2026-09-19 (not rotated; see the inventory).
+`cloudflared`'s token in argv, was fixed by SPAN 2026-09-19 and the token rotated the same
+day (see the inventory).
 
 **Copy review (#49) — batches 2–4 remain**, batch 1 closed 2026-08-05. **Track which items
 were actually answered, not which batch was sent** — Nico answers by number and often stops
@@ -138,10 +140,10 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   reappears in every future draft by design.
 - **#48 residual:** the "8am" cron is `0 15 * * *` — 8am Pacific in summer, 7am in winter.
   Vercel crons are UTC-only, so this is a choice to make, not a bug to fix.
-- Open issues (2026-09-07): **#14** design tokens, **#43** sign-ins panel (gated on a second
+- Open issues (2026-10-08): **#14** design tokens, **#43** sign-ins panel (gated on a second
   reader), **#9** beacon fan-out, **#49** copy review (this file is the only record of batch
-  progress), **#53** iOS chart-tap zoom, **#51**
-  unmapped costs (the close rested on a guess).
+  progress), **#51** unmapped costs (the close rested on a guess). #53 (iOS chart-tap zoom)
+  closed 2026-09-28 with #76.
 - Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
 
 

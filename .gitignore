@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.db
 *.log
+*.log.*
 .env
 .env.local
 .env.backup
