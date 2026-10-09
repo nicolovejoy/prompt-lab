@@ -80,6 +80,7 @@ jobs:
         run: |
           python scripts/test_send_review.py
           python scripts/test_nightly_pipeline.py
+          python scripts/test_close_stale_sessions.py
 
   deploy:
     needs: test
