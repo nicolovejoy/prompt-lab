@@ -3,29 +3,40 @@
 Run: .venv/bin/python scripts/close_stale_sessions.py            # dry run
      .venv/bin/python scripts/close_stale_sessions.py --execute
 
+The nightly pipeline runs this as its `scrub` stage, with
+`--execute --recent-hours 168`: a row is left alone until it has been idle for
+a week.
+
 Why these exist: "the current session" used to be resolved positionally
 ("newest open row for this project"), and nothing ever stamped ended_at unless
 /handoff ran. Every abandoned session left an open row, and each open row is a
 landmine — the next session on that project would resolve to it and file its
 prompts there. Binding rows to the real Claude Code session id (see
 workflow/hooks/log-prompt.sh) removes the landmine going forward; this closes
-the ones already lying around.
+the ones already lying around. They keep arriving, because a one-shot run or
+an abandoned window never runs /handoff: 351 had piled up by 2026-10-08.
 
 ended_at is set to the session's last prompt timestamp — the honest "last time
 we saw activity" — falling back to started_at for a session with no prompts.
+No summary is written: a summary marks a handed-off session to the nightly and
+the dashboard.
 
 Re-runnable: only ever touches rows where ended_at IS NULL.
 
-Never closes a session that still looks live. A row counts as live if it is
-pointed at by a ~/.claude/state/current-session-* file, or it started inside
---recent-hours, or it is bound to a real conversation (claude_session_id) and
-has activity inside --recent-hours.
+Never closes a session that still looks live. A row counts as live if it
+started inside --recent-hours, or it has activity inside --recent-hours and is
+either bound to a real conversation (claude_session_id) or pointed at by a
+~/.claude/state/current-session-* file.
 
 Recent activity alone is deliberately NOT enough to protect an *unbound* row:
 the landmine rows are exactly the ones absorbing today's misattributed prompts
 while having started weeks or months ago (one February row was still collecting
 prompts in July). A conversation that genuinely started recently is protected by
 the started_at clause regardless.
+
+A pointer alone is not enough either. Pointer files are written and never
+removed, so a pointer used to protect its row for good: 58 rows, each idle for
+more than a week, were still open behind one after the 2026-10-08 sweep.
 """
 
 from __future__ import annotations
@@ -66,7 +77,11 @@ def find_stale(conn: sqlite3.Connection, recent_hours: int) -> list[sqlite3.Row]
                    AS last_prompt,
                (SELECT COUNT(*) FROM prompts p WHERE p.session_id = s.id)
                    AS n_prompts,
-               {bound_expr} AS is_bound
+               {bound_expr} AS is_bound,
+               COALESCE(
+                 (SELECT MAX(p.timestamp) FROM prompts p WHERE p.session_id = s.id),
+                 s.started_at
+               ) >= datetime('now', :cutoff) AS is_active
           FROM sessions s
          WHERE s.ended_at IS NULL
            AND s.started_at < datetime('now', :cutoff)
@@ -94,8 +109,9 @@ def main() -> int:
 
     skip = active_pointer_ids()
     rows = find_stale(conn, args.recent_hours)
-    targets = [r for r in rows if r["id"] not in skip]
-    protected = [r for r in rows if r["id"] in skip]
+    # A pointer protects a row only while the row itself is still active.
+    protected = [r for r in rows if r["id"] in skip and r["is_active"]]
+    targets = [r for r in rows if not (r["id"] in skip and r["is_active"])]
 
     total_open = conn.execute(
         "SELECT COUNT(*) FROM sessions WHERE ended_at IS NULL"

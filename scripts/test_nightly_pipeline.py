@@ -156,9 +156,14 @@ def _():
 def _():
     stages = np.build_stages("python")
     names = [s.name for s in stages]
-    assert names == ["cost-pull", "synthesizer", "sync-summaries", "review",
+    assert names == ["scrub", "cost-pull", "synthesizer", "sync-summaries", "review",
                       "report", "publish"], names
     by = {s.name: s for s in stages}
+    assert by["scrub"].argv[1:] == ["scripts/close_stale_sessions.py", "--execute",
+                                    "--recent-hours", "168"], by["scrub"].argv
+    assert not by["scrub"].needs
+    assert not any("scrub" in s.needs for s in stages), \
+        "housekeeping must never gate the night's real work"
     assert by["sync-summaries"].needs == ("synthesizer",)
     assert by["review"].needs == ("synthesizer", "sync-summaries")
     assert by["report"].needs == ("synthesizer", "sync-summaries")
@@ -179,6 +184,7 @@ def _():
     with tempfile.TemporaryDirectory() as d:
         stages = np.build_stages("python")
         by = {s.name: s for s in stages}
+        by["scrub"].argv = touch_stage("scrub", d).argv
         by["cost-pull"].argv = touch_stage("cost-pull", d).argv
         by["synthesizer"].argv = touch_stage("synthesizer", d).argv
         by["sync-summaries"].argv = touch_stage("sync-summaries", d, exit_code=1).argv
@@ -192,8 +198,26 @@ def _():
         assert results["review"].outcome == "skipped", results["review"]
         assert results["report"].outcome == "skipped", results["report"]
         assert results["publish"].outcome == "ok", results["publish"]
-        assert order_in(d) == ["cost-pull", "synthesizer", "sync-summaries", "publish"], \
-            order_in(d)
+        assert order_in(d) == ["scrub", "cost-pull", "synthesizer", "sync-summaries",
+                               "publish"], order_in(d)
+
+
+@test("build_stages: a failed scrub is recorded and costs the night nothing else")
+def _():
+    """The scrub closes stale session rows. It is housekeeping, so a failure
+    must show in the run record without skipping any stage that does real work."""
+    with tempfile.TemporaryDirectory() as d:
+        stages = np.build_stages("python")
+        for s in stages:
+            s.argv = touch_stage(s.name, d, exit_code=1 if s.name == "scrub" else 0).argv
+            s.condition = None
+
+        results = np.run_pipeline(stages, cwd=Path(d))
+        by = {r.name: r for r in results}
+        assert by["scrub"].outcome == "failed", by["scrub"]
+        assert [r.name for r in results if not r.ok] == ["scrub"], results
+        assert np.overall_status(results) == "partial"
+        assert order_in(d) == [s.name for s in stages], order_in(d)
 
 
 @test("the cost-pull heartbeat condition still keys on the publish stage")

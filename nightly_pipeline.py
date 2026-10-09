@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One nightly run, in dependency order: cost pull -> synthesizer ->
+"""One nightly run, in dependency order: scrub -> cost pull -> synthesizer ->
 sync-summaries -> review -> report (when due) -> publish. Replaces four
 racing LaunchAgents (nightly-pipeline-plan step 2).
 
@@ -39,6 +39,12 @@ yesterday's rows and reports "no activity" on a night that had plenty (#56).
 It runs right after synthesizer and before review/report, which both depend
 on it — a failed sync skips them rather than composing either over stale
 Turso data.
+
+scrub closes session rows that have sat idle for a week (see
+scripts/close_stale_sessions.py). It is local housekeeping: nothing depends on
+it, so a failure is recorded as a partial night and skips no other stage. It
+is a stage here rather than a weekly LaunchAgent because a plist is one more
+thing that can stop silently; the week lives in its --recent-hours.
 """
 
 from __future__ import annotations
@@ -114,6 +120,8 @@ def _report_due_from_store() -> tuple[bool, str]:
 
 def build_stages(py: str = sys.executable) -> list[Stage]:
     return [
+        Stage("scrub", [py, "scripts/close_stale_sessions.py", "--execute",
+                        "--recent-hours", "168"], timeout=300),
         Stage("cost-pull", [py, "pull_api_costs.py"], timeout=900),
         Stage("synthesizer", [py, "synthesizer.py", "--all"], timeout=3600),
         Stage("sync-summaries", [py, "sync_to_turso.py", "--days", "7"], timeout=900,
@@ -373,13 +381,13 @@ def _finish_run(store, *, run_id, host, started_at, lab_date, results,
 
 USAGE = """usage: nightly_pipeline.py
 
-Runs the whole night in dependency order: cost pull -> synthesizer ->
+Runs the whole night in dependency order: scrub -> cost pull -> synthesizer ->
 sync-summaries -> review -> report (when due) -> publish. Takes no options —
 what runs is decided by the data (the report is artifact-keyed), not by
 flags.
 
-THIS IS NOT A DRY RUN. It sends the review email, writes review_snapshots,
-records the run in nightly_runs and pushes to Turso. There is deliberately no
+THIS IS NOT A DRY RUN. It closes stale session rows, sends the review email,
+writes review_snapshots, records the run in nightly_runs and pushes to Turso. There is deliberately no
 --dry-run: each stage script has its own, and the thing worth testing here is
 the ordering, which scripts/test_nightly_pipeline.py covers with real
 subprocesses.
