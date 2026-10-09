@@ -46,9 +46,9 @@ mostly done, so it stays a grey "more" entry in the dashboard chart.
 
 **Dashboard active count (2026-10-09).** #82 merged and was checked live: the tile
 reads 14, was 40, because a stored default no longer counts a project as active.
-**Open: PR #83** removes the per-project status menu altogether (active is simply
-worked on in the last 7 days; `project_metadata.status` stays in Turso, unused).
-Not rendered in a browser, so after the merge check that
+#83 merged and deployed the same day: the per-project status menu is gone (active is
+simply worked on in the last 7 days; `project_metadata.status` stays in Turso, unused).
+**Still to look at:** it was not rendered in a browser, so check that
 https://prompt-labs.org/#/project/prompt-lab shows a category menu and a private
 checkbox and no status menu.
 
