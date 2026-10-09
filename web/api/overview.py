@@ -27,7 +27,7 @@ def _resolve(name, alias_to_canonical):
 
 
 def _load_metadata(alias_to_canonical, access):
-    """Per-project category/private/status (issue #23).
+    """Per-project category/private (issue #23).
 
     Turso-owned, written only by web/api/project_metadata.py. Missing row =
     defaults, so a project with no metadata still renders. Never fatal: this is
@@ -40,14 +40,13 @@ def _load_metadata(alias_to_canonical, access):
     """
     try:
         rows = turso_query(
-            "SELECT project, category, private, status FROM project_metadata")
+            "SELECT project, category, private FROM project_metadata")
     except Exception:
         return {}
     return {
         _resolve(r["project"], alias_to_canonical): {
             "category": r.get("category"),
             "private": bool(int(r.get("private") or 0)),
-            "status": r.get("status") or "active",
         }
         for r in rows
         if allowed(access, _resolve(r["project"], alias_to_canonical))

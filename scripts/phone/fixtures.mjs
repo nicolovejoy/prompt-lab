@@ -117,10 +117,10 @@ function overview() {
     week, by_project, latest_snapshots: {}, activity_by_project,
     all_projects: [...PROJECT_NAMES].sort(),
     project_metadata: {
-      'alpha-app': { category: 'Tools', private: false, status: 'active' },
-      'bravo-site': { category: 'Music', private: false, status: 'active' },
-      'kilo-board': { category: 'Other', private: true, status: 'active' },
-      'juliet-cms': { category: null, private: false, status: 'dormant' },
+      'alpha-app': { category: 'Tools', private: false },
+      'bravo-site': { category: 'Music', private: false },
+      'kilo-board': { category: 'Other', private: true },
+      'juliet-cms': { category: null, private: false },
     },
   };
 }
