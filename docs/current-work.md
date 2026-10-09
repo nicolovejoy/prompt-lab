@@ -7,9 +7,18 @@
    terminal's nvm default); a sandboxed Codex `handoff.sh append` pushed with exit 0.
    Left open: re-measure on ~2026-10-02: `default.rules` should have gained ≤ 3
    rules and no `zsh -lc` / `PATH=` escalations should remain (tally method in the plan).
-   Checked 2026-10-08: `default.rules` has 5 `prefix_rule` entries (2 after the 09-25
-   prune), last modified 09-27, so +3 and at the limit. The escalation tally has not
-   been run.
+   Tally run 2026-10-09: 21 escalation requests in 18 sessions since the fix, against
+   118 in the five days before it. 20 were songpath-codex's first two days (09-26,
+   09-27); none was wrapped in `zsh -lc` or `PATH=` (two used `env -u PGHOST -u PGPORT`),
+   and none came from a worktree or scratch clone. **Not a verdict yet:** Codex ran in
+   a repo on only four days (09-25 to 09-28) and musicforge-codex, the source of the
+   118, had one session. Re-run after a real week of musicforge Codex use.
+   `default.rules` fails its criterion on the letter: 5 rules, all new (the two prune
+   survivors moved to `reviewed.rules`, so the earlier "+3" was a miscount), all from
+   09-26/27. Three are one-off literals (`touch` of a resync marker, `ps -axo`, one
+   `npm run e2e --grep`), one is the `gc-write.sh register-session` wrapper the
+   bookkeeping hook replaced on 09-27, and one is `npx playwright test` in the user
+   layer, which the 09-25 ruling allowed per repo only. Pruning them is Nico's call.
 2. **Codex host bookkeeping is live in all five `~/src/*-codex` clones (2026-09-27).**
    PR #68 merged 2026-09-25 (`ec0385f`); the live pilot passed in prompt-lab-codex
    (session 885; details under "Live pilot" in `docs/codex-workflow-validation.md`);
@@ -28,11 +37,9 @@
    handoff correctly stopped. Further rollout is on hold pending the reviewed
    bookkeeping interface and staged end-to-end gates. Details:
    `docs/codex-workflow-roadmap.md`. Branch `claude/codex-permissions` is unpushed.
-4. **Onboard stars-demo.** It shows up only as a grey "+15 more" entry in the dashboard
-   chart (24 prompts on Sep 17). Find out what's missing from the dashboard for it, e.g.
-   project metadata or colour, and add it. The `stars-demo-prompt-lab.md` channel exists
-   and accepts appends (verified 2026-09-25). Stars-demo's Sep 17 entry about
-   ibuild4you DNS still sits in the ibuild4you channel, unanswered.
+
+**stars-demo is not being onboarded (Nico, 2026-10-09):** it was a one-off and is
+mostly done, so it stays a grey "more" entry in the dashboard chart.
 
 **Session-row housekeeping (2026-10-08).** The orphaned-`scratch` fix merged as #80
 and its helper is installed under `~/.claude/bin`. 351 stale open rows were closed by
@@ -98,6 +105,10 @@ the machine deliberately asleep across 02:30, confirm one wake produces one run 
 order and Turso's newest `review_snapshots` date equals the run date. The network gate sits in
 front of it now, so the run should print `--- network: resolved after Ns ---` rather than dying
 on `gaierror` — that line is itself the evidence the gate earns its place.
+First attempt is the night of 2026-10-09. Idle sleep will not do it: `pmset -g log`
+shows no sleep or wake event since 2026-10-07 (a `PreventUserIdleSystemSleep`
+assertion from `Siri AI` has been held since then), which is why the 10-08 and 10-09
+runs started at 02:30:04 sharp. The laptop has to be put to sleep by hand.
 
 Also unverified until it happens: the health-email changes are Vercel-side code reading Turso,
 so the first real morning email carrying a `nightly_runs` row is their acceptance test — **and
@@ -137,8 +148,8 @@ semantics are a real choice: excluding private is wrong the day a genuine projec
 private. Alternative is `37 · 16 shown`. Undecided.
 
 Open, from the 2026-08-02 uptime/health thread and the issue backlog:
-- **`#/health` has never been visually verified** (contrast computed, not seen), nor has the
-  nav below 640px. https://prompt-labs.org/#/health needs your eyes, not a green test.
+- **`#/health` was seen by Nico on desktop 2026-10-09** (dark theme; 11/11 targets up, all
+  6 heartbeats fresh) and works. The nav below 640px has still not been looked at.
 - **Beacon fan-out: `prntd`** never got the snippet; `page_views` has zero rows ever for it.
 - **Public rollups:** only ibuild4you `2026-05-18` is unpublished — a deliberate skip that
   reappears in every future draft by design.
