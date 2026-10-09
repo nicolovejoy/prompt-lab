@@ -144,20 +144,6 @@ memory of which directory he was in; the names alone aren't evidence. `koma_art`
 look like the underscore/dash pair fixed elsewhere; `freevite` (167 prompts) may be `invitekit`
 under an older directory name; `spike` (4 prompts) has the shape of the hidden artifacts.
 
-**`ACTIVE · N` is inflated, and hidden projects are the smaller half of why.** Measured
-2026-10-09: the tile says 40, yet 14 projects had work in the last 7 days. The other 26
-are pinned: every `project_metadata` row stores `status='active'` (the insert default in
-`web/api/project_metadata.py`, and `_load_metadata` in `web/api/overview.py` also fills
-`or "active"`), and `projectStatus()` (`web/index.html:1570`) lets any stored status
-override the 7-day rule. So writing any metadata for a project, hiding it included, makes
-it active for good. 22 of the 26 are hidden junk names, 4 are shown. Separately,
-`activeCount` (`:1634`) has no `private` filter, so the tile and the `Active · N` header
-count hidden names the chip list reports only as `+N private`. **Open: PR #82**
-(approved by Nico 2026-10-09): `active` means nobody chose and the 7-day rule decides,
-`pinned` is the new always-active override, and the headers count the names listed.
-No rows are rewritten. Not rendered in a browser before the PR, so after the merge
-check https://prompt-labs.org/#/ shows about 14 on the tile, not 40.
-
 Open, from the 2026-08-02 uptime/health thread and the issue backlog:
 - **`#/health` was seen by Nico on desktop 2026-10-09** (dark theme; 11/11 targets up, all
   6 heartbeats fresh) and works. The nav below 640px has still not been looked at.
