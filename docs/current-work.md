@@ -34,16 +34,14 @@
    and accepts appends (verified 2026-09-25). Stars-demo's Sep 17 entry about
    ibuild4you DNS still sits in the ibuild4you channel, unanswered.
 
-**Orphaned `scratch` sessions: fix is PR #80, open (2026-10-08).** A conversation
-started before `git init` left an open `scratch` row that nothing could close.
-Registering under a repo now closes it, and `/handoff` accepts the session ID from
-before `git init`. After the merge, copy `workflow/bin/_gc_session_identity.py` to
-`~/.claude/bin/`: `gc-read.sh` and `gc-write.sh` use that installed helper, which is
-also one PR behind (it lacks #68's `codex` command). The one-file copy is enough;
-`workflow/install.sh` does it too but also reinstalls every command and reloads the
-launchd jobs. The prompt hook runs the repo copy and needs nothing. The seven open `scratch` rows were closed by hand the same day.
-`scripts/close_stale_sessions.py` (dry run by default) would close 355 more open
-rows across all projects; it has not been run.
+**Session-row housekeeping (2026-10-08).** The orphaned-`scratch` fix merged as #80
+and its helper is installed under `~/.claude/bin`. 351 stale open rows were closed by
+hand the same day (list: `~/.claude/state/closed-stale-sessions-2026-10-08.txt`).
+**Open: PR #81** adds a nightly `scrub` stage that closes rows idle for a week, and
+stops a pointer file in `~/.claude/state` from protecting its row for good. Its
+acceptance test is the first night after the merge: the nightly log should show
+`--- stage scrub: ok` and `Closed 58`, leaving about 5 open. Until then those 58
+rows stay open.
 
 **Mini shut down 2026-09-25.** Idle for weeks: no jobs, no containers, no handoff clone; only the parked `disabled-promptlab-20260820` LaunchAgents. Clean shutdown over ssh. Nothing depends on it. Possible future role: an independent watcher for the "cron dead" heartbeat hole. Details in memory `user_two_machines.md`.
 
