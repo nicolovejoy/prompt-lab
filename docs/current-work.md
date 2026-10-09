@@ -37,11 +37,12 @@
 **Session-row housekeeping (2026-10-08).** The orphaned-`scratch` fix merged as #80
 and its helper is installed under `~/.claude/bin`. 351 stale open rows were closed by
 hand the same day (list: `~/.claude/state/closed-stale-sessions-2026-10-08.txt`).
-**Open: PR #81** adds a nightly `scrub` stage that closes rows idle for a week, and
-stops a pointer file in `~/.claude/state` from protecting its row for good. Its
-acceptance test is the first night after the merge: the nightly log should show
-`--- stage scrub: ok` and `Closed 58`, leaving about 5 open. Until then those 58
-rows stay open.
+#81 merged 2026-10-09 at 07:45 PDT, after that morning's 02:30 run: the nightly now
+opens with a `scrub` stage that closes rows idle for a week, and a pointer file in
+`~/.claude/state` no longer protects its row for good. **Still to verify:** the
+2026-10-10 run is the first with the stage. `nightly-pipeline.log` should show
+`--- stage scrub: ok` and `Closed 58` (a dry run on 2026-10-09 found 58 of 60 open
+rows due). Until then those 58 rows stay open.
 
 **Mini shut down 2026-09-25.** Idle for weeks: no jobs, no containers, no handoff clone; only the parked `disabled-promptlab-20260820` LaunchAgents. Clean shutdown over ssh. Nothing depends on it. Possible future role: an independent watcher for the "cron dead" heartbeat hole. Details in memory `user_two_machines.md`.
 
