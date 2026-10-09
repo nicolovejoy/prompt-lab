@@ -37,8 +37,18 @@
 5. **Onboard stars-demo.** It shows up only as a grey "+15 more" entry in the dashboard
    chart (24 prompts on Sep 17). Find out what's missing from the dashboard for it, e.g.
    project metadata or colour, and add it. The `stars-demo-prompt-lab.md` channel exists
-   and accepts appends (verified 2026-09-25). Stars-demo's Sep 17 entries about orphaned
-   `scratch` sessions and ibuild4you DNS currently sit in the ibuild4you channel.
+   and accepts appends (verified 2026-09-25). Stars-demo's Sep 17 entry about
+   ibuild4you DNS still sits in the ibuild4you channel, unanswered.
+
+**Orphaned `scratch` sessions: fix is PR #80, open (2026-10-08).** A conversation
+started before `git init` left an open `scratch` row that nothing could close.
+Registering under a repo now closes it, and `/handoff` accepts the session ID from
+before `git init`. After the merge, run `workflow/install.sh`: `gc-read.sh` and
+`gc-write.sh` use the installed helper under `~/.claude/bin`, which is also one PR
+behind (it lacks #68's `codex` command). The prompt hook runs the repo copy and
+needs nothing. The seven open `scratch` rows were closed by hand the same day.
+`scripts/close_stale_sessions.py` (dry run by default) would close 355 more open
+rows across all projects; it has not been run.
 
 **Mini shut down 2026-09-25.** Idle for weeks: no jobs, no containers, no handoff clone; only the parked `disabled-promptlab-20260820` LaunchAgents. Clean shutdown over ssh. Nothing depends on it. Possible future role: an independent watcher for the "cron dead" heartbeat hole. Details in memory `user_two_machines.md`.
 
