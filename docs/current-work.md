@@ -43,10 +43,11 @@
 **Orphaned `scratch` sessions: fix is PR #80, open (2026-10-08).** A conversation
 started before `git init` left an open `scratch` row that nothing could close.
 Registering under a repo now closes it, and `/handoff` accepts the session ID from
-before `git init`. After the merge, run `workflow/install.sh`: `gc-read.sh` and
-`gc-write.sh` use the installed helper under `~/.claude/bin`, which is also one PR
-behind (it lacks #68's `codex` command). The prompt hook runs the repo copy and
-needs nothing. The seven open `scratch` rows were closed by hand the same day.
+before `git init`. After the merge, copy `workflow/bin/_gc_session_identity.py` to
+`~/.claude/bin/`: `gc-read.sh` and `gc-write.sh` use that installed helper, which is
+also one PR behind (it lacks #68's `codex` command). The one-file copy is enough;
+`workflow/install.sh` does it too but also reinstalls every command and reloads the
+launchd jobs. The prompt hook runs the repo copy and needs nothing. The seven open `scratch` rows were closed by hand the same day.
 `scripts/close_stale_sessions.py` (dry run by default) would close 355 more open
 rows across all projects; it has not been run.
 
