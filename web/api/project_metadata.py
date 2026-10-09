@@ -20,6 +20,15 @@ mistake the PUBLIC_PROJECTS read-time allowlist was (deleted 2026-06-03).
 `category` is display-only — it organizes the UI and is explicitly not a sharing
 unit.
 
+`status`: `active` IS THE COLUMN DEFAULT, NOT A CHOICE. The column is
+`TEXT NOT NULL DEFAULT 'active'`, so every insert that names no status writes
+it: hiding a project here, seeding `public_counts` from a script. The dashboard
+therefore reads `active` as "nobody chose" and derives active or dormant from
+the last 7 days of work. The deliberate overrides are `pinned` (always active)
+and `dormant` (always dormant). Reading the default as a choice made every
+project with a row active for good: 40 "active" projects on 2026-10-09, of
+which 14 had been worked on that week.
+
 `public_counts` IS a real gate, unlike `private`. When set, /api/public_history
 projects this project's weekly session/commit counts (numeric columns only,
 never prose) from the private `weekly_rollups` table at read time. It is
@@ -37,7 +46,7 @@ from auth_helper import get_role
 from turso_helper import resolve_project_names, turso_query
 
 CATEGORIES = {"Music", "Art", "Collabs", "Tools", "Other"}
-STATUSES = {"active", "dormant"}
+STATUSES = {"active", "dormant", "pinned"}
 MAX_BODY = 2048
 
 
