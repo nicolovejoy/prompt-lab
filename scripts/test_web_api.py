@@ -1633,6 +1633,7 @@ def _():
         cases = [
             ({"project": "p", "category": "Nonsense"}, "bad category"),
             ({"project": "p", "status": "archived"}, "bad status"),
+            ({"project": "p", "status": "auto"}, "the default is spelled 'active'"),
             ({"project": "p", "private": "yes"}, "private as string"),
             ({"project": "p"}, "no fields"),
             ({"status": "active"}, "no project"),
@@ -1643,6 +1644,29 @@ def _():
 
         h = invoke_post(mod, "/api/project_metadata", b"{not json")
         assert h.status_code == 400, f"malformed json: got {h.status_code}"
+    finally:
+        restore()
+
+
+@test("project_metadata: POST accepts each status, pinned included")
+def _():
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        if "project_aliases" in sql:
+            return []
+        if sql.startswith("SELECT project"):
+            return [{"project": "p", "category": None, "private": 0,
+                     "status": captured[-2][1][1], "updated_at": "now"}]
+        return []
+
+    mod, restore = _meta_mod("endpoint_meta_statuses", fake_turso)
+    try:
+        for status in ("active", "pinned", "dormant"):
+            h = invoke_post(mod, "/api/project_metadata", {"project": "p", "status": status})
+            assert h.status_code == 200, f"{status}: got {h.status_code}: {h.body}"
+            assert h.body["metadata"]["status"] == status, f"{status}: {h.body}"
     finally:
         restore()
 

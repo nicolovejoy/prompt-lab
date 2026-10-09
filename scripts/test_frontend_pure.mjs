@@ -27,7 +27,8 @@ if (src.indexOf('// <pure>', open + 1) >= 0) {
 }
 
 const NAMES = ['fmtShortDate', 'fmtMonth', 'fmtMonthShort', 'addDays', 'mondayOf', 'bucketSizeFor',
-               'bucketDates', 'bucketTotals', 'bucketIndexAt', 'fmtUsdAxis', 'fmtUsdFine', 'bucketUptime'];
+               'bucketDates', 'bucketTotals', 'bucketIndexAt', 'fmtUsdAxis', 'fmtUsdFine', 'bucketUptime',
+               'projectStatus', 'shownNames'];
 const pure = new Function(`"use strict";\n${src.slice(open, close)}\nreturn { ${NAMES.join(', ')} };`)();
 
 const tests = [];
@@ -211,6 +212,51 @@ test('bucketUptime: string values from the API are coerced', () => {
   const [day] = pure.bucketDates(['2026-09-07'], 'day');
   assert.deepEqual(pure.bucketUptime(day, { '2026-09-07': { uptime: '99.9', ms: '120' } }),
     { uptime: 99.9, ms: 120, days: 1 });
+});
+
+// by_project holds the projects with work in the last 7 days; project_metadata
+// holds one row per project anyone has ever annotated.
+const overviewWith = (worked, meta) => ({
+  by_project: Object.fromEntries(worked.map((p) => [p, { summaries: [] }])),
+  project_metadata: meta,
+});
+
+test('projectStatus: the stored default does not make a project active', () => {
+  // Every metadata row carries status 'active' unless someone chose otherwise:
+  // it is the column default, written when a project is hidden or seeded.
+  const o = overviewWith(['worked'], {
+    worked: { status: 'active', private: false },
+    hidden: { status: 'active', private: true },
+  });
+  assert.equal(pure.projectStatus(o, 'worked'), 'active');
+  assert.equal(pure.projectStatus(o, 'hidden'), 'dormant');
+});
+
+test('projectStatus: no metadata row follows the last 7 days', () => {
+  const o = overviewWith(['worked'], {});
+  assert.equal(pure.projectStatus(o, 'worked'), 'active');
+  assert.equal(pure.projectStatus(o, 'idle'), 'dormant');
+});
+
+test('projectStatus: pinned and dormant are deliberate and win either way', () => {
+  const o = overviewWith(['busy'], {
+    idle: { status: 'pinned' },
+    busy: { status: 'dormant' },
+  });
+  assert.equal(pure.projectStatus(o, 'idle'), 'active');
+  assert.equal(pure.projectStatus(o, 'busy'), 'dormant');
+});
+
+test('projectStatus: an overview that has not loaded is dormant, not a crash', () => {
+  assert.equal(pure.projectStatus(null, 'p'), 'dormant');
+  assert.equal(pure.projectStatus({}, 'p'), 'dormant');
+});
+
+test('shownNames: drops what the private toggle hides, keeps order', () => {
+  const list = ['a', 'b', 'c'];
+  assert.deepEqual(pure.shownNames(list, new Set(['b'])), ['a', 'c']);
+  assert.deepEqual(pure.shownNames(list, new Set()), list);
+  assert.deepEqual(pure.shownNames(list, undefined), list);
 });
 
 let failed = 0;

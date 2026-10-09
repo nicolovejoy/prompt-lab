@@ -1507,9 +1507,8 @@
       if (!authed) return html`<${Login} passwordLogin=${passwordLogin} googleLogin=${googleLogin}
         onLogin=${(r) => { setRole(r); setEmail(null); setAuthed(true); }} />`;
 
-      // Project lists for the top-nav picker. An explicitly set status (issue
-      // #23) wins; with none set, dormancy is derived from 7-day activity as
-      // it always was, so un-annotated projects group exactly as before.
+      // Project lists for the top-nav picker, split by projectStatus(): a
+      // deliberate status (issue #23) wins, otherwise 7-day activity decides.
       const bp = overview?.by_project || {};
       const byRecency = (a, b) =>
         (bp[b]?.summaries?.[0]?.date || '').localeCompare(bp[a]?.summaries?.[0]?.date || '');
@@ -1562,14 +1561,6 @@
         <${TabBar} route=${route} />
         <//>
       `;
-    }
-
-    // An explicitly set status (issue #23) wins; with none set, dormancy is
-    // derived from 7-day activity as it always was, so un-annotated projects
-    // behave exactly as before.
-    function projectStatus(overview, p) {
-      return overview?.project_metadata?.[p]?.status
-        || ((overview?.by_project || {})[p] ? 'active' : 'dormant');
     }
 
     // ---- Distill a summary row into a short phrase ----
@@ -1679,8 +1670,10 @@
       // A project the private toggle is hiding must not have its NAME appear
       // anywhere on screen (same rule the stream and the cross-project chart
       // follow) — so it drops out of the chip list and is reported as a count.
+      // Each header counts the names listed under it; the tile keeps the full
+      // count, and the "+N private" chip is the difference.
       const chips = (list, muted) => {
-        const shown = hide?.size ? list.filter(p => !hide.has(p)) : list;
+        const shown = shownNames(list, hide);
         const hidden = list.length - shown.length;
         return html`
           <div class="dormant-list">
@@ -1742,7 +1735,7 @@
               <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px">
                 <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.93rem;
                             letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary)">
-                  Active · ${activeCount}
+                  Active · ${shownNames(activeList, hide).length}
                 </div>
                 <button onClick=${() => setShowProjects(false)}
                   style="background:none; border:none; color:var(--text-secondary); font-size:1.2rem;
@@ -1754,7 +1747,7 @@
               <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.93rem;
                           letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary);
                           margin-top:16px">
-                Dormant · ${dormantCount}
+                Dormant · ${shownNames(dormantList, hide).length}
               </div>
               ${dormantCount === 0
                 ? html`<div style="font-size:1.06rem; color:var(--text-secondary); padding:8px 0">None.</div>`
@@ -2362,6 +2355,25 @@
         ms: mss.length ? mss.reduce((s, v) => s + v, 0) / mss.length : null,
         days,
       };
+    }
+
+    // Is a project active or dormant? A deliberate status (issue #23) wins:
+    // 'pinned' is always active, 'dormant' always dormant. Anything else
+    // follows the last 7 days of work (by_project holds exactly those
+    // projects). A stored 'active' is NOT a choice: it is the column default,
+    // written whenever a project gets a metadata row for any reason, hiding it
+    // included. Reading it as one counted 40 active projects when 14 had been
+    // worked on that week (2026-10-09).
+    function projectStatus(overview, p) {
+      const chosen = overview?.project_metadata?.[p]?.status;
+      if (chosen === 'pinned') return 'active';
+      if (chosen === 'dormant') return 'dormant';
+      return (overview?.by_project || {})[p] ? 'active' : 'dormant';
+    }
+
+    // The names in `list` that the private toggle is not hiding.
+    function shownNames(list, hide) {
+      return hide?.size ? list.filter(p => !hide.has(p)) : list;
     }
     // </pure>
 
@@ -4498,9 +4510,11 @@
       return html`
         <div class="meta-editor">
           <select disabled=${readOnly || saving} value=${meta.status}
+            title="auto: active when worked on in the last 7 days"
             onChange=${(e) => save({ status: e.target.value })}>
-            <option value="active">active</option>
-            <option value="dormant">dormant</option>
+            <option value="active">auto</option>
+            <option value="pinned">always active</option>
+            <option value="dormant">always dormant</option>
           </select>
           <select disabled=${readOnly || saving} value=${meta.category || ''}
             onChange=${(e) => save({ category: e.target.value || null })}>
