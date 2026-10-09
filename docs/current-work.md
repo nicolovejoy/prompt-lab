@@ -18,7 +18,10 @@
    09-26/27. Three are one-off literals (`touch` of a resync marker, `ps -axo`, one
    `npm run e2e --grep`), one is the `gc-write.sh register-session` wrapper the
    bookkeeping hook replaced on 09-27, and one is `npx playwright test` in the user
-   layer, which the 09-25 ruling allowed per repo only. Pruning them is Nico's call.
+   layer, which the 09-25 ruling allowed per repo only. All five were pruned
+   2026-10-09 on Nico's yes (backup: `~/.codex/backup-2026-10-09/`); songpath got the
+   Playwright rule text for its own `.codex/rules/`. Nico is not using Codex for a
+   while, so the re-measure waits for that.
 2. **Codex host bookkeeping is live in all five `~/src/*-codex` clones (2026-09-27).**
    PR #68 merged 2026-09-25 (`ec0385f`); the live pilot passed in prompt-lab-codex
    (session 885; details under "Live pilot" in `docs/codex-workflow-validation.md`);
@@ -141,11 +144,17 @@ memory of which directory he was in; the names alone aren't evidence. `koma_art`
 look like the underscore/dash pair fixed elsewhere; `freevite` (167 prompts) may be `invitekit`
 under an older directory name; `spike` (4 prompts) has the shape of the hidden artifacts.
 
-**`ACTIVE · N` counts hidden projects.** `activeCount` is `activeList.length` with no `private`
-filter (`web/index.html:1308-1310`), and it feeds the KPI tile (`:1334`) and the `Active · N`
-header (`:1421`) — the home screen read `37` with 16 shown. One filter fixes it, but the
-semantics are a real choice: excluding private is wrong the day a genuine project is marked
-private. Alternative is `37 · 16 shown`. Undecided.
+**`ACTIVE · N` is inflated, and hidden projects are the smaller half of why.** Measured
+2026-10-09: the tile says 40, yet 14 projects had work in the last 7 days. The other 26
+are pinned: every `project_metadata` row stores `status='active'` (the insert default in
+`web/api/project_metadata.py`, and `_load_metadata` in `web/api/overview.py` also fills
+`or "active"`), and `projectStatus()` (`web/index.html:1570`) lets any stored status
+override the 7-day rule. So writing any metadata for a project, hiding it included, makes
+it active for good. 22 of the 26 are hidden junk names, 4 are shown. Separately,
+`activeCount` (`:1634`) has no `private` filter, so the tile and the `Active · N` header
+count hidden names the chip list reports only as `+N private`. Proposed 2026-10-09,
+awaiting Nico: a status overrides only when someone chose it (store none by default,
+clear the 34 defaulted rows), which gives 14; and the header counts the names listed.
 
 Open, from the 2026-08-02 uptime/health thread and the issue backlog:
 - **`#/health` was seen by Nico on desktop 2026-10-09** (dark theme; 11/11 targets up, all
