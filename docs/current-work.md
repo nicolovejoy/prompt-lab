@@ -44,6 +44,14 @@
 **stars-demo is not being onboarded (Nico, 2026-10-09):** it was a one-off and is
 mostly done, so it stays a grey "more" entry in the dashboard chart.
 
+**Dashboard active count (2026-10-09).** #82 merged and was checked live: the tile
+reads 14, was 40, because a stored default no longer counts a project as active.
+**Open: PR #83** removes the per-project status menu altogether (active is simply
+worked on in the last 7 days; `project_metadata.status` stays in Turso, unused).
+Not rendered in a browser, so after the merge check that
+https://prompt-labs.org/#/project/prompt-lab shows a category menu and a private
+checkbox and no status menu.
+
 **Session-row housekeeping (2026-10-08).** The orphaned-`scratch` fix merged as #80
 and its helper is installed under `~/.claude/bin`. 351 stale open rows were closed by
 hand the same day (list: `~/.claude/state/closed-stale-sessions-2026-10-08.txt`).
@@ -125,6 +133,8 @@ roll-your-own and skitrack-ntzb-poc are deliberately unpushed.
 **Check the September Neon CU numbers for garm (`neon-bole-tree`) and byside.** Both were
 burned by prompt-lab's own 5-min deep health poll never letting Neon's free tier autosuspend;
 fixed 2026-08-14 (byside) and 2026-08-18 (garm). Nothing alarms on the number.
+Nico has the console steps (2026-10-09) and the numbers are not back yet. A database
+that never suspends burns 6 CU-hours a day, about 180 a month; pass is far below that.
 
 **Per-Pi service inventory: `docs/pi-inventory.md`** — prompt-lab owns it; read it before
 touching phrpi or homeassistant.local. Two leftovers from the 2026-08-13 closet move, neither
@@ -138,6 +148,13 @@ were actually answered, not which batch was sent** — Nico answers by number an
 mid-batch; the first pass lost two items that way. Left: batch 2 (Activity + day page), batch
 3 (Costs, Visitors, Todos), batch 4 (Health, About, project pages). Open question: a plain
 `About` button in the primary row may beat the `More` panel.
+Batch 2 was sent 2026-10-09 as five items and **none is answered yet**:
+- C1, Activity page note: suggested cutting "(aliases are folded into the canonical name)".
+- C2, Activity controls, headline and states: fine; lowercase metric tabs against a
+  capitalised nav is the only call.
+- C3, by-project table footnote: "so the band always reconciles" and "zoom" are the weak words.
+- C4, window totals footnote: suggested cutting "one fetch, so switching metric is instant".
+- C5, day page: "12p · 3s · 4c" is cryptic, and its error is lowercase where Activity's is not.
 
 **Project-name follow-ups from the 2026-08-05 cleanup, all unconfirmed** — they need Nico's
 memory of which directory he was in; the names alone aren't evidence. `koma_art`/`koma-launch`
