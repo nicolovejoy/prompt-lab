@@ -1516,7 +1516,9 @@ def _():
         m = h.body["projects"]["byside"]
         assert m["private"] is True, f"private not coerced to bool: {m}"
         assert m["public_counts"] is True, f"public_counts not coerced to bool: {m}"
-        assert m["category"] == "Collabs" and m["status"] == "active"
+        assert m["category"] == "Collabs"
+        # The table still has the column; nothing reads it any more.
+        assert "status" not in m, f"status leaked through: {m}"
     finally:
         restore()
 
@@ -1544,7 +1546,7 @@ def _():
                if s.startswith("INSERT INTO project_metadata")][0][0]
         assert "public_counts=excluded.public_counts" in sql, sql
         # A public_counts-only POST must not clobber siblings.
-        assert "status=excluded.status" not in sql, sql
+        assert "private=excluded.private" not in sql, sql
 
         h = invoke_post(mod, "/api/project_metadata",
                         {"project": "split-recording", "public_counts": "yes"})
@@ -1557,14 +1559,14 @@ def _():
 def _():
     mod, restore = _meta_mod("endpoint_meta_reader", lambda *a, **kw: [], role="reader")
     try:
-        h = invoke_post(mod, "/api/project_metadata", {"project": "x", "status": "dormant"})
+        h = invoke_post(mod, "/api/project_metadata", {"project": "x", "private": True})
         assert h.status_code == 403, f"reader got {h.status_code}, expected 403"
     finally:
         restore()
 
     mod, restore = _meta_mod("endpoint_meta_anon", lambda *a, **kw: [], role=None)
     try:
-        h = invoke_post(mod, "/api/project_metadata", {"project": "x", "status": "dormant"})
+        h = invoke_post(mod, "/api/project_metadata", {"project": "x", "private": True})
         assert h.status_code == 401, f"anon got {h.status_code}, expected 401"
     finally:
         restore()
@@ -1581,14 +1583,14 @@ def _():
         if "SELECT alias FROM project_aliases" in sql:
             return [{"alias": "offer-builder"}]
         if sql.startswith("SELECT project"):
-            return [{"project": "byside", "category": None, "private": 0,
-                     "status": "dormant", "updated_at": "now"}]
+            return [{"project": "byside", "category": None, "private": 1,
+                     "updated_at": "now"}]
         return []
 
     mod, restore = _meta_mod("endpoint_meta_alias", fake_turso)
     try:
         h = invoke_post(mod, "/api/project_metadata",
-                        {"project": "offer-builder", "status": "dormant"})
+                        {"project": "offer-builder", "private": True})
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         assert h.body["project"] == "byside", f"alias not folded: {h.body}"
         upserts = [(s, a) for s, a in captured if s.startswith("INSERT INTO project_metadata")]
@@ -1618,25 +1620,23 @@ def _():
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         sql, args = [(s, a) for s, a in captured
                      if s.startswith("INSERT INTO project_metadata")][0]
-        # A category-only POST must not reset status/private on an existing row.
-        assert "status=excluded.status" not in sql, f"status clobbered: {sql}"
+        # A category-only POST must not reset private on an existing row.
         assert "private=excluded.private" not in sql, f"private clobbered: {sql}"
         assert "category=excluded.category" in sql, f"category not updated: {sql}"
     finally:
         restore()
 
 
-@test("project_metadata: POST rejects bad category, status, private, and empty body")
+@test("project_metadata: POST rejects bad category, private, and empty body")
 def _():
     mod, restore = _meta_mod("endpoint_meta_validate", lambda *a, **kw: [])
     try:
         cases = [
             ({"project": "p", "category": "Nonsense"}, "bad category"),
-            ({"project": "p", "status": "archived"}, "bad status"),
-            ({"project": "p", "status": "auto"}, "the default is spelled 'active'"),
+            ({"project": "p", "status": "dormant"}, "status is not a field"),
             ({"project": "p", "private": "yes"}, "private as string"),
             ({"project": "p"}, "no fields"),
-            ({"status": "active"}, "no project"),
+            ({"private": True}, "no project"),
         ]
         for body, label in cases:
             h = invoke_post(mod, "/api/project_metadata", body)
@@ -1648,7 +1648,7 @@ def _():
         restore()
 
 
-@test("project_metadata: POST accepts each status, pinned included")
+@test("project_metadata: POST never writes or returns status")
 def _():
     captured = []
 
@@ -1657,16 +1657,18 @@ def _():
         if "project_aliases" in sql:
             return []
         if sql.startswith("SELECT project"):
-            return [{"project": "p", "category": None, "private": 0,
-                     "status": captured[-2][1][1], "updated_at": "now"}]
+            return [{"project": "p", "category": None, "private": 1,
+                     "status": "active", "updated_at": "now"}]
         return []
 
-    mod, restore = _meta_mod("endpoint_meta_statuses", fake_turso)
+    mod, restore = _meta_mod("endpoint_meta_no_status", fake_turso)
     try:
-        for status in ("active", "pinned", "dormant"):
-            h = invoke_post(mod, "/api/project_metadata", {"project": "p", "status": status})
-            assert h.status_code == 200, f"{status}: got {h.status_code}: {h.body}"
-            assert h.body["metadata"]["status"] == status, f"{status}: {h.body}"
+        h = invoke_post(mod, "/api/project_metadata",
+                        {"project": "p", "private": True, "status": "dormant"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        assert "status" not in h.body["metadata"], h.body
+        for sql, _args in captured:
+            assert "status" not in sql, f"status reached the database: {sql}"
     finally:
         restore()
 
@@ -1730,6 +1732,7 @@ def _():
         assert "byside" in meta, f"alias not folded: {meta}"
         assert "offer-builder" not in meta, f"alias leaked: {meta}"
         assert meta["byside"]["private"] is True
+        assert "status" not in meta["byside"], f"status leaked through: {meta}"
     finally:
         restore_a()
         restore_q()

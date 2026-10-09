@@ -1507,8 +1507,8 @@
       if (!authed) return html`<${Login} passwordLogin=${passwordLogin} googleLogin=${googleLogin}
         onLogin=${(r) => { setRole(r); setEmail(null); setAuthed(true); }} />`;
 
-      // Project lists for the top-nav picker, split by projectStatus(): a
-      // deliberate status (issue #23) wins, otherwise 7-day activity decides.
+      // Project lists for the top-nav picker, split by projectStatus():
+      // active means worked on in the last 7 days.
       const bp = overview?.by_project || {};
       const byRecency = (a, b) =>
         (bp[b]?.summaries?.[0]?.date || '').localeCompare(bp[a]?.summaries?.[0]?.date || '');
@@ -1616,8 +1616,8 @@
       const bp = overview.by_project || {};
       const known = [...new Set([
         ...Object.keys(bp), ...(overview.all_projects || [])])];
-      // Same split + ordering as the top-nav picker: explicit status (issue
-      // #23) wins, otherwise dormancy is derived from 7-day activity.
+      // Same split + ordering as the top-nav picker: active means worked on in
+      // the last 7 days.
       const byRecency = (a, b) =>
         (bp[b]?.summaries?.[0]?.date || '').localeCompare(bp[a]?.summaries?.[0]?.date || '');
       const activeList = known.filter(p => projectStatus(overview, p) === 'active').sort(byRecency);
@@ -2357,17 +2357,11 @@
       };
     }
 
-    // Is a project active or dormant? A deliberate status (issue #23) wins:
-    // 'pinned' is always active, 'dormant' always dormant. Anything else
-    // follows the last 7 days of work (by_project holds exactly those
-    // projects). A stored 'active' is NOT a choice: it is the column default,
-    // written whenever a project gets a metadata row for any reason, hiding it
-    // included. Reading it as one counted 40 active projects when 14 had been
-    // worked on that week (2026-10-09).
+    // Active means worked on in the last 7 days: by_project holds exactly
+    // those projects. Nothing stored overrides it. A per-project status menu
+    // did until 2026-10-09; it was never set on purpose, and its stored
+    // default made every hidden project count as active (40 shown, 14 real).
     function projectStatus(overview, p) {
-      const chosen = overview?.project_metadata?.[p]?.status;
-      if (chosen === 'pinned') return 'active';
-      if (chosen === 'dormant') return 'dormant';
       return (overview?.by_project || {})[p] ? 'active' : 'dormant';
     }
 
@@ -4509,13 +4503,6 @@
 
       return html`
         <div class="meta-editor">
-          <select disabled=${readOnly || saving} value=${meta.status}
-            title="auto: active when worked on in the last 7 days"
-            onChange=${(e) => save({ status: e.target.value })}>
-            <option value="active">auto</option>
-            <option value="pinned">always active</option>
-            <option value="dormant">always dormant</option>
-          </select>
           <select disabled=${readOnly || saving} value=${meta.category || ''}
             onChange=${(e) => save({ category: e.target.value || null })}>
             <option value="">no category</option>
@@ -4585,7 +4572,7 @@
 
       // No metadata row yet = the defaults, so the editor renders either way.
       const meta = {
-        category: null, private: false, status: 'active',
+        category: null, private: false,
         ...(overview?.project_metadata?.[name] || {}),
       };
 

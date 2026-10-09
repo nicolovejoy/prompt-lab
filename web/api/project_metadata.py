@@ -1,6 +1,6 @@
-"""Per-project metadata: category + private + status (issue #23).
+"""Per-project metadata: category + private (issue #23).
 
-GET  /api/project_metadata            -> {project: {category, private, status}}
+GET  /api/project_metadata            -> {project: {category, private, public_counts}}
 POST /api/project_metadata            -> upsert one project's fields (admin only)
 
 Turso-owned. The table is written only from here — there is deliberately no
@@ -20,14 +20,13 @@ mistake the PUBLIC_PROJECTS read-time allowlist was (deleted 2026-06-03).
 `category` is display-only — it organizes the UI and is explicitly not a sharing
 unit.
 
-`status`: `active` IS THE COLUMN DEFAULT, NOT A CHOICE. The column is
-`TEXT NOT NULL DEFAULT 'active'`, so every insert that names no status writes
-it: hiding a project here, seeding `public_counts` from a script. The dashboard
-therefore reads `active` as "nobody chose" and derives active or dormant from
-the last 7 days of work. The deliberate overrides are `pinned` (always active)
-and `dormant` (always dormant). Reading the default as a choice made every
-project with a row active for good: 40 "active" projects on 2026-10-09, of
-which 14 had been worked on that week.
+THE `status` COLUMN IS DEAD. The table still has it (`TEXT NOT NULL DEFAULT
+'active'`); nothing here reads or writes it. It was an active/dormant override
+that was never once set on purpose (2026-07-14 to 2026-10-09), while its
+default made every project with a row count as active: 40 "active" projects on
+2026-10-09, of which 14 had been worked on that week. Active now means worked
+on in the last 7 days, decided in the dashboard from `by_project`. Don't revive
+the column without a use for it.
 
 `public_counts` IS a real gate, unlike `private`. When set, /api/public_history
 projects this project's weekly session/commit counts (numeric columns only,
@@ -46,7 +45,6 @@ from auth_helper import get_role
 from turso_helper import resolve_project_names, turso_query
 
 CATEGORIES = {"Music", "Art", "Collabs", "Tools", "Other"}
-STATUSES = {"active", "dormant", "pinned"}
 MAX_BODY = 2048
 
 
@@ -66,7 +64,7 @@ class handler(BaseHTTPRequestHandler):
             return
         try:
             rows = turso_query(
-                "SELECT project, category, private, status, public_counts, "
+                "SELECT project, category, private, public_counts, "
                 "updated_at FROM project_metadata")
         except Exception as e:
             self._send(503, {"error": "temporarily unavailable",
@@ -121,7 +119,7 @@ class handler(BaseHTTPRequestHandler):
             canonical = resolve_project_names(name)[0]
             self._upsert(canonical, fields)
             row = turso_query(
-                "SELECT project, category, private, status, public_counts, "
+                "SELECT project, category, private, public_counts, "
                 "updated_at FROM project_metadata WHERE project = ?",
                 [canonical])[0]
         except Exception as e:
@@ -173,12 +171,6 @@ def _validate(body):
                     f"category must be null or one of {sorted(CATEGORIES)}")
         fields["category"] = cat
 
-    if "status" in body:
-        st = body["status"]
-        if not isinstance(st, str) or st not in STATUSES:
-            raise ValueError(f"status must be one of {sorted(STATUSES)}")
-        fields["status"] = st
-
     if "private" in body:
         pv = body["private"]
         if not isinstance(pv, bool):
@@ -198,7 +190,6 @@ def _row(r):
     return {
         "category": r.get("category"),
         "private": bool(int(r.get("private") or 0)),
-        "status": r.get("status") or "active",
         "public_counts": bool(int(r.get("public_counts") or 0)),
         "updated_at": r.get("updated_at"),
     }

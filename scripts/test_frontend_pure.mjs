@@ -214,37 +214,26 @@ test('bucketUptime: string values from the API are coerced', () => {
     { uptime: 99.9, ms: 120, days: 1 });
 });
 
-// by_project holds the projects with work in the last 7 days; project_metadata
-// holds one row per project anyone has ever annotated.
-const overviewWith = (worked, meta) => ({
+// by_project holds exactly the projects with work in the last 7 days.
+const overviewWith = (worked, meta = {}) => ({
   by_project: Object.fromEntries(worked.map((p) => [p, { summaries: [] }])),
   project_metadata: meta,
 });
 
-test('projectStatus: the stored default does not make a project active', () => {
-  // Every metadata row carries status 'active' unless someone chose otherwise:
-  // it is the column default, written when a project is hidden or seeded.
-  const o = overviewWith(['worked'], {
-    worked: { status: 'active', private: false },
-    hidden: { status: 'active', private: true },
-  });
-  assert.equal(pure.projectStatus(o, 'worked'), 'active');
-  assert.equal(pure.projectStatus(o, 'hidden'), 'dormant');
-});
-
-test('projectStatus: no metadata row follows the last 7 days', () => {
-  const o = overviewWith(['worked'], {});
+test('projectStatus: active means worked on in the last 7 days', () => {
+  const o = overviewWith(['worked']);
   assert.equal(pure.projectStatus(o, 'worked'), 'active');
   assert.equal(pure.projectStatus(o, 'idle'), 'dormant');
 });
 
-test('projectStatus: pinned and dormant are deliberate and win either way', () => {
-  const o = overviewWith(['busy'], {
-    idle: { status: 'pinned' },
-    busy: { status: 'dormant' },
+test('projectStatus: a metadata row changes nothing', () => {
+  // Hiding a project writes a row. That once made it count as active for good.
+  const o = overviewWith(['worked'], {
+    worked: { private: true, status: 'dormant' },
+    hidden: { private: true, status: 'active' },
   });
-  assert.equal(pure.projectStatus(o, 'idle'), 'active');
-  assert.equal(pure.projectStatus(o, 'busy'), 'dormant');
+  assert.equal(pure.projectStatus(o, 'worked'), 'active');
+  assert.equal(pure.projectStatus(o, 'hidden'), 'dormant');
 });
 
 test('projectStatus: an overview that has not loaded is dormant, not a crash', () => {
