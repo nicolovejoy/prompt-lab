@@ -678,6 +678,108 @@ def test_quoted_project_and_stop(tmp: Path) -> None:
           (codex.split("|")[0],))[0][0], None)
 
 
+def test_scratch_row_closes_once_the_conversation_has_a_repo(tmp: Path) -> None:
+    """A conversation that starts before `git init` must not leave an open row.
+
+    Its first prompts file under `scratch`. After `git init` the same
+    conversation registers under the repo, and every lookup is scoped by
+    project, so nothing could reach the `scratch` row again: it stayed open for
+    good, once per new project (stars-demo, songpath, label-me, tideline).
+    """
+    print("\n22. a scratch row closes once its conversation has a repo")
+    e = Env(tmp)
+    fresh = tmp / "src" / "newproj"
+    loose = tmp / "not-a-repo"
+    fresh.mkdir(parents=True)
+    loose.mkdir()
+
+    e.submit("planning a new project before any git init", session_uuid="uuid-new", cwd=fresh)
+    e.submit("an unrelated conversation outside any repo", session_uuid="uuid-other", cwd=loose)
+    codex = e.gc(GC_WRITE, "register-session", cwd=fresh, codex_thread="thread-new")
+    scratch_id = e.q("SELECT id FROM sessions WHERE claude_session_id='uuid-new'")[0][0]
+    other_id = e.q("SELECT id FROM sessions WHERE claude_session_id='uuid-other'")[0][0]
+    codex_id = int(codex.split("|", 1)[0])
+    check("work before git init files under scratch",
+          e.q("SELECT DISTINCT project FROM sessions"), [("scratch",)])
+
+    subprocess.run(["git", "init", "-q"], cwd=str(fresh), check=True, capture_output=True)
+    e.submit("first prompt after git init in the new repo", session_uuid="uuid-new", cwd=fresh)
+    repo_id = e.q("SELECT id FROM sessions WHERE project='newproj'")[0][0]
+    check("the repo gets its own row", repo_id != scratch_id, True)
+    check("the conversation's scratch row is closed",
+          bool(e.q("SELECT ended_at FROM sessions WHERE id=?", (scratch_id,))[0][0]), True)
+    # A summary marks a handed-off session to the nightly and the dashboard.
+    check("no summary is invented for it",
+          e.q("SELECT summary FROM sessions WHERE id=?", (scratch_id,))[0][0], None)
+    check("other conversations' scratch rows stay open",
+          e.q("SELECT ended_at FROM sessions WHERE id IN (?,?)", (other_id, codex_id)),
+          [(None,), (None,)])
+
+    e.gc(GC_WRITE, "register-session", cwd=fresh, codex_thread="thread-new")
+    check("a Codex conversation's scratch row closes the same way",
+          bool(e.q("SELECT ended_at FROM sessions WHERE id=?", (codex_id,))[0][0]), True)
+    check("the unrelated scratch row is still open",
+          e.q("SELECT ended_at FROM sessions WHERE id=?", (other_id,))[0][0], None)
+
+    # Work that stays outside a repo keeps its one open scratch row.
+    e.submit("more work that never gets a repo at all", session_uuid="uuid-other", cwd=loose)
+    check("scratch-only work is untouched",
+          e.q("SELECT id, ended_at FROM sessions WHERE claude_session_id='uuid-other'"),
+          [(other_id, None)])
+
+
+def test_session_id_from_before_git_init_still_works(tmp: Path) -> None:
+    """/readup prints the ID that /handoff passes back much later.
+
+    If the repo was created in between, that ID names the `scratch` row and
+    /handoff failed with "does not belong to this project". It now reaches the
+    same conversation's row in the repo, and only that conversation's.
+    """
+    print("\n23. a session ID from before git init reaches the repo row")
+    e = Env(tmp)
+    fresh = tmp / "src" / "newproj"
+    fresh.mkdir(parents=True)
+
+    e.submit("planning a new project before any git init", session_uuid="uuid-new", cwd=fresh)
+    e.submit("someone else also working outside a repo", session_uuid="uuid-other", cwd=fresh)
+    readup = e.gc(GC_WRITE, "register-session", cwd=fresh, codex_thread="thread-new")
+    scratch_id = e.q("SELECT id FROM sessions WHERE claude_session_id='uuid-new'")[0][0]
+    other_id = e.q("SELECT id FROM sessions WHERE claude_session_id='uuid-other'")[0][0]
+    codex_scratch = readup.split("|", 1)[0]
+
+    subprocess.run(["git", "init", "-q"], cwd=str(fresh), check=True, capture_output=True)
+    e.submit("first prompt after git init in the new repo", session_uuid="uuid-new", cwd=fresh)
+    repo_id = e.q("SELECT id FROM sessions WHERE project='newproj'")[0][0]
+    started = e.q("SELECT started_at FROM sessions WHERE id=?", (repo_id,))[0][0]
+
+    check("the old ID resolves to the repo row",
+          e.gc(GC_READ, "current-session", str(scratch_id), cwd=fresh), f"{repo_id}|{started}")
+    e.gc(GC_WRITE, "update-session-summary", str(scratch_id), stdin="built the thing", cwd=fresh)
+    e.gc(GC_WRITE, "end-session", str(scratch_id), cwd=fresh)
+    check("the handoff lands on the repo row",
+          e.q("SELECT summary, ended_at IS NOT NULL FROM sessions WHERE id=?", (repo_id,)),
+          [("built the thing", 1)])
+    check("the scratch row gets no summary",
+          e.q("SELECT summary FROM sessions WHERE id=?", (scratch_id,))[0][0], None)
+
+    check("another conversation's scratch ID is refused",
+          e.gc(GC_WRITE, "end-session", str(other_id), cwd=fresh).startswith("<exit 3"), True)
+    check("and that row is left alone",
+          e.q("SELECT summary, ended_at FROM sessions WHERE id=?", (other_id,)), [(None, None)])
+
+    codex_repo = e.gc(GC_WRITE, "register-session", cwd=fresh, codex_thread="thread-new")
+    e.gc(GC_WRITE, "register-session", cwd=fresh, codex_thread="thread-two")
+    check("a Codex conversation's old ID resolves to its repo row",
+          e.gc(GC_READ, "current-session", codex_scratch, cwd=fresh, codex_thread="thread-new"),
+          codex_repo)
+    check("a different Codex conversation cannot use that ID",
+          e.gc(GC_WRITE, "end-session", codex_scratch, cwd=fresh,
+               codex_thread="thread-two").startswith("<exit 3"), True)
+    check("the Codex repo row is still open",
+          e.q("SELECT ended_at FROM sessions WHERE id=?", (int(codex_repo.split("|", 1)[0]),)),
+          [(None,)])
+
+
 def main() -> int:
     # The hook is bash and shells out; skip rather than fail red if the runner
     # lacks a dependency. A skip is honest; a red CI for an env reason is noise.
@@ -708,6 +810,8 @@ def main() -> int:
         test_launcher_lifecycle,
         test_legacy_cannot_adopt_codex_or_closed_rows,
         test_quoted_project_and_stop,
+        test_scratch_row_closes_once_the_conversation_has_a_repo,
+        test_session_id_from_before_git_init_still_works,
     ]
     for t in tests:
         with tempfile.TemporaryDirectory() as d:

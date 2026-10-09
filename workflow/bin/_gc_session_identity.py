@@ -132,7 +132,41 @@ def legacy(row):
     return row is not None and not (dict(row).get("claude_session_id") or "").startswith(("codex:", "launch:"))
 
 
+SCRATCH = "scratch"  # _gc_project.sh's bucket for a directory that is not a repo
+
+
+def retire_scratch(conn, project, row):
+    """Close this conversation's open `scratch` row once it has a real project.
+
+    Work begun before `git init` is filed under `scratch`. After `git init` the
+    same conversation registers under the repo, and every lookup here is scoped
+    by project, so nothing reaches the first row again. The shared conversation
+    ID links the two rows. No summary is written: a summary marks a handed-off
+    session to the nightly and the dashboard.
+    """
+    native = dict(row).get("claude_session_id") if row is not None else None
+    if native and project != SCRATCH:
+        conn.execute("""UPDATE sessions SET ended_at=datetime('now') WHERE project=?
+            AND claude_session_id=? AND ended_at IS NULL""", (SCRATCH, native))
+    return row
+
+
+def follow_scratch(conn, project, requested):
+    """Map a session ID from before `git init` to the same conversation's row here.
+
+    /readup prints the ID that /handoff passes back later. If the repo was
+    created in between, that ID names the `scratch` row. The caller still checks
+    ownership against the row this returns.
+    """
+    if requested is None or project == SCRATCH:
+        return requested
+    native = dict(by_id(conn, SCRATCH, requested) or {}).get("claude_session_id")
+    row = by_native(conn, project, native) if native else None
+    return row["id"] if row is not None else requested
+
+
 def resolve(conn, project, owner, requested=None):
+    requested = follow_scratch(conn, project, requested)
     if owner:
         row = binding(conn, project, owner)
     elif requested is not None:
@@ -165,7 +199,7 @@ def register(conn, project, owner):
         row = by_id(conn, project, read_pointer(project))
         if not legacy(row) or row["ended_at"] is not None:
             row = insert(conn, project)
-    return row
+    return retire_scratch(conn, project, row)
 
 
 def claude_row(conn, project, owner, native):
@@ -194,7 +228,7 @@ def claude_row(conn, project, owner, native):
             row = insert(conn, project, native)
     if owner:
         bind(conn, project, owner, row["id"])
-    return row
+    return retire_scratch(conn, project, row)
 
 
 def codex_owner(native):
