@@ -152,9 +152,11 @@ are pinned: every `project_metadata` row stores `status='active'` (the insert de
 override the 7-day rule. So writing any metadata for a project, hiding it included, makes
 it active for good. 22 of the 26 are hidden junk names, 4 are shown. Separately,
 `activeCount` (`:1634`) has no `private` filter, so the tile and the `Active · N` header
-count hidden names the chip list reports only as `+N private`. Proposed 2026-10-09,
-awaiting Nico: a status overrides only when someone chose it (store none by default,
-clear the 34 defaulted rows), which gives 14; and the header counts the names listed.
+count hidden names the chip list reports only as `+N private`. **Open: PR #82**
+(approved by Nico 2026-10-09): `active` means nobody chose and the 7-day rule decides,
+`pinned` is the new always-active override, and the headers count the names listed.
+No rows are rewritten. Not rendered in a browser before the PR, so after the merge
+check https://prompt-labs.org/#/ shows about 14 on the tile, not 40.
 
 Open, from the 2026-08-02 uptime/health thread and the issue backlog:
 - **`#/health` was seen by Nico on desktop 2026-10-09** (dark theme; 11/11 targets up, all
