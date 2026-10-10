@@ -48,9 +48,13 @@ mostly done, so it stays a grey "more" entry in the dashboard chart.
 reads 14, was 40, because a stored default no longer counts a project as active.
 #83 merged and deployed the same day: the per-project status menu is gone (active is
 simply worked on in the last 7 days; `project_metadata.status` stays in Turso, unused).
-**Still to look at:** it was not rendered in a browser, so check that
-https://prompt-labs.org/#/project/prompt-lab shows a category menu and a private
-checkbox and no status menu.
+Checked in a browser 2026-10-10: the project page shows no status menu. Done.
+
+**Localization (2026-10-10).** The `localize-kit` branch (`/localize` command, French
+glossary, shared copy-location rule) is merged to main. Not yet done: run
+`workflow/install.sh` and re-sync the shared block fleet-wide (every repo reads
+`behind` until then). Second-language plan, incl. the glossary path fix and the
+route-groups-to-`[lang]` threshold, is #85. No repo needs Spanish today.
 
 **Session-row housekeeping (2026-10-08).** The orphaned-`scratch` fix merged as #80
 and its helper is installed under `~/.claude/bin`. 351 stale open rows were closed by
