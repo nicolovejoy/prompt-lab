@@ -10,6 +10,29 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-10-15 — Test browsers run in Edge; Chrome is Nico's
+
+Scope: every repo that runs Playwright (tests, phone/layout checks, the Playwright MCP server)
+
+**Launch Edge, never Chrome or bundled Chromium, for anything automated.** Several
+Chrome-looking windows at once made it impossible to tell a test run from Nico's own
+browser. Edge is installed once per machine (`brew install --cask microsoft-edge`)
+and Playwright drives it through the `msedge` channel, so a test window is visibly
+not Chrome.
+
+- `playwright.config`: on each Chromium project, `use: { channel: 'msedge' }`, or
+  set `channel: 'msedge'` in `launch()` for a hand-rolled runner.
+- The global Playwright MCP server already passes `--browser msedge`; nothing to do
+  per repo.
+- WebKit and Firefox projects are unaffected; they were never the confusion.
+
+**The one exception is the claude-in-chrome extension**, which drives the real
+signed-in Chrome on purpose (see the 2026-10-08 entry below). Edge is for
+throwaway browsers; Chrome is for Nico's sessions.
+
+Each repo's agent flips its own config. prompt-lab did its phone check and the MCP
+server on 2026-10-15.
+
 ## 2026-10-08 — Prod smoke tests: drive the real signed-in Chrome, ask once per session
 
 Scope: any web app with sign-in, when a Claude Code session needs to confirm a change is live in prod
