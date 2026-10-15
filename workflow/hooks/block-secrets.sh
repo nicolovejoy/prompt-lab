@@ -9,6 +9,11 @@
 #          *.key, *.pem, credentials*, ~/secrets/* and ~/.secrets/* (contents only — listing OK)
 # Symlinks: resolved before matching — an allowlisted name pointing at a real
 #           secret (e.g. .env.tpl -> .env.local) is blocked on the resolved target.
+#
+# Principle for the Bash branch: block commands whose OUTPUT could carry a secret
+# value into the conversation. Commands that only write secrets to places the hook
+# already refuses to read (a .env file, the 1Password vault, a child process's
+# environment) are allowed.
 
 set -euo pipefail
 
@@ -86,6 +91,57 @@ is_in_secrets_dir() {
   return 1
 }
 
+# Remove heredoc bodies (<<TAG ... TAG, <<'TAG', <<"TAG", <<-TAG) from a command
+# string so that FILE CONTENTS being written are not mistaken for file paths
+# being read. Only the shell syntax outside the heredoc is matched afterwards.
+strip_heredocs() {
+  awk '
+    BEGIN { skip = 0; tag = "" }
+    {
+      if (skip) {
+        line = $0; sub(/^[ \t]+/, "", line)
+        if (line == tag) { skip = 0; tag = "" }
+        next
+      }
+      if (match($0, /<<-?[ \t]*['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/)) {
+        t = substr($0, RSTART, RLENGTH)
+        sub(/^<<-?[ \t]*/, "", t); gsub(/['"'"'"]/, "", t)
+        tag = t; skip = 1
+        print substr($0, 1, RSTART - 1)
+        next
+      }
+      print
+    }
+  '
+}
+
+# Does the command contain any token whose basename classifies as a secret file?
+# Tokens are whitespace- or quote-delimited words that look like paths or names.
+# Using the same classifier as the file-tool branch keeps the two in agreement:
+# .env.tpl is allowed here exactly as it is for Read/Edit/Write.
+cmd_mentions_secret_file() {
+  local cmd="$1" tok real
+  # shellcheck disable=SC2086
+  for tok in $(printf '%s' "$cmd" | tr '"'"'"'|;&()<>' '          ' | tr -s ' ' '\n'); do
+    case "$tok" in
+      *.env*|*.pem|*.key|credentials*|*/credentials*) ;;
+      *) continue ;;
+    esac
+    tok="${tok%%=*}"            # VAR=.env.local  -> keep the value side below
+    [ -z "$tok" ] && continue
+    # the token may be the right-hand side of --env-file=.env.tpl
+    case "$tok" in --*) continue ;; esac
+    if is_secret_file "$tok"; then return 0; fi
+  done
+  # --flag=VALUE forms (e.g. --env-file=.env.local): classify the value part
+  for tok in $(printf '%s' "$cmd" | grep -oE -- '--?[A-Za-z-]+=[^ "'"'"']+' || true); do
+    tok="${tok#*=}"
+    case "$tok" in *.env*|*.pem|*.key|credentials*) ;; *) continue ;; esac
+    if is_secret_file "$tok"; then return 0; fi
+  done
+  return 1
+}
+
 block() {
   echo "BLOCKED: $1 — ask the user to handle this file directly." >&2
   exit 2
@@ -116,50 +172,69 @@ case "$TOOL" in
       block "Grep inside ~/secrets/ — ask the user to handle it directly"
     fi
     # Block if glob pattern targets .env files
-    if [[ "$GLOB" == *".env"* ]] && [[ "$GLOB" != *".env.example"* ]] && [[ "$GLOB" != *".env.template"* ]]; then
+    if [[ "$GLOB" == *".env"* ]] && [[ "$GLOB" != *".env.example"* ]] && [[ "$GLOB" != *".env.template"* ]] && [[ "$GLOB" != *".env.tpl"* ]]; then
       block "Grep glob targets .env files"
     fi
     ;;
 
   Glob)
     PATTERN="$(echo "$INPUT" | jq -r '.tool_input.pattern // empty')"
-    if [[ "$PATTERN" == *".env"* ]] && [[ "$PATTERN" != *".env.example"* ]]; then
+    if [[ "$PATTERN" == *".env"* ]] && [[ "$PATTERN" != *".env.example"* ]] && [[ "$PATTERN" != *".env.tpl"* ]]; then
       block "Glob pattern targets .env files"
     fi
     ;;
 
   Bash)
-    CMD="$(echo "$INPUT" | jq -r '.tool_input.command // empty')"
-    # Match commands that read file contents and target .env files
-    # (but not commands like "test -f .env" or "cp .env.example .env.local")
-    if echo "$CMD" | grep -qE '(cat|head|tail|less|more|bat|sed|awk|grep|rg|ag|source|\.)\s+.*\.env' 2>/dev/null; then
-      # Allow reading .env.example/.env.template
-      if echo "$CMD" | grep -qE '\.(env\.example|env\.template|env\.sample)' 2>/dev/null; then
-        exit 0
+    RAW="$(echo "$INPUT" | jq -r '.tool_input.command // empty')"
+    # Match on the shell syntax only; heredoc bodies are file contents, not paths.
+    CMD="$(printf '%s\n' "$RAW" | strip_heredocs)"
+
+    # --- secret files on the command line ---
+    # A reader verb anywhere + a secret-classified file token anywhere = block.
+    # Writers (cp, mv, touch, test -f, op inject -o) with no reader verb pass.
+    READER='(^|[|;&(]|\s)(cat|head|tail|less|more|bat|sed|awk|grep|rg|ag|source|xxd|strings|base64|od|hexdump|cut|tr|sort|uniq|wc|python3?|node|ruby|perl|\.)\s'
+    if echo "$CMD" | grep -qE "$READER" 2>/dev/null && cmd_mentions_secret_file "$CMD"; then
+      block "Shell command reads a secret file"
+    fi
+    # Redirect-in from a secret file: < .env, < .env.local, <.env
+    for tok in $(echo "$CMD" | grep -oE '<\s*[^ <>|;&]+' | sed -E 's/^<\s*//' || true); do
+      if is_secret_file "$tok"; then block "Shell command reads a secret file via redirect"; fi
+    done
+
+    # --- ~/secrets and ~/.secrets: contents never, listing OK ---
+    if echo "$CMD" | grep -qE "$READER"'.*(~|\$HOME|/Users/[^/]+)/\.?secrets' 2>/dev/null; then
+      block "Shell command reads file in secrets dir — ask the user to handle it directly"
+    fi
+
+    # --- 1Password CLI ---
+    # Still blocked, always: anything whose purpose is to PRINT a secret value.
+    if echo "$CMD" | grep -qE '\bop\s+read\b' 2>/dev/null; then
+      block "op read prints a secret value — suggest the user run it manually"
+    fi
+    if echo "$CMD" | grep -qE '\bop\s+item\s+(get|delete)\b' 2>/dev/null; then
+      block "op item get/delete — suggest the user run it manually"
+    fi
+    if echo "$CMD" | grep -qE '\bop\b.*--reveal' 2>/dev/null; then
+      block "op --reveal prints secret values"
+    fi
+    if echo "$CMD" | grep -qE '\bop\s+item\s+(create|edit)\b.*--format' 2>/dev/null; then
+      block "op item create/edit with --format prints field values"
+    fi
+    # op inject: allowed only when writing to a file (-o / --out-file). Without
+    # it, the materialized secrets go to stdout.
+    if echo "$CMD" | grep -qE '\bop\s+inject\b' 2>/dev/null; then
+      if ! echo "$CMD" | grep -qE '\bop\s+inject\b[^|;&]*(\s-o\s|--out-file[ =])' 2>/dev/null; then
+        block "op inject without -o would print secrets — add -o <file>"
       fi
-      block "Shell command reads .env file"
     fi
-    # Also catch piping .env into something
-    if echo "$CMD" | grep -qE '<\s*\.env|<\s*\S*\.env\.' 2>/dev/null; then
-      block "Shell command reads .env file via redirect"
-    fi
-
-    # Block reading contents of ~/secrets/ and ~/.secrets/ files (ls/stat/file are OK)
-    if echo "$CMD" | grep -qE '(cat|head|tail|less|more|bat|sed|awk|grep|rg|ag|source|\.)\s+.*~/\.?secrets' 2>/dev/null; then
-      block "Shell command reads file in secrets dir — ask the user to handle it directly"
-    fi
-    if echo "$CMD" | grep -qE '(cat|head|tail|less|more|bat|sed|awk|grep|rg|ag|source|\.)\s+.*/Users/[^/]+/\.?secrets' 2>/dev/null; then
-      block "Shell command reads file in secrets dir — ask the user to handle it directly"
-    fi
-
-    # 1Password CLI: block commands that extract secrets or mutate the vault.
-    # Allowed: op item list, op vault list, op account list (metadata only).
-    # For anything else, suggest the user run it manually.
-    if echo "$CMD" | grep -qE '\bop\s+(read|inject|run)\b' 2>/dev/null; then
-      block "op command extracts/injects secrets — suggest the user run it manually"
-    fi
-    if echo "$CMD" | grep -qE '\bop\s+item\s+(get|edit|delete|create)\b' 2>/dev/null; then
-      block "op item command accesses/mutates vault — suggest the user run it manually"
+    # op run: secrets go into the child's environment, not the transcript. Block
+    # only if the child command obviously dumps the environment.
+    if echo "$CMD" | grep -qE '\bop\s+run\b' 2>/dev/null; then
+      CHILD="${CMD#*op run}"
+      CHILD="${CHILD#* -- }"
+      if echo "$CHILD" | grep -qE '(^|[|;&(]|\s)(env|printenv)(\s|$)|\bexport\s+-p\b|\bdeclare\s+-[xp]\b|\becho\b[^|;&]*\$' 2>/dev/null; then
+        block "op run child command would print environment variables"
+      fi
     fi
     ;;
 esac
