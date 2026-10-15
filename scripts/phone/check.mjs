@@ -22,9 +22,11 @@ const SHOTS = path.join(ROOT, '.playwright-mcp', 'phone');
 
 // WebKit under the iPhone descriptor is the closest local stand-in for both
 // Safari and Chrome on iOS (Chrome on iOS is WebKit too).
+// Desktop runs in Edge (`launch.channel`) so test windows are visibly not
+// Nico's own Chrome. Install it once: brew install --cask microsoft-edge
 const PROFILES = {
   phone: { engine: webkit, options: { ...devices['iPhone 14'] } },
-  desktop: { engine: chromium, options: { viewport: { width: 1280, height: 800 } } },
+  desktop: { engine: chromium, launch: { channel: 'msedge' }, options: { viewport: { width: 1280, height: 800 } } },
   // Launched from the home screen. iOS reports it through navigator.standalone;
   // Playwright cannot put a page in display-mode: standalone, so the check
   // sets the property the page reads.
@@ -80,7 +82,7 @@ async function screenshot(page, profile, file) {
 async function runCheck(check, base, browsers, results) {
   const profile = PROFILES[check.profile];
   if (!profile) throw new Error(`unknown profile "${check.profile}"`);
-  if (!browsers[check.profile]) browsers[check.profile] = await profile.engine.launch();
+  if (!browsers[check.profile]) browsers[check.profile] = await profile.engine.launch(profile.launch);
   const context = await browsers[check.profile].newContext(profile.options);
   if (profile.standalone) {
     await context.addInitScript(() => {
