@@ -17,6 +17,10 @@
 # USE:      `work`            -> shows a numbered menu
 #           `work musicforge` -> opens that project directly
 #           `work mus<TAB>`   -> completes from ~/src
+#           Every `work` launch then asks which Claude model to use
+#           (Enter keeps the default from ~/.claude/settings.json, a
+#           number picks another) and starts the session on /readup.
+#           `work musicforge opus` -> skips the model question.
 #           `cx prompt-lab` -> same layout, running Codex in
 #                              ~/src/<project>-codex; refuses if that
 #                              clone doesn't exist
@@ -80,6 +84,7 @@ _work_color() {
 
 # --- 2. THE LAUNCHER ---------------------------------------
 work() { _work_launch claude "$@"; }
+WORK_MODELS=(fable opus sonnet haiku)   # aliases the claude CLI accepts for --model
 cx() { _work_launch codex "$@"; }
 duet() { _work_duet "$@"; }
 
@@ -103,13 +108,44 @@ _work_pick() {
   REPLY="$name"
 }
 
+# Resolve the Claude model for this session into REPLY.
+#   _work_model [alias]   -> an argument skips the question.
+# Enter keeps the default (the "model" key in ~/.claude/settings.json,
+# falling back to the first of WORK_MODELS); a number picks another.
+# REPLY is empty when the default is kept, so claude keeps its own choice.
+_work_model() {
+  REPLY="$1"
+  [[ -n "$REPLY" ]] && return 0
+  local default
+  default=$(sed -n 's/^ *"model": *"\([^"]*\)".*/\1/p' "$HOME/.claude/settings.json" 2>/dev/null | head -1)
+  [[ -z "$default" ]] && default="${WORK_MODELS[1]}"
+  local others=(${WORK_MODELS:#$default})
+  local i m
+  echo "Model: [Enter] $default (current)"
+  for i in {1..${#others}}; do
+    echo "  $i) ${others[$i]}"
+  done
+  local choice
+  while true; do
+    read -r "choice?> " || return 1
+    [[ -z "$choice" ]] && return 0
+    if [[ "$choice" == <1-> && -n "${others[$choice]}" ]]; then
+      REPLY="${others[$choice]}"
+      return 0
+    fi
+    echo "Enter for $default, or a number 1-${#others}."
+  done
+}
+
 # Build the pane commands for one agent in one checkout.
-#   _work_cmds <agent> <project> <dir> [window_title]
+#   _work_cmds <agent> <project> <dir> [window_title] [model]
 # window_title (optional) replaces the per-agent title in the title bar;
 # the badge keeps naming the agent so each pane stays identifiable.
+# model (optional, claude only) is passed as --model; the claude pane
+# always opens on /readup so the session registers itself.
 # Sets reply=(agent_pane_cmd shell_pane_cmd).
 _work_cmds() {
-  local agent="$1" name="$2" dir="$3" window_title="$4"
+  local agent="$1" name="$2" dir="$3" window_title="$4" model="$5"
   local r g b
   read r g b <<< "$(_work_color "$name")"
 
@@ -124,6 +160,8 @@ _work_cmds() {
   # Each helper shell restores the project/agent title at its prompt.
   local shell_cmd="cd -- ${(q)dir} && precmd() { $title_cmd; } && precmd"
   local agent_cmd="claude --name ${(q)title}"
+  [[ -n "$model" ]] && agent_cmd+=" --model ${(q)model}"
+  agent_cmd+=" /readup"
   [[ "$agent" == codex ]] && agent_cmd="codex"
   local top_cmd="$shell_cmd && export GC_SESSION_SCOPE=${(q)session_scope} && iterm_tab_color $r $g $b && iterm_badge ${(q)title} && clear && $agent_cmd"
   reply=("$top_cmd" "$shell_cmd")
@@ -155,7 +193,13 @@ _work_launch() {
     proj_dir="$REPLY"
   fi
 
-  _work_cmds "$agent" "$name" "$proj_dir"
+  local model=""
+  if [[ "$agent" == claude ]]; then
+    _work_model "$2" || return 1
+    model="$REPLY"
+  fi
+
+  _work_cmds "$agent" "$name" "$proj_dir" "" "$model"
   local top_cmd="${reply[1]}" shell_cmd="${reply[2]}"
   local bottom_rows=$(( WORK_ROWS * 15 / 100 ))
 

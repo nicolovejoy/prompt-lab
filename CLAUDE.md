@@ -257,9 +257,15 @@ sideways or a control too small to tap is invisible to a source grep:
 
 ```bash
 npm --prefix scripts/phone install                                  # once
-npx --prefix scripts/phone playwright install webkit chromium       # once
+npx --prefix scripts/phone playwright install webkit                # once
+brew install --cask microsoft-edge                                  # once
 node scripts/phone/check.mjs
 ```
+
+Test browsers are Edge, never Chrome: the desktop profile here and the global
+Playwright MCP server (`--browser msedge` in `~/.claude.json`) both launch
+Edge, so a test window is visibly not Nico's own Chrome. The Claude-in-Chrome
+extension is the one thing that drives the real Chrome, on purpose.
 
 It serves `web/` locally, stubs `/api/**` with synthetic fixtures
 (`scripts/phone/fixtures.mjs` — the repo is public, so never real data), loads
