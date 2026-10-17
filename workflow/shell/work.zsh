@@ -2,10 +2,10 @@
 # work.zsh — iTerm2 per-project launcher
 # ------------------------------------------------------------
 # Pick any directory under ~/src (menu, argument, or tab
-# completion) and open a new iTerm2 window with three panes,
-# all cd'd into the project folder:
-#   - top (full width, ~80% height) : Claude Code or Codex
-#   - bottom left/right (~20%)       : two shells
+# completion) and open a new iTerm2 window with two panes,
+# both cd'd into the project folder:
+#   - top (~80% height)    : Claude Code
+#   - bottom strip (~20%)  : one shell, cleared, ready to type
 # The tab color is derived from the project name (same name ->
 # same color, always), so no per-project config is needed.
 #
@@ -23,18 +23,14 @@
 #           starts the session on /readup.
 #           `work musicforge opus`      -> skips the model question.
 #           `work musicforge opus high` -> skips both questions.
-#           `cx prompt-lab` -> same layout, running Codex in
-#                              ~/src/<project>-codex; refuses if that
-#                              clone doesn't exist
-#           `duet prompt-lab` -> four panes: Claude | Codex on top,
-#                              a shell under each; Codex runs in
-#                              ~/src/<project>-codex; refuses to launch
-#                              if that clone doesn't exist
+#           (The Codex launchers `cx` and `duet` were removed 2026-10-16
+#           when Codex was retired.)
 # ============================================================
 
 WORK_SRC_DIR="$HOME/src"
-WORK_COLS=200   # window size in terminal cells; iTerm2 clamps to screen
+WORK_COLS=150   # window size in terminal cells; iTerm2 clamps to screen
 WORK_ROWS=100   # if larger than the display can fit (set high to fill screen height)
+WORK_BOTTOM_PCT=20   # height of the bottom shell strip, as a percentage of WORK_ROWS
 
 
 # --- 1. TAB COLOR HELPERS ----------------------------------
@@ -85,11 +81,9 @@ _work_color() {
 
 
 # --- 2. THE LAUNCHER ---------------------------------------
-work() { _work_launch claude "$@"; }
+work() { _work_launch "$@"; }
 WORK_MODELS=(fable opus sonnet haiku)      # aliases the claude CLI accepts for --model
 WORK_EFFORTS=(low medium high xhigh max)   # levels the claude CLI accepts for --effort
-cx() { _work_launch codex "$@"; }
-duet() { _work_duet "$@"; }
 
 # Resolve a project name (argument or numbered menu) into REPLY.
 _work_pick() {
@@ -167,74 +161,47 @@ _work_effort() {
   _work_choose Effort "$default" $WORK_EFFORTS
 }
 
-# Build the pane commands for one agent in one checkout.
-#   _work_cmds <agent> <project> <dir> [window_title] [model] [effort]
-# window_title (optional) replaces the per-agent title in the title bar;
-# the badge keeps naming the agent so each pane stays identifiable.
-# model / effort (optional, claude only) are passed as --model / --effort;
-# the claude pane always opens on /readup so the session registers itself.
-# Sets reply=(agent_pane_cmd shell_pane_cmd).
+# Build the pane commands for one checkout.
+#   _work_cmds <project> <dir> [model] [effort]
+# model / effort (optional) are passed as --model / --effort; the claude
+# pane always opens on /readup so the session registers itself.
+# Sets reply=(claude_pane_cmd shell_pane_cmd).
 _work_cmds() {
-  local agent="$1" name="$2" dir="$3" window_title="$4" model="$5" effort="$6"
+  local name="$1" dir="$2" model="$3" effort="$4"
   local r g b
   read r g b <<< "$(_work_color "$name")"
 
-  local agent_label="Claude"
-  [[ "$agent" == codex ]] && agent_label="Codex"
-  local title="${(U)name[1]}${name[2,-1]} -- $agent_label"
-  # One scope per agent pane, so two agents never share a session row.
-  local session_scope="${agent}-$(uuidgen)"
+  local title="${(U)name[1]}${name[2,-1]} -- Claude"
+  # One scope per launch, so two windows never share a session row.
+  local session_scope="claude-$(uuidgen)"
   # Quote shell arguments before passing commands as AppleScript argv.
   # Project names may contain spaces, quotes, or shell metacharacters.
-  local title_cmd="printf '\\033]0;%s\\a' ${(q)${window_title:-$title}}"
-  # Each helper shell restores the project/agent title at its prompt.
-  local shell_cmd="cd -- ${(q)dir} && precmd() { $title_cmd; } && precmd"
+  local title_cmd="printf '\\033]0;%s\\a' ${(q)title}"
+  # The helper shell restores the project title at its prompt, then
+  # clears so the pane opens on an empty screen.
+  local shell_cmd="cd -- ${(q)dir} && precmd() { $title_cmd; } && precmd && clear"
   local agent_cmd="claude --name ${(q)title}"
   [[ -n "$model" ]] && agent_cmd+=" --model ${(q)model}"
   [[ -n "$effort" ]] && agent_cmd+=" --effort ${(q)effort}"
   agent_cmd+=" /readup"
-  [[ "$agent" == codex ]] && agent_cmd="codex"
   local top_cmd="$shell_cmd && export GC_SESSION_SCOPE=${(q)session_scope} && iterm_tab_color $r $g $b && iterm_badge ${(q)title} && clear && $agent_cmd"
   reply=("$top_cmd" "$shell_cmd")
 }
 
-# Resolve a project's Codex clone (~/src/<name>-codex) into REPLY.
-# No clone -> refuse. Falling back to the main checkout put Claude and
-# Codex in one tree, and the warning scrolled away behind the new window.
-_work_codex_dir() {
-  local name="$1"
-  local proj_dir="$WORK_SRC_DIR/$name" codex_dir="$WORK_SRC_DIR/$name-codex"
-  if [[ ! -d "$codex_dir" ]]; then
-    echo "No Codex clone at $codex_dir; not launching (Claude and Codex would share one checkout)."
-    echo "Create one: git clone \"\$(git -C ${(q)proj_dir} remote get-url origin)\" ${(q)codex_dir}"
-    return 1
-  fi
-  REPLY="$codex_dir"
-}
-
 _work_launch() {
-  local agent="$1"
-  shift
   _work_pick "$1" || return 1
   local name="$REPLY"
   # NB: can't name this "path" — zsh ties that name to $PATH.
   local proj_dir="$WORK_SRC_DIR/$name"
-  if [[ "$agent" == codex && "$name" != *-codex ]]; then
-    _work_codex_dir "$name" || return 1
-    proj_dir="$REPLY"
-  fi
 
-  local model="" effort=""
-  if [[ "$agent" == claude ]]; then
-    _work_model "$2" || return 1
-    model="$REPLY"
-    _work_effort "$3" || return 1
-    effort="$REPLY"
-  fi
+  _work_model "$2" || return 1
+  local model="$REPLY"
+  _work_effort "$3" || return 1
+  local effort="$REPLY"
 
-  _work_cmds "$agent" "$name" "$proj_dir" "" "$model" "$effort"
+  _work_cmds "$name" "$proj_dir" "$model" "$effort"
   local top_cmd="${reply[1]}" shell_cmd="${reply[2]}"
-  local bottom_rows=$(( WORK_ROWS * 15 / 100 ))
+  local bottom_rows=$(( WORK_ROWS * WORK_BOTTOM_PCT / 100 ))
 
   osascript - "$top_cmd" "$shell_cmd" "$WORK_COLS" "$WORK_ROWS" "$bottom_rows" <<'APPLESCRIPT'
 on run argv
@@ -253,13 +220,9 @@ on run argv
         set rows to windowRows
         set s2 to (split horizontally with default profile)
       end tell
-      tell s2
-        set s3 to (split vertically with default profile)
-        set rows to bottomRows
-      end tell
+      tell s2 to set rows to bottomRows
       tell s1 to write text topCommand
       tell s2 to write text shellCommand
-      tell s3 to write text shellCommand
       tell s1 to select
     end tell
   end tell
@@ -267,73 +230,21 @@ end run
 APPLESCRIPT
 }
 
-# duet: Claude and Codex side by side, one column per checkout.
-#   left  : Claude + shell in ~/src/<project>
-#   right : Codex  + shell in ~/src/<project>-codex (the Codex clone).
-#   No clone -> refuse (see _work_codex_dir).
-_work_duet() {
-  _work_pick "$1" || return 1
-  local name="$REPLY"
-  local proj_dir="$WORK_SRC_DIR/$name"
-  _work_codex_dir "$name" || return 1
-  local codex_dir="$REPLY"
-
-  local duet_title="${(U)name[1]}${name[2,-1]} -- DUET: Claude + Codex"
-  _work_cmds claude "$name" "$proj_dir" "$duet_title"
-  local claude_cmd="${reply[1]}" claude_shell="${reply[2]}"
-  _work_cmds codex "$name" "$codex_dir" "$duet_title"
-  local codex_cmd="${reply[1]}" codex_shell="${reply[2]}"
-  local bottom_rows=$(( WORK_ROWS * 15 / 100 ))
-
-  osascript - "$claude_cmd" "$claude_shell" "$codex_cmd" "$codex_shell" "$WORK_COLS" "$WORK_ROWS" "$bottom_rows" <<'APPLESCRIPT'
-on run argv
-  set claudeCommand to item 1 of argv
-  set claudeShell to item 2 of argv
-  set codexCommand to item 3 of argv
-  set codexShell to item 4 of argv
-  set windowColumns to (item 5 of argv) as integer
-  set windowRows to (item 6 of argv) as integer
-  set bottomRows to (item 7 of argv) as integer
-  tell application "iTerm"
-    activate
-    set w to (create window with default profile)
-    tell w
-      set s1 to current session
-      tell s1
-        set columns to windowColumns
-        set rows to windowRows
-        -- Rows first: one bottom strip, so both shells get the same height.
-        set s2 to (split horizontally with default profile)
-      end tell
-      tell s2 to set rows to bottomRows
-      -- Then halve each row; equal halves keep the column divider aligned.
-      tell s1 to set s3 to (split vertically with default profile)
-      tell s2 to set s4 to (split vertically with default profile)
-      tell s1 to write text claudeCommand
-      tell s2 to write text claudeShell
-      tell s3 to write text codexCommand
-      tell s4 to write text codexShell
-      tell s1 to select
-    end tell
-  end tell
-end run
-APPLESCRIPT
-}
 
 
 # --- 3. TAB COMPLETION -------------------------------------
 # Complete `work <TAB>` with the directories in ~/src.
 _work() { compadd -- $WORK_SRC_DIR/*(/N:t) }
-if (( $+functions[compdef] )); then compdef _work work cx duet; fi
+if (( $+functions[compdef] )); then compdef _work work; fi
 
 # ============================================================
 # TWEAKS:
-# - Top/bottom ratio: change the `* 15 / 100` in bottom_rows
-#   (bigger percentage = taller bottom strip).
+# - Top/bottom ratio: WORK_BOTTOM_PCT above (bigger = taller
+#   bottom strip).
 # - Window size: WORK_COLS / WORK_ROWS above (iTerm clamps to screen).
-# - Swap pane layout: change "split vertically" <-> "split
-#   horizontally" in section 2 to rearrange the splits.
-# - Two tabs instead of panes? Replace the split lines with
+# - Side-by-side instead of stacked: change "split horizontally"
+#   to "split vertically" in section 2.
+# - A tab instead of a pane? Replace the split line with
 #   `tell w to create tab with default profile`.
 # - Agent command: edit agent_cmd in _work_cmds.
 # - No project badge: drop the iterm_badge call from the s1 line
