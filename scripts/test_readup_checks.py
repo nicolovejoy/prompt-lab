@@ -82,7 +82,7 @@ exit "${FAKE_AUDIT_RC:-0}"
         return result.stdout
 
     clean = probe()
-    for key in ("REMOTE=", "RESYNC=", "CONVENTIONS_CLAUDE=", "CONVENTIONS_AGENTS=",
+    for key in ("REMOTE=", "RESYNC=", "CONVENTIONS_CLAUDE=",
                 "HANDOFF_SYNC=", "CI_PROBE=", "PUBLIC_DRIFT="):
         check(f"prints {key}", key in clean, clean)
     check("healthy fetch reports tracking", "TRACKING:\n" in clean)
@@ -98,21 +98,12 @@ exit "${FAKE_AUDIT_RC:-0}"
           "TRACKING=unavailable" in failed_fetch and "[behind 1]" not in failed_fetch)
     failed_auth = probe(FAKE_AUTH_RC="1")
     check("unverifiable authentication is not a silent skip", "CI_PROBE=error" in failed_auth)
-    conventions = probe(FAKE_CONV_CLAUDE="behind", FAKE_CONV_AGENTS="tampered")
+    conventions = probe(FAKE_CONV_CLAUDE="behind")
     check("clean shared-block lag is reported as behind",
           "CONVENTIONS_CLAUDE=behind" in conventions)
+    tampered = probe(FAKE_CONV_CLAUDE="tampered")
     check("locally changed shared block is reported as tampered",
-          "CONVENTIONS_AGENTS=tampered" in conventions)
-    check("no importer line for a repo without AGENTS.md", "AGENTS_ORIGIN" not in clean)
-    (repo / "AGENTS.md").write_text(
-        "This file provides guidance to Codex (Codex.ai/code) when working with code.\n")
-    check("untracked Codex import copy is flagged",
-          "AGENTS_ORIGIN=codex-import untracked" in probe(FAKE_LSFILES_RC="1"))
-    check("tracked Codex import copy is flagged as tracked",
-          "AGENTS_ORIGIN=codex-import tracked" in probe())
-    (repo / "AGENTS.md").write_text("Read CLAUDE.md in this repo first.\n")
-    check("pointer-form AGENTS.md is not flagged", "AGENTS_ORIGIN" not in probe())
-    (repo / "AGENTS.md").unlink()
+          "CONVENTIONS_CLAUDE=tampered" in tampered)
     conv_log = Path(tmp) / "conv.log"
     probe(FAKE_CONV_LOG=str(conv_log))
     check("root CLAUDE.md is the default conventions target",

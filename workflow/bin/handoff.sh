@@ -25,7 +25,7 @@ git_h() { git -C "$REPO" "$@"; }
 
 # --- Portable mutex via atomic mkdir, with stale-lock recovery. ----------------
 # Returns 1 on real contention (timeout), 2 when the lock dir cannot be created
-# at all — e.g. a Codex sandbox with no writable root over $REPO. mkdir failing
+# at all — e.g. a sandbox with no writable root over $REPO. mkdir failing
 # while no lock dir exists is not contention; three in a row (a release racing
 # the check can explain one) means the repo is unwritable, and reporting that as
 # LOCK-TIMEOUT sent two agents hunting for a lock that never existed.

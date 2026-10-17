@@ -4,14 +4,7 @@ description: Close a session and refresh the whole-day summary and weekly rollup
 allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(python3:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Read, Write
 ---
 
-Codex: this full-handoff path is unavailable under the DB-denial profile until
-its separate host context/synthesis contract passes review. Report that limitation
-and stop; do not execute the Claude instructions below, escalate, or queue a routine
-handoff as a substitute for this explicit full request.
-
-Claude Code: continue with the existing flow below.
-
-Use only when explicitly requested. Follow `/handoff` (Codex: `$source-command-handoff`)
+Use only when explicitly requested. Follow `/handoff`
 through saving the session summary and capturing commits, but defer its final
 `end-session` until the synthesis below is saved. Do not run document maintenance.
 Stop and report any failed operation or traceback; never claim a failed save succeeded.
@@ -42,7 +35,7 @@ Write `/tmp/gc-daily-<project>-<session_id>.json` using the validated ID:
   "date": "<date from today-context>",
   "context_revision": "<context_revision from today-context>",
   "synthesis_session_id": <synthesis_session_id from today-context>,
-  "model": "<claude-code|codex>",
+  "model": "claude-code",
   "summary": "<2-4 sentence summary of today's work — WHAT was done and WHY>",
   "key_decisions": ["<decision 1>", "<decision 2>"],
   "prompt_count": <n>,
@@ -50,8 +43,6 @@ Write `/tmp/gc-daily-<project>-<session_id>.json` using the validated ID:
   "commit_count": <n>
 }
 ```
-
-Replace `<claude-code|codex>` with whichever you are running as (or the specific Codex model id, e.g. `gpt-6-astra`, if you want finer-grained attribution) — same substitution convention as `<project>`/`<session_id>` above.
 
 IMPORTANT: use these exact command forms to persist the daily summary:
 
@@ -96,7 +87,7 @@ import json, sys, os; sys.path.insert(0, os.environ.get('PROMPT_LAB_DIR', os.pat
 from store import get_store
 d = json.load(open('/tmp/gc-weekly-<project>-<session_id>-<week_start>.json'))
 s = get_store(); s.migrate()
-s.upsert_weekly_rollup(model='<claude-code|codex>', **d)
+s.upsert_weekly_rollup(model='claude-code', **d)
 s.close()
 print('Weekly rollup saved for', d['project'], d['week_start'])
 "

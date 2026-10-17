@@ -2,8 +2,8 @@
 # session-context.sh — print readup-style session context as plain text.
 #
 # Extracted from workflow/hooks/session-start.sh so both the Claude Code
-# SessionStart hook (which JSON-wraps this output) and any agent with no
-# hook mechanism (Codex) can get the same context. Pure text out, no JSON.
+# SessionStart hook (which JSON-wraps this output) and a direct /readup
+# run can get the same context. Pure text out, no JSON.
 #
 # Silent (no output) if cwd doesn't look like a real project — avoids noise
 # on quick launches in ~ or /tmp. Does NOT register a session row or run

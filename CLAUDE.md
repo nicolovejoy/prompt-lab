@@ -57,7 +57,7 @@ This repo coordinates with peer repos (selected-projects, prntd) via an append-o
 <body>"
 ```
 
-It inserts the entry at the **top** of `## Active`. When an entry is acted on, move it under `## Archived` with a one-line outcome (a normal Edit), then `~/.claude/bin/handoff.sh sync`. Exit codes: 0 ok · 3 conflict (kept local, resolve in `~/src/.handoff`) · 4 offline (kept local, re-run `sync` later) · 5 lock contention · 6 repo unwritable (a Codex sandbox without a writable root over `~/src/.handoff`, not a lock). Design + 26/26 pressure test: `docs/handoff-repo-plan.md`, `workflow/handoff-sim/`.
+It inserts the entry at the **top** of `## Active`. When an entry is acted on, move it under `## Archived` with a one-line outcome (a normal Edit), then `~/.claude/bin/handoff.sh sync`. Exit codes: 0 ok · 3 conflict (kept local, resolve in `~/src/.handoff`) · 4 offline (kept local, re-run `sync` later) · 5 lock contention · 6 repo unwritable (no writable root over `~/src/.handoff`, not a lock). Design + 26/26 pressure test: `docs/handoff-repo-plan.md`, `workflow/handoff-sim/`.
 
 ## Next Steps
 
@@ -69,7 +69,7 @@ The full chronological log — and the narrative behind everything below, under 
 ### Open
 
 Read `docs/current-work.md` for the current backlog and deferred decisions.
-For workflow work, start with `docs/codex-workflow-roadmap.md`; for operations,
+For workflow work, start with `docs/remove-codex-plan.md`; for operations,
 use `docs/data-and-access.md` and the invariants below. Do not re-open decisions
 marked settled without new evidence or Nico's instruction.
 
@@ -320,26 +320,13 @@ binaries and the esm.sh CDN.
   wrong count (**11 domains, not ~37**) and `musicforge.org` was never on Resend. Return-path
   `send.` subdomains consume no slot; `span.`/`mail.` subdomains are separate entries.
   `musicforge.org`'s SPF must be **extended** (`include:icloud.com`), never replaced.
-- **prompt-lab owns every repo's AGENTS.md format — 2026-09-18.** One form only: a dated
-  provenance comment, "Read CLAUDE.md in this repo first", and the shared block, written by
-  `workflow/bin/make-agents-md.sh`. Never a whole-file copy of CLAUDE.md. Codex Desktop's
-  "import from Claude Code" wrote such copies wherever AGENTS.md was absent, with a blind
-  Claude→Codex replace (`~/.claude` → `~/.Codex`); proven by second-level timestamp matches
-  against `~/.codex/external_agent_session_imports.json`. Claude-side `/readup` creates an
-  absent AGENTS.md and replaces an untracked importer copy (backup in
-  `~/.claude/agents-md-backups/`), never commits either.
-- **Codex gets one long-lived clone per repo (`~/src/<repo>-codex`), not worktrees —
-  2026-09-19.** A worktree's `.git` sits outside Codex's sandbox root; a clone's doesn't.
-  Main checkout adds it as remote `codex`; the clone's project name is aliased to the
-  repo. Fleet guidance: `BULLETIN.md` 2026-09-19 entry.
-- **Dual-agent commands (Claude Code + Codex) — 2026-09-12.** `workflow/commands/*.md` is the
-  single source; `install.sh` distributes to `~/.claude/commands/` and renders
-  explicit-only `~/.agents/skills/source-command-*/` skills (deprecated
-  `~/.codex/prompts/` copies remain for compatibility). Codex readup falls back to the
-  installed `session-context.sh`.
-  Design: `docs/superpowers/specs/2026-09-12-dual-agent-commands-design.md`.
+- **Codex is retired — 2026-10-16.** Nico stopped using it; stage 1 of
+  `docs/remove-codex-plan.md` removed the Codex command renderer, host-identity
+  branches, AGENTS.md machinery and `cx`/`duet` launchers. History rows keep their
+  `codex:` owners and the `*-codex` project aliases stay so old sessions still read.
+  Don't re-add a second agent path without a new decision.
 
-<!-- SHARED-CONVENTIONS:BEGIN v=2ed9fb390e55 — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->
+<!-- SHARED-CONVENTIONS:BEGIN v=b2025c189bb4 — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->
 ## Shared conventions
 
 <!-- These are Nico's cross-repo output rules. They're materialized into each repo's
@@ -358,10 +345,6 @@ re-sync, never here. -->
 - **No marker before a copy-paste command block.** Nico's terminal renders markdown bullets (`-`, `*`, `•`) as `●`, which breaks paste into zsh. The line directly above a fenced command block must be a plain-text label ending in a colon — never a bullet, dash, asterisk, or number. For loud copy targets, lead the label with `📋` + bold `COPY THE BELOW`, then a colon, then the block. Bracket anything Nico will paste elsewhere (a prompt for another agent, a multi-line command) with a ruler line of `================` above the label and below the closing fence. Rulers go outside the fence so they aren't copied, each with a blank line before it (a `===` line directly under text renders as a heading).
 
 - **No bare backslash in a copy-paste command block.** A `\` is load-bearing shell syntax that renders invisibly and gets silently dropped somewhere between the markdown render, the clipboard, and zsh. `find … -exec test -e {} \; -delete` arrived in the terminal as `… {} ; -delete`, which zsh split into two commands and reported as `find: -exec: no terminating ";"` plus `command not found: -delete` (2026-09-20). Quote it instead — `';'` is exactly equivalent to `\;` and survives any copy path. For the same reason never break a command across lines with a trailing `\`: write one long line, however wide it wraps.
-
-- **Codex branches are named `codex/<description>`.** When working in this repo via Codex CLI, always create a working branch under the `codex/` prefix (e.g. `codex/fix-flaky-test`) rather than working directly on `main` or an unprefixed branch. Claude Code has no visibility into other tools' running sessions (`ListAgents` only sees Claude sessions), so this prefix is the one signal a Claude session can check for — a local or remote `codex/*` branch means Codex has touched or is touching this repo, even though its session itself is invisible. Claude branches keep whatever naming they already use; only Codex adopts this new prefix.
-
-- **Codex: run commands in a form a rule can match.** Codex approval rules match a command's leading tokens, so a wrapped command never matches an existing allow and every variant prompts again, then leaves a dead one-off "don't ask again" rule behind (36 of them in five days, 2026-09-23). The program is the first token: call helpers and tools directly, never through `/bin/zsh -lc "…"`, never with a `PATH=…` or other `VAR=…` prefix, never with `$(…)` in the arguments. Work only inside your clone (one long-lived `~/src/<repo>-codex`, no worktrees, no scratch clones — everything outside it escalates, except the cross-repo handoff log at `~/src/.handoff`, which is granted). Redirect output only to files inside the workspace, and keep temp files in a gitignored `tmp/` there, never `/private/tmp`. If a tool is missing from `PATH`, report it: the fix belongs in `~/.zprofile` (Nico's edit), not in an inline `PATH=` prefix.
 
 - **Reader-facing text lives in content or copy files, not inline in components.** Some repos ship French alongside English (selected-projects mirrors the site under `/fr`; ibuild4you has French public pages). There, every new string goes in the repo's strings/copy module or content folder, with its translation, and an English copy edit means updating the French twin too. Elsewhere, keeping text out of components is what makes `/localize` cheap later. Terms and register: `prompt-lab/workflow/localization/fr-glossary.md`.
 

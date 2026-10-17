@@ -75,8 +75,8 @@ def _day_data(store, project: str, date: str, session_id: int | None = None) -> 
     # Sessions that began before midnight still contribute when they record work
     # or close today. Do not count every ancient, never-closed row as active.
     active_ids = {r["session_id"] for r in prompts + commits if r["session_id"] is not None}
-    # Codex has no prompt hook: a caller continuing past midnight can have no
-    # recorded activity today yet. Its validated identity is direct evidence.
+    # A caller continuing past midnight can have no recorded activity today
+    # yet. Its validated identity is direct evidence.
     if session_id is not None:
         active_ids.add(session_id)
     sessions = rows(f"""
