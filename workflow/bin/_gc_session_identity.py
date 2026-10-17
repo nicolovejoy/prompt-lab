@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Local conversation ownership shared by command wrappers and Claude hooks.
 
-Native Codex IDs and launch bindings in SQLite are authoritative. Pointer files
-remain a cache for legacy callers; they cannot confer scoped ownership.
+Launch bindings in SQLite are authoritative. Pointer files remain a cache for
+legacy callers; they cannot confer scoped ownership. Rows written by the retired
+Codex integration keep their `codex:<id>` owner and are never matched by a new
+caller.
 """
 from __future__ import annotations
 
@@ -58,10 +60,9 @@ def read_summary_file(session_id, value):
     return summary, path
 
 
-def identity(*, claude=False):
-    native = "" if claude else os.environ.get("CODEX_THREAD_ID", "")
+def identity():
     scope = os.environ.get("GC_SESSION_SCOPE", "")
-    value = f"codex:{native}" if native else f"launch:{scope}" if scope else ""
+    value = f"launch:{scope}" if scope else ""
     if value and (len(value) > 160 or not re.fullmatch(r"[A-Za-z0-9:._-]+", value)):
         raise ValueError("Invalid conversation identity")
     return value
@@ -113,8 +114,6 @@ def by_native(conn, project, native):
 
 
 def binding(conn, project, owner):
-    if owner.startswith("codex:"):
-        return by_native(conn, project, owner)
     if conn.execute("SELECT 1 FROM sqlite_master WHERE name='session_identity_bindings'").fetchone():
         return conn.execute("""SELECT s.* FROM sessions s JOIN session_identity_bindings b
             ON b.session_id=s.id AND b.project=s.project
@@ -231,18 +230,6 @@ def claude_row(conn, project, owner, native):
     return retire_scratch(conn, project, row)
 
 
-def codex_owner(native):
-    """Host-hook identity for a native Codex conversation ID from a hook payload.
-
-    Codex conversations are always stored as `codex:<id>` — the same owner the
-    command wrappers derive from CODEX_THREAD_ID and the host bookkeeping hook
-    registers. A bare native ID is reserved for Claude conversations.
-    """
-    if not native or len(native) > 120 or not re.fullmatch(r"[A-Za-z0-9._-]+", native):
-        raise ValueError("Invalid native Codex conversation ID")
-    return "codex:" + native
-
-
 def numeric(value):
     if not re.fullmatch(r"[0-9]+", value):
         raise ValueError("Session ID must be numeric")
@@ -251,7 +238,7 @@ def numeric(value):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("register", "resolve", "resolve-id", "summary", "end", "claude", "codex", "tokens"))
+    parser.add_argument("command", choices=("register", "resolve", "resolve-id", "summary", "end", "claude", "tokens"))
     parser.add_argument("project")
     parser.add_argument("values", nargs="*")
     args = parser.parse_args()
@@ -259,11 +246,10 @@ def main():
     conn = None
     try:
         expected = {"register": (0,), "resolve": (0, 1), "resolve-id": (0,),
-                    "summary": (1, 2), "end": (1,), "claude": (1,), "codex": (1,), "tokens": (2,)}
+                    "summary": (1, 2), "end": (1,), "claude": (1,), "tokens": (2,)}
         if len(values) not in expected[command]:
             raise ValueError("Wrong number of session command arguments")
-        # Hook payloads name the conversation; the environment never does.
-        owner = codex_owner(values[0]) if command == "codex" else identity(claude=command in {"claude", "tokens"})
+        owner = identity()
         requested = numeric(values[0]) if values and command in {"resolve", "summary", "end"} else None
         db = Path.home() / ".claude/prompt-history.db"
         readonly = command in {"resolve", "resolve-id"}
@@ -274,7 +260,7 @@ def main():
             initialize(conn)
         row = None
         consumed_summary = None
-        if command in {"register", "codex"}:
+        if command == "register":
             row = register(conn, project, owner)
         elif command == "claude":
             row = claude_row(conn, project, owner, values[0])
@@ -307,11 +293,11 @@ def main():
                     f"could not be removed: {exc}",
                     file=sys.stderr,
                 )
-        if row is not None and command in {"register", "claude", "codex"}:
+        if row is not None and command in {"register", "claude"}:
             write_pointer(project, owner, row["id"])
         if row is not None and command in {"register", "resolve"}:
             print(f"{row['id']}|{row['started_at']}")
-        elif row is not None and command in {"resolve-id", "claude", "codex"}:
+        elif row is not None and command in {"resolve-id", "claude"}:
             print(row["id"])
         return 0
     except IdentityError as exc:

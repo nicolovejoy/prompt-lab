@@ -40,14 +40,8 @@ if [ "$in_repo" = 1 ]; then
   else
     echo "WORKTREES=main-only"
   fi
-  cx="$(git branch --list 'codex/*' 2>/dev/null; git branch -r --list 'origin/codex/*' 2>/dev/null)"
-  if [ -n "$(printf '%s' "$cx" | tr -d '[:space:]')" ]; then
-    echo "CODEX_BRANCHES:"; printf '%s\n' "$cx" | sed 's/^/  /'
-  else
-    echo "CODEX_BRANCHES=none"
-  fi
 else
-  echo "REMOTE=not-a-git-repo"; echo "WORKTREES=main-only"; echo "CODEX_BRANCHES=none"
+  echo "REMOTE=not-a-git-repo"; echo "WORKTREES=main-only"
 fi
 
 # --- 5. resync marker --------------------------------------------------------
@@ -77,16 +71,6 @@ conv() {  # $1 = file → in sync | behind | tampered | missing | absent
 claude_md=CLAUDE.md
 [ ! -f CLAUDE.md ] && [ -f .claude/CLAUDE.md ] && claude_md=.claude/CLAUDE.md
 echo "CONVENTIONS_CLAUDE=$(conv "$claude_md")"
-echo "CONVENTIONS_AGENTS=$(conv AGENTS.md)"
-# Codex Desktop's "import from Claude Code" writes a find-replaced copy of CLAUDE.md
-# wherever AGENTS.md is absent. Same fingerprints as make-agents-md.sh.
-if [ -f AGENTS.md ] && grep -qE 'guidance to Codex \(Codex\.ai/code\)|Codex-md-shared\.md|~/\.Codex/|Codex API' AGENTS.md; then
-  if git ls-files --error-unmatch AGENTS.md >/dev/null 2>&1; then
-    echo "AGENTS_ORIGIN=codex-import tracked"
-  else
-    echo "AGENTS_ORIGIN=codex-import untracked"
-  fi
-fi
 
 # --- 7. flush handoff channel -------------------------------------------------
 if [ -d "$HOME/src/.handoff/.git" ] && [ -x "$HOME/.claude/bin/handoff.sh" ]; then

@@ -114,7 +114,6 @@ class Env:
     def env(self) -> dict:
         e = dict(os.environ)
         e["HOME"] = str(self.home)
-        e.pop("CODEX_THREAD_ID", None)
         e.pop("GC_SESSION_SCOPE", None)
         return e
 
@@ -154,14 +153,11 @@ class Env:
         return rows
 
     def gc(self, script: Path, *args: str, stdin: str = "",
-           cwd: Path | None = None, scope: str | None = None,
-           codex_thread: str | None = None) -> str:
+           cwd: Path | None = None, scope: str | None = None) -> str:
         # cwd overrides the repo root, for the project-resolution cases.
         env = self.env
         if scope:
             env["GC_SESSION_SCOPE"] = scope
-        if codex_thread:
-            env["CODEX_THREAD_ID"] = codex_thread
         r = subprocess.run([str(script), *args], input=stdin, text=True,
                            env=env, cwd=str(cwd or self.cwd),
                            capture_output=True)
@@ -577,17 +573,17 @@ def test_scoped_identity_is_durable_and_strict(tmp: Path) -> None:
     check("wrong identity cannot close", e.gc(GC_WRITE, "end-session", sid2, scope="one").startswith("<exit 3"), True)
 
 
-def test_codex_resume_fork_and_missing_pointer(tmp: Path) -> None:
-    print("\n16. native Codex identity is authoritative across resume and fork")
+def test_scope_resume_fork_and_missing_pointer(tmp: Path) -> None:
+    print("\n16. launch-scope identity is authoritative across resume and fork")
     e = Env(tmp)
-    resumed = e.gc(GC_WRITE, "register-session", codex_thread="thread-a")
-    again = e.gc(GC_WRITE, "register-session", codex_thread="thread-a")
-    forked = e.gc(GC_WRITE, "register-session", codex_thread="thread-b")
+    resumed = e.gc(GC_WRITE, "register-session", scope="thread-a")
+    again = e.gc(GC_WRITE, "register-session", scope="thread-a")
+    forked = e.gc(GC_WRITE, "register-session", scope="thread-b")
     check("resume is idempotent", again, resumed)
     check("fork is distinct", forked.split("|", 1)[0] != resumed.split("|", 1)[0], True)
-    pointer = e.home / ".claude/state" / f"current-session-{PROJECT}-codex:thread-a"
+    pointer = e.home / ".claude/state" / f"current-session-{PROJECT}-launch:thread-a"
     pointer.unlink()
-    check("missing pointer resolves from binding", e.gc(GC_READ, "current-session", codex_thread="thread-a"), resumed)
+    check("missing pointer resolves from binding", e.gc(GC_READ, "current-session", scope="thread-a"), resumed)
 
 
 def test_concurrent_registration_is_idempotent(tmp: Path) -> None:
@@ -595,7 +591,7 @@ def test_concurrent_registration_is_idempotent(tmp: Path) -> None:
     from concurrent.futures import ThreadPoolExecutor
     e = Env(tmp)
     with ThreadPoolExecutor(max_workers=8) as pool:
-        rows = list(pool.map(lambda _: e.gc(GC_WRITE, "register-session", codex_thread="same-thread"), range(16)))
+        rows = list(pool.map(lambda _: e.gc(GC_WRITE, "register-session", scope="same-thread"), range(16)))
     check("all callers receive same row", len(set(rows)), 1)
     check("one session row", len(e.q("SELECT id FROM sessions")), 1)
 
@@ -603,15 +599,15 @@ def test_concurrent_registration_is_idempotent(tmp: Path) -> None:
 def test_explicit_identity_guards(tmp: Path) -> None:
     print("\n18. explicit IDs cannot read, summarize or close another scoped row")
     e = Env(tmp)
-    first = e.gc(GC_WRITE, "register-session", codex_thread="thread-one")
-    second = e.gc(GC_WRITE, "register-session", codex_thread="thread-two")
+    first = e.gc(GC_WRITE, "register-session", scope="thread-one")
+    second = e.gc(GC_WRITE, "register-session", scope="thread-two")
     sid1, sid2 = first.split("|", 1)[0], second.split("|", 1)[0]
     check("explicit own ID is accepted", e.gc(GC_READ, "current-session", sid1,
-          codex_thread="thread-one"), first)
+          scope="thread-one"), first)
     for script, command in ((GC_READ, "current-session"), (GC_WRITE, "update-session-summary"),
                             (GC_WRITE, "end-session")):
         check(f"{command} rejects another conversation", e.gc(script, command, sid2,
-              codex_thread="thread-one", stdin="must not write").startswith("<exit 3"), True)
+              scope="thread-one", stdin="must not write").startswith("<exit 3"), True)
     check("other row is untouched", e.q("SELECT summary, ended_at FROM sessions WHERE id=?", (sid2,)),
           [(None, None)])
     conn = sqlite3.connect(e.db)
@@ -619,7 +615,7 @@ def test_explicit_identity_guards(tmp: Path) -> None:
     conn.commit()
     conn.close()
     check("wrong-project explicit ID is rejected", e.gc(GC_READ, "current-session", sid1,
-          codex_thread="thread-one").startswith("<exit 3"), True)
+          scope="thread-one").startswith("<exit 3"), True)
     check("unsafe identity is rejected", e.gc(GC_WRITE, "register-session", scope="../../bad").startswith("<exit 2"), True)
 
 
@@ -638,20 +634,20 @@ def test_launcher_lifecycle(tmp: Path) -> None:
     check("closed scoped Claude conversation remains idempotent", e.gc(GC_WRITE, "register-session", scope="fresh-window"), first)
 
 
-def test_legacy_cannot_adopt_codex_or_closed_rows(tmp: Path) -> None:
-    print("\n20. legacy hook cannot adopt Codex or a closed pointer")
+def test_legacy_cannot_adopt_scoped_or_closed_rows(tmp: Path) -> None:
+    print("\n20. legacy hook cannot adopt a scoped row or a closed pointer")
     e = Env(tmp)
-    codex = e.gc(GC_WRITE, "register-session", codex_thread="isolated-codex")
+    codex = e.gc(GC_WRITE, "register-session", scope="isolated-codex")
     e.submit("new unidentified Claude prompt", session_uuid=None)
     legacy_id = e.q("SELECT session_id FROM prompts ORDER BY id DESC LIMIT 1")[0][0]
-    check("unidentified Claude avoids Codex row", str(legacy_id) != codex.split("|")[0], True)
+    check("unidentified Claude avoids scoped row", str(legacy_id) != codex.split("|")[0], True)
     e.gc(GC_WRITE, "end-session", str(legacy_id))
     e.submit("another unidentified session", session_uuid=None)
     next_id = e.q("SELECT session_id FROM prompts ORDER BY id DESC LIMIT 1")[0][0]
     check("closed legacy row is not reused", next_id != legacy_id, True)
     e.submit("native Claude prompt", session_uuid="native-claude")
-    check("Codex binding survives Claude adoption", e.q("SELECT claude_session_id FROM sessions WHERE id=?",
-          (codex.split("|")[0],))[0][0], "codex:isolated-codex")
+    check("scoped binding survives Claude adoption", e.q("SELECT claude_session_id FROM sessions WHERE id=?",
+          (codex.split("|")[0],))[0][0], "launch:isolated-codex")
 
 
 def test_quoted_project_and_stop(tmp: Path) -> None:
@@ -664,7 +660,7 @@ def test_quoted_project_and_stop(tmp: Path) -> None:
     session = e.gc(GC_WRITE, "register-session", scope="quoted-window")
     check("quoted project registration succeeds", not session.startswith("<exit"), True)
     check("quoted project prompt is stored", e.q("SELECT project FROM prompts"), [(renamed.name,)])
-    codex = e.gc(GC_WRITE, "register-session", codex_thread="stop-codex")
+    codex = e.gc(GC_WRITE, "register-session", scope="stop-codex")
     hook = ROOT / "workflow/hooks/session-stop.sh"
     for native in ("stop-claude", "unknown-native"):
         transcript = e.transcript(native)
@@ -674,7 +670,7 @@ def test_quoted_project_and_stop(tmp: Path) -> None:
         check(f"stop hook runs for {native}", result.returncode, 0)
     check("Claude token count reaches only its own row", e.q("SELECT token_count FROM sessions WHERE id=?",
           (session.split("|")[0],))[0][0], 10)
-    check("Codex token count stays untouched", e.q("SELECT token_count FROM sessions WHERE id=?",
+    check("scoped token count stays untouched", e.q("SELECT token_count FROM sessions WHERE id=?",
           (codex.split("|")[0],))[0][0], None)
 
 
@@ -695,7 +691,7 @@ def test_scratch_row_closes_once_the_conversation_has_a_repo(tmp: Path) -> None:
 
     e.submit("planning a new project before any git init", session_uuid="uuid-new", cwd=fresh)
     e.submit("an unrelated conversation outside any repo", session_uuid="uuid-other", cwd=loose)
-    codex = e.gc(GC_WRITE, "register-session", cwd=fresh, codex_thread="thread-new")
+    codex = e.gc(GC_WRITE, "register-session", cwd=fresh, scope="thread-new")
     scratch_id = e.q("SELECT id FROM sessions WHERE claude_session_id='uuid-new'")[0][0]
     other_id = e.q("SELECT id FROM sessions WHERE claude_session_id='uuid-other'")[0][0]
     codex_id = int(codex.split("|", 1)[0])
@@ -715,8 +711,8 @@ def test_scratch_row_closes_once_the_conversation_has_a_repo(tmp: Path) -> None:
           e.q("SELECT ended_at FROM sessions WHERE id IN (?,?)", (other_id, codex_id)),
           [(None,), (None,)])
 
-    e.gc(GC_WRITE, "register-session", cwd=fresh, codex_thread="thread-new")
-    check("a Codex conversation's scratch row closes the same way",
+    e.gc(GC_WRITE, "register-session", cwd=fresh, scope="thread-new")
+    check("a scoped conversation's scratch row closes the same way",
           bool(e.q("SELECT ended_at FROM sessions WHERE id=?", (codex_id,))[0][0]), True)
     check("the unrelated scratch row is still open",
           e.q("SELECT ended_at FROM sessions WHERE id=?", (other_id,))[0][0], None)
@@ -742,7 +738,7 @@ def test_session_id_from_before_git_init_still_works(tmp: Path) -> None:
 
     e.submit("planning a new project before any git init", session_uuid="uuid-new", cwd=fresh)
     e.submit("someone else also working outside a repo", session_uuid="uuid-other", cwd=fresh)
-    readup = e.gc(GC_WRITE, "register-session", cwd=fresh, codex_thread="thread-new")
+    readup = e.gc(GC_WRITE, "register-session", cwd=fresh, scope="thread-new")
     scratch_id = e.q("SELECT id FROM sessions WHERE claude_session_id='uuid-new'")[0][0]
     other_id = e.q("SELECT id FROM sessions WHERE claude_session_id='uuid-other'")[0][0]
     codex_scratch = readup.split("|", 1)[0]
@@ -767,15 +763,15 @@ def test_session_id_from_before_git_init_still_works(tmp: Path) -> None:
     check("and that row is left alone",
           e.q("SELECT summary, ended_at FROM sessions WHERE id=?", (other_id,)), [(None, None)])
 
-    codex_repo = e.gc(GC_WRITE, "register-session", cwd=fresh, codex_thread="thread-new")
-    e.gc(GC_WRITE, "register-session", cwd=fresh, codex_thread="thread-two")
-    check("a Codex conversation's old ID resolves to its repo row",
-          e.gc(GC_READ, "current-session", codex_scratch, cwd=fresh, codex_thread="thread-new"),
+    codex_repo = e.gc(GC_WRITE, "register-session", cwd=fresh, scope="thread-new")
+    e.gc(GC_WRITE, "register-session", cwd=fresh, scope="thread-two")
+    check("a scoped conversation's old ID resolves to its repo row",
+          e.gc(GC_READ, "current-session", codex_scratch, cwd=fresh, scope="thread-new"),
           codex_repo)
-    check("a different Codex conversation cannot use that ID",
+    check("a different scoped conversation cannot use that ID",
           e.gc(GC_WRITE, "end-session", codex_scratch, cwd=fresh,
-               codex_thread="thread-two").startswith("<exit 3"), True)
-    check("the Codex repo row is still open",
+               scope="thread-two").startswith("<exit 3"), True)
+    check("the scoped repo row is still open",
           e.q("SELECT ended_at FROM sessions WHERE id=?", (int(codex_repo.split("|", 1)[0]),)),
           [(None,)])
 
@@ -804,11 +800,11 @@ def main() -> int:
         test_gc_scripts_resolve_the_repo,
         test_gc_project_helper_is_shared,
         test_scoped_identity_is_durable_and_strict,
-        test_codex_resume_fork_and_missing_pointer,
+        test_scope_resume_fork_and_missing_pointer,
         test_concurrent_registration_is_idempotent,
         test_explicit_identity_guards,
         test_launcher_lifecycle,
-        test_legacy_cannot_adopt_codex_or_closed_rows,
+        test_legacy_cannot_adopt_scoped_or_closed_rows,
         test_quoted_project_and_stop,
         test_scratch_row_closes_once_the_conversation_has_a_repo,
         test_session_id_from_before_git_init_still_works,

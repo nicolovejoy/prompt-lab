@@ -48,8 +48,8 @@ with tempfile.TemporaryDirectory(prefix="workflow-roundtrip-") as temp:
     env = dict(os.environ, HOME=str(home), PROMPT_LAB_DIR=str(runtime),
                GROUND_CONTROL_STORE="turso", TZ="Asia/Tokyo")
     env.pop("GC_SESSION_SCOPE", None)
-    first_env = dict(env, CODEX_THREAD_ID="roundtrip-first")
-    second_env = dict(env, CODEX_THREAD_ID="roundtrip-second")
+    first_env = dict(env, GC_SESSION_SCOPE="roundtrip-first")
+    second_env = dict(env, GC_SESSION_SCOPE="roundtrip-second")
     db = home / ".claude" / "prompt-history.db"
     store = SqliteKnowledgeStore(db)
     store.migrate()
@@ -91,7 +91,7 @@ with tempfile.TemporaryDirectory(prefix="workflow-roundtrip-") as temp:
     def make_draft(context, summary):
         draft.write_text(json.dumps(dict(
             project=context["project"], date=context["date"],
-            context_revision=context["context_revision"], model="codex", summary=summary,
+            context_revision=context["context_revision"], model="claude-code", summary=summary,
             synthesis_session_id=context["synthesis_session_id"],
             key_decisions=["Combine both sessions"], prompt_count=context["counts"]["prompts"],
             session_count=context["counts"]["sessions"], commit_count=context["counts"]["commits"],

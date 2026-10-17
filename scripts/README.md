@@ -7,7 +7,7 @@ it is safe or necessary to rerun against live data.
 | Category | Entry points |
 | --- | --- |
 | Workflow checks | `test_session_identity.py`, `test_workflow_roundtrip.py`, `test_lean_nightly.py`, `test_day_context.py` |
-| Operational checks | `check_public_allowlist.py`, `probe_codex_permissions.py` |
+| Operational checks | `check_public_allowlist.py` |
 | Nightly housekeeping | `close_stale_sessions.py` (the pipeline's `scrub` stage; dry run by default when run by hand) |
 | Project names and URLs | `alias.py`, `backfill_project_urls.py` (maintained GitHub scanner) |
 | Public review/publishing | `draft_public_refresh.py`, `publish_public_draft.py`, `unpublish_public.py` |

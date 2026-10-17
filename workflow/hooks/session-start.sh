@@ -2,8 +2,8 @@
 # SessionStart hook — inject lightweight readup-style context at session start.
 #
 # Output: a single JSON object with hookSpecificOutput.additionalContext.
-# Context-gathering logic lives in workflow/bin/session-context.sh (shared
-# with agents that have no hook mechanism, e.g. Codex — see /readup step 0).
+# Context-gathering logic lives in workflow/bin/session-context.sh, which
+# /readup also runs directly when the hook did not inject it.
 # This wrapper's only job is invoking that script and JSON-wrapping its
 # output for the Claude Code hook protocol.
 #

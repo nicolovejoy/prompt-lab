@@ -1,8 +1,8 @@
 # prompt-lab / Ground Control
 
-Workflow tools and dashboards for tracking Claude Code and Codex sessions across projects.
+Workflow tools and dashboards for tracking Claude Code sessions across projects.
 
-[Documentation index](docs/README.md) · [Workflow smoke tests](docs/codex-workflow-validation.md)
+[Documentation index](docs/README.md)
 
 Every session is logged, summarized, and surfaced in a cloud dashboard. Slash commands handle session start/end and review. Nightly synthesis generates daily summaries, weekly rollups, and project snapshots. Optional email reviews and bi-monthly reports via the Anthropic API and Resend.
 
@@ -27,14 +27,11 @@ cd ~/src/prompt-lab
 
 This will:
 - Create a Python virtualenv and install dependencies
-- Copy slash commands to `~/.claude/commands/` and explicit-only Codex skills to
-  `~/.agents/skills/source-command-*/` (deprecated prompt copies are retained for
-  compatibility)
+- Copy slash commands to `~/.claude/commands/`
 - Generate and load launchd plists (macOS scheduled jobs)
 - Print the `~/.claude/settings.json` snippet to add manually
 
 Then add the printed snippet to `~/.claude/settings.json` and restart Claude Code.
-Codex skills update automatically; start a new Codex session if they do not appear.
 
 ### 2. Configure environment
 
@@ -126,16 +123,11 @@ All commands live in `~/.claude/commands/` and work across every repo. Source of
 
 `/workflow-maintenance` — explicitly review project docs, memory and maintenance backlog
 
-Codex uses `$source-command-readup`, `$source-command-handoff`,
-`$source-command-handoff-full` and `$source-command-workflow-maintenance`. Select a
-skill by typing `$` in Codex; these skills are explicit-only and never run merely
-because prose resembles their description. Readup does no summary backfill; nightly
+Readup does no summary backfill; nightly
 handles completed Pacific days, including sessions without prompt logs. Recaps reach
-the cloud after a successful nightly synthesis and sync. The installer also adds a
-narrow Codex rule for the installed `gc-write.sh` session-bookkeeping helper; restart
-Codex after installation so the rule is loaded.
+the cloud after a successful nightly synthesis and sync.
 
-Shared conventions are materialized into each repo's `CLAUDE.md` and `AGENTS.md`.
+Shared conventions are materialized into each repo's `CLAUDE.md`.
 `sync-shared-md.sh --check <file>` distinguishes a clean old block (`behind`) from
 local edits or malformed markers (`tampered`); apply refuses tampered blocks. Use
 `sync-shared-fleet.sh` for a read-only tab-separated inventory of both files across

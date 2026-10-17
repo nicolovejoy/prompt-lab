@@ -1,7 +1,7 @@
 """
 scripts/test_readup_md_structure.py — readup.md must reference the renamed
 sync script (not the old name), must reference session-context.sh, and must
-check for codex/* branches. Content-level guard against regressions in a
+Content-level guard against regressions in a
 markdown/prose file where a full behavioral test would require a live
 agent session.
 
@@ -33,12 +33,7 @@ with open(PATH) as f:
 check("no reference to the old script name remains", "sync-claude-md.sh" not in content)
 check("references the renamed sync script", "sync-shared-md.sh" in content)
 check("references session-context.sh", "session-context.sh" in content)
-check(
-    "checks for codex/* branches",
-    "CODEX_BRANCHES" in content,
-)
 check("still checks CLAUDE.md drift", "CLAUDE.md" in content)
-check("also checks AGENTS.md drift", "AGENTS.md" in content)
 check(
     "distinguishes clean lag from local edits",
     "`behind` → calm rollout note" in content
@@ -71,8 +66,8 @@ with open(SCRIPT_PATH) as f:
 emitted_keys = sorted(set(re.findall(r'echo "([A-Z_]+)[=:]', script_src)))
 expected_keys = {
     "HANDOFF_SYNC", "PUBLIC_DRIFT", "CI_PROBE", "CI_PROBE_NOTE", "CI_MAIN",
-    "CI_BRANCH", "RESYNC", "CONVENTIONS_CLAUDE", "CONVENTIONS_AGENTS",
-    "REMOTE", "TRACKING", "REMOTE_ONLY", "WORKTREES", "CODEX_BRANCHES",
+    "CI_BRANCH", "RESYNC", "CONVENTIONS_CLAUDE",
+    "REMOTE", "TRACKING", "REMOTE_ONLY", "WORKTREES",
     "PROJECT",
 }
 check(
