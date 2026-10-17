@@ -320,6 +320,9 @@ binaries and the esm.sh CDN.
   wrong count (**11 domains, not ~37**) and `musicforge.org` was never on Resend. Return-path
   `send.` subdomains consume no slot; `span.`/`mail.` subdomains are separate entries.
   `musicforge.org`'s SPF must be **extended** (`include:icloud.com`), never replaced.
+- **Garm retires in January 2027 unless a second reader appears — 2026-10-17 (#94).**
+  Frozen until then per the 2026-08-27 decision; the only use case is a signed-in
+  reader who sees some projects but not all, rated very unlikely.
 - **Codex is retired — 2026-10-16.** Nico stopped using it; stage 1 of
   `docs/remove-codex-plan.md` removed the Codex command renderer, host-identity
   branches, AGENTS.md machinery and `cx`/`duet` launchers. History rows keep their

@@ -52,6 +52,9 @@ question.** `GARM_GATING` stays **off**, `READER_EMAILS` is the live gate — "o
 env var, not the code default, so check `vercel env ls` before trusting this line. Grant
 seeding (Pierre → `prompt-lab.prntd`) is deferred and blocks nothing. Revisit trigger: a real
 second user who needs actual access management, not "might someday."
+**Sunset set 2026-10-17: retire garm in January 2027 unless a second reader has
+asked by then (#94 lists what it touches).** The use case (a client or collaborator
+seeing some projects but not all) is rated very unlikely.
 
 **`docs/nightly-pipeline-plan.md`: steps 1, 2, 3 and 5 are DONE (2026-08-29).** Step 4 is
 mostly absorbed (report catch-up done, reader catch-up optional) and unbuilt beyond that.
