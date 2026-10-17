@@ -1,4 +1,4 @@
-# prompt-lab / Ground Control
+# prompt-lab / Prompt-Labs
 
 Workflow tools and dashboards for tracking Claude Code sessions across projects.
 

@@ -1,4 +1,4 @@
-"""Shared utilities for Ground Control pipeline scripts."""
+"""Shared utilities for Prompt-Labs pipeline scripts."""
 
 import time
 from datetime import datetime

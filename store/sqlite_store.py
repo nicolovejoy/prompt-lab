@@ -1,4 +1,4 @@
-"""SQLite backend for Ground Control knowledge store.
+"""SQLite backend for Prompt-Labs knowledge store.
 
 Clocks (#48) — UTC at rest, Pacific on display:
 

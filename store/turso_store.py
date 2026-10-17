@@ -1,4 +1,4 @@
-"""Turso (libSQL over HTTP) backend for Ground Control knowledge store.
+"""Turso (libSQL over HTTP) backend for Prompt-Labs knowledge store.
 
 Uses Turso's HTTP pipeline API — no extra Python dependencies needed.
 Requires TURSO_DATABASE_URL and TURSO_AUTH_TOKEN environment variables.
