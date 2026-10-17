@@ -5,8 +5,8 @@ rules and follow the relevant pointers below rather than loading every plan.
 
 | Need | Read |
 | --- | --- |
-| Install or verify workflows | [Smoke tests and live results](codex-workflow-validation.md) |
-| Current workflow status and remaining gates | [Workflow roadmap](codex-workflow-roadmap.md) |
+| Install or verify workflows | [README](../README.md), then `scripts/test_*.py` |
+| Why Codex is gone and what was removed | [Codex removal plan](remove-codex-plan.md) |
 | Other current work and deferred decisions | [Current work](current-work.md) |
 | Cleanup scope and savings measurement | [Short cleanup plan](workflow-cleanup-plan.md) |
 | Storage, privacy, authentication | [Data and access](data-and-access.md) |
@@ -15,7 +15,7 @@ rules and follow the relevant pointers below rather than loading every plan.
 | Health checks and machines | [Health convention](health-convention.md), [Pi inventory](pi-inventory.md) |
 | Cross-session communication | [Handoff channel](handoff-repo-plan.md) |
 | Routine versus historical scripts | [Script inventory](../scripts/README.md) |
-| Why an earlier decision was made | [History](history.md), [workflow investigation](codex-workflow-checkpoint.md) |
+| Why an earlier decision was made | [History](history.md) |
 | Previous UI and plans | [Archived source](../archive/README.md), [archived plans](archive/README.md) |
 | Public publishing review trail | [Public drafts](../drafts/README.md) |
 

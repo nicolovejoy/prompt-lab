@@ -13,6 +13,20 @@ drifts.
 
 ## Build log (newest first)
 
+### Codex retired and removed — 2026-10-16
+
+Nico stopped using Codex on 2026-10-15. Stage 1 (PR #89) removed the Codex command
+renderer, host-identity branches, AGENTS.md machinery, permission profiles,
+bookkeeping hook and their tests; PR #88 dropped the `cx`/`duet` launchers. Stage 2
+deleted the Codex docs: the workflow validation, roadmap, checkpoint and
+permission-tuning docs, the 2026-09-12 dual-agent commands plan and spec, and the
+2026-09-19 hook-request-consumer plan. All are in git history at `28a4772^`.
+Every local-only branch from the five `~/src/*-codex` clones was pushed to origin
+unchanged for each repo to triage; `band-pa-recording-codex` was that repo's only
+checkout and became `~/src/band-pa-recording`. The `*-codex` project aliases and
+the `codex:<id>` session rows stay so history still reads. Entries below that
+describe Codex are the record of how it was built, not current instruction.
+
 ### Stranded Codex bookkeeping work recovered — 2026-09-19
 
 Recovered the uncommitted hook proposal, lifecycle evidence, current-work updates

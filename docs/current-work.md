@@ -1,45 +1,10 @@
 # Current work and deferred decisions
 
 **Next session, start here (2026-10-08):**
-1. **Codex permission tuning — applied 2026-09-25, see the status block at the top of
-   `docs/codex-permission-tuning-plan.md`.** Reviewed rules installed 2026-09-25 after
-   Nico's rulings (gh writes prompt, xcodebuild build/test prompt). zprofile edited and Codex resolves node with no prefix (v20, its
-   terminal's nvm default); a sandboxed Codex `handoff.sh append` pushed with exit 0.
-   Left open: re-measure on ~2026-10-02: `default.rules` should have gained ≤ 3
-   rules and no `zsh -lc` / `PATH=` escalations should remain (tally method in the plan).
-   Tally run 2026-10-09: 21 escalation requests in 18 sessions since the fix, against
-   118 in the five days before it. 20 were songpath-codex's first two days (09-26,
-   09-27); none was wrapped in `zsh -lc` or `PATH=` (two used `env -u PGHOST -u PGPORT`),
-   and none came from a worktree or scratch clone. **Not a verdict yet:** Codex ran in
-   a repo on only four days (09-25 to 09-28) and musicforge-codex, the source of the
-   118, had one session. Re-run after a real week of musicforge Codex use.
-   `default.rules` fails its criterion on the letter: 5 rules, all new (the two prune
-   survivors moved to `reviewed.rules`, so the earlier "+3" was a miscount), all from
-   09-26/27. Three are one-off literals (`touch` of a resync marker, `ps -axo`, one
-   `npm run e2e --grep`), one is the `gc-write.sh register-session` wrapper the
-   bookkeeping hook replaced on 09-27, and one is `npx playwright test` in the user
-   layer, which the 09-25 ruling allowed per repo only. All five were pruned
-   2026-10-09 on Nico's yes (backup: `~/.codex/backup-2026-10-09/`); songpath got the
-   Playwright rule text for its own `.codex/rules/`. Nico is not using Codex for a
-   while, so the re-measure waits for that.
-2. **Codex host bookkeeping is live in all five `~/src/*-codex` clones (2026-09-27).**
-   PR #68 merged 2026-09-25 (`ec0385f`); the live pilot passed in prompt-lab-codex
-   (session 885; details under "Live pilot" in `docs/codex-workflow-validation.md`);
-   `~/.claude/codex-bookkeeping-step3` accepts all five clones and songpath-codex
-   registered (session 889). A new clone must be added by restaging (new versioned dir)
-   + repointing `~/.codex/hooks.json` — outside the list, every Codex turn gets a Stop
-   block. Codex Desktop is unverified. Still untested: resume/fork, Claude-pair (Step 4).
-3. **Codex permissions: installed globally 2026-09-18.** `~/.codex/config.toml` selects the
-   `prompt-lab` profile from `workflow/codex-permissions.candidate.toml`, and
-   `~/.codex/rules/reviewed.rules` (from `workflow/codex-rules/`) replaced 170 accumulated
-   approvals. Backups: `~/.codex/backup-2026-09-18/`; any rollback now requires the
-   policy-compatibility review in the roadmap. Watch which prompts remain in daily
-   use; a fresh `default.rules`
-   will collect new "don't ask again" clicks, so review it. **Acceptance reopened
-   2026-09-19:** MusicForge reported registration blocked by DB permissions and
-   handoff correctly stopped. Further rollout is on hold pending the reviewed
-   bookkeeping interface and staged end-to-end gates. Details:
-   `docs/codex-workflow-roadmap.md`. Branch `claude/codex-permissions` is unpushed.
+1. **Codex removal, stage 2 done 2026-10-16.** Stage 1 (PR #89) and the docs
+   sweep are merged; `docs/remove-codex-plan.md` has the record. Still for Nico:
+   delete `~/src/stars-demo-codex` once stars-demo has triaged its branches, and
+   each sibling repo commits its staged `AGENTS.md` deletion + CLAUDE.md re-sync.
 
 **stars-demo is not being onboarded (Nico, 2026-10-09):** it was a one-off and is
 mostly done, so it stays a grey "more" entry in the dashboard chart.
@@ -67,29 +32,6 @@ opens with a `scrub` stage that closes rows idle for a week, and a pointer file 
 rows due). Until then those 58 rows stay open.
 
 **Mini shut down 2026-09-25.** Idle for weeks: no jobs, no containers, no handoff clone; only the parked `disabled-promptlab-20260820` LaunchAgents. Clean shutdown over ssh. Nothing depends on it. Possible future role: an independent watcher for the "cron dead" heartbeat hole. Details in memory `user_two_machines.md`.
-
-**Workflow status (2026-09-19):** `docs/codex-workflow-roadmap.md` is authoritative for current
-implementation and remaining gates; `docs/codex-workflow-validation.md` holds
-smoke tests/results. The paired Songpath test passed. After reinstalling, the
-explicit `$source-command-readup` skill passed its live invocation and stable-ID
-checks. The first `$source-command-handoff` correctly stopped on a read-only DB
-error. After the narrow installed-helper rule and constrained temporary summary
-path were installed, a fresh resume retained session `610`, saved its 604-character
-audit, and closed it successfully. That zero-commit test preceded the global
-permission-profile install; MusicForge's new registration failure reopens
-bookkeeping acceptance. Direct SQLite commit capture also remains outside the
-helper. Claude's fake-DB probe confirmed sandboxed registration failure and a
-prompt-hook-created row; it did not execute escalation. The explicit deny policy
-rules out that route. The roadmap now proposes host-injected identity and validated
-hook-side handoff requests, with receipts after persistence. The real CLI lifecycle
-fixture passed with a local model stub: identity arrived, Stop saved fake data and
-continued once to deliver a receipt, and a wrong ID was rejected without saving.
-Production-profile acceptance was not tested (nested macOS sandboxing failed).
-Next: implement the protected request consumer and replay/receipt contract against
-the existing identity resolver. This is not an installed fix.
-Full handoff, fresh-launcher
-fork, and nightly checks remain. The deprecated `/prompts:*` interface failed its
-live check.
 
 **Shared-conventions rollout:** the checker now hashes the actual body and separates
 clean `behind` copies from `tampered` blocks, which apply refuses to overwrite. A

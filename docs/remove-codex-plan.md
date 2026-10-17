@@ -1,6 +1,6 @@
 # Plan: remove Codex from the workflow
 
-Status: STAGE 1 MERGED (PR #88, #89) and installed, 2026-10-16. Fleet CLAUDE.md re-synced (uncommitted in each repo); AGENTS.md deletion and docs sweep (stage 2) remain. Decision (Nico, 2026-10-15): stick with Claude
+Status: DONE through stage 2, 2026-10-16. Stage 1 merged (PR #88, #89) and installed; fleet CLAUDE.md re-synced and AGENTS.md deletions staged in every sibling (each repo commits its own); Codex docs deleted. Remaining: Nico deletes `~/src/stars-demo-codex` after stars-demo triages its branches. Decision (Nico, 2026-10-15): stick with Claude
 Code; Codex is retired.
 
 Done 2026-10-16:
