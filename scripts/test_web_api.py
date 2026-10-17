@@ -2802,7 +2802,10 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
     WHERE clause would) / recent-bad-nullhost (an older bad row whose `host`
     is NULL, as a backfilled row from a host that never stamped one). Two
     scenarios that legitimately co-occur can be joined with `+`, e.g.
-    "stage-failed+recent-bad".
+    "stage-failed+recent-bad". recent-recovered: an older row 2 lab days
+    back whose only failed stage is cost-pull — with hb=fresh the cost
+    artifact is dated today, strictly after that night, so it is recovered;
+    with hb=stale it is not.
 
     The turso stub dispatches on the SQL because the endpoint issues four
     different kinds of query against the same helper — the pause lookup, the
@@ -2912,6 +2915,12 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
             rows = [fake_run_row()]
             if "recent-bad" in nr_set:
                 rows.append(fake_bad_row(3, "run-bad-3"))
+            if "recent-recovered" in nr_set:
+                rec = fake_bad_row(2, "run-recovered-2")
+                rec["stages"] = json.dumps([
+                    {"name": "scrub", "outcome": "ok", "detail": ""},
+                    {"name": "cost-pull", "outcome": "failed", "detail": "ssl eof"}])
+                rows.append(rec)
             elif "recent-bad-outside" in nr_set:
                 rows.append(fake_bad_row(10, "run-bad-10"))
             if "recent-bad-nullhost" in nr_set:
@@ -3777,6 +3786,79 @@ def _():
         assert run["ok"] is True, run
         assert run["recent_bad"] == [], run
         assert run["note"] == "", run
+    finally:
+        restore()
+
+
+@test("nightly run: an older failed stage whose artifact landed later is recovered, not bad")
+def _():
+    """Two transient cost-pull network failures stayed red for a week each
+    while the cost artifact was fresh the very next morning: the pull resumes
+    from its last successful timestamp, so nothing was missing. A failed
+    stage with a strictly newer artifact is reported as recovered and does
+    not escalate; it is still listed, never silently dropped."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="recent-recovered")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["ok"] is True, run
+        assert run["recent_bad"] == [], run
+        assert len(run["recovered"]) == 1, run
+        day = (lab_today() - timedelta(days=2)).isoformat()
+        rc = run["recovered"][0]
+        assert rc["lab_date"] == day, rc
+        assert rc["note"] == f"cost-pull: failed → cost pull + sync landed {lab_today().isoformat()}", rc
+
+        mod, sent = _health_mod(nr="recent-recovered")
+        invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
+        subject, html_body, text = sent[0]
+        assert subject.startswith("✅"), subject
+        assert f"recovered {day} laptop: cost-pull: failed" in text, text
+        assert f"recovered {day} laptop: cost-pull: failed" in html_body, html_body
+    finally:
+        restore()
+
+
+@test("nightly run: a failed stage is NOT recovered when its artifact is stale")
+def _():
+    """Recovery needs positive evidence. A stale, missing or unreadable
+    heartbeat vouches for nothing, so the night stays bad and escalates."""
+    restore = _health_env()
+    try:
+        for hb in ("stale", "never", "error"):
+            mod, sent = _health_mod(nr="recent-recovered", hb=hb)
+            h = invoke(mod, "/api/health_report?dry=1",
+                       {"authorization": "Bearer cron-secret"})
+            run = h.body["nightly_run"]
+            assert run["ok"] is False, (hb, run)
+            assert run["recovered"] == [], (hb, run)
+            assert len(run["recent_bad"]) == 1, (hb, run)
+            assert run["recent_bad"][0]["note"] == "cost-pull: failed", (hb, run)
+    finally:
+        restore()
+
+
+@test("nightly run: a stage with no artifact, and the newest row, are never recovered")
+def _():
+    """`network` has no heartbeat to vouch for it (recent-bad), and last
+    night's own failure (stage-failed: synthesizer, newest row) stands even
+    though the synthesizer artifact reads fresh — fresh is not strictly newer
+    than the night it failed."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="recent-bad")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["ok"] is False and run["recovered"] == [], run
+        mod, sent = _health_mod(nr="stage-failed")
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        run = h.body["nightly_run"]
+        assert run["ok"] is False and run["recovered"] == [], run
+        assert "synthesizer: failed" in run["note"], run
     finally:
         restore()
 

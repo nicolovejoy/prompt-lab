@@ -345,6 +345,24 @@ FAILED_OUTCOMES = ("failed", "timeout", "skipped")
 # `push_runs` catch-up is unchanged) is what closes that gap.
 NIGHTLY_RUN_WINDOW_DAYS = 7
 
+# Which artifact heartbeat vouches for a stage's work. An OLDER bad night whose
+# failed stages all have a heartbeat dated AFTER that night is "recovered": a
+# later run redid the work (cost-pull resumes from its last successful pull,
+# the synthesizer re-reads the day), so the red line was noise nobody can act
+# on. This never softens the NEWEST row — a failure last night stands until a
+# later run proves otherwise — and a stage with no artifact here (scrub, the
+# two sync legs) is never recovered, because nothing can vouch for it. The
+# heartbeat must be strictly newer than the bad night, not merely "fresh":
+# with a 3-day threshold an artifact from the night BEFORE the failure is
+# still fresh and proves nothing. Added 2026-10-17 after two transient
+# cost-pull network failures stayed red for a week each.
+STAGE_ARTIFACT = {
+    "cost-pull": "cost pull + sync",
+    "synthesizer": "synthesizer",
+    "review": "review email",
+    "report": "bi-monthly report",
+}
+
 NIGHTLY_RUN_SQL = (
     "SELECT run_id, host, started_at, lab_date, finished_at, status, "
     "stages, claims, exit_code FROM nightly_runs "
@@ -445,8 +463,34 @@ def _one_liner(stages, status):
             or f"run reported {status or 'no status'}")
 
 
-def _build_recent_bad(other_rows):
-    """Every OTHER row in the window that is not a clean run, newest first.
+def _artifact_dates(heartbeats):
+    """{heartbeat name: last date} for heartbeats that answered fresh.
+    A heartbeat that is stale, never produced, or could not be checked
+    vouches for nothing — recovery needs positive evidence."""
+    out = {}
+    for h in heartbeats or []:
+        if h.get("ok") is True and h.get("last"):
+            out[h["name"]] = str(h["last"])[:10]
+    return out
+
+
+def _recovered_note(bad, lab_date, artifacts):
+    """The stage list as `name: outcome → <artifact> landed <date>`, or None
+    when any failed stage lacks a strictly newer artifact. All-or-nothing:
+    one unrecovered stage keeps the whole night red."""
+    parts = []
+    for s in bad:
+        name = STAGE_ARTIFACT.get(s.get("name"))
+        landed = artifacts.get(name) if name else None
+        if not landed or not lab_date or landed <= lab_date:
+            return None
+        parts.append(f"{s.get('name')}: {s['outcome']} → {name} landed {landed}")
+    return ", ".join(parts)
+
+
+def _build_recent_bad(other_rows, heartbeats=None):
+    """Every OTHER row in the window that is not a clean run, newest first,
+    split into (still bad, recovered).
 
     This is the actual fix: a run that fails for lack of network also fails
     to push its own record on time, so it arrives via `push_runs`' catch-up
@@ -454,21 +498,32 @@ def _build_recent_bad(other_rows):
     therefore never the newest row `_check_nightly_run` grades. Without this,
     that failure is graded never. `other_rows` is already bounded to the
     window and ordered newest-first by NIGHTLY_RUN_SQL.
+
+    A bad night whose failed stages ALL have an artifact heartbeat dated
+    after it goes to the recovered list instead (see STAGE_ARTIFACT). A run
+    that reported "failed" with no failed stage at all cannot be recovered:
+    there is nothing an artifact could vouch for.
     """
-    out = []
+    bad_out, recovered = [], []
+    artifacts = _artifact_dates(heartbeats)
     for r in other_rows:
         stages = _decode_json_column(r.get("stages"), [])
         status = r.get("status")
         bad = [s for s in stages if s.get("outcome") in FAILED_OUTCOMES]
         if not bad and status == "ok":
             continue
-        out.append({"lab_date": str(r.get("lab_date") or "")[:10],
-                     # A backfilled row from a host that never stamped one
-                     # renders straight into the email, so the fallback is
-                     # here rather than at each of the render sites.
-                     "status": status, "host": r.get("host") or "unknown host",
-                     "note": _one_liner(stages, status)})
-    return out
+        lab_date = str(r.get("lab_date") or "")[:10]
+        # A backfilled row from a host that never stamped one renders straight
+        # into the email, so the fallback is here rather than at each of the
+        # render sites.
+        row = {"lab_date": lab_date, "status": status,
+               "host": r.get("host") or "unknown host"}
+        note = _recovered_note(bad, lab_date, artifacts) if bad else None
+        if note:
+            recovered.append({**row, "note": note})
+        else:
+            bad_out.append({**row, "note": _one_liner(stages, status)})
+    return bad_out, recovered
 
 
 def _apply_recent_bad(entry):
@@ -506,7 +561,7 @@ def _check_nightly_run(heartbeats=None):
     """
     entry = {"lab_date": None, "host": None, "status": None,
              "age_days": None, "ok": None, "stages": [], "mismatches": [],
-             "exit_code": None, "note": "", "recent_bad": []}
+             "exit_code": None, "note": "", "recent_bad": [], "recovered": []}
     cutoff = (lab_today() - timedelta(days=NIGHTLY_RUN_WINDOW_DAYS)).isoformat()
     try:
         rows = turso_query(NIGHTLY_RUN_SQL, [cutoff])
@@ -521,7 +576,7 @@ def _check_nightly_run(heartbeats=None):
         return entry
 
     row = rows[0]
-    entry["recent_bad"] = _build_recent_bad(rows[1:])
+    entry["recent_bad"], entry["recovered"] = _build_recent_bad(rows[1:], heartbeats)
     entry["host"] = row.get("host")
     entry["status"] = row.get("status")
     entry["exit_code"] = row.get("exit_code")
@@ -813,6 +868,11 @@ def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None,
             # it would never appear in the email at all.
             lines.extend(f"  {rb['lab_date']} {rb['host']}: {rb['note']}"
                          for rb in nightly_run.get("recent_bad") or [])
+        # Recovered nights are informational and never escalate, but they
+        # still appear: a failure that silently vanished would be the exact
+        # "absence recorded as nothing" shape this email exists to kill.
+        lines.extend(f"  recovered {rc['lab_date']} {rc['host']}: {rc['note']}"
+                     for rc in nightly_run.get("recovered") or [])
 
     # The archive result must reach the inbox: the JSON response is unread and
     # Vercel logs evaporate in ~an hour, so a 0-row pull is otherwise invisible.
@@ -868,6 +928,12 @@ def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None,
                     f"{escape(_nightly_run_headline(nightly_run))}</p>"
                     + (f"<ul style='margin-top:0'>{details}</ul>"
                        if details else ""))
+    recovered = "".join(
+        f"<li>recovered {escape(rc['lab_date'])} {escape(str(rc['host']))}: "
+        f"{escape(rc['note'])}</li>"
+        for rc in nightly_run.get("recovered") or [])
+    if recovered:
+        run_html += f"<ul style='margin-top:0;color:#666'>{recovered}</ul>"
 
     if uptime_rows is None:
         archive_html = ""
