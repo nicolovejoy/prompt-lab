@@ -1,6 +1,6 @@
 # Plan: remove Codex from the workflow
 
-Status: IN PROGRESS, 2026-10-16. Decision (Nico, 2026-10-15): stick with Claude
+Status: STAGE 1 MERGED (PR #88, #89) and installed, 2026-10-16. Fleet CLAUDE.md re-synced (uncommitted in each repo); AGENTS.md deletion and docs sweep (stage 2) remain. Decision (Nico, 2026-10-15): stick with Claude
 Code; Codex is retired.
 
 Done 2026-10-16:

@@ -10,6 +10,27 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-10-16 — Codex is retired; delete AGENTS.md and commit the CLAUDE.md re-sync
+
+Scope: every repo
+
+**Claude Code is the only agent now.** Nico stopped using Codex on 2026-10-15 and
+prompt-lab stripped it from the tooling (PR #89). Three things follow in each repo:
+
+- **Delete `AGENTS.md`.** Its only reader was Codex. `git rm AGENTS.md` and commit. The
+  shared block in `CLAUDE.md` is still the one place conventions live.
+- **Commit the uncommitted `CLAUDE.md` change** you will find: the shared-conventions
+  block was re-synced fleet-wide to drop the two Codex rules (`codex/` branch prefix,
+  command-form rule). `git diff CLAUDE.md` shows only that block.
+- **A `codex/*` branch on origin is work to triage, not a live agent.** Every local-only
+  branch from the retired `~/src/<repo>-codex` clones was pushed unchanged. Merge,
+  cherry-pick or delete each; nobody is working on them.
+
+`$source-command-*`, `~/.codex`, `~/.agents` and the `*-codex` clones are gone or going.
+Treat any remaining Codex instruction in a repo's docs as history.
+
+---
+
 ## 2026-10-15 — Test browsers run in Edge; Chrome is Nico's
 
 Scope: every repo that runs Playwright (tests, phone/layout checks, the Playwright MCP server)
