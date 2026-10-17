@@ -1,4 +1,4 @@
-"""Ground Control knowledge store — backend-agnostic data access layer."""
+"""Prompt-Labs knowledge store — backend-agnostic data access layer."""
 
 from __future__ import annotations
 

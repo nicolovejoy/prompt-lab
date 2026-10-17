@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ground Control install script
+# Prompt-Labs install script
 # Copies slash commands, hooks config snippet, and launchd plists to the right places.
 # Run from anywhere — detects repo location automatically.
 
@@ -42,7 +42,7 @@ install_file() {
     cp "$src" "$dest"
 }
 
-echo "Installing Ground Control from: $REPO_DIR"
+echo "Installing Prompt-Labs from: $REPO_DIR"
 [ "$FORCE" = "1" ] && echo "(--force: existing files will be overwritten without backup)"
 echo ""
 

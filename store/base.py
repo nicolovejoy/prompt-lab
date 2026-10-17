@@ -1,4 +1,4 @@
-"""Abstract base class for Ground Control knowledge store backends."""
+"""Abstract base class for Prompt-Labs knowledge store backends."""
 
 from __future__ import annotations
 
