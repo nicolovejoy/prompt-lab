@@ -14,8 +14,12 @@ next repo renders it the same way.
 - Inclusive forms (·e) only where a direct address would otherwise pick a
   gender for the reader: "Intéressé·e ?", "Prêt·e à commencer ?". Elsewhere
   rephrase neutrally ("À vous de commencer" rather than "Soyez le premier").
-- Mark machine translation honestly (tenet 1): a footer or signature line such
-  as "Traduit de l’anglais par Claude." until Nico has reviewed the text.
+- Do not mark machine translation, and do not try to separate Claude's
+  writing from Nico's (Nico, 2026-10-17: "too hard to do, no clear line").
+  Most text is a blend. No "Traduit de l’anglais par Claude." footers or
+  sign-off markers on new French text; existing ones can go when a page is
+  next touched. Honesty lives in the tenets page's blanket statement, not in
+  per-line markers.
 
 ## Keep in English
 
