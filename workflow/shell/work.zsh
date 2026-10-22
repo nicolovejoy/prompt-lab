@@ -4,8 +4,8 @@
 # Pick any directory under ~/src (menu, argument, or tab
 # completion) and open a new iTerm2 window with two panes,
 # both cd'd into the project folder:
-#   - top (~80% height)    : Claude Code
-#   - bottom strip (~20%)  : one shell, cleared, ready to type
+#   - top (~85% height)    : Claude Code
+#   - bottom strip (~15%)  : one shell, cleared, ready to type
 # The tab color is derived from the project name (same name ->
 # same color, always), so no per-project config is needed.
 #
@@ -30,7 +30,7 @@
 WORK_SRC_DIR="$HOME/src"
 WORK_COLS=150   # window size in terminal cells; iTerm2 clamps to screen
 WORK_ROWS=100   # if larger than the display can fit (set high to fill screen height)
-WORK_BOTTOM_PCT=20   # height of the bottom shell strip, as a percentage of WORK_ROWS
+WORK_BOTTOM_PCT=15   # height of the bottom shell strip, as a percentage of the window's real rows
 
 
 # --- 1. TAB COLOR HELPERS ----------------------------------
@@ -201,15 +201,14 @@ _work_launch() {
 
   _work_cmds "$name" "$proj_dir" "$model" "$effort"
   local top_cmd="${reply[1]}" shell_cmd="${reply[2]}"
-  local bottom_rows=$(( WORK_ROWS * WORK_BOTTOM_PCT / 100 ))
 
-  osascript - "$top_cmd" "$shell_cmd" "$WORK_COLS" "$WORK_ROWS" "$bottom_rows" <<'APPLESCRIPT'
+  osascript - "$top_cmd" "$shell_cmd" "$WORK_COLS" "$WORK_ROWS" "$WORK_BOTTOM_PCT" <<'APPLESCRIPT'
 on run argv
   set topCommand to item 1 of argv
   set shellCommand to item 2 of argv
   set windowColumns to (item 3 of argv) as integer
   set windowRows to (item 4 of argv) as integer
-  set bottomRows to (item 5 of argv) as integer
+  set bottomPct to (item 5 of argv) as integer
   tell application "iTerm"
     activate
     set w to (create window with default profile)
@@ -218,6 +217,11 @@ on run argv
       tell s1
         set columns to windowColumns
         set rows to windowRows
+        -- iTerm clamps the request to the screen, so size the strip from
+        -- the rows the window really got, not the rows we asked for.
+        delay 0.3
+        set totalRows to rows
+        set bottomRows to (totalRows * bottomPct / 100) as integer
         set s2 to (split horizontally with default profile)
       end tell
       tell s2 to set rows to bottomRows
