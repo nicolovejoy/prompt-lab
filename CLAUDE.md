@@ -184,6 +184,11 @@ last-step delivery failure.
   every Monday under the wrong week. Correct bucket: `date(<d>,'weekday 0','-6 days')`.
 - **Turso's `daily_summaries.prompt_version` is perpetually NULL by design** —
   `merge_summary_parts()` omits it (local provenance). Not a broken sync leg.
+- **The weekly-rollup sync leg selects by `created_at`, never by `week_start`.** A week's
+  rollup is written after the week ends, so a `week_start >= today-7d` window matched it on one
+  Sunday a week and dropped it every other night; a week first rolled up on a Monday never
+  reached Turso at all (week of 2026-10-19, found 10-27). `INSERT OR REPLACE` resets
+  `created_at`, which is what makes it the write time.
 - **`/api/private_history` has no allowlist of its own** — any project, gated solely by
   `SERVICE_HISTORY_KEY`. The 9-key allowlist is the *public* tier's write gate.
 - **Deep coverage over an autosuspending DB needs a poll interval longer than the

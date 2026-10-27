@@ -177,6 +177,29 @@ def sync_daily_summaries(local, remote, since, dry_run):
     return synced
 
 
+
+def recent_weekly_rollups(local, since):
+    """Weekly rollups written on or after `since` (a YYYY-MM-DD date), or all
+    of them when `since` is None.
+
+    Selected by created_at, NOT by week_start. A week's rollup is written
+    after the week ends, so `week_start >= today - 7d` matches it on exactly
+    one night: the Sunday where the two dates coincide. Every other night
+    read "weekly_rollups: 0 rows (skip)", and a rollup first written on a
+    Monday or later — the week of 2026-10-19, written 10-27 — could never
+    reach Turso at all (found 2026-10-27; the publish log showed rows synced
+    only on 10-05, 10-12 and 10-19). The local upsert is INSERT OR REPLACE,
+    which resets created_at, so created_at is the write time: a re-rolled
+    old week syncs too. created_at is UTC and `since` is a local date; the
+    UTC date of a write is never earlier than its local date, so the
+    comparison cannot miss a row. A legacy row with no created_at has not
+    changed and is left to the full sync.
+    """
+    rows = local.get_weekly_rollups()
+    if not since:
+        return rows
+    return [r for r in rows if (r.get("created_at") or "")[:10] >= since]
+
 def sync_table(local, remote, table_name, query_fn, upsert_fn, dry_run=False, chunk=100):
     """Sync rows from local to remote, batching writes via _execute_many.
 
@@ -300,10 +323,11 @@ def main():
     # generic blind upsert: two machines on one project-day must both survive.
     total += sync_daily_summaries(local, remote, since, dry_run)
 
-    # Weekly rollups
+    # Weekly rollups — selected by write time, never by week_start (see
+    # recent_weekly_rollups).
     total += sync_table(
         local, remote, "weekly_rollups",
-        lambda s: s.get_weekly_rollups(since=since),
+        lambda s: recent_weekly_rollups(s, since),
         lambda r, row: r.upsert_weekly_rollup(
             project=row["project"], week_start=row["week_start"],
             narrative=row["narrative"],
