@@ -196,6 +196,11 @@ last-step delivery failure.
   account display was UTC-10 and cost two rounds of cross-agent confusion.
 - **Prompt counts step up once on 2026-08-14 and the step is real** — a write-time filter
   dropped every prompt under 20 chars before then. Backfill is impossible.
+- **The weekly-rollup sync leg selects by `created_at`, never by `week_start`.** A week's
+  rollup is written after the week ends, so a `week_start >= today-7d` window matched it on one
+  Sunday a week and dropped it every other night; a week first rolled up on a Monday never
+  reached Turso at all (week of 2026-10-19, found 10-27). `INSERT OR REPLACE` resets
+  `created_at`, which is what makes it the write time.
 - **A full `sync_to_turso.py` runs past 120s** — for one upsert-only row write straight to
   Turso, and never let a sync leg touch `project_metadata`, which is cloud-direct.
 - **Test UptimeRobot alerting on a throwaway monitor, never by flipping a real one to a
