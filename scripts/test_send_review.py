@@ -220,6 +220,23 @@ def test_elapsed_host_slept():
     assert "not API latency" in out, out
 
 
+class _FakeStream:
+    """Stands in for client.messages.stream(...): a context manager whose
+    get_final_message() returns the assembled response."""
+
+    def __init__(self, resp):
+        self.resp = resp
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def get_final_message(self):
+        return self.resp
+
+
 @test("call_claude returns awake_ms alongside duration_ms")
 def test_call_claude_reports_awake():
     import types
@@ -231,7 +248,7 @@ def test_call_claude_reports_awake():
         usage=types.SimpleNamespace(input_tokens=11, output_tokens=22),
     )
     client = types.SimpleNamespace(
-        messages=types.SimpleNamespace(create=lambda **kw: resp))
+        messages=types.SimpleNamespace(stream=lambda **kw: _FakeStream(resp)))
 
     got = call_claude(client, model="m", system="s", user_msg="u",
                       tool={"name": "t"})
@@ -240,6 +257,36 @@ def test_call_claude_reports_awake():
     # On a machine that never slept mid-call the two agree closely; the
     # detector is only meaningful because both are recorded.
     assert abs(got["duration_ms"] - got["awake_ms"]) < 1000, got
+
+
+@test("call_claude streams: a client without a non-streaming create still works")
+def test_call_claude_uses_streaming():
+    # 2026-10-21..24: the review call (the one call that sits silent on the
+    # wire for 60-100s while the server buffers a 16k-token tool output)
+    # died with read timeouts on three post-wake mornings while every
+    # sub-10s call in the same run succeeded. Streaming keeps bytes flowing
+    # (the API pings every ~30s before the first delta), so the request has
+    # no long silence for a flaky post-wake connection to kill. A stub that
+    # exposes only stream() proves call_claude never falls back to create().
+    import types
+
+    from claude_api import call_claude
+
+    seen = {}
+
+    def stream(**kw):
+        seen.update(kw)
+        return _FakeStream(types.SimpleNamespace(
+            content=[types.SimpleNamespace(input={"streamed": True})],
+            usage=types.SimpleNamespace(input_tokens=1, output_tokens=2)))
+
+    client = types.SimpleNamespace(messages=types.SimpleNamespace(stream=stream))
+    got = call_claude(client, model="m", system="s", user_msg="u",
+                      tool={"name": "t"}, max_tokens=16384)
+    assert got["parsed"] == {"streamed": True}, got
+    assert got["input_tokens"] == 1 and got["output_tokens"] == 2, got
+    assert seen["max_tokens"] == 16384 and seen["model"] == "m", seen
+    assert seen["tool_choice"] == {"type": "tool", "name": "t"}, seen
 
 
 @test("clocks: both nightly readers still surface the sleep diagnostic")
