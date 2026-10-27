@@ -69,6 +69,15 @@ LAB_TZ = ZoneInfo("America/Los_Angeles")
 NETWORK_PROBE_HOST = "api.anthropic.com"
 NETWORK_WAIT_SECONDS = 180
 NETWORK_POLL_SECONDS = 5
+# The gate also waits for the MORNING. launchd does not wake a sleeping Mac
+# for a calendar job; it fires it on the next wake of any kind, and macOS
+# dark-wakes for ~10s every hour or two with no DNS. The 180s awake budget
+# above was spent across a dozen of those and three of five nights
+# (2026-10-23, -25, -26) exited 1 hours later having run nothing. The nights
+# that worked were the ones where the lid opened before the budget ran out
+# and the run resumed at 07:00 on a real network. So until this hour, local
+# time, the gate keeps polling: give up at 11:00, never in under 180s awake.
+NETWORK_DEADLINE_HOUR = 11
 
 
 @dataclass
@@ -182,19 +191,36 @@ def run_pipeline(stages: list[Stage], cwd: Path = ROOT) -> list[StageResult]:
     return list(results.values())
 
 
-def wait_for_network(host: str = NETWORK_PROBE_HOST,
-                      budget_s: float = NETWORK_WAIT_SECONDS,
-                      poll_s: float = NETWORK_POLL_SECONDS,
-                      resolve=socket.getaddrinfo,
-                      sleep=time.sleep) -> tuple:
-    """Poll DNS resolution of `host` until it succeeds or the budget runs out.
+def morning_deadline(start_local: datetime,
+                     hour: int = NETWORK_DEADLINE_HOUR):
+    """Wall-clock deadline for the network gate: `hour`:00 on the start day,
+    local time, or None when the run started at or after it (a daytime
+    manual run, or a wake-fired run that is already late) — then only the
+    awake budget applies, as before."""
+    deadline = start_local.replace(hour=hour, minute=0, second=0, microsecond=0)
+    return deadline if start_local < deadline else None
 
-    The budget is measured on time.monotonic(), never time.time() — a host
-    that sleeps mid-wait must not have the sleep counted against it (see the
-    module docstring). `resolve` and `sleep` are injected so tests need no
-    network and no real delay.
+
+def wait_for_network(host: str = NETWORK_PROBE_HOST,
+                     budget_s: float = NETWORK_WAIT_SECONDS,
+                     poll_s: float = NETWORK_POLL_SECONDS,
+                     resolve=socket.getaddrinfo,
+                     sleep=time.sleep,
+                     deadline: datetime | None = None,
+                     now=None) -> tuple:
+    """Poll DNS resolution of `host` until it succeeds, or until BOTH limits
+    are spent: the awake budget (time.monotonic(), never time.time() — a
+    host that sleeps mid-wait must not have the sleep counted against it;
+    see the module docstring) and, when given, the wall-clock `deadline`.
+
+    The deadline is deliberately wall-clock. The repo's rule against
+    wall-clock deadlines is about API calls, where a sleeping host makes
+    elapsed wall time meaningless; here "give up at 11:00" is the intent,
+    because the thing being waited for is the morning. `resolve`, `sleep`
+    and `now` are injected so tests need no network and no real delay.
     """
-    start = time.monotonic()
+    now = now or (lambda: datetime.now(LAB_TZ))
+    start, wall_start = time.monotonic(), now()
     attempt = 0
     last_error: Exception | None = None
     while True:
@@ -206,8 +232,15 @@ def wait_for_network(host: str = NETWORK_PROBE_HOST,
         else:
             if attempt == 1:
                 return True, "resolved immediately"
-            return True, f"resolved after {time.monotonic() - start:.1f}s"
-        if time.monotonic() - start >= budget_s:
+            awake = time.monotonic() - start
+            wall = (now() - wall_start).total_seconds()
+            if wall - awake < 30:
+                return True, f"resolved after {awake:.1f}s"
+            return True, (f"resolved after {awake:.1f}s awake / "
+                          f"{wall / 3600:.1f}h wall — waited for the morning")
+        awake_spent = time.monotonic() - start >= budget_s
+        wall_spent = deadline is None or now() >= deadline
+        if awake_spent and wall_spent:
             return False, f"{type(last_error).__name__}: {last_error}"
         sleep(poll_s)
 
@@ -480,10 +513,12 @@ def main(argv: list | None = None) -> int:
         # notices the machine is awake, before the resolver is up. Four
         # nights this month started straight into socket.gaierror on every
         # network-dependent stage.
-        network_up, detail = wait_for_network()
+        deadline = morning_deadline(datetime.now(LAB_TZ))
+        network_up, detail = wait_for_network(deadline=deadline)
         if not network_up:
-            print(f"--- network: NOT READY after {NETWORK_WAIT_SECONDS}s "
-                  f"({detail}) ---", flush=True)
+            limit = (f"by {deadline.strftime('%H:%M %Z')}" if deadline
+                     else f"after {NETWORK_WAIT_SECONDS}s awake")
+            print(f"--- network: NOT READY {limit} ({detail}) ---", flush=True)
             results = [StageResult("network", "failed", detail)]
             exit_code = 1
         else:

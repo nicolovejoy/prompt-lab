@@ -525,6 +525,103 @@ def _():
     assert "gaierror" in detail, detail
 
 
+@test("morning_deadline: a 02:30 start waits for 11:00 the same day")
+def _():
+    from datetime import datetime
+    start = datetime(2026, 10, 26, 2, 30, tzinfo=np.LAB_TZ)
+    assert np.morning_deadline(start) == datetime(2026, 10, 26, 11, 0, tzinfo=np.LAB_TZ)
+
+
+@test("morning_deadline: a start at or after 11:00 gets no wall-clock wait")
+def _():
+    from datetime import datetime
+    assert np.morning_deadline(datetime(2026, 10, 26, 11, 0, tzinfo=np.LAB_TZ)) is None
+    assert np.morning_deadline(datetime(2026, 10, 26, 14, 7, tzinfo=np.LAB_TZ)) is None
+
+
+@test("wait_for_network: awake budget spent before 11:00 keeps waiting (the 10-23/25/26 nights)")
+def _():
+    """launchd fires the job inside a ten-second maintenance DarkWake with no
+    DNS. The awake budget used to be the only limit, so it was spent across
+    a dozen dark wakes and the night exited 1 hours later. With a morning
+    deadline the gate keeps polling until the laptop sees a real network
+    (the lid opens) — it must not give up on the awake budget alone."""
+    from datetime import datetime, timedelta
+    fake_mono = [0.0]
+    wall = [datetime(2026, 10, 26, 3, 15, tzinfo=np.LAB_TZ)]
+    probes = {"n": 0}
+
+    def fake_sleep(s):
+        fake_mono[0] += s
+        wall[0] += timedelta(minutes=20)  # the host sleeps between probes
+
+    def fake_resolve(host, port):
+        probes["n"] += 1
+        if wall[0] >= datetime(2026, 10, 26, 7, 12, tzinfo=np.LAB_TZ):
+            return [("resolved",)]  # the lid opened at 07:12
+        raise socket.gaierror(8, "nodename nor servname provided")
+
+    saved = np.time.monotonic
+    np.time.monotonic = lambda: fake_mono[0]
+    try:
+        ok, detail = np.wait_for_network(
+            host="x", budget_s=15, poll_s=5, resolve=fake_resolve, sleep=fake_sleep,
+            deadline=np.morning_deadline(wall[0]), now=lambda: wall[0])
+    finally:
+        np.time.monotonic = saved
+
+    assert ok is True, detail
+    # 15s of awake budget is 3 sleeps; the gate went well past that.
+    assert probes["n"] > 4, probes
+    assert "awake" in detail and "wall" in detail, detail
+
+
+@test("wait_for_network: past 11:00 the awake budget is still a floor, then it gives up")
+def _():
+    from datetime import datetime, timedelta
+    fake_mono = [0.0]
+    wall = [datetime(2026, 10, 26, 10, 58, tzinfo=np.LAB_TZ)]
+    probes = {"n": 0}
+
+    def fake_sleep(s):
+        fake_mono[0] += s
+        wall[0] += timedelta(minutes=1)
+
+    def fake_resolve(host, port):
+        probes["n"] += 1
+        raise socket.gaierror(8, "nodename nor servname provided")
+
+    saved = np.time.monotonic
+    np.time.monotonic = lambda: fake_mono[0]
+    try:
+        ok, detail = np.wait_for_network(
+            host="x", budget_s=15, poll_s=5, resolve=fake_resolve, sleep=fake_sleep,
+            deadline=np.morning_deadline(wall[0]), now=lambda: wall[0])
+    finally:
+        np.time.monotonic = saved
+
+    assert ok is False
+    # t=0,5,10,15 awake; by then wall is 11:01, past the deadline: 4 probes.
+    assert probes["n"] == 4, probes
+    assert "gaierror" in detail, detail
+
+
+@test("wait_for_network: no deadline means the old awake-budget behaviour")
+def _():
+    from datetime import datetime
+    probes = {"n": 0}
+
+    def fake_resolve(host, port):
+        probes["n"] += 1
+        raise socket.gaierror(8, "nodename nor servname provided")
+
+    ok, _detail = np.wait_for_network(
+        host="x", budget_s=0.01, poll_s=0, resolve=fake_resolve, sleep=lambda s: None,
+        deadline=None, now=lambda: datetime(2026, 10, 26, 2, 30, tzinfo=np.LAB_TZ))
+    assert ok is False
+    assert probes["n"] >= 1
+
+
 # === main(): the bracket around a run =======================================
 #
 # The ordering these pin is what the whole run record rests on: a "running"

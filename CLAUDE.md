@@ -173,6 +173,15 @@ last-step delivery failure.
   wake, so jobs 45 min apart start together. Ordering belongs in `nightly_pipeline.py`.
 - **Never enforce a wall-clock timeout on a host that sleeps.** `time.time()` counts sleep,
   httpx's monotonic read timeout does not — the "3h19m API call" was a healthy 136s run.
+- **The network gate waits for the morning, and that wall-clock deadline is deliberate.**
+  launchd never wakes a sleeping Mac for a calendar job; it fires the nightly on the next
+  wake of any kind, which is a ten-second maintenance dark wake with no DNS. A 180s awake
+  budget alone was spent across a dozen of those and nights 2026-10-23, -25 and -26 ran
+  nothing. The gate now polls until 11:00 local (`NETWORK_DEADLINE_HOUR`) and never gives
+  up in under 180s awake. The run then happens when the lid opens; a laptop that stays shut
+  past 11:00 is a missed night, and the next night catches up. The `caffeinate -ims` wrap
+  in `run-nightly.sh` cannot start a run: on battery with the lid shut nothing holds a Mac
+  awake.
 - **A plist outlives whatever it points at, and launchd says nothing.**
   `source <file> && python …` runs nothing when the file is absent — it killed the
   bi-monthly report twice. A plist repointed at a scratch worktree survives that
