@@ -59,6 +59,18 @@ seeing some projects but not all) is rated very unlikely.
 **`docs/nightly-pipeline-plan.md`: steps 1, 2, 3 and 5 are DONE (2026-08-29).** Step 4 is
 mostly absorbed (report catch-up done, reader catch-up optional) and unbuilt beyond that.
 
+**Sleeping-host test: the result is in, and it fails (found 2026-10-27).** Since 10-23 the
+laptop has slept across 02:30 on its own. launchd fires the nightly inside a ~10s maintenance
+DarkWake with no DNS yet; the gate's 180s budget is monotonic so it ticks only while awake,
+accumulates across a dozen dark wakes over 3-13 hours, then gives up and the night exits 1.
+Nights 10-23, 10-25 and 10-26 produced nothing; 10-24 resolved after 71s and ran. The
+`--- network: resolved after Ns ---` line did appear, so the gate earned its place as
+evidence. Decision for Nico, not a one-line fix: either the run holds a sleep assertion for
+its duration (`caffeinate -ims -w <pid> -t …`, per the global caffeinate rule), or the gate
+waits for a full wake instead of failing. Separate from this: the review email died
+2026-10-21..26 on post-wake mornings with a silent-connection read timeout; fixed by
+streaming the request (see the trap in CLAUDE.md).
+
 **Still outstanding: step 2's sleeping-host test**, and it needs a real overnight, not a
 healthy awake host (an awake laptop passes either way — that is why it needs staging). With
 the machine deliberately asleep across 02:30, confirm one wake produces one run in the correct

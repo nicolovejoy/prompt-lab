@@ -93,6 +93,17 @@ def call_claude(client: Anthropic, *, model: str, system: str, user_msg: str,
     Every attempt logs its start timestamp. Without one, a slow overnight run is
     undiagnosable after the fact beyond "it took a while" — which is exactly
     where the 2026-08-19->20 investigation started.
+
+    The request is streamed and reassembled, not fetched in one shot. A
+    non-streaming call is silent on the wire until the whole tool output is
+    generated — 60-100s for the review email's 16k-token call — and on three
+    post-wake mornings (2026-10-21, -22, -24) that silence was fatal: every
+    sub-10s call in the same run succeeded, and the review call alone hit the
+    300s read timeout nine times over (3 SDK retries x 3 attempts) with no
+    bytes received. Streaming keeps bytes flowing: the API pings every ~30s
+    before the first delta, so a healthy connection never looks dead and a
+    dead one fails fast. The SDK reassembles the final message, so callers see
+    the same shape as before.
     """
     for attempt in range(max_retries):
         try:
@@ -101,14 +112,15 @@ def call_claude(client: Anthropic, *, model: str, system: str, user_msg: str,
                   f"({model}, max_tokens={max_tokens}) at "
                   f"{datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}",
                   flush=True)
-            resp = client.messages.create(
+            with client.messages.stream(
                 model=model,
                 max_tokens=max_tokens,
                 system=system,
                 messages=[{"role": "user", "content": user_msg}],
                 tools=[tool],
                 tool_choice={"type": "tool", "name": tool["name"]},
-            )
+            ) as stream:
+                resp = stream.get_final_message()
             wall_s, awake_s = time.time() - t0, time.monotonic() - m0
             print(f"  call_claude ok in {describe_elapsed(wall_s, awake_s)}",
                   flush=True)

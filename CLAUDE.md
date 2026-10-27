@@ -196,6 +196,12 @@ last-step delivery failure.
   account display was UTC-10 and cost two rounds of cross-agent confusion.
 - **Prompt counts step up once on 2026-08-14 and the step is real** — a write-time filter
   dropped every prompt under 20 chars before then. Backfill is impossible.
+- **`call_claude` streams the request and reassembles it; never switch it back to a
+  one-shot `messages.create`.** A non-streaming call is silent on the wire until the whole
+  output exists (60-100s for the review email), and on three post-wake mornings (2026-10-21,
+  -22, -24) that silence alone was fatal: every sub-10s call in the same run succeeded and the
+  review call hit the 300s read timeout nine times with zero bytes. Streaming gets a ping every
+  ~30s before the first delta. The email was dead six nights before anyone noticed.
 - **A full `sync_to_turso.py` runs past 120s** — for one upsert-only row write straight to
   Turso, and never let a sync leg touch `project_metadata`, which is cloud-direct.
 - **Test UptimeRobot alerting on a throwaway monitor, never by flipping a real one to a
