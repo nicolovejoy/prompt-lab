@@ -801,6 +801,219 @@ def _nightly_run_details(nr):
     return out
 
 
+_SEVERITY_ORDER = {"down": 0, "stale": 1, "unchecked": 2}
+_BAD_NIGHTS_FRAGMENT = " bad night(s) in the last "
+_CLAIM_DRIFT_PREFIXES = ("claim names an artifact", "run recorded no claim for")
+
+
+def _hosts_differ(nightly_run):
+    """True when the newest row and the recent_bad/recovered rows name more
+    than one distinct host. Hosts are noise on a one-laptop setup; they only
+    earn a place in a line when they disambiguate."""
+    nr = nightly_run or {}
+    hosts = {nr.get("host")} if nr.get("host") else set()
+    for r in (nr.get("recent_bad") or []) + (nr.get("recovered") or []):
+        if r.get("host"):
+            hosts.add(r["host"])
+    return len(hosts) > 1
+
+
+def _note_fragments(note):
+    """The note split on '; ', minus the trailing bad-nights count that
+    _apply_recent_bad appends (each bad night is its own line)."""
+    return [f for f in (note or "").split("; ")
+            if f and _BAD_NIGHTS_FRAGMENT not in f]
+
+
+def _days_between(iso, today):
+    try:
+        return (today - datetime.strptime(str(iso)[:10], "%Y-%m-%d").date()).days
+    except ValueError:
+        return None
+
+
+def _nightly_problems(nr, today):
+    out = []
+
+    def add(key, severity, text, short, age=None, since=None):
+        out.append({"key": key, "severity": severity, "text": text,
+                    "short": short, "age_days": age, "since": since})
+
+    if nr.get("ok") is None:
+        add("run:unchecked", "unchecked",
+            f"could not check the nightly run ({nr.get('note')})",
+            "nightly run unchecked")
+        return out
+
+    lab_date = nr.get("lab_date")
+    on = f" on {nr['host']}" if nr.get("host") and _hosts_differ(nr) else ""
+    frags = _note_fragments(nr.get("note"))
+
+    if nr.get("ok") is False:
+        age = nr.get("age_days")
+        if not lab_date:
+            note = "; ".join(frags) or "never produced"
+            add("run:newest", "stale", f"nightly run: {note}", "nightly run never")
+        elif age is None:
+            add("run:newest", "stale",
+                f"nightly run: {'; '.join(frags) or 'unreadable'}",
+                "nightly run unreadable")
+        elif age > NIGHTLY_RUN_MAX_AGE_DAYS:
+            add("run:newest", "stale",
+                f"no nightly run for {age} days (last {lab_date})",
+                f"nightly run {age}d", age, lab_date)
+        elif nr.get("status") == "running":
+            add("run:newest", "stale",
+                f"nightly run {lab_date}{on} started but never finished",
+                "nightly run died", None, lab_date)
+        else:
+            failed = [s for s in nr.get("stages") or []
+                      if s.get("outcome") in FAILED_OUTCOMES]
+            for s in failed:
+                text = f"nightly {lab_date}{on}: {s.get('name')} {s['outcome']}"
+                if s.get("detail"):
+                    text += f" — {s['detail']}"
+                add(f"stage:{s.get('name')}", "stale", text,
+                    f"{s.get('name')} {s['outcome']}", None, lab_date)
+            if not failed and nr.get("status") != "ok":
+                add("run:newest", "stale",
+                    f"nightly {lab_date}{on}: run reported {nr.get('status')}",
+                    f"nightly run {nr.get('status')}", None, lab_date)
+            for m in nr.get("mismatches") or []:
+                remote = m.get("remote")
+                add(f"publish:{m['artifact']}", "stale",
+                    f"{m['artifact']}: the run made {m['claimed']}, Turso has "
+                    f"{remote or 'nothing'} — publish is dropping rows",
+                    f"{m['artifact']} not published",
+                    _days_between(remote, today) if remote else None,
+                    remote or None)
+            # One key, one problem: both drift fragments share `run:claims`,
+            # and a duplicate key would collapse in the remembered state.
+            drift = [f for f in frags if f.startswith(_CLAIM_DRIFT_PREFIXES)]
+            if drift:
+                add("run:claims", "stale", "; ".join(drift), "run claims drift")
+
+    for r in nr.get("recent_bad") or []:
+        d = r.get("lab_date")
+        r_on = f" on {r['host']}" if r.get("host") and _hosts_differ(nr) else ""
+        add(f"night:{d}", "stale", f"nightly {d}{r_on} failed: {r.get('note')}",
+            f"bad night {str(d)[5:10]}", _days_between(d, today), d)
+    return out
+
+
+def _problems(results, heartbeats, nightly_run, uptime_rows):
+    """Everything the email should lead with, as a flat list of problems.
+    Pure: grading was done by the _check_* functions; this only restates it."""
+    today = lab_today()
+    out = []
+    for r in results or []:
+        if not r.get("ok"):
+            text = f"{r['name']} is down ({r.get('status') or 'unreachable'})"
+            if r.get("note"):
+                text += f" — {r['note']}"
+            out.append({"key": f"target:{r['name']}", "severity": "down",
+                        "text": text, "short": f"{r['name']} down",
+                        "age_days": None, "since": None})
+    for h in heartbeats or []:
+        name, key = h.get("name"), f"heartbeat:{h.get('name')}"
+        if h.get("ok") is None:
+            out.append({"key": key, "severity": "unchecked",
+                        "text": f"could not check {name} ({h.get('note')})",
+                        "short": f"{name} unchecked", "age_days": None,
+                        "since": None})
+        elif h.get("ok") is False and h.get("last"):
+            age = h.get("age_days")
+            out.append({"key": key, "severity": "stale",
+                        "text": f"{name} has not landed for {age} days "
+                                f"(last {h['last']})",
+                        "short": f"{name} {age}d", "age_days": age,
+                        "since": h["last"]})
+        elif h.get("ok") is False:
+            out.append({"key": key, "severity": "stale",
+                        "text": f"{name}: {h.get('note')}",
+                        "short": f"{name} never", "age_days": None,
+                        "since": None})
+    if nightly_run:
+        out.extend(_nightly_problems(nightly_run, today))
+    if uptime_rows == 0:
+        out.append({"key": "archive:zero", "severity": "stale",
+                    "text": "uptime archive wrote 0 rows today",
+                    "short": "uptime archive empty", "age_days": None,
+                    "since": None})
+    today_iso = today.isoformat()
+    # stable sorts, least significant first: key, then since (newest first),
+    # then severity
+    out.sort(key=lambda p: p["key"])
+    out.sort(key=lambda p: p["since"] or today_iso, reverse=True)
+    out.sort(key=lambda p: _SEVERITY_ORDER[p["severity"]])
+    return out
+
+
+def _mark_new(problems, prior, today):
+    """Stamp each problem with first_seen/is_new/day against the remembered
+    state. Returns (problems, new_state); new_state holds current problems
+    only, so a cleared problem that returns counts as new again. A second
+    send on the same day still says NEW, deliberately."""
+    marked, new_state = [], {}
+    today_iso = today.isoformat()
+    for p in problems:
+        q = dict(p)
+        if prior is None:
+            q["first_seen"], q["is_new"], q["day"] = None, False, p.get("age_days")
+        else:
+            first = prior.get(p["key"]) or today_iso
+            q["first_seen"] = first
+            q["is_new"] = first == today_iso
+            if p.get("age_days") is not None:
+                q["day"] = p["age_days"]
+            else:
+                q["day"] = _days_between(first, today)
+                q["day"] = q["day"] + 1 if q["day"] is not None else None
+        new_state[p["key"]] = q["first_seen"] or today_iso
+        marked.append(q)
+    return marked, new_state
+
+
+def _prefix(p):
+    if p.get("is_new"):
+        return "NEW today"
+    if p.get("day") is not None:
+        return f"Day {p['day']}"
+    return "Ongoing"
+
+
+def _get_problem_state():
+    """{key: first_seen_iso} as last stored; {} when nothing is stored yet
+    (first email ever: everything is NEW); None when the read failed."""
+    try:
+        rows = turso_query(
+            "SELECT value FROM health_email_state WHERE key = 'reported_problems'"
+        )
+        if not rows:
+            return {}
+        state = json.loads(rows[0]["value"])
+        if not isinstance(state, dict):
+            raise ValueError("stored problem state is not an object")
+        return state
+    except Exception as e:
+        print(f"health_report: problem state read failed: {e}"[:200])
+        return None
+
+
+def _set_problem_state(state):
+    """Remember today's problems. Never raises: the email must send."""
+    try:
+        turso_query(
+            "INSERT INTO health_email_state (key, value, updated_at) "
+            "VALUES ('reported_problems', ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+            "updated_at = excluded.updated_at",
+            [json.dumps(state, sort_keys=True), _utc()],
+        )
+    except Exception as e:
+        print(f"health_report: problem state write failed: {e}"[:200])
+
+
 def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None,
              nightly_run=None):
     """Return (subject, text, html)."""

@@ -4066,6 +4066,276 @@ def _():
     assert h.body == {"ok": False, "db": False}, h.body
 
 
+def _nr(**kw):
+    base = {"lab_date": None, "host": None, "status": None, "age_days": None,
+            "ok": None, "stages": [], "mismatches": [], "note": "",
+            "recent_bad": [], "recovered": []}
+    base.update(kw)
+    return base
+
+
+def _probs(**kw):
+    mod, _ = _health_mod()
+    args = {"results": [], "heartbeats": [], "nightly_run": None,
+            "uptime_rows": None}
+    args.update(kw)
+    return mod, mod._problems(args["results"], args["heartbeats"],
+                              args["nightly_run"], args["uptime_rows"])
+
+
+def _days_ago(iso):
+    from datetime import datetime as _dt
+    mod, _ = _health_mod()
+    return (mod.lab_today() - _dt.strptime(iso, "%Y-%m-%d").date()).days
+
+
+def _by_key(probs):
+    return {p["key"]: p for p in probs}
+
+
+@test("health problems: down target, with and without a note")
+def _():
+    _, ps = _probs(results=[
+        {"name": "garm", "ok": False, "status": 503, "note": "db DOWN"},
+        {"name": "byside", "ok": False, "status": None, "note": ""},
+        {"name": "fine", "ok": True, "status": 200, "note": ""}])
+    d = _by_key(ps)
+    assert set(d) == {"target:garm", "target:byside"}, d.keys()
+    assert d["target:garm"]["text"] == "garm is down (503) — db DOWN"
+    assert d["target:garm"]["severity"] == "down"
+    assert d["target:garm"]["short"] == "garm down"
+    assert d["target:byside"]["text"] == "byside is down (unreachable)"
+    assert d["target:byside"]["age_days"] is None
+
+
+@test("health problems: heartbeats stale, never, unchecked")
+def _():
+    _, ps = _probs(heartbeats=[
+        {"name": "synthesizer", "ok": False, "last": "2026-10-20", "age_days": 7,
+         "note": "x"},
+        {"name": "review email", "ok": False, "last": None, "age_days": None,
+         "note": "never produced"},
+        {"name": "report", "ok": None, "last": None, "age_days": None,
+         "note": "could not check (OSError)"},
+        {"name": "ok one", "ok": True, "last": "2026-10-27", "age_days": 0,
+         "note": ""}])
+    d = _by_key(ps)
+    s = d["heartbeat:synthesizer"]
+    assert (s["severity"], s["short"], s["age_days"], s["since"]) == (
+        "stale", "synthesizer 7d", 7, "2026-10-20"), s
+    assert s["text"] == "synthesizer has not landed for 7 days (last 2026-10-20)"
+    n = d["heartbeat:review email"]
+    assert (n["severity"], n["short"], n["text"], n["age_days"]) == (
+        "stale", "review email never", "review email: never produced", None), n
+    u = d["heartbeat:report"]
+    assert (u["severity"], u["short"]) == ("unchecked", "report unchecked")
+    assert u["text"] == "could not check report (could not check (OSError))"
+    assert "heartbeat:ok one" not in d
+
+
+@test("health problems: nightly run unchecked and never produced")
+def _():
+    _, ps = _probs(nightly_run=_nr(ok=None, note="could not check (X)"))
+    assert [(p["key"], p["severity"], p["short"]) for p in ps] == [
+        ("run:unchecked", "unchecked", "nightly run unchecked")]
+    assert ps[0]["text"] == "could not check the nightly run (could not check (X))"
+    _, ps = _probs(nightly_run=_nr(ok=False, note="no rows — never produced"))
+    assert (ps[0]["key"], ps[0]["short"], ps[0]["text"]) == (
+        "run:newest", "nightly run never", "nightly run: no rows — never produced")
+
+
+@test("health problems: nightly run old, died, failed stage, odd status")
+def _():
+    _, ps = _probs(nightly_run=_nr(ok=False, lab_date="2026-10-20", age_days=7,
+                                   status="ok", note="no run for 7 days — host has been off"))
+    p = ps[0]
+    assert (p["key"], p["short"], p["age_days"], p["since"]) == (
+        "run:newest", "nightly run 7d", 7, "2026-10-20")
+    assert p["text"] == "no nightly run for 7 days (last 2026-10-20)"
+    _, ps = _probs(nightly_run=_nr(ok=False, lab_date="2026-10-27", age_days=0,
+                                   status="running", note="started but never finished"))
+    assert (ps[0]["key"], ps[0]["short"], ps[0]["text"]) == (
+        "run:newest", "nightly run died",
+        "nightly run 2026-10-27 started but never finished")
+    _, ps = _probs(nightly_run=_nr(
+        ok=False, lab_date="2026-10-27", age_days=0, status="failed",
+        stages=[{"name": "review", "outcome": "failed", "detail": "403"},
+                {"name": "scrub", "outcome": "ok"},
+                {"name": "report", "outcome": "timeout"}],
+        note="review: failed, report: timeout"))
+    d = _by_key(ps)
+    assert set(d) == {"stage:review", "stage:report"}, d.keys()
+    assert d["stage:review"]["text"] == "nightly 2026-10-27: review failed — 403"
+    assert d["stage:review"]["short"] == "review failed"
+    assert d["stage:report"]["text"] == "nightly 2026-10-27: report timeout"
+    _, ps = _probs(nightly_run=_nr(ok=False, lab_date="2026-10-27", age_days=0,
+                                   status="failed", note="run reported failed"))
+    assert (ps[0]["key"], ps[0]["short"], ps[0]["text"]) == (
+        "run:newest", "nightly run failed", "nightly 2026-10-27: run reported failed")
+
+
+@test("health problems: mismatches and claim drift are separate problems")
+def _():
+    _, ps = _probs(
+        heartbeats=[{"name": "synthesizer", "ok": False, "last": "2026-10-20",
+                     "age_days": 7, "note": ""}],
+        nightly_run=_nr(
+            ok=False, lab_date="2026-10-27", age_days=0, status="ok",
+            mismatches=[{"artifact": "synthesizer", "claimed": "2026-10-27",
+                         "remote": "2026-10-20"},
+                        {"artifact": "report", "claimed": "2026-10-27", "remote": None}],
+            note="claimed but not in Turso: synthesizer, report; "
+                 "claim names an artifact this email does not grade: foo; "
+                 "run recorded no claim for: bar"))
+    d = _by_key(ps)
+    assert "heartbeat:synthesizer" in d and "publish:synthesizer" in d
+    m = d["publish:synthesizer"]
+    assert m["text"] == ("synthesizer: the run made 2026-10-27, Turso has "
+                         "2026-10-20 — publish is dropping rows")
+    assert (m["short"], m["since"]) == ("synthesizer not published", "2026-10-20")
+    assert m["age_days"] == _days_ago("2026-10-20")
+    r = d["publish:report"]
+    assert "Turso has nothing" in r["text"]
+    assert (r["age_days"], r["since"]) == (None, None)
+    # both drift fragments merge under one key; the mismatch fragment is not one
+    assert d["run:claims"]["short"] == "run claims drift"
+    assert d["run:claims"]["text"] == (
+        "claim names an artifact this email does not grade: foo; "
+        "run recorded no claim for: bar")
+    assert not any("claimed but not in Turso" in p["text"] for p in ps)
+
+
+@test("health problems: recent_bad nights and the bad-night count fragment")
+def _():
+    _, ps = _probs(nightly_run=_nr(
+        ok=False, lab_date="2026-10-27", age_days=0, status="ok",
+        recent_bad=[{"lab_date": "2026-10-25", "host": "laptop",
+                     "status": "failed", "note": "cost-pull: failed"}],
+        note="1 bad night(s) in the last 7 days"))
+    assert len(ps) == 1, ps
+    p = ps[0]
+    assert (p["key"], p["severity"], p["short"], p["since"]) == (
+        "night:2026-10-25", "stale", "bad night 10-25", "2026-10-25")
+    assert p["text"] == "nightly 2026-10-25 failed: cost-pull: failed"
+    assert p["age_days"] == _days_ago("2026-10-25")
+    assert not any("bad night(s)" in q["text"] for q in ps)
+
+
+@test("health problems: uptime archive zero rows, not None")
+def _():
+    _, ps = _probs(uptime_rows=0)
+    assert [(p["key"], p["severity"], p["short"]) for p in ps] == [
+        ("archive:zero", "stale", "uptime archive empty")]
+    assert ps[0]["text"] == "uptime archive wrote 0 rows today"
+    assert _probs(uptime_rows=None)[1] == []
+    assert _probs(uptime_rows=5)[1] == []
+
+
+@test("health problems: ordering is severity, newest since, then key")
+def _():
+    _, ps = _probs(
+        results=[{"name": "z", "ok": False, "status": 500, "note": ""}],
+        heartbeats=[
+            {"name": "old", "ok": False, "last": "2026-10-01", "age_days": 26, "note": ""},
+            {"name": "newer", "ok": False, "last": "2026-10-20", "age_days": 7, "note": ""},
+            {"name": "b", "ok": False, "last": None, "age_days": None, "note": "never"},
+            {"name": "a", "ok": False, "last": None, "age_days": None, "note": "never"},
+            {"name": "u", "ok": None, "last": None, "age_days": None, "note": "e"}])
+    assert [p["key"] for p in ps] == [
+        "target:z", "heartbeat:a", "heartbeat:b", "heartbeat:newer",
+        "heartbeat:old", "heartbeat:u"], [p["key"] for p in ps]
+
+
+@test("health problems: host shown only when hosts differ")
+def _():
+    mod, _ = _health_mod()
+    same = _nr(ok=False, lab_date="2026-10-27", age_days=0, status="running",
+               host="laptop", recent_bad=[{"lab_date": "2026-10-25", "host": "laptop",
+                                           "note": "n"}],
+               recovered=[{"lab_date": "2026-10-24", "host": "laptop", "note": "n"}])
+    assert not mod._hosts_differ(same)
+    ps = mod._problems([], [], same, None)
+    assert not any(" on laptop" in p["text"] for p in ps), [p["text"] for p in ps]
+    diff = dict(same, recovered=[{"lab_date": "2026-10-24", "host": "mini", "note": "n"}])
+    assert mod._hosts_differ(diff)
+    d = _by_key(mod._problems([], [], diff, None))
+    assert d["run:newest"]["text"] == (
+        "nightly run 2026-10-27 on laptop started but never finished")
+    assert d["night:2026-10-25"]["text"].startswith("nightly 2026-10-25 on laptop failed")
+
+
+@test("health problems: _mark_new prefixes (new, continuing, no age, read failed)")
+def _():
+    from datetime import date
+    mod, _ = _health_mod()
+    today = date(2026, 10, 27)
+    probs = [
+        {"key": "a", "age_days": None},
+        {"key": "b", "age_days": 7},
+        {"key": "c", "age_days": None},
+        {"key": "d", "age_days": 3}]
+    marked, state = mod._mark_new(probs, {"b": "2026-10-20", "c": "2026-10-25"}, today)
+    m = {p["key"]: p for p in marked}
+    assert mod._prefix(m["a"]) == "NEW today" and m["a"]["is_new"]
+    assert mod._prefix(m["b"]) == "Day 7"
+    assert mod._prefix(m["c"]) == "Day 3", mod._prefix(m["c"])
+    assert mod._prefix(m["d"]) == "NEW today"
+    assert state == {"a": "2026-10-27", "b": "2026-10-20", "c": "2026-10-25",
+                     "d": "2026-10-27"}
+    # same-day second send still NEW
+    m2, _s = mod._mark_new([{"key": "a", "age_days": None}], state, today)
+    assert m2[0]["is_new"]
+    # read failed
+    marked, state = mod._mark_new(probs, None, today)
+    m = {p["key"]: p for p in marked}
+    assert mod._prefix(m["a"]) == "Ongoing" and not m["a"]["is_new"]
+    assert mod._prefix(m["b"]) == "Day 7"
+    assert state == {k: "2026-10-27" for k in "abcd"}
+
+
+@test("health problems: a cleared problem drops from state and returns as NEW")
+def _():
+    from datetime import date
+    mod, _ = _health_mod()
+    today = date(2026, 10, 27)
+    _p, state = mod._mark_new([{"key": "a", "age_days": None}],
+                              {"a": "2026-10-20", "gone": "2026-10-01"}, today)
+    assert state == {"a": "2026-10-20"}, state
+    back, _s = mod._mark_new([{"key": "gone", "age_days": None}], state, today)
+    assert back[0]["is_new"]
+
+
+@test("health problems: state read gives {} on no row, None on failure or junk")
+def _():
+    mod, _ = _health_mod()
+    mod.turso_query = lambda sql, params=None: []
+    assert mod._get_problem_state() == {}
+    mod.turso_query = lambda sql, params=None: [{"value": '{"a": "2026-10-20"}'}]
+    assert mod._get_problem_state() == {"a": "2026-10-20"}
+    def boom(sql, params=None):
+        raise RuntimeError("turso down")
+    mod.turso_query = boom
+    assert mod._get_problem_state() is None
+    for junk in ("not json", "[1, 2]"):
+        mod.turso_query = lambda sql, params=None, j=junk: [{"value": j}]
+        assert mod._get_problem_state() is None, junk
+
+
+@test("health problems: state write upserts sorted json and swallows failure")
+def _():
+    mod, _ = _health_mod()
+    calls = []
+    mod.turso_query = lambda sql, params=None: calls.append((sql, params)) or []
+    mod._set_problem_state({"b": "2026-10-02", "a": "2026-10-01"})
+    sql, params = calls[0]
+    assert "reported_problems" in sql and "ON CONFLICT" in sql
+    assert params[0] == '{"a": "2026-10-01", "b": "2026-10-02"}'
+    def boom(sql, params=None):
+        raise RuntimeError("turso down")
+    mod.turso_query = boom
+    mod._set_problem_state({"a": "x"})  # must not raise
+
+
 @test("health_report: prompt-labs target is the public /api/health, deep")
 def _():
     # Regression pin: the first health email reported prompt-labs.org DOWN
