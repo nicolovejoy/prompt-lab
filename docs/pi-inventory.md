@@ -50,6 +50,14 @@ its SSH add-on).
   token" on the tunnel's Overview page, update both copies, then
   `docker compose up -d --force-recreate --no-deps cloudflared` in
   `/home/nico/SPAN/pi` (a value-only change is not picked up otherwise).
+  **Version: pinned to `cloudflare/cloudflared:2026.10.3`**, bumped from
+  2026.3.0 by SPAN (725fc64) after Cloudflare's 2026-10-26 notice that
+  versions before 2026.10.2 still trust eight weak-key eMudhra intermediates.
+  Restarted 2026-10-26 19:19 PDT (2026-10-27T02:19:20Z); all four connections
+  re-registered, command and env unchanged. A version bump needs
+  `docker compose pull cloudflared` then `up -d --no-deps cloudflared`;
+  restarting the old container does not change the image. 2026.10.4 is the
+  next candidate if another notice lands.
   Hostname → service map (dashboard-managed routes, read by SPAN 2026-09-19):
   - `grafana.pianohouseproject.org` → `grafana:3000` (answers 302, looks Access-gated)
   - `influx.pianohouseproject.org` → `influxdb:8086` (Access-gated, `span-web` service token)
