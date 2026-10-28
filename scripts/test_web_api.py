@@ -15,6 +15,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import sys
 import time
 from datetime import timedelta
@@ -2811,7 +2812,16 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
     different kinds of query against the same helper — the pause lookup, the
     freshness lookups, the nightly-run lookup and the uptime upsert — and they
     must not be conflated: the pause check fails OPEN, freshness and the run
-    record must not, and the uptime write must be separately observable."""
+    record must not, and the uptime write must be separately observable.
+
+    The problem memory (`reported_problems` in health_email_state) has its
+    own branch, ahead of the pause branch so the pause lookup keeps its
+    "not paused" answer. Set `mod._prior_state` to the dict a read returns
+    ({} = no row stored yet, the default) or to "error" to make the read
+    raise; every read appends to `mod._state_reads` and every write appends
+    its decoded state to `mod._state_writes`. Reads, writes and sends are
+    also logged in `mod._sql_kinds` ("state-read", "state-write", "send") so
+    a test can pin that the write comes after the send."""
     # `nr` may be a `+`-joined set of scenarios, so a test can combine two
     # that legitimately co-occur (a failing newest run AND an older bad row).
     nr_set = set((nr or "").split("+"))
@@ -2822,6 +2832,9 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
     # Ordered log of what each query was, so a test can pin that the archive's
     # own freshness is read BEFORE the archive is written.
     mod._sql_kinds = []
+    mod._prior_state = {}
+    mod._state_reads = []
+    mod._state_writes = []
 
     def fake_check(name, url, deep=False):
         mod._polls.append(name)
@@ -2901,6 +2914,18 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
             mod._sql_kinds.append("uptime-write")
             mod._uptime_writes.append(args)
             return []
+        if "reported_problems" in sql:
+            if sql.lstrip().upper().startswith("INSERT"):
+                mod._sql_kinds.append("state-write")
+                mod._state_writes.append(json.loads(args[0]))
+                return []
+            mod._sql_kinds.append("state-read")
+            mod._state_reads.append(sql)
+            if mod._prior_state == "error":
+                raise RuntimeError("turso unreachable")
+            if not mod._prior_state:
+                return []
+            return [{"value": json.dumps(mod._prior_state)}]
         if "health_email_state" in sql:
             return []  # not paused
         # Its own case, not folded into the freshness branch: the run record is
@@ -2958,10 +2983,27 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
 
     mod._check_target = fake_check
     mod._joke = lambda: "a test joke"
-    mod._send_email = lambda subject, html, text: sent.append((subject, html, text))
+    def fake_send(subject, html, text):
+        mod._sql_kinds.append("send")
+        sent.append((subject, html, text))
+
+    mod._send_email = fake_send
     mod._fetch_uptime_monitors = fake_fetch
     mod.turso_query = fake_turso
     return mod, sent
+
+
+def _fold(text):
+    """(above, below) the `--- working ---` separator of a text body, with
+    the footer (pause link, tune prompt, joke) cut off `below`."""
+    above, below = text.split("\n--- working ---\n", 1)
+    return above, below.split("\n\n--\n", 1)[0]
+
+
+def _fold_html(html_body):
+    """(above, below) the `<hr` separator of an HTML body."""
+    above, below = html_body.split("<hr", 1)
+    return above, below
 
 
 @test("health_report: no auth → 401, nothing sent")
@@ -2985,11 +3027,12 @@ def _():
                    {"authorization": "Bearer cron-secret"})
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         assert h.body == {"sent": True, "down": [], "stale": [],
-                          "nightly_run": True, "uptime_rows": 2}, h.body
+                          "nightly_run": True, "uptime_rows": 2,
+                          "problems": []}, h.body
         assert len(sent) == 1
         subject, html, text = sent[0]
         n = len(mod.TARGETS)  # derived, not pinned — TARGETS grows
-        assert f"{n}/{n} up" in subject, subject
+        assert subject == f"✅ nothing needs attention · {n}/{n} up", subject
         assert "a test joke" in text and "a test joke" in html
         assert "action=pause&token=" in text, "pause link missing"
         assert "Tune the daily health email" in text, "tune-up prompt missing"
@@ -3006,7 +3049,18 @@ def _():
                    {"authorization": "Bearer cron-secret"})
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         assert h.body["down"] == [n for n, _, _ in mod.TARGETS], h.body
-        assert "DOWN" in sent[0][0], sent[0][0]
+        subject, html_body, text = sent[0]
+        # Red, counted, and the first targets named by name.
+        n = len(mod.TARGETS)
+        assert subject.startswith(f"🔴 {n} problems"), subject
+        assert f"{mod.TARGETS[0][0]} down" in subject, subject
+        assert f"+{n - 3} more" in subject, subject
+        # Every down target gets its own line above the fold, in both bodies.
+        above, _ = _fold(text)
+        html_above, _ = _fold_html(html_body)
+        for name, _, _ in mod.TARGETS:
+            assert f"{name} is down (503)" in above, (name, above)
+            assert f"{name} is down (503)" in html_above, name
     finally:
         restore()
 
@@ -3124,7 +3178,8 @@ def _():
         h = invoke(mod, "/api/health_report", _health_cookie("admin"))
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         assert h.body == {"sent": True, "down": [], "stale": [],
-                          "nightly_run": True, "uptime_rows": 2}, h.body
+                          "nightly_run": True, "uptime_rows": 2,
+                          "problems": []}, h.body
         assert len(sent) == 1, f"admin send path broken: {sent}"
     finally:
         restore()
@@ -3220,11 +3275,17 @@ def _():
         assert len(h.body["stale"]) == len(mod.HEARTBEATS), h.body
         subject, html_body, text = sent[0]
         assert subject.startswith("🟡"), subject
-        assert "stale" in subject, subject
-        # Named, with the age and the threshold it broke.
-        assert "review email" in text, text
-        assert "expected within" in text, text
-        assert "review email" in html_body, html_body
+        # The subject names a stale artifact by its own name and age.
+        assert re.search(r"(bi-monthly report|cost pull \+ sync|review email) \d+d",
+                         subject), subject
+        # Named in the attention block, with its age and the date it last
+        # landed. (The old "expected within Nd" threshold text is gone: the
+        # problem line states the age and the last date instead.)
+        above, _ = _fold(text)
+        age = (lab_today() - lab_today().replace(year=2020, month=1, day=1)).days
+        assert (f"review email has not landed for {age} days (last 2020-01-01)"
+                in above), above
+        assert "review email has not landed" in _fold_html(html_body)[0], html_body
     finally:
         restore()
 
@@ -3380,13 +3441,16 @@ def _():
         mod, sent = _health_mod(nr="ok")
         invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
         subject, html_body, text = sent[0]
-        line = [x for x in text.splitlines() if x.startswith("nightly run:")]
-        assert len(line) == 1, text
-        assert "ok on laptop" in line[0] and "5 stages" in line[0], line
+        above, below = _fold(text)
+        line = [x for x in below.splitlines() if x.startswith("nightly run ")]
+        assert line == [f"nightly run {lab_today().isoformat()}: ok, 5 stages"], text
+        # One host only, so the host is noise and is left out.
+        assert "laptop" not in text, text
         # A good night must not grow the email past that one line: no
-        # indented per-stage or per-mismatch detail.
+        # indented per-stage or per-mismatch detail, nothing above the fold.
         body_lines = text.split("\n\n--\n")[0].splitlines()
         assert not [x for x in body_lines if x.startswith("  ")], text
+        assert "nightly" not in above, above
         assert subject.startswith("✅"), subject
     finally:
         restore()
@@ -3401,8 +3465,9 @@ def _():
                    {"authorization": "Bearer cron-secret"})
         assert h.body["nightly_run"] is False, h.body
         subject, html_body, text = sent[0]
-        assert "synthesizer: failed" in text, text
-        assert "synthesizer: failed" in html_body, html_body
+        named = f"nightly {lab_today().isoformat()}: synthesizer failed — exit 1"
+        assert named in _fold(text)[0], text
+        assert named in _fold_html(html_body)[0], html_body
         # Not-due is the report stage's healthy answer and must not be
         # reported as a failure.
         assert "not-due" not in text, text
@@ -3486,8 +3551,8 @@ def _():
         assert m["claimed"] == (lab_today() + timedelta(days=1)).isoformat(), m
         assert m["remote"] == lab_today().isoformat(), m
         text = sent[0][2]
-        assert (f"review email: run claimed {m['claimed']}, Turso has "
-                f"{m['remote']}") in text, text
+        assert (f"review email: the run made {m['claimed']}, Turso has "
+                f"{m['remote']} — publish is dropping rows") in _fold(text)[0], text
     finally:
         restore()
 
@@ -3626,13 +3691,17 @@ def _():
     escalates on the same axis a stale heartbeat does."""
     restore = _health_env()
     try:
-        for variant in ("stage-failed", "old", "running", "claim-newer"):
+        for variant, short in (("stage-failed", "synthesizer failed"),
+                               ("old", "nightly run 5d"),
+                               ("running", "nightly run died"),
+                               ("claim-newer", "review email not published")):
             mod, sent = _health_mod(nr=variant)  # up=True, hb="fresh"
             invoke(mod, "/api/health_report",
                    {"authorization": "Bearer cron-secret"})
             subject = sent[0][0]
             assert subject.startswith("🟡"), (variant, subject)
-            assert "1 stale (nightly run)" in subject, (variant, subject)
+            # One problem, and the subject names the failing stage or run.
+            assert subject == f"🟡 1 problem (1 new): {short}", (variant, subject)
     finally:
         restore()
 
@@ -3646,8 +3715,12 @@ def _():
                {"authorization": "Bearer cron-secret"})
         subject = sent[0][0]
         assert subject.startswith("🟡"), subject
-        assert "1 unchecked" in subject, subject
+        assert "1 problem" in subject, subject
+        assert "nightly run unchecked" in subject, subject
         assert "stale" not in subject, subject
+        # Amber, not red: could-not-check is not the same claim as broken.
+        above_html = _fold_html(sent[0][1])[0]
+        assert "#b26a00" in above_html and "#c62828" not in above_html, above_html
     finally:
         restore()
 
@@ -3673,11 +3746,18 @@ def _():
     restore = _health_env()
     try:
         mod, sent = _health_mod(hb="stale")
-        invoke(mod, "/api/health_report",
-               {"authorization": "Bearer cron-secret"})
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
         subject = sent[0][0]
-        assert "review email" in subject, subject
-        assert f"{len(mod.HEARTBEATS) + 1} stale" in subject, subject
+        # The artifact names itself by its own heartbeat short ("review
+        # email <age>d"), not only through the run's publish problem.
+        assert re.search(r"review email \d+d", subject), subject
+        keys = h.body["problems"]
+        # Every stale heartbeat AND the run's own problems are counted.
+        assert {f"heartbeat:{n}" for n, _, _ in mod.HEARTBEATS} <= set(keys), keys
+        assert any(k.startswith("publish:") for k in keys), keys
+        assert len(keys) >= len(mod.HEARTBEATS) + 1, keys
+        assert f"{len(keys)} problems" in subject, subject
     finally:
         restore()
 
@@ -3767,10 +3847,14 @@ def _():
         invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
         subject, html_body, text = sent[0]
         assert subject.startswith("🟡"), subject
-        assert "1 stale (nightly run)" in subject, subject
         day = (lab_today() - timedelta(days=3)).isoformat()
-        assert f"{day} laptop: network: failed" in text, text
-        assert f"{day} laptop: network: failed" in html_body, html_body
+        assert subject == f"🟡 1 problem (1 new): bad night {day[5:]}", subject
+        line = f"nightly {day} failed: network: failed"
+        assert line in _fold(text)[0], text
+        assert line in _fold_html(html_body)[0], html_body
+        # The newest row itself was clean, so its green line sits below.
+        assert (f"nightly run {lab_today().isoformat()}: ok, 5 stages"
+                in _fold(text)[1]), text
     finally:
         restore()
 
@@ -3815,8 +3899,11 @@ def _():
         invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
         subject, html_body, text = sent[0]
         assert subject.startswith("✅"), subject
-        assert f"recovered {day} laptop: cost-pull: failed" in text, text
-        assert f"recovered {day} laptop: cost-pull: failed" in html_body, html_body
+        # Still listed, never dropped — but below the fold, not as a problem.
+        line = f"recovered {day}: cost-pull: failed"
+        assert line in _fold(text)[1], text
+        assert line in _fold_html(html_body)[1], html_body
+        assert "recovered" not in _fold(text)[0], text
     finally:
         restore()
 
@@ -4064,6 +4151,657 @@ def _():
     h = invoke(mod, "/api/health?db=1")
     assert h.status_code == 503, f"got {h.status_code}: {h.body}"
     assert h.body == {"ok": False, "db": False}, h.body
+
+
+def _nr(**kw):
+    base = {"lab_date": None, "host": None, "status": None, "age_days": None,
+            "ok": None, "stages": [], "mismatches": [], "note": "",
+            "recent_bad": [], "recovered": []}
+    base.update(kw)
+    return base
+
+
+def _probs(**kw):
+    mod, _ = _health_mod()
+    args = {"results": [], "heartbeats": [], "nightly_run": None,
+            "uptime_rows": None}
+    args.update(kw)
+    return mod, mod._problems(args["results"], args["heartbeats"],
+                              args["nightly_run"], args["uptime_rows"])
+
+
+def _days_ago(iso):
+    from datetime import datetime as _dt
+    mod, _ = _health_mod()
+    return (mod.lab_today() - _dt.strptime(iso, "%Y-%m-%d").date()).days
+
+
+def _by_key(probs):
+    return {p["key"]: p for p in probs}
+
+
+@test("health problems: down target, with and without a note")
+def _():
+    _, ps = _probs(results=[
+        {"name": "garm", "ok": False, "status": 503, "note": "db DOWN"},
+        {"name": "byside", "ok": False, "status": None, "note": ""},
+        {"name": "fine", "ok": True, "status": 200, "note": ""}])
+    d = _by_key(ps)
+    assert set(d) == {"target:garm", "target:byside"}, d.keys()
+    assert d["target:garm"]["text"] == "garm is down (503) — db DOWN"
+    assert d["target:garm"]["severity"] == "down"
+    assert d["target:garm"]["short"] == "garm down"
+    assert d["target:byside"]["text"] == "byside is down (unreachable)"
+    assert d["target:byside"]["age_days"] is None
+
+
+@test("health problems: heartbeats stale, never, unchecked")
+def _():
+    _, ps = _probs(heartbeats=[
+        {"name": "synthesizer", "ok": False, "last": "2026-10-20", "age_days": 7,
+         "note": "x"},
+        {"name": "review email", "ok": False, "last": None, "age_days": None,
+         "note": "never produced"},
+        {"name": "report", "ok": None, "last": None, "age_days": None,
+         "note": "could not check (OSError)"},
+        {"name": "ok one", "ok": True, "last": "2026-10-27", "age_days": 0,
+         "note": ""}])
+    d = _by_key(ps)
+    s = d["heartbeat:synthesizer"]
+    assert (s["severity"], s["short"], s["age_days"], s["since"]) == (
+        "stale", "synthesizer 7d", 7, "2026-10-20"), s
+    assert s["text"] == "synthesizer has not landed for 7 days (last 2026-10-20)"
+    n = d["heartbeat:review email"]
+    assert (n["severity"], n["short"], n["text"], n["age_days"]) == (
+        "stale", "review email never", "review email: never produced", None), n
+    u = d["heartbeat:report"]
+    assert (u["severity"], u["short"]) == ("unchecked", "report unchecked")
+    assert u["text"] == "could not check report (could not check (OSError))"
+    assert "heartbeat:ok one" not in d
+
+
+@test("health problems: nightly run unchecked and never produced")
+def _():
+    _, ps = _probs(nightly_run=_nr(ok=None, note="could not check (X)"))
+    assert [(p["key"], p["severity"], p["short"]) for p in ps] == [
+        ("run:unchecked", "unchecked", "nightly run unchecked")]
+    assert ps[0]["text"] == "could not check the nightly run (could not check (X))"
+    _, ps = _probs(nightly_run=_nr(ok=False, note="no rows — never produced"))
+    assert (ps[0]["key"], ps[0]["short"], ps[0]["text"]) == (
+        "run:newest", "nightly run never", "nightly run: no rows — never produced")
+
+
+@test("health problems: nightly run old, died, failed stage, odd status")
+def _():
+    _, ps = _probs(nightly_run=_nr(ok=False, lab_date="2026-10-20", age_days=7,
+                                   status="ok", note="no run for 7 days — host has been off"))
+    p = ps[0]
+    assert (p["key"], p["short"], p["age_days"], p["since"]) == (
+        "run:newest", "nightly run 7d", 7, "2026-10-20")
+    assert p["text"] == "no nightly run for 7 days (last 2026-10-20)"
+    _, ps = _probs(nightly_run=_nr(ok=False, lab_date="2026-10-27", age_days=0,
+                                   status="running", note="started but never finished"))
+    assert (ps[0]["key"], ps[0]["short"], ps[0]["text"]) == (
+        "run:newest", "nightly run died",
+        "nightly run 2026-10-27 started but never finished")
+    _, ps = _probs(nightly_run=_nr(
+        ok=False, lab_date="2026-10-27", age_days=0, status="failed",
+        stages=[{"name": "review", "outcome": "failed", "detail": "403"},
+                {"name": "scrub", "outcome": "ok"},
+                {"name": "report", "outcome": "timeout"}],
+        note="review: failed, report: timeout"))
+    d = _by_key(ps)
+    assert set(d) == {"stage:review", "stage:report"}, d.keys()
+    assert d["stage:review"]["text"] == "nightly 2026-10-27: review failed — 403"
+    assert d["stage:review"]["short"] == "review failed"
+    assert d["stage:report"]["text"] == "nightly 2026-10-27: report timeout"
+    _, ps = _probs(nightly_run=_nr(ok=False, lab_date="2026-10-27", age_days=0,
+                                   status="failed", note="run reported failed"))
+    assert (ps[0]["key"], ps[0]["short"], ps[0]["text"]) == (
+        "run:newest", "nightly run failed", "nightly 2026-10-27: run reported failed")
+
+
+@test("health problems: mismatches and claim drift are separate problems")
+def _():
+    _, ps = _probs(
+        heartbeats=[{"name": "synthesizer", "ok": False, "last": "2026-10-20",
+                     "age_days": 7, "note": ""}],
+        nightly_run=_nr(
+            ok=False, lab_date="2026-10-27", age_days=0, status="ok",
+            mismatches=[{"artifact": "synthesizer", "claimed": "2026-10-27",
+                         "remote": "2026-10-20"},
+                        {"artifact": "report", "claimed": "2026-10-27", "remote": None}],
+            note="claimed but not in Turso: synthesizer, report; "
+                 "claim names an artifact this email does not grade: foo; "
+                 "run recorded no claim for: bar"))
+    d = _by_key(ps)
+    assert "heartbeat:synthesizer" in d and "publish:synthesizer" in d
+    m = d["publish:synthesizer"]
+    assert m["text"] == ("synthesizer: the run made 2026-10-27, Turso has "
+                         "2026-10-20 — publish is dropping rows")
+    assert (m["short"], m["since"]) == ("synthesizer not published", "2026-10-20")
+    assert m["age_days"] == _days_ago("2026-10-20")
+    r = d["publish:report"]
+    assert "Turso has nothing" in r["text"]
+    assert (r["age_days"], r["since"]) == (None, None)
+    # both drift fragments merge under one key; the mismatch fragment is not one
+    assert d["run:claims"]["short"] == "run claims drift"
+    assert d["run:claims"]["text"] == (
+        "claim names an artifact this email does not grade: foo; "
+        "run recorded no claim for: bar")
+    assert not any("claimed but not in Turso" in p["text"] for p in ps)
+
+
+@test("health problems: recent_bad nights and the bad-night count fragment")
+def _():
+    _, ps = _probs(nightly_run=_nr(
+        ok=False, lab_date="2026-10-27", age_days=0, status="ok",
+        recent_bad=[{"lab_date": "2026-10-25", "host": "laptop",
+                     "status": "failed", "note": "cost-pull: failed"}],
+        note="1 bad night(s) in the last 7 days"))
+    assert len(ps) == 1, ps
+    p = ps[0]
+    assert (p["key"], p["severity"], p["short"], p["since"]) == (
+        "night:2026-10-25", "stale", "bad night 10-25", "2026-10-25")
+    assert p["text"] == "nightly 2026-10-25 failed: cost-pull: failed"
+    # The night itself is Day 1, so its N is days-since + 1.
+    assert p["age_days"] == _days_ago("2026-10-25") + 1
+    assert "alias" not in p, p
+    assert not any("bad night(s)" in q["text"] for q in ps)
+
+
+@test("health problems: uptime archive zero rows, not None")
+def _():
+    _, ps = _probs(uptime_rows=0)
+    assert [(p["key"], p["severity"], p["short"]) for p in ps] == [
+        ("archive:zero", "stale", "uptime archive empty")]
+    assert ps[0]["text"] == "uptime archive wrote 0 rows today"
+    assert _probs(uptime_rows=None)[1] == []
+    assert _probs(uptime_rows=5)[1] == []
+
+
+@test("health problems: ordering is severity, newest since, then key")
+def _():
+    _, ps = _probs(
+        results=[{"name": "z", "ok": False, "status": 500, "note": ""}],
+        heartbeats=[
+            {"name": "old", "ok": False, "last": "2026-10-01", "age_days": 26, "note": ""},
+            {"name": "newer", "ok": False, "last": "2026-10-20", "age_days": 7, "note": ""},
+            {"name": "b", "ok": False, "last": None, "age_days": None, "note": "never"},
+            {"name": "a", "ok": False, "last": None, "age_days": None, "note": "never"},
+            {"name": "u", "ok": None, "last": None, "age_days": None, "note": "e"}])
+    assert [p["key"] for p in ps] == [
+        "target:z", "heartbeat:a", "heartbeat:b", "heartbeat:newer",
+        "heartbeat:old", "heartbeat:u"], [p["key"] for p in ps]
+
+
+@test("health problems: host shown only when hosts differ")
+def _():
+    mod, _ = _health_mod()
+    same = _nr(ok=False, lab_date="2026-10-27", age_days=0, status="running",
+               host="laptop", recent_bad=[{"lab_date": "2026-10-25", "host": "laptop",
+                                           "note": "n"}],
+               recovered=[{"lab_date": "2026-10-24", "host": "laptop", "note": "n"}])
+    assert not mod._hosts_differ(same)
+    ps = mod._problems([], [], same, None)
+    assert not any(" on laptop" in p["text"] for p in ps), [p["text"] for p in ps]
+    diff = dict(same, recovered=[{"lab_date": "2026-10-24", "host": "mini", "note": "n"}])
+    assert mod._hosts_differ(diff)
+    d = _by_key(mod._problems([], [], diff, None))
+    assert d["run:newest"]["text"] == (
+        "nightly run 2026-10-27 on laptop started but never finished")
+    assert d["night:2026-10-25"]["text"].startswith("nightly 2026-10-25 on laptop failed")
+
+
+@test("health problems: _mark_new prefixes (new, continuing, no age, read failed)")
+def _():
+    from datetime import date
+    mod, _ = _health_mod()
+    today = date(2026, 10, 27)
+    probs = [
+        {"key": "a", "age_days": None},
+        {"key": "b", "age_days": 7},
+        {"key": "c", "age_days": None},
+        {"key": "d", "age_days": 3}]
+    marked, state = mod._mark_new(probs, {"b": "2026-10-20", "c": "2026-10-25"}, today)
+    m = {p["key"]: p for p in marked}
+    assert mod._prefix(m["a"]) == "NEW today" and m["a"]["is_new"]
+    assert mod._prefix(m["b"]) == "Day 7"
+    assert mod._prefix(m["c"]) == "Day 3", mod._prefix(m["c"])
+    assert mod._prefix(m["d"]) == "NEW today"
+    assert state == {"a": "2026-10-27", "b": "2026-10-20", "c": "2026-10-25",
+                     "d": "2026-10-27"}
+    # same-day second send still NEW
+    m2, _s = mod._mark_new([{"key": "a", "age_days": None}], state, today)
+    assert m2[0]["is_new"]
+    # read failed
+    marked, state = mod._mark_new(probs, None, today)
+    m = {p["key"]: p for p in marked}
+    assert mod._prefix(m["a"]) == "Ongoing" and not m["a"]["is_new"]
+    assert mod._prefix(m["b"]) == "Day 7"
+    assert state == {k: "2026-10-27" for k in "abcd"}
+
+
+@test("health problems: a cleared problem drops from state and returns as NEW")
+def _():
+    from datetime import date
+    mod, _ = _health_mod()
+    today = date(2026, 10, 27)
+    _p, state = mod._mark_new([{"key": "a", "age_days": None}],
+                              {"a": "2026-10-20", "gone": "2026-10-01"}, today)
+    assert state == {"a": "2026-10-20"}, state
+    back, _s = mod._mark_new([{"key": "gone", "age_days": None}], state, today)
+    assert back[0]["is_new"]
+
+
+@test("health problems: state read gives {} on no row, None on failure or junk")
+def _():
+    mod, _ = _health_mod()
+    mod.turso_query = lambda sql, params=None: []
+    assert mod._get_problem_state() == {}
+    mod.turso_query = lambda sql, params=None: [{"value": '{"a": "2026-10-20"}'}]
+    assert mod._get_problem_state() == {"a": "2026-10-20"}
+    def boom(sql, params=None):
+        raise RuntimeError("turso down")
+    mod.turso_query = boom
+    assert mod._get_problem_state() is None
+    for junk in ("not json", "[1, 2]"):
+        mod.turso_query = lambda sql, params=None, j=junk: [{"value": j}]
+        assert mod._get_problem_state() is None, junk
+
+
+@test("health problems: state write upserts sorted json and swallows failure")
+def _():
+    mod, _ = _health_mod()
+    calls = []
+    mod.turso_query = lambda sql, params=None: calls.append((sql, params)) or []
+    mod._set_problem_state({"b": "2026-10-02", "a": "2026-10-01"})
+    sql, params = calls[0]
+    assert "reported_problems" in sql and "ON CONFLICT" in sql
+    assert params[0] == '{"a": "2026-10-01", "b": "2026-10-02"}'
+    def boom(sql, params=None):
+        raise RuntimeError("turso down")
+    mod.turso_query = boom
+    mod._set_problem_state({"a": "x"})  # must not raise
+
+
+# === health email layout: attention block above, working below (#98) ===
+
+_CRON = {"authorization": "Bearer cron-secret"}
+_PREFIX_RE = re.compile(r"^(NEW today|Day \d+|Ongoing): ", re.M)
+
+
+@test("health email: a green email puts nothing above the fold but 'nothing needs attention'")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod()
+        invoke(mod, "/api/health_report", _CRON)
+        subject, html_body, text = sent[0]
+        above, below = _fold(text)
+        assert above == "What needs attention\nnothing needs attention\n", repr(above)
+        html_above, _ = _fold_html(html_body)
+        assert "nothing needs attention" in html_above, html_above
+        # Neither an alarm colour nor a green one above the separator.
+        for colour in ("#c62828", "#b26a00", "#2e7d32"):
+            assert colour not in html_above, (colour, html_above)
+        # The working section still carries the full picture.
+        n = len(mod.TARGETS)
+        assert len([x for x in below.splitlines() if ": up (" in x]) == n, below
+        assert f"all {len(mod.HEARTBEATS)} artifacts fresh" in below, below
+        assert "2 monitors archived" in below, below
+        assert "Working" in _fold_html(html_body)[1], html_body
+    finally:
+        restore()
+
+
+@test("health email: a red item never appears below the fold")
+def _():
+    """Every down target, stale heartbeat, failed stage, bad night and the
+    0-row archive is a problem line above the separator; below it there is
+    no prefixed line, no red and no amber."""
+    restore = _health_env()
+    try:
+        for kw in ({"up": False, "hb": "stale", "nr": "stage-failed+recent-bad",
+                    "ur": "error"},
+                   {"hb": "error", "nr": "error"}):
+            mod, sent = _health_mod(**kw)
+            h = invoke(mod, "/api/health_report", _CRON)
+            subject, html_body, text = sent[0]
+            above, below = _fold(text)
+            html_above, html_below = _fold_html(html_body)
+            keys = h.body["problems"]
+            assert len(_PREFIX_RE.findall(above)) == len(keys), (kw, above)
+            assert not _PREFIX_RE.findall(below), (kw, below)
+            for colour in ("#c62828", "#b26a00"):
+                assert colour not in html_below, (kw, colour, html_below)
+            for frag in ("is down", "has not landed", "synthesizer failed",
+                         "failed: network", "wrote 0 rows", "could not check"):
+                assert frag not in below, (kw, frag, below)
+                assert frag not in html_below, (kw, frag)
+        # The first scenario's red lines are all present above.
+        mod, sent = _health_mod(up=False, hb="stale",
+                                nr="stage-failed+recent-bad", ur="error")
+        invoke(mod, "/api/health_report", _CRON)
+        above = _fold(sent[0][2])[0]
+        for frag in ("garm is down", "review email has not landed",
+                     "synthesizer failed", "failed: network: failed",
+                     "uptime archive wrote 0 rows today"):
+            assert frag in above, (frag, above)
+    finally:
+        restore()
+
+
+@test("health email: problem state is written only after a successful send")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="stage-failed")
+        h = invoke(mod, "/api/health_report", _CRON)
+        assert h.status_code == 200, h.body
+        assert h.body["problems"] == ["stage:synthesizer"], h.body
+        kinds = mod._sql_kinds
+        assert kinds.count("state-read") == 1, kinds
+        assert kinds.index("state-read") < kinds.index("send") < kinds.index("state-write"), kinds
+        assert mod._state_writes == [
+            {"stage:synthesizer": lab_today().isoformat(),
+             f"night:{lab_today().isoformat()}": lab_today().isoformat()}], mod._state_writes
+    finally:
+        restore()
+
+
+@test("health email: a send failure writes no problem state")
+def _():
+    """A problem remembered but never delivered would say Day 2 tomorrow
+    about something nobody was ever told was NEW."""
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="stage-failed")
+
+        def failing_send(subject, html, text):
+            raise RuntimeError("resend 403")
+        mod._send_email = failing_send
+        h = invoke(mod, "/api/health_report", _CRON)
+        assert h.status_code == 500, h.body
+        assert mod._state_writes == [], mod._state_writes
+        assert "state-write" not in mod._sql_kinds, mod._sql_kinds
+    finally:
+        restore()
+
+
+@test("health email: a dry run neither reads nor writes the problem state")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="stage-failed")
+        h = invoke(mod, "/api/health_report?dry=1", _CRON)
+        assert h.status_code == 200, h.body
+        assert not sent
+        assert mod._state_reads == [] and mod._state_writes == [], mod._sql_kinds
+        # The #/health page's JSON shape is unchanged: no problems key.
+        assert set(h.body) == {"targets", "heartbeats", "nightly_run",
+                               "paused_until", "would_send"}, h.body
+    finally:
+        restore()
+
+
+@test("health email: a paused run neither reads nor writes the problem state")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="stage-failed")
+        base = mod.turso_query
+
+        # Paused for the pause lookup only, so a stray state read would
+        # reach the stub and be recorded rather than being swallowed here.
+        def paused_turso(sql, args=None):
+            if "health_email_state" in sql and "reported_problems" not in sql:
+                return [{"value": "2099-01-01T00:00:00Z"}]
+            return base(sql, args)
+        mod.turso_query = paused_turso
+        h = invoke(mod, "/api/health_report", _CRON)
+        assert h.body["skipped"] == "paused", h.body
+        assert not sent
+        assert mod._state_reads == [] and mod._state_writes == [], mod._sql_kinds
+    finally:
+        restore()
+
+
+@test("health email: a state read failure still sends, with no NEW markers")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(nr="stage-failed+recent-bad")
+        mod._prior_state = "error"
+        h = invoke(mod, "/api/health_report", _CRON)
+        assert h.status_code == 200, h.body
+        assert len(sent) == 1, "a failed state read killed the email"
+        subject, html_body, text = sent[0]
+        assert "new)" not in subject, subject
+        above, below = _fold(text)
+        assert "NEW today" not in text and "<b>NEW" not in html_body, text
+        # A stage failure has no artifact age, so with no memory it is
+        # Ongoing; a bad night dates itself (the night is Day 1, so a night
+        # 3 lab days back is Day 4) and survives.
+        assert f"Ongoing: nightly {lab_today().isoformat()}: synthesizer failed" in above, above
+        assert "Day 4: nightly " in above, above
+        line = "could not read yesterday's problems, so nothing is marked new"
+        assert line in below, text
+        assert "could not read yesterday&#x27;s problems" in _fold_html(html_body)[1], html_body
+        # Writing would date every problem today and wipe each real
+        # first_seen the moment Turso answers again.
+        assert mod._state_writes == [], mod._state_writes
+    finally:
+        restore()
+
+
+@test("health email: NEW today, then Day N on the next day's send")
+def _():
+    restore = _health_env()
+    try:
+        today = lab_today().isoformat()
+        stage_line = f"nightly {today}: synthesizer failed — exit 1"
+
+        # Day 1: nothing remembered, so the problem is NEW, bold, counted.
+        mod, sent = _health_mod(nr="stage-failed")
+        invoke(mod, "/api/health_report", _CRON)
+        subject, html_body, text = sent[0]
+        assert subject == "🟡 1 problem (1 new): synthesizer failed", subject
+        assert f"NEW today: {stage_line}" in _fold(text)[0], text
+        assert f"<b>NEW today: {stage_line}</b>" in html_body, html_body
+        state = mod._state_writes[-1]
+        assert state == {"stage:synthesizer": today, f"night:{today}": today}, state
+
+        # A second send the same lab day still says NEW.
+        mod, sent = _health_mod(nr="stage-failed")
+        mod._prior_state = state
+        invoke(mod, "/api/health_report", _CRON)
+        assert f"NEW today: {stage_line}" in _fold(sent[0][2])[0], sent[0][2]
+        assert mod._state_writes[-1] == state, mod._state_writes
+
+        # Next lab day, no run since, so the same row is still newest: the
+        # stage failure is Day 2 and not bold; a catch-up night that arrived
+        # overnight is the only NEW one.
+        tomorrow = lab_today() + timedelta(days=1)
+        mod, sent = _health_mod(nr="stage-failed+recent-bad")
+        mod.lab_today = lambda: tomorrow
+        mod._prior_state = state
+        invoke(mod, "/api/health_report", _CRON)
+        subject, html_body, text = sent[0]
+        above = _fold(text)[0]
+        night = (lab_today() - timedelta(days=3)).isoformat()
+        assert subject == (f"🟡 2 problems (1 new): synthesizer failed, "
+                           f"bad night {night[5:]}"), subject
+        assert f"Day 2: {stage_line}" in above, above
+        assert f"NEW today: nightly {night} failed: network: failed" in above, above
+        assert "<b>Day 2" not in html_body, html_body
+        # first_seen is carried forward, not reset to the new day.
+        assert mod._state_writes[-1] == {
+            "stage:synthesizer": today, f"night:{today}": today,
+            f"night:{night}": tomorrow.isoformat()}, mod._state_writes
+    finally:
+        restore()
+
+
+def _nightly_rows_mod(rows, today):
+    """A _health_mod whose nightly_runs query returns `rows` (dicts in the
+    Turso shape) and whose lab day is `today`; every other query goes to the
+    standard stub (fresh heartbeats dated the real lab day)."""
+    mod, sent = _health_mod()
+    orig = mod.turso_query
+
+    def turso(sql, args=None):
+        if "FROM nightly_runs" in sql:
+            return [dict(r) for r in rows]
+        return orig(sql, args)
+
+    mod.turso_query = turso
+    mod.lab_today = lambda: today
+    return mod, sent
+
+
+def _run_row(lab_date, status="ok", failed=None, run_id="r"):
+    """One nightly_runs row; `failed` = (stage, outcome, detail) or None.
+    Claims match the standard fresh-heartbeat stub so a clean row is ok."""
+    stages = [{"name": "review", "outcome": "ok", "detail": ""}]
+    if failed:
+        stages = [{"name": failed[0], "outcome": failed[1], "detail": failed[2]}]
+    claims = {label: lab_today().isoformat() for label, _, _ in
+              load_endpoint("web/api/health_report.py", "hr_claims").HEARTBEATS
+              if label != "uptime archive"}
+    return {"run_id": run_id, "host": "laptop", "lab_date": lab_date,
+            "started_at": f"{lab_date}T09:31:00Z", "status": status,
+            "exit_code": 0 if status == "ok" else 1,
+            "stages": json.dumps(stages), "claims": json.dumps(claims)}
+
+
+def _email_on(rows, today, prior):
+    """Send one email on lab day `today`; returns (subject, attention block,
+    state written)."""
+    mod, sent = _nightly_rows_mod(rows, today)
+    mod._prior_state = prior
+    h = invoke(mod, "/api/health_report", _CRON)
+    assert h.status_code == 200, h.body
+    subject, _html, text = sent[0]
+    return subject, _fold(text)[0], (mod._state_writes or [None])[-1]
+
+
+@test("health email: yesterday's newest-row failure is not NEW again as a bad night")
+def _():
+    restore = _health_env()
+    try:
+        d = lab_today()
+        d1 = d + timedelta(days=1)
+        bad_d = _run_row(d.isoformat(), "partial", ("review", "timeout", "slow"), "rd")
+        # Day D: the newest run failed review. NEW.
+        subject, above, state = _email_on([bad_d], d, {})
+        assert subject == "🟡 1 problem (1 new): review timeout", subject
+        assert f"NEW today: nightly {d}: review timeout — slow" in above, above
+        assert state == {"stage:review": d.isoformat(),
+                         f"night:{d}": d.isoformat()}, state
+        # Day D+1: a clean run landed; the D row is now an older bad night.
+        clean = _run_row(d1.isoformat(), run_id="rc")
+        subject, above, state2 = _email_on([clean, bad_d], d1, state)
+        assert "new)" not in subject, subject
+        assert subject == f"🟡 1 problem: bad night {d.isoformat()[5:]}", subject
+        assert "NEW today" not in above, above
+        # Same span, same N: the night line counts the night as Day 1.
+        assert f"Day 2: nightly {d} failed: review: timeout" in above, above
+        assert state2 == {f"night:{d}": d.isoformat()}, state2
+        # Day D+1 with NO new run: the stage line continues, also Day 2.
+        subject, above, _s = _email_on([bad_d], d1, state)
+        assert f"Day 2: nightly {d}: review timeout — slow" in above, above
+        assert "new)" not in subject, subject
+    finally:
+        restore()
+
+
+@test("health email: a stage failing again on a new night is NEW; the old night is not")
+def _():
+    restore = _health_env()
+    try:
+        d = lab_today()
+        d1 = d + timedelta(days=1)
+        bad_d = _run_row(d.isoformat(), "partial", ("review", "timeout", ""), "rd")
+        _subj, _above, state = _email_on([bad_d], d, {})
+        bad_d1 = _run_row(d1.isoformat(), "partial", ("review", "timeout", ""), "rd1")
+        subject, above, state2 = _email_on([bad_d1, bad_d], d1, state)
+        assert f"NEW today: nightly {d1}: review timeout" in above, above
+        assert f"Day 2: nightly {d} failed: review: timeout" in above, above
+        assert subject.startswith("🟡 2 problems (1 new): "), subject
+        assert state2 == {"stage:review": d1.isoformat(),
+                          f"night:{d1}": d1.isoformat(),
+                          f"night:{d}": d.isoformat()}, state2
+    finally:
+        restore()
+
+
+@test("health problems: _mark_new remembers an alias and keeps its earliest date")
+def _():
+    from datetime import date
+    mod, _ = _health_mod()
+    today = date(2026, 10, 27)
+    probs = [{"key": "stage:a", "alias": "night:2026-10-26", "age_days": None},
+             {"key": "stage:b", "alias": "night:2026-10-26", "age_days": None}]
+    marked, state = mod._mark_new(probs, {"night:2026-10-26": "2026-10-26",
+                                          "stage:a": "2026-10-20"}, today)
+    # the alias alone decides first_seen: stage:a's older key date is ignored
+    assert [p["first_seen"] for p in marked] == ["2026-10-26", "2026-10-26"]
+    assert [mod._prefix(p) for p in marked] == ["Day 2", "Day 2"]
+    assert state == {"stage:a": "2026-10-26", "stage:b": "2026-10-26",
+                     "night:2026-10-26": "2026-10-26"}, state
+    # a problem with no alias in prior is NEW, and the alias records today
+    marked, state = mod._mark_new(probs[:1], {"stage:a": "2026-10-20"}, today)
+    assert marked[0]["is_new"] and state["night:2026-10-26"] == "2026-10-27"
+
+
+@test("health problems: a newest row with no status reads 'no status'")
+def _():
+    _, ps = _probs(nightly_run=_nr(ok=False, lab_date="2026-10-27", age_days=0,
+                                   status=None, note="run reported no status"))
+    assert (ps[0]["key"], ps[0]["short"], ps[0]["text"]) == (
+        "run:newest", "nightly run no status",
+        "nightly 2026-10-27: run reported no status"), ps
+    assert ps[0]["alias"] == "night:2026-10-27"
+    assert not any("None" in p["text"] or "None" in p["short"] for p in ps), ps
+
+
+@test("health problems: a row with a NULL lab_date is unreadable, not never")
+def _():
+    restore = _health_env()
+    try:
+        row = _run_row("2026-10-27", run_id="rnull")
+        row["lab_date"] = None
+        mod, sent = _nightly_rows_mod([row], lab_today())
+        invoke(mod, "/api/health_report", _CRON)
+        subject, _html, text = sent[0]
+        assert "nightly run unreadable" in subject, subject
+        assert "never" not in subject, subject
+        above = _fold(text)[0]
+        assert "nightly run: unparseable lab_date ''" in above, above
+        # A row whose lab_date is unparseable has no night to alias.
+        ps = mod._problems([], [], mod._check_nightly_run([]), None)
+        assert [(p["key"], p["short"], "alias" in p) for p in ps] == [
+            ("run:newest", "nightly run unreadable", False)], ps
+        # No rows at all still reads "never".
+        mod, sent = _nightly_rows_mod([], lab_today())
+        invoke(mod, "/api/health_report", _CRON)
+        assert "nightly run never" in sent[0][0], sent[0][0]
+    finally:
+        restore()
+
+
+@test("health email: subject caps the named problems at three")
+def _():
+    mod, _ = _health_mod()
+    probs = [{"key": f"k{i}", "severity": "stale", "short": f"thing {i}",
+              "is_new": i == 0} for i in range(5)]
+    subject = mod._subject(probs, [{"ok": True}])
+    assert subject == "🟡 5 problems (1 new): thing 0, thing 1, thing 2 +2 more", subject
+    probs[3]["severity"] = "down"
+    assert mod._subject(probs, [{"ok": True}]).startswith("🔴 5 problems"), probs
+    assert mod._subject([], [{"ok": True}, {"ok": False}]) == (
+        "✅ nothing needs attention · 1/2 up")
 
 
 @test("health_report: prompt-labs target is the public /api/health, deep")
@@ -4590,14 +5328,20 @@ def _():
         mod, sent = _health_mod()
         invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
         _, html, text = sent[0]
-        assert "2 monitors archived" in text, text
-        assert "2 monitors archived" in html, html
+        assert "2 monitors archived" in _fold(text)[1], text
+        assert "2 monitors archived" in _fold_html(html)[1], html
 
+        # Zero is a problem: above the separator in both bodies, in red, and
+        # in the subject.
         mod, sent = _health_mod(ur="error")
         invoke(mod, "/api/health_report", {"authorization": "Bearer cron-secret"})
-        _, html, text = sent[0]
-        assert "uptime archive: 0 rows written" in text, text
-        assert "uptime archive: 0 rows written" in html, html
+        subject, html, text = sent[0]
+        line = "uptime archive wrote 0 rows today"
+        assert line in _fold(text)[0] and line not in _fold(text)[1], text
+        html_above, html_below = _fold_html(html)
+        assert line in html_above and line not in html_below, html
+        assert "#c62828" in html_above, html_above
+        assert subject.startswith("🟡") and "uptime archive empty" in subject, subject
     finally:
         restore()
 

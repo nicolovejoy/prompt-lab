@@ -34,6 +34,23 @@ The same cron also archives yesterday's UptimeRobot ratios into `uptime_daily`
 (_archive_uptime, phase 1 of docs/plan-2026-08-01-uptime-dashboard.md). It rides
 this handler because Vercel Hobby crons are daily and one already exists here.
 
+Layout: the email leads with what needs attention. Above the separator is
+one line per problem (`_problems`: a down target, a stale, never-produced or
+unchecked heartbeat, each fact about a bad newest run, each older bad night,
+a 0-row archive), prefixed NEW today, Day N or Ongoing; on a clean run it is
+the single line "nothing needs attention", and the subject is that block in
+one line. Below the separator is everything green or grey: the uptime table,
+the heartbeat count, a good run's one line, recovered nights, the archive
+count. Nothing red goes below, nothing green above. NEW comes from the
+`reported_problems` key in `health_email_state`, which holds {problem key:
+first lab day reported} for the problems in the last email SENT (read and
+written on the send path only, written after the send returns). A failure on
+the newest run row is also remembered under its night (`night:<lab_date>`),
+so tomorrow, when that row is an older bad night, it is not NEW twice. Day N
+is the Nth lab day the problem has existed, its first day being Day 1: a
+stale artifact and a bad night date themselves (so they survive a lost
+memory); every other problem counts from that remembered first sighting.
+
 The joke: generated per-send with the Anthropic API (Haiku tier), falling back
 to a canned rotation — the email must send even when the API doesn't.
 
@@ -530,9 +547,10 @@ def _apply_recent_bad(entry):
     """Force the entry not-ok when any OTHER run in the window was bad, even
     though the newest row it was just graded on is fine.
 
-    This is what makes a backfilled failure escalate the email: `_compose`'s
-    subject logic already keys entirely off `entry["ok"]`, so nothing else
-    needs to know a catch-up row ever existed."""
+    This is what makes a backfilled failure escalate the email: `_problems`
+    builds the problem list (and so the subject) from `entry["ok"]` and the
+    recent_bad facts, so nothing else needs to know a catch-up row ever
+    existed."""
     if entry.get("recent_bad"):
         entry["ok"] = False
         count_note = (f"{len(entry['recent_bad'])} bad night(s) in the last "
@@ -776,110 +794,368 @@ TUNE_PROMPT = (
 )
 
 
-def _nightly_run_headline(nr):
-    """One line for the run record. Terse on a good night, by design."""
-    if not nr.get("lab_date"):
-        return f"nightly run: {nr.get('note') or 'could not check'}"
-    where = f" on {nr['host']}" if nr.get("host") else ""
-    head = f"nightly run: {nr['lab_date']} {nr.get('status') or '?'}{where}"
-    if nr.get("ok"):
-        return f"{head} — {len(nr.get('stages') or [])} stages"
-    return f"{head} — {nr.get('note') or 'not ok'}"
+_SEVERITY_ORDER = {"down": 0, "stale": 1, "unchecked": 2}
+_BAD_NIGHTS_FRAGMENT = " bad night(s) in the last "
+_CLAIM_DRIFT_PREFIXES = ("claim names an artifact", "run recorded no claim for")
 
 
-def _nightly_run_details(nr):
-    """The lines that only appear when something is wrong: which stage broke,
-    and which artifact the run claims Turso is missing."""
+def _hosts_differ(nightly_run):
+    """True when the newest row and the recent_bad/recovered rows name more
+    than one distinct host. Hosts are noise on a one-laptop setup; they only
+    earn a place in a line when they disambiguate."""
+    nr = nightly_run or {}
+    hosts = {nr.get("host")} if nr.get("host") else set()
+    for r in (nr.get("recent_bad") or []) + (nr.get("recovered") or []):
+        if r.get("host"):
+            hosts.add(r["host"])
+    return len(hosts) > 1
+
+
+def _note_fragments(note):
+    """The note split on '; ', minus the trailing bad-nights count that
+    _apply_recent_bad appends (each bad night is its own line)."""
+    return [f for f in (note or "").split("; ")
+            if f and _BAD_NIGHTS_FRAGMENT not in f]
+
+
+def _days_between(iso, today):
+    try:
+        return (today - datetime.strptime(str(iso)[:10], "%Y-%m-%d").date()).days
+    except ValueError:
+        return None
+
+
+def _nightly_problems(nr, today):
     out = []
-    for s in nr.get("stages") or []:
-        if s.get("outcome") in FAILED_OUTCOMES:
-            out.append(f"{s.get('name')}: {s.get('outcome')}"
-                       + (f" — {s['detail']}" if s.get("detail") else ""))
-    for m in nr.get("mismatches") or []:
-        out.append(f"{m['artifact']}: run claimed {m['claimed']}, Turso has "
-                   f"{m['remote'] or 'nothing'} — publish is dropping rows")
+
+    def add(key, severity, text, short, age=None, since=None, alias=None):
+        p = {"key": key, "severity": severity, "text": text,
+             "short": short, "age_days": age, "since": since}
+        if alias:
+            p["alias"] = alias
+        out.append(p)
+
+    if nr.get("ok") is None:
+        add("run:unchecked", "unchecked",
+            f"could not check the nightly run ({nr.get('note')})",
+            "nightly run unchecked")
+        return out
+
+    lab_date = nr.get("lab_date")
+    on = f" on {nr['host']}" if nr.get("host") and _hosts_differ(nr) else ""
+    frags = _note_fragments(nr.get("note"))
+
+    # A failure OF the newest row is remembered under the night it belongs
+    # to: once a newer run lands, `_build_recent_bad` carries this same row
+    # as `night:<lab_date>`, and that must read as already reported. Set only
+    # on the branches below that report the row's own failure, all of which
+    # have a parseable lab_date; "no run for N days" is about absence and
+    # mismatches/claims belong to an ok-status row recent_bad never carries.
+    night = f"night:{lab_date}"
+
+    if nr.get("ok") is False:
+        age = nr.get("age_days")
+        # `_check_nightly_run` leaves lab_date None only when there are no
+        # rows at all; a row whose lab_date is NULL or junk arrives as a
+        # string with no age, and exists, so it is "unreadable", not "never".
+        if lab_date is None:
+            note = "; ".join(frags) or "never produced"
+            add("run:newest", "stale", f"nightly run: {note}", "nightly run never")
+        elif age is None:
+            add("run:newest", "stale",
+                f"nightly run: {'; '.join(frags) or 'unreadable'}",
+                "nightly run unreadable")
+        elif age > NIGHTLY_RUN_MAX_AGE_DAYS:
+            add("run:newest", "stale",
+                f"no nightly run for {age} days (last {lab_date})",
+                f"nightly run {age}d", age, lab_date)
+        elif nr.get("status") == "running":
+            add("run:newest", "stale",
+                f"nightly run {lab_date}{on} started but never finished",
+                "nightly run died", None, lab_date, night)
+        else:
+            failed = [s for s in nr.get("stages") or []
+                      if s.get("outcome") in FAILED_OUTCOMES]
+            for s in failed:
+                text = f"nightly {lab_date}{on}: {s.get('name')} {s['outcome']}"
+                if s.get("detail"):
+                    text += f" — {s['detail']}"
+                add(f"stage:{s.get('name')}", "stale", text,
+                    f"{s.get('name')} {s['outcome']}", None, lab_date, night)
+            if not failed and nr.get("status") != "ok":
+                status = nr.get("status") or "no status"
+                add("run:newest", "stale",
+                    f"nightly {lab_date}{on}: run reported {status}",
+                    f"nightly run {status}", None, lab_date, night)
+            for m in nr.get("mismatches") or []:
+                remote = m.get("remote")
+                add(f"publish:{m['artifact']}", "stale",
+                    f"{m['artifact']}: the run made {m['claimed']}, Turso has "
+                    f"{remote or 'nothing'} — publish is dropping rows",
+                    f"{m['artifact']} not published",
+                    _days_between(remote, today) if remote else None,
+                    remote or None)
+            # One key, one problem: both drift fragments share `run:claims`,
+            # and a duplicate key would collapse in the remembered state.
+            drift = [f for f in frags if f.startswith(_CLAIM_DRIFT_PREFIXES)]
+            if drift:
+                add("run:claims", "stale", "; ".join(drift), "run claims drift")
+
+    for r in nr.get("recent_bad") or []:
+        d = r.get("lab_date")
+        r_on = f" on {r['host']}" if r.get("host") and _hosts_differ(nr) else ""
+        # The night itself is Day 1, so `age` here is days-since + 1: the
+        # same N a stage line counting from first sighting reads when the
+        # failure was first reported on its own night (see _mark_new).
+        since_night = _days_between(d, today)
+        add(f"night:{d}", "stale", f"nightly {d}{r_on} failed: {r.get('note')}",
+            f"bad night {str(d)[5:10]}",
+            since_night + 1 if since_night is not None else None, d)
+    return out
+
+
+def _problems(results, heartbeats, nightly_run, uptime_rows):
+    """Everything the email should lead with, as a flat list of problems.
+    Pure: grading was done by the _check_* functions; this only restates it."""
+    today = lab_today()
+    out = []
+    for r in results or []:
+        if not r.get("ok"):
+            text = f"{r['name']} is down ({r.get('status') or 'unreachable'})"
+            if r.get("note"):
+                text += f" — {r['note']}"
+            out.append({"key": f"target:{r['name']}", "severity": "down",
+                        "text": text, "short": f"{r['name']} down",
+                        "age_days": None, "since": None})
+    for h in heartbeats or []:
+        name, key = h.get("name"), f"heartbeat:{h.get('name')}"
+        if h.get("ok") is None:
+            out.append({"key": key, "severity": "unchecked",
+                        "text": f"could not check {name} ({h.get('note')})",
+                        "short": f"{name} unchecked", "age_days": None,
+                        "since": None})
+        elif h.get("ok") is False and h.get("last"):
+            age = h.get("age_days")
+            out.append({"key": key, "severity": "stale",
+                        "text": f"{name} has not landed for {age} days "
+                                f"(last {h['last']})",
+                        "short": f"{name} {age}d", "age_days": age,
+                        "since": h["last"]})
+        elif h.get("ok") is False:
+            out.append({"key": key, "severity": "stale",
+                        "text": f"{name}: {h.get('note')}",
+                        "short": f"{name} never", "age_days": None,
+                        "since": None})
+    if nightly_run:
+        out.extend(_nightly_problems(nightly_run, today))
+    if uptime_rows == 0:
+        out.append({"key": "archive:zero", "severity": "stale",
+                    "text": "uptime archive wrote 0 rows today",
+                    "short": "uptime archive empty", "age_days": None,
+                    "since": None})
+    today_iso = today.isoformat()
+    # stable sorts, least significant first: key, then since (newest first),
+    # then severity
+    out.sort(key=lambda p: p["key"])
+    out.sort(key=lambda p: p["since"] or today_iso, reverse=True)
+    out.sort(key=lambda p: _SEVERITY_ORDER[p["severity"]])
+    return out
+
+
+def _mark_new(problems, prior, today):
+    """Stamp each problem with first_seen/is_new/day against the remembered
+    state. Returns (problems, new_state); new_state holds current problems
+    only, so a cleared problem that returns counts as new again. A second
+    send on the same day still says NEW, deliberately.
+
+    Identity: a problem is remembered under its key, except one carrying an
+    `alias` (a failure of the newest run row: `night:<lab_date>`), which is
+    remembered under the alias and takes first_seen from it alone. Tomorrow
+    that row is an older bad night keyed `night:<lab_date>` and must not read
+    NEW twice; and `stage:review` failing again on a NEW night is a new
+    failure, so the stable `stage:` key must not vouch for it. new_state
+    records both the key and the alias; problems sharing an alias keep the
+    earliest date.
+
+    Day N (one rule): the Nth lab day the problem has existed, its first day
+    being Day 1. A problem that dates itself carries that N in `age_days` (a
+    stale artifact: days since it last landed; a bad night: days since the
+    night + 1); every other problem counts from first_seen, so first reported
+    today is Day 1 (shown as NEW). For a failure reported on its own night
+    the two give the same N on every later day."""
+    marked, new_state = [], {}
+    today_iso = today.isoformat()
+
+    def remember(key, first):
+        if key not in new_state or first < new_state[key]:
+            new_state[key] = first
+
+    for p in problems:
+        q = dict(p)
+        alias = p.get("alias")
+        if prior is None:
+            q["first_seen"], q["is_new"], q["day"] = None, False, p.get("age_days")
+        else:
+            first = prior.get(alias or p["key"]) or today_iso
+            q["first_seen"] = first
+            q["is_new"] = first == today_iso
+            if p.get("age_days") is not None:
+                q["day"] = p["age_days"]
+            else:
+                q["day"] = _days_between(first, today)
+                q["day"] = q["day"] + 1 if q["day"] is not None else None
+        remember(p["key"], q["first_seen"] or today_iso)
+        if alias:
+            remember(alias, q["first_seen"] or today_iso)
+        marked.append(q)
+    return marked, new_state
+
+
+def _prefix(p):
+    if p.get("is_new"):
+        return "NEW today"
+    if p.get("day") is not None:
+        return f"Day {p['day']}"
+    return "Ongoing"
+
+
+def _get_problem_state():
+    """{key: first_seen_iso} as last stored; {} when nothing is stored yet
+    (first email ever: everything is NEW); None when the read failed."""
+    try:
+        rows = turso_query(
+            "SELECT value FROM health_email_state WHERE key = 'reported_problems'"
+        )
+        if not rows:
+            return {}
+        state = json.loads(rows[0]["value"])
+        if not isinstance(state, dict):
+            raise ValueError("stored problem state is not an object")
+        return state
+    except Exception as e:
+        print(f"health_report: problem state read failed: {e}"[:200])
+        return None
+
+
+def _set_problem_state(state):
+    """Remember today's problems. Never raises: the email must send."""
+    try:
+        turso_query(
+            "INSERT INTO health_email_state (key, value, updated_at) "
+            "VALUES ('reported_problems', ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+            "updated_at = excluded.updated_at",
+            [json.dumps(state, sort_keys=True), _utc()],
+        )
+    except Exception as e:
+        print(f"health_report: problem state write failed: {e}"[:200])
+
+
+# Colours. Red is for what is broken and amber for what could not be checked,
+# and both are used ONLY above the separator: a red line under a "working"
+# heading is the same lie as a red line under a green subject.
+_RED = "#c62828"
+_AMBER = "#b26a00"
+_GREEN = "#2e7d32"
+_MUTED = "#666"
+
+# Problem keys that describe the NEWEST run row (Task 1's key scheme). When
+# none of them is present the newest row was a good run, even if an older
+# bad night has forced `nightly_run["ok"]` False.
+_NEWEST_ROW_KEYS = ("run:", "stage:", "publish:")
+
+STATE_READ_FAILED_LINE = (
+    "could not read yesterday's problems, so nothing is marked new")
+
+
+def _subject(problems, results):
+    """The subject is the attention block in one line: a count, how many are
+    new, and the first three by name. Green only when there is nothing."""
+    up = sum(1 for r in results if r["ok"])
+    if not problems:
+        return f"✅ nothing needs attention · {up}/{len(results)} up"
+    emoji = "🔴" if any(p["severity"] == "down" for p in problems) else "🟡"
+    n = len(problems)
+    new = sum(1 for p in problems if p.get("is_new"))
+    subject = f"{emoji} {n} problem{'' if n == 1 else 's'}"
+    if new:
+        subject += f" ({new} new)"
+    subject += ": " + ", ".join(p["short"] for p in problems[:3])
+    if n > 3:
+        subject += f" +{n - 3} more"
+    return subject
+
+
+def _newest_run_clean(nr, problems):
+    """True when the newest run row itself was good, so its one green line
+    belongs below the separator. A clean newest row beside an older bad night
+    still counts: the bad night is its own problem above."""
+    if nr.get("ok") is True:
+        return True
+    if nr.get("ok") is None or not nr.get("lab_date"):
+        return False
+    return not any(p["key"].startswith(_NEWEST_ROW_KEYS) for p in problems)
+
+
+def _working_lines(heartbeats, nightly_run, uptime_rows, problems):
+    """(text, colour) lines for below the separator: green and grey only.
+    Every failure these could name is already a problem line above."""
+    out = []
+    if heartbeats:
+        fresh = sum(1 for h in heartbeats if h.get("ok") is True)
+        if fresh == len(heartbeats):
+            out.append((f"heartbeats: all {len(heartbeats)} artifacts fresh",
+                        _GREEN))
+        else:
+            out.append((f"heartbeats: {fresh}/{len(heartbeats)} fresh", _MUTED))
+    nr = nightly_run or {}
+    show_host = _hosts_differ(nr)
+    if nr and _newest_run_clean(nr, problems):
+        on = f" on {nr['host']}" if show_host and nr.get("host") else ""
+        out.append((f"nightly run {nr['lab_date']}{on}: ok, "
+                    f"{len(nr.get('stages') or [])} stages", _GREEN))
+    # Recovered nights never escalate, but they still appear: a failure that
+    # silently vanished would be "absence recorded as nothing" again.
+    for rc in nr.get("recovered") or []:
+        on = f" on {rc['host']}" if show_host and rc.get("host") else ""
+        out.append((f"recovered {rc['lab_date']}{on}: {rc['note']}", _MUTED))
+    # A zero count is a problem above; only a real count lands here.
+    if uptime_rows:
+        out.append((f"{uptime_rows} monitors archived", _MUTED))
     return out
 
 
 def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None,
-             nightly_run=None):
-    """Return (subject, text, html)."""
+             nightly_run=None, problems=None, state_read_failed=False):
+    """Return (subject, text, html).
+
+    `problems` is the list `_mark_new` returns. When None it is computed here
+    and marked with no memory (nothing NEW), so a caller without state still
+    gets the same layout. `state_read_failed` adds the muted line saying the
+    NEW markers are missing for a reason, not because nothing is new.
+    """
     heartbeats = heartbeats or []
-    up = [r for r in results if r["ok"]]
-    down = [r for r in results if not r["ok"]]
-    stale = [h for h in heartbeats if h["ok"] is False]
-    unknown = [h for h in heartbeats if h["ok"] is None]
+    if problems is None:
+        problems, _ = _mark_new(
+            _problems(results, heartbeats, nightly_run, uptime_rows),
+            None, lab_today())
+    subject = _subject(problems, results)
+    working = _working_lines(heartbeats, nightly_run, uptime_rows, problems)
+    if state_read_failed:
+        working.append((STATE_READ_FAILED_LINE, _MUTED))
 
-    # The run record escalates the subject on the SAME axis as a stale or
-    # unchecked heartbeat, rather than getting an escalation of its own. A red
-    # line in the body under a green subject is this repo's signature failure
-    # — the sensor works and the output goes nowhere — and shipping that
-    # inside the mechanism built to detect it would be the joke of the year.
-    # Kept out of `stale`/`unknown` themselves: those lists render the
-    # heartbeats block, and the run record has its own line below it.
-    run_ok = nightly_run.get("ok") if nightly_run else True
-    stale_names = ([h["name"] for h in stale]
-                   + (["nightly run"] if run_ok is False else []))
-    unchecked = len(unknown) + (1 if run_ok is None else 0)
-
-    if down:
-        subject = (f"🔴 ecosystem health: {', '.join(r['name'] for r in down)} DOWN "
-                   f"({len(up)}/{len(results)} up)")
-    elif stale_names:
-        subject = (f"🟡 ecosystem health: {len(up)}/{len(results)} up · "
-                   f"{len(stale_names)} stale ({', '.join(stale_names)})")
-    elif unchecked:
-        subject = (f"🟡 ecosystem health: {len(up)}/{len(results)} up · "
-                   f"{unchecked} unchecked")
-    else:
-        subject = f"✅ ecosystem health: {len(up)}/{len(results)} up"
-
-    lines = []
+    lines = ["What needs attention"]
+    lines.extend([f"{_prefix(p)}: {p['text']}" for p in problems]
+                 or ["nothing needs attention"])
+    lines += ["", "--- working ---"]
     for r in results:
         mark = "up" if r["ok"] else "DOWN"
         status = r["status"] if r["status"] is not None else "—"
         note = f" — {r['note']}" if r["note"] else ""
         lines.append(f"{r['name']}: {mark} ({status}, {r['ms']}ms){note}")
-
-    # Silent when everything is fresh — one line, so the email stays glanceable.
-    if heartbeats:
+    if working:
         lines.append("")
-        if not stale and not unknown:
-            lines.append(f"heartbeats: all {len(heartbeats)} artifacts fresh")
-        else:
-            lines.append("heartbeats:")
-            for h in stale + unknown:
-                lines.append(f"  {h['name']}: {h['note']}"
-                             + (f" (last {h['last']})" if h["last"] else ""))
-
-    # The second axis (nightly run record). Sits under the heartbeats because
-    # it answers the other half of the question they ask: they see whether the
-    # artifact appeared, this sees whether the job ran and what it says
-    # happened. Never a substitute for them — a self-report is exactly what
-    # failed in every #45 incident.
-    if nightly_run:
-        lines.append("")
-        lines.append(_nightly_run_headline(nightly_run))
-        if not nightly_run.get("ok"):
-            lines.extend(f"  {d}" for d in _nightly_run_details(nightly_run))
-            # Backfilled failures: other bad nights in the window, which is
-            # the whole point — a run this narrow late (network down, catch-up
-            # push days later) is never the newest row, so without this list
-            # it would never appear in the email at all.
-            lines.extend(f"  {rb['lab_date']} {rb['host']}: {rb['note']}"
-                         for rb in nightly_run.get("recent_bad") or [])
-        # Recovered nights are informational and never escalate, but they
-        # still appear: a failure that silently vanished would be the exact
-        # "absence recorded as nothing" shape this email exists to kill.
-        lines.extend(f"  recovered {rc['lab_date']} {rc['host']}: {rc['note']}"
-                     for rc in nightly_run.get("recovered") or [])
-
-    # The archive result must reach the inbox: the JSON response is unread and
-    # Vercel logs evaporate in ~an hour, so a 0-row pull is otherwise invisible.
-    if uptime_rows is not None:
-        lines.append("")
-        lines.append(f"{uptime_rows} monitors archived" if uptime_rows
-                     else "uptime archive: 0 rows written")
+        lines.extend(t for t, _ in working)
 
     text = "\n".join(lines) + (
         "\n\n--\n"
@@ -888,68 +1164,40 @@ def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None,
         f"{joke}\n"
     )
 
+    def problem_html(p):
+        colour = _AMBER if p["severity"] == "unchecked" else _RED
+        line = escape(f"{_prefix(p)}: {p['text']}")
+        if p.get("is_new"):
+            line = f"<b>{line}</b>"
+        return f"<div style='color:{colour};padding:2px 0'>{line}</div>"
+
+    attention = ("".join(problem_html(p) for p in problems)
+                 or f"<div style='color:{_MUTED}'>nothing needs attention</div>")
+    # The DOWN cell is bold, not red: the down target is already a red line
+    # above, and the table is the full roster, not the alarm.
     rows = "".join(
         f"<tr><td style='padding:4px 12px 4px 0'><b>{escape(r['name'])}</b></td>"
-        f"<td style='padding:4px 12px 4px 0;color:{'#2e7d32' if r['ok'] else '#c62828'}'>"
-        f"{'up' if r['ok'] else 'DOWN'}</td>"
+        "<td style='padding:4px 12px 4px 0'>"
+        + (f"<span style='color:{_GREEN}'>up</span>" if r["ok"] else "<b>DOWN</b>")
+        + "</td>"
         f"<td style='padding:4px 12px 4px 0'>{r['status'] if r['status'] is not None else '—'}"
         f" · {r['ms']}ms</td>"
         f"<td style='padding:4px 0'>{escape(r['note'] or '')}</td></tr>"
         for r in results
     )
-    if not heartbeats:
-        hb_html = ""
-    elif not stale and not unknown:
-        hb_html = ("<p style='color:#2e7d32'>heartbeats: all "
-                   f"{len(heartbeats)} artifacts fresh</p>")
-    else:
-        items = "".join(
-            f"<li><b>{escape(h['name'])}</b> — {escape(h['note'])}"
-            + (f" (last {escape(str(h['last']))})" if h["last"] else "") + "</li>"
-            for h in stale + unknown
-        )
-        hb_html = (f"<p style='color:#c62828;margin-bottom:4px'>heartbeats: "
-                   f"{len(stale)} stale, {len(unknown)} unchecked</p>"
-                   f"<ul style='margin-top:0'>{items}</ul>")
-
-    if not nightly_run:
-        run_html = ""
-    elif nightly_run.get("ok"):
-        run_html = (f"<p style='color:#2e7d32'>"
-                    f"{escape(_nightly_run_headline(nightly_run))}</p>")
-    else:
-        details = "".join(f"<li>{escape(d)}</li>"
-                          for d in _nightly_run_details(nightly_run))
-        details += "".join(
-            f"<li>{escape(rb['lab_date'])} {escape(str(rb['host']))}: "
-            f"{escape(rb['note'])}</li>"
-            for rb in nightly_run.get("recent_bad") or [])
-        run_html = (f"<p style='color:#c62828;margin-bottom:4px'>"
-                    f"{escape(_nightly_run_headline(nightly_run))}</p>"
-                    + (f"<ul style='margin-top:0'>{details}</ul>"
-                       if details else ""))
-    recovered = "".join(
-        f"<li>recovered {escape(rc['lab_date'])} {escape(str(rc['host']))}: "
-        f"{escape(rc['note'])}</li>"
-        for rc in nightly_run.get("recovered") or [])
-    if recovered:
-        run_html += f"<ul style='margin-top:0;color:#666'>{recovered}</ul>"
-
-    if uptime_rows is None:
-        archive_html = ""
-    elif uptime_rows:
-        archive_html = (f"<p style='color:#666'>{uptime_rows} monitors "
-                        "archived</p>")
-    else:
-        archive_html = ("<p style='color:#c62828'><b>uptime archive: "
-                        "0 rows written</b></p>")
+    working_html = "".join(
+        f"<p style='color:{colour};margin:4px 0'>{escape(t)}</p>"
+        for t, colour in working)
+    heading = "margin:0 0 8px;font-size:16px"
 
     html = (
         "<div style='font-family:-apple-system,sans-serif;font-size:15px;color:#222'>"
+        f"<h3 style='{heading}'>What needs attention</h3>"
+        f"{attention}"
+        "<hr style='border:none;border-top:1px solid #ddd;margin:16px 0'>"
+        f"<h3 style='{heading};color:{_MUTED}'>Working</h3>"
         f"<table style='border-collapse:collapse'>{rows}</table>"
-        f"{hb_html}"
-        f"{run_html}"
-        f"{archive_html}"
+        f"{working_html}"
         f"<p><a href='{escape(pause_url, quote=True)}'>Pause these emails for a week</a></p>"
         "<p style='color:#666'>To tune this email, tell the prompt-lab agent:<br>"
         f"<code>{escape(TUNE_PROMPT)}</code></p>"
@@ -1035,12 +1283,29 @@ class handler(BaseHTTPRequestHandler):
                             "uptime_rows": uptime_rows})
                 return
 
+            # The problem memory is read only here, past both the dry return
+            # and the pause check: a dry run is a reader's view and a paused
+            # run sends nothing, so neither may move what "NEW" means. A
+            # failed read (None) still sends, with no NEW markers.
+            prior = _get_problem_state()
+            problems, new_state = _mark_new(
+                _problems(results, heartbeats, nightly_run, uptime_rows),
+                prior, lab_today())
+
             pause_url = ("https://prompt-labs.org/api/health_report"
                          f"?action=pause&token={_make_pause_token()}")
             subject, text, html = _compose(results, _joke(), pause_url,
                                            heartbeats, uptime_rows,
-                                           nightly_run)
+                                           nightly_run, problems,
+                                           state_read_failed=prior is None)
             _send_email(subject, html, text)
+            # Only after the send returns: a problem remembered but never
+            # delivered would read as Day 2 tomorrow when it was never NEW.
+            # Skipped when the read failed: new_state then dates every
+            # problem today, and writing it would wipe each real first_seen
+            # the moment Turso answered again.
+            if prior is not None:
+                _set_problem_state(new_state)
             # Summarised here (tri-state ok) rather than returned whole, the
             # way `stale` reduces the heartbeats: the send path's JSON is a
             # problem summary. ?dry=1 above carries the full block for
@@ -1049,7 +1314,8 @@ class handler(BaseHTTPRequestHandler):
                         "down": [r["name"] for r in results if not r["ok"]],
                         "stale": [h["name"] for h in heartbeats if h["ok"] is False],
                         "nightly_run": nightly_run["ok"],
-                        "uptime_rows": uptime_rows})
+                        "uptime_rows": uptime_rows,
+                        "problems": [p["key"] for p in problems]})
         except Exception as e:
             print(f"health_report error: {e}"[:300])
             self._json({"error": str(e)}, 500)
