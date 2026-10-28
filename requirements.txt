@@ -1,2 +1,7 @@
-anthropic>=0.40
+# Pinned to what the laptop's nightly runs. Unpinned, CI installed anthropic
+# 2.x (transport: httpx2) while the nightly ran 0.84 (transport: httpx), so CI
+# tested an SDK production never used (found 2026-10-28). Upgrading to 2.x
+# also moves call_claude's mid-stream retry: it catches httpx.TransportError.
+anthropic==0.84.0
+httpx>=0.28,<1
 python-dotenv>=1.0

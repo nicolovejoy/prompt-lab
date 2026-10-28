@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import httpx
 from anthropic import Anthropic, APIConnectionError, APITimeoutError, RateLimitError
 from dotenv import load_dotenv
 
@@ -104,6 +105,13 @@ def call_claude(client: Anthropic, *, model: str, system: str, user_msg: str,
     before the first delta, so a healthy connection never looks dead and a
     dead one fails fast. The SDK reassembles the final message, so callers see
     the same shape as before.
+
+    Streaming has one cost: once the response has started, a dropped
+    connection surfaces as a raw httpx error from iteration, not as the SDK's
+    APIConnectionError, and the SDK's own retries do not cover it. On
+    2026-10-28 the server cut the review stream ~60s in and the job died on
+    attempt 1/3. httpx.TransportError is therefore retried alongside the SDK's
+    connection errors.
     """
     for attempt in range(max_retries):
         try:
@@ -139,7 +147,7 @@ def call_claude(client: Anthropic, *, model: str, system: str, user_msg: str,
                 time.sleep(wait)
             else:
                 raise
-        except (APITimeoutError, APIConnectionError) as e:
+        except (APITimeoutError, APIConnectionError, httpx.TransportError) as e:
             elapsed = describe_elapsed(time.time() - t0, time.monotonic() - m0)
             if attempt < max_retries - 1:
                 wait = 2 ** (attempt + 1)
