@@ -11,12 +11,15 @@ with "What needs attention": one line per problem, prefixed NEW today, Day N or
 Ongoing, or the single line "nothing needs attention" on a clean run. Everything
 working sits below a separator; the subject is the top block in one line. The
 Turso `health_email_state` key `reported_problems` stores {problem key: first lab
-day reported} for the problems in the last email sent. Day N comes from the
-artifact's own age where one exists, else days since first seen. Dry runs and
-paused runs neither read nor write it. A failed read still sends, marks nothing
-NEW and skips the write; the write happens only after a successful send. The
-memory starts empty, so the first email after deploy marks every current problem
-NEW.
+day reported} for the problems in the last email sent; a failure of the newest
+run is also stored under its night, so tomorrow's "bad night" line for that same
+run is not NEW again. Day N is the Nth lab day the problem has existed, the
+first day counting as Day 1: a stale artifact counts from the day after it last
+landed, a bad night from the night itself, anything else from the day it was
+first seen. Dry runs and paused runs neither read nor write it. A failed read
+still sends, marks nothing NEW and skips the write; the write happens only after
+a successful send. The memory starts empty, so the first email after deploy
+marks every current problem NEW.
 
 **stars-demo is not being onboarded (Nico, 2026-10-09):** it was a one-off and is
 mostly done, so it stays a grey "more" entry in the dashboard chart.

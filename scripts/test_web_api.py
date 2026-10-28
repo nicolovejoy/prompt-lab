@@ -4304,7 +4304,9 @@ def _():
     assert (p["key"], p["severity"], p["short"], p["since"]) == (
         "night:2026-10-25", "stale", "bad night 10-25", "2026-10-25")
     assert p["text"] == "nightly 2026-10-25 failed: cost-pull: failed"
-    assert p["age_days"] == _days_ago("2026-10-25")
+    # The night itself is Day 1, so its N is days-since + 1.
+    assert p["age_days"] == _days_ago("2026-10-25") + 1
+    assert "alias" not in p, p
     assert not any("bad night(s)" in q["text"] for q in ps)
 
 
@@ -4502,7 +4504,8 @@ def _():
         assert kinds.count("state-read") == 1, kinds
         assert kinds.index("state-read") < kinds.index("send") < kinds.index("state-write"), kinds
         assert mod._state_writes == [
-            {"stage:synthesizer": lab_today().isoformat()}], mod._state_writes
+            {"stage:synthesizer": lab_today().isoformat(),
+             f"night:{lab_today().isoformat()}": lab_today().isoformat()}], mod._state_writes
     finally:
         restore()
 
@@ -4578,9 +4581,10 @@ def _():
         above, below = _fold(text)
         assert "NEW today" not in text and "<b>NEW" not in html_body, text
         # A stage failure has no artifact age, so with no memory it is
-        # Ongoing; a bad night's age comes from its own date and survives.
+        # Ongoing; a bad night dates itself (the night is Day 1, so a night
+        # 3 lab days back is Day 4) and survives.
         assert f"Ongoing: nightly {lab_today().isoformat()}: synthesizer failed" in above, above
-        assert "Day 3: nightly " in above, above
+        assert "Day 4: nightly " in above, above
         line = "could not read yesterday's problems, so nothing is marked new"
         assert line in below, text
         assert "could not read yesterday&#x27;s problems" in _fold_html(html_body)[1], html_body
@@ -4596,7 +4600,6 @@ def _():
     restore = _health_env()
     try:
         today = lab_today().isoformat()
-        yesterday = (lab_today() - timedelta(days=1)).isoformat()
         stage_line = f"nightly {today}: synthesizer failed — exit 1"
 
         # Day 1: nothing remembered, so the problem is NEW, bold, counted.
@@ -4607,7 +4610,7 @@ def _():
         assert f"NEW today: {stage_line}" in _fold(text)[0], text
         assert f"<b>NEW today: {stage_line}</b>" in html_body, html_body
         state = mod._state_writes[-1]
-        assert state == {"stage:synthesizer": today}, state
+        assert state == {"stage:synthesizer": today, f"night:{today}": today}, state
 
         # A second send the same lab day still says NEW.
         mod, sent = _health_mod(nr="stage-failed")
@@ -4616,10 +4619,13 @@ def _():
         assert f"NEW today: {stage_line}" in _fold(sent[0][2])[0], sent[0][2]
         assert mod._state_writes[-1] == state, mod._state_writes
 
-        # Next day: the same problem is Day 2 and not bold; a problem that
-        # appeared overnight is the only NEW one.
+        # Next lab day, no run since, so the same row is still newest: the
+        # stage failure is Day 2 and not bold; a catch-up night that arrived
+        # overnight is the only NEW one.
+        tomorrow = lab_today() + timedelta(days=1)
         mod, sent = _health_mod(nr="stage-failed+recent-bad")
-        mod._prior_state = {"stage:synthesizer": yesterday}
+        mod.lab_today = lambda: tomorrow
+        mod._prior_state = state
         invoke(mod, "/api/health_report", _CRON)
         subject, html_body, text = sent[0]
         above = _fold(text)[0]
@@ -4629,9 +4635,158 @@ def _():
         assert f"Day 2: {stage_line}" in above, above
         assert f"NEW today: nightly {night} failed: network: failed" in above, above
         assert "<b>Day 2" not in html_body, html_body
-        # first_seen is carried forward, not reset to today.
-        assert mod._state_writes[-1] == {"stage:synthesizer": yesterday,
-                                         f"night:{night}": today}, mod._state_writes
+        # first_seen is carried forward, not reset to the new day.
+        assert mod._state_writes[-1] == {
+            "stage:synthesizer": today, f"night:{today}": today,
+            f"night:{night}": tomorrow.isoformat()}, mod._state_writes
+    finally:
+        restore()
+
+
+def _nightly_rows_mod(rows, today):
+    """A _health_mod whose nightly_runs query returns `rows` (dicts in the
+    Turso shape) and whose lab day is `today`; every other query goes to the
+    standard stub (fresh heartbeats dated the real lab day)."""
+    mod, sent = _health_mod()
+    orig = mod.turso_query
+
+    def turso(sql, args=None):
+        if "FROM nightly_runs" in sql:
+            return [dict(r) for r in rows]
+        return orig(sql, args)
+
+    mod.turso_query = turso
+    mod.lab_today = lambda: today
+    return mod, sent
+
+
+def _run_row(lab_date, status="ok", failed=None, run_id="r"):
+    """One nightly_runs row; `failed` = (stage, outcome, detail) or None.
+    Claims match the standard fresh-heartbeat stub so a clean row is ok."""
+    stages = [{"name": "review", "outcome": "ok", "detail": ""}]
+    if failed:
+        stages = [{"name": failed[0], "outcome": failed[1], "detail": failed[2]}]
+    claims = {label: lab_today().isoformat() for label, _, _ in
+              load_endpoint("web/api/health_report.py", "hr_claims").HEARTBEATS
+              if label != "uptime archive"}
+    return {"run_id": run_id, "host": "laptop", "lab_date": lab_date,
+            "started_at": f"{lab_date}T09:31:00Z", "status": status,
+            "exit_code": 0 if status == "ok" else 1,
+            "stages": json.dumps(stages), "claims": json.dumps(claims)}
+
+
+def _email_on(rows, today, prior):
+    """Send one email on lab day `today`; returns (subject, attention block,
+    state written)."""
+    mod, sent = _nightly_rows_mod(rows, today)
+    mod._prior_state = prior
+    h = invoke(mod, "/api/health_report", _CRON)
+    assert h.status_code == 200, h.body
+    subject, _html, text = sent[0]
+    return subject, _fold(text)[0], (mod._state_writes or [None])[-1]
+
+
+@test("health email: yesterday's newest-row failure is not NEW again as a bad night")
+def _():
+    restore = _health_env()
+    try:
+        d = lab_today()
+        d1 = d + timedelta(days=1)
+        bad_d = _run_row(d.isoformat(), "partial", ("review", "timeout", "slow"), "rd")
+        # Day D: the newest run failed review. NEW.
+        subject, above, state = _email_on([bad_d], d, {})
+        assert subject == "🟡 1 problem (1 new): review timeout", subject
+        assert f"NEW today: nightly {d}: review timeout — slow" in above, above
+        assert state == {"stage:review": d.isoformat(),
+                         f"night:{d}": d.isoformat()}, state
+        # Day D+1: a clean run landed; the D row is now an older bad night.
+        clean = _run_row(d1.isoformat(), run_id="rc")
+        subject, above, state2 = _email_on([clean, bad_d], d1, state)
+        assert "new)" not in subject, subject
+        assert subject == f"🟡 1 problem: bad night {d.isoformat()[5:]}", subject
+        assert "NEW today" not in above, above
+        # Same span, same N: the night line counts the night as Day 1.
+        assert f"Day 2: nightly {d} failed: review: timeout" in above, above
+        assert state2 == {f"night:{d}": d.isoformat()}, state2
+        # Day D+1 with NO new run: the stage line continues, also Day 2.
+        subject, above, _s = _email_on([bad_d], d1, state)
+        assert f"Day 2: nightly {d}: review timeout — slow" in above, above
+        assert "new)" not in subject, subject
+    finally:
+        restore()
+
+
+@test("health email: a stage failing again on a new night is NEW; the old night is not")
+def _():
+    restore = _health_env()
+    try:
+        d = lab_today()
+        d1 = d + timedelta(days=1)
+        bad_d = _run_row(d.isoformat(), "partial", ("review", "timeout", ""), "rd")
+        _subj, _above, state = _email_on([bad_d], d, {})
+        bad_d1 = _run_row(d1.isoformat(), "partial", ("review", "timeout", ""), "rd1")
+        subject, above, state2 = _email_on([bad_d1, bad_d], d1, state)
+        assert f"NEW today: nightly {d1}: review timeout" in above, above
+        assert f"Day 2: nightly {d} failed: review: timeout" in above, above
+        assert subject.startswith("🟡 2 problems (1 new): "), subject
+        assert state2 == {"stage:review": d1.isoformat(),
+                          f"night:{d1}": d1.isoformat(),
+                          f"night:{d}": d.isoformat()}, state2
+    finally:
+        restore()
+
+
+@test("health problems: _mark_new remembers an alias and keeps its earliest date")
+def _():
+    from datetime import date
+    mod, _ = _health_mod()
+    today = date(2026, 10, 27)
+    probs = [{"key": "stage:a", "alias": "night:2026-10-26", "age_days": None},
+             {"key": "stage:b", "alias": "night:2026-10-26", "age_days": None}]
+    marked, state = mod._mark_new(probs, {"night:2026-10-26": "2026-10-26",
+                                          "stage:a": "2026-10-20"}, today)
+    # the alias alone decides first_seen: stage:a's older key date is ignored
+    assert [p["first_seen"] for p in marked] == ["2026-10-26", "2026-10-26"]
+    assert [mod._prefix(p) for p in marked] == ["Day 2", "Day 2"]
+    assert state == {"stage:a": "2026-10-26", "stage:b": "2026-10-26",
+                     "night:2026-10-26": "2026-10-26"}, state
+    # a problem with no alias in prior is NEW, and the alias records today
+    marked, state = mod._mark_new(probs[:1], {"stage:a": "2026-10-20"}, today)
+    assert marked[0]["is_new"] and state["night:2026-10-26"] == "2026-10-27"
+
+
+@test("health problems: a newest row with no status reads 'no status'")
+def _():
+    _, ps = _probs(nightly_run=_nr(ok=False, lab_date="2026-10-27", age_days=0,
+                                   status=None, note="run reported no status"))
+    assert (ps[0]["key"], ps[0]["short"], ps[0]["text"]) == (
+        "run:newest", "nightly run no status",
+        "nightly 2026-10-27: run reported no status"), ps
+    assert ps[0]["alias"] == "night:2026-10-27"
+    assert not any("None" in p["text"] or "None" in p["short"] for p in ps), ps
+
+
+@test("health problems: a row with a NULL lab_date is unreadable, not never")
+def _():
+    restore = _health_env()
+    try:
+        row = _run_row("2026-10-27", run_id="rnull")
+        row["lab_date"] = None
+        mod, sent = _nightly_rows_mod([row], lab_today())
+        invoke(mod, "/api/health_report", _CRON)
+        subject, _html, text = sent[0]
+        assert "nightly run unreadable" in subject, subject
+        assert "never" not in subject, subject
+        above = _fold(text)[0]
+        assert "nightly run: unparseable lab_date ''" in above, above
+        # A row whose lab_date is unparseable has no night to alias.
+        ps = mod._problems([], [], mod._check_nightly_run([]), None)
+        assert [(p["key"], p["short"], "alias" in p) for p in ps] == [
+            ("run:newest", "nightly run unreadable", False)], ps
+        # No rows at all still reads "never".
+        mod, sent = _nightly_rows_mod([], lab_today())
+        invoke(mod, "/api/health_report", _CRON)
+        assert "nightly run never" in sent[0][0], sent[0][0]
     finally:
         restore()
 

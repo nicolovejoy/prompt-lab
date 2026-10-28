@@ -44,9 +44,12 @@ the heartbeat count, a good run's one line, recovered nights, the archive
 count. Nothing red goes below, nothing green above. NEW comes from the
 `reported_problems` key in `health_email_state`, which holds {problem key:
 first lab day reported} for the problems in the last email SENT (read and
-written on the send path only, written after the send returns). Day N comes
-from the artifact's own age where one exists, so it survives a lost memory;
-only problems with no age count days from that remembered first sighting.
+written on the send path only, written after the send returns). A failure on
+the newest run row is also remembered under its night (`night:<lab_date>`),
+so tomorrow, when that row is an older bad night, it is not NEW twice. Day N
+is the Nth lab day the problem has existed, its first day being Day 1: a
+stale artifact and a bad night date themselves (so they survive a lost
+memory); every other problem counts from that remembered first sighting.
 
 The joke: generated per-send with the Anthropic API (Haiku tier), falling back
 to a canned rotation — the email must send even when the API doesn't.
@@ -825,9 +828,12 @@ def _days_between(iso, today):
 def _nightly_problems(nr, today):
     out = []
 
-    def add(key, severity, text, short, age=None, since=None):
-        out.append({"key": key, "severity": severity, "text": text,
-                    "short": short, "age_days": age, "since": since})
+    def add(key, severity, text, short, age=None, since=None, alias=None):
+        p = {"key": key, "severity": severity, "text": text,
+             "short": short, "age_days": age, "since": since}
+        if alias:
+            p["alias"] = alias
+        out.append(p)
 
     if nr.get("ok") is None:
         add("run:unchecked", "unchecked",
@@ -839,9 +845,20 @@ def _nightly_problems(nr, today):
     on = f" on {nr['host']}" if nr.get("host") and _hosts_differ(nr) else ""
     frags = _note_fragments(nr.get("note"))
 
+    # A failure OF the newest row is remembered under the night it belongs
+    # to: once a newer run lands, `_build_recent_bad` carries this same row
+    # as `night:<lab_date>`, and that must read as already reported. Set only
+    # on the branches below that report the row's own failure, all of which
+    # have a parseable lab_date; "no run for N days" is about absence and
+    # mismatches/claims belong to an ok-status row recent_bad never carries.
+    night = f"night:{lab_date}"
+
     if nr.get("ok") is False:
         age = nr.get("age_days")
-        if not lab_date:
+        # `_check_nightly_run` leaves lab_date None only when there are no
+        # rows at all; a row whose lab_date is NULL or junk arrives as a
+        # string with no age, and exists, so it is "unreadable", not "never".
+        if lab_date is None:
             note = "; ".join(frags) or "never produced"
             add("run:newest", "stale", f"nightly run: {note}", "nightly run never")
         elif age is None:
@@ -855,7 +872,7 @@ def _nightly_problems(nr, today):
         elif nr.get("status") == "running":
             add("run:newest", "stale",
                 f"nightly run {lab_date}{on} started but never finished",
-                "nightly run died", None, lab_date)
+                "nightly run died", None, lab_date, night)
         else:
             failed = [s for s in nr.get("stages") or []
                       if s.get("outcome") in FAILED_OUTCOMES]
@@ -864,11 +881,12 @@ def _nightly_problems(nr, today):
                 if s.get("detail"):
                     text += f" — {s['detail']}"
                 add(f"stage:{s.get('name')}", "stale", text,
-                    f"{s.get('name')} {s['outcome']}", None, lab_date)
+                    f"{s.get('name')} {s['outcome']}", None, lab_date, night)
             if not failed and nr.get("status") != "ok":
+                status = nr.get("status") or "no status"
                 add("run:newest", "stale",
-                    f"nightly {lab_date}{on}: run reported {nr.get('status')}",
-                    f"nightly run {nr.get('status')}", None, lab_date)
+                    f"nightly {lab_date}{on}: run reported {status}",
+                    f"nightly run {status}", None, lab_date, night)
             for m in nr.get("mismatches") or []:
                 remote = m.get("remote")
                 add(f"publish:{m['artifact']}", "stale",
@@ -886,8 +904,13 @@ def _nightly_problems(nr, today):
     for r in nr.get("recent_bad") or []:
         d = r.get("lab_date")
         r_on = f" on {r['host']}" if r.get("host") and _hosts_differ(nr) else ""
+        # The night itself is Day 1, so `age` here is days-since + 1: the
+        # same N a stage line counting from first sighting reads when the
+        # failure was first reported on its own night (see _mark_new).
+        since_night = _days_between(d, today)
         add(f"night:{d}", "stale", f"nightly {d}{r_on} failed: {r.get('note')}",
-            f"bad night {str(d)[5:10]}", _days_between(d, today), d)
+            f"bad night {str(d)[5:10]}",
+            since_night + 1 if since_night is not None else None, d)
     return out
 
 
@@ -943,15 +966,37 @@ def _mark_new(problems, prior, today):
     """Stamp each problem with first_seen/is_new/day against the remembered
     state. Returns (problems, new_state); new_state holds current problems
     only, so a cleared problem that returns counts as new again. A second
-    send on the same day still says NEW, deliberately."""
+    send on the same day still says NEW, deliberately.
+
+    Identity: a problem is remembered under its key, except one carrying an
+    `alias` (a failure of the newest run row: `night:<lab_date>`), which is
+    remembered under the alias and takes first_seen from it alone. Tomorrow
+    that row is an older bad night keyed `night:<lab_date>` and must not read
+    NEW twice; and `stage:review` failing again on a NEW night is a new
+    failure, so the stable `stage:` key must not vouch for it. new_state
+    records both the key and the alias; problems sharing an alias keep the
+    earliest date.
+
+    Day N (one rule): the Nth lab day the problem has existed, its first day
+    being Day 1. A problem that dates itself carries that N in `age_days` (a
+    stale artifact: days since it last landed; a bad night: days since the
+    night + 1); every other problem counts from first_seen, so first reported
+    today is Day 1 (shown as NEW). For a failure reported on its own night
+    the two give the same N on every later day."""
     marked, new_state = [], {}
     today_iso = today.isoformat()
+
+    def remember(key, first):
+        if key not in new_state or first < new_state[key]:
+            new_state[key] = first
+
     for p in problems:
         q = dict(p)
+        alias = p.get("alias")
         if prior is None:
             q["first_seen"], q["is_new"], q["day"] = None, False, p.get("age_days")
         else:
-            first = prior.get(p["key"]) or today_iso
+            first = prior.get(alias or p["key"]) or today_iso
             q["first_seen"] = first
             q["is_new"] = first == today_iso
             if p.get("age_days") is not None:
@@ -959,7 +1004,9 @@ def _mark_new(problems, prior, today):
             else:
                 q["day"] = _days_between(first, today)
                 q["day"] = q["day"] + 1 if q["day"] is not None else None
-        new_state[p["key"]] = q["first_seen"] or today_iso
+        remember(p["key"], q["first_seen"] or today_iso)
+        if alias:
+            remember(alias, q["first_seen"] or today_iso)
         marked.append(q)
     return marked, new_state
 
