@@ -10,6 +10,24 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-10-28 — Playwright runs headless; commit the CLAUDE.md re-sync
+
+Scope: every repo
+
+**A headed browser takes focus on Nico's Mac**, so Playwright runs headless. The
+shared-conventions block gained a "Browser testing runs headless" rule, and it was
+re-synced into every CLAUDE.md. `git diff CLAUDE.md` shows only that block: commit it.
+
+- The audit found no test config forcing headed mode. The windows came from the global
+  Playwright MCP server, now `--headless`.
+- For a visual check, take a screenshot or a trace and open it with
+  `npx playwright show-trace <trace.zip>`. Headed, `--debug`, `--ui` and `PWDEBUG`
+  only when Nico asks in that session.
+- The fleet sync now manages CLAUDE.md only. A leftover `AGENTS.md` stops being
+  refreshed; delete it (see the 2026-10-16 entry).
+
+---
+
 ## 2026-10-16 — Codex is retired; delete AGENTS.md and commit the CLAUDE.md re-sync
 
 Scope: every repo
@@ -43,8 +61,8 @@ not Chrome.
 
 - `playwright.config`: on each Chromium project, `use: { channel: 'msedge' }`, or
   set `channel: 'msedge'` in `launch()` for a hand-rolled runner.
-- The global Playwright MCP server already passes `--browser msedge`; nothing to do
-  per repo.
+- The global Playwright MCP server passes `--headless --browser msedge`, pinned to
+  `@playwright/mcp@0.0.83` (2026-10-28); nothing to do per repo.
 - WebKit and Firefox projects are unaffected; they were never the confusion.
 
 **The one exception is the claude-in-chrome extension**, which drives the real
