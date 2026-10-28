@@ -3840,7 +3840,7 @@ def _():
         assert rb["lab_date"] == (lab_today() - timedelta(days=3)).isoformat(), rb
         assert rb["host"] == "laptop", rb
         assert rb["status"] == "failed", rb
-        assert rb["note"] == "network: failed", rb
+        assert rb["note"] == "network never came up, so nothing ran", rb
         assert run["note"] == "1 bad night(s) in the last 7 days", run
 
         mod, sent = _health_mod(nr="recent-bad")
@@ -3849,7 +3849,7 @@ def _():
         assert subject.startswith("🟡"), subject
         day = (lab_today() - timedelta(days=3)).isoformat()
         assert subject == f"🟡 1 problem (1 new): bad night {day[5:]}", subject
-        line = f"nightly {day} failed: network: failed"
+        line = f"nightly {day} failed: network never came up, so nothing ran"
         assert line in _fold(text)[0], text
         assert line in _fold_html(html_body)[0], html_body
         # The newest row itself was clean, so its green line sits below.
@@ -4292,6 +4292,22 @@ def _():
     assert not any("claimed but not in Turso" in p["text"] for p in ps)
 
 
+@test("health problems: a dead network gate reads as 'nothing ran', not 'network failed'")
+def _():
+    # 2026-10-28: "network: failed" told Nico nothing. The gate is DNS, not a
+    # stage of work, so its failure means the night ran nothing at all.
+    _, ps = _probs(nightly_run=_nr(
+        ok=False, lab_date="2026-10-27", age_days=0, status="failed",
+        stages=[{"name": "network", "outcome": "failed",
+                 "detail": "gaierror: [Errno 8] nodename nor servname"}],
+        note="network never came up, so nothing ran"))
+    d = _by_key(ps)
+    assert d["stage:network"]["text"] == (
+        "nightly 2026-10-27: network never came up, so nothing ran"
+        " — gaierror: [Errno 8] nodename nor servname"), d
+    assert d["stage:network"]["short"] == "network failed", d
+
+
 @test("health problems: recent_bad nights and the bad-night count fragment")
 def _():
     _, ps = _probs(nightly_run=_nr(
@@ -4476,7 +4492,7 @@ def _():
             for colour in ("#c62828", "#b26a00"):
                 assert colour not in html_below, (kw, colour, html_below)
             for frag in ("is down", "has not landed", "synthesizer failed",
-                         "failed: network", "wrote 0 rows", "could not check"):
+                         "network never came up, so nothing ran", "wrote 0 rows", "could not check"):
                 assert frag not in below, (kw, frag, below)
                 assert frag not in html_below, (kw, frag)
         # The first scenario's red lines are all present above.
@@ -4485,7 +4501,7 @@ def _():
         invoke(mod, "/api/health_report", _CRON)
         above = _fold(sent[0][2])[0]
         for frag in ("garm is down", "review email has not landed",
-                     "synthesizer failed", "failed: network: failed",
+                     "synthesizer failed", "failed: network never came up, so nothing ran",
                      "uptime archive wrote 0 rows today"):
             assert frag in above, (frag, above)
     finally:
@@ -4633,7 +4649,7 @@ def _():
         assert subject == (f"🟡 2 problems (1 new): synthesizer failed, "
                            f"bad night {night[5:]}"), subject
         assert f"Day 2: {stage_line}" in above, above
-        assert f"NEW today: nightly {night} failed: network: failed" in above, above
+        assert f"NEW today: nightly {night} failed: network never came up, so nothing ran" in above, above
         assert "<b>Day 2" not in html_body, html_body
         # first_seen is carried forward, not reset to the new day.
         assert mod._state_writes[-1] == {

@@ -380,6 +380,20 @@ STAGE_ARTIFACT = {
     "report": "bi-monthly report",
 }
 
+# Failures whose `name: outcome` tells a reader nothing. `network` is the
+# pre-flight DNS gate, not a unit of work: when it fails no stage ran at all,
+# and "network: failed" read as an unexplained error (2026-10-28).
+STAGE_FAILURE_TEXT = {
+    "network": "network never came up, so nothing ran",
+}
+
+
+def _stage_failure(s, sep):
+    """One failed stage as reader text: the plain sentence when there is
+    one, else `name<sep>outcome`."""
+    return (STAGE_FAILURE_TEXT.get(s.get("name"))
+            or f"{s.get('name')}{sep}{s['outcome']}")
+
 NIGHTLY_RUN_SQL = (
     "SELECT run_id, host, started_at, lab_date, finished_at, status, "
     "stages, claims, exit_code FROM nightly_runs "
@@ -476,7 +490,7 @@ def _one_liner(stages, status):
     `recent_bad` entry — one shape, so a backfilled night reads the same as
     tonight's would have."""
     bad = [s for s in stages if s.get("outcome") in FAILED_OUTCOMES]
-    return (", ".join(f"{s.get('name')}: {s['outcome']}" for s in bad)
+    return (", ".join(_stage_failure(s, ": ") for s in bad)
             or f"run reported {status or 'no status'}")
 
 
@@ -877,7 +891,7 @@ def _nightly_problems(nr, today):
             failed = [s for s in nr.get("stages") or []
                       if s.get("outcome") in FAILED_OUTCOMES]
             for s in failed:
-                text = f"nightly {lab_date}{on}: {s.get('name')} {s['outcome']}"
+                text = f"nightly {lab_date}{on}: {_stage_failure(s, ' ')}"
                 if s.get("detail"):
                     text += f" — {s['detail']}"
                 add(f"stage:{s.get('name')}", "stale", text,

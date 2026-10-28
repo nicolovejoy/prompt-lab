@@ -289,6 +289,70 @@ def test_call_claude_uses_streaming():
     assert seen["tool_choice"] == {"type": "tool", "name": "t"}, seen
 
 
+class _DroppingStream(_FakeStream):
+    """A stream whose connection dies mid-body, as on 2026-10-28: the SDK
+    raises the raw httpx error from iteration, not an APIConnectionError."""
+
+    def get_final_message(self):
+        import httpx
+        raise httpx.RemoteProtocolError(
+            "peer closed connection without sending complete message body "
+            "(incomplete chunked read)")
+
+
+@test("call_claude retries a stream the server drops mid-reply")
+def test_call_claude_retries_dropped_stream():
+    # 2026-10-28: the review call's stream was cut ~60s in and the job died
+    # on attempt 1/3. Once a streamed response has started, a dropped
+    # connection surfaces as httpx.RemoteProtocolError, which the SDK does
+    # not wrap, so the APIConnectionError retry never saw it.
+    import types
+
+    import claude_api
+
+    resp = types.SimpleNamespace(
+        content=[types.SimpleNamespace(input={"ok": True})],
+        usage=types.SimpleNamespace(input_tokens=1, output_tokens=2))
+    streams = [_DroppingStream(None), _FakeStream(resp)]
+    client = types.SimpleNamespace(
+        messages=types.SimpleNamespace(stream=lambda **kw: streams.pop(0)))
+
+    saved_sleep = claude_api.time.sleep
+    claude_api.time.sleep = lambda s: None
+    out = io.StringIO()
+    try:
+        with redirect_stdout(out):
+            got = claude_api.call_claude(client, model="m", system="s",
+                                         user_msg="u", tool={"name": "t"})
+    finally:
+        claude_api.time.sleep = saved_sleep
+    assert got["parsed"] == {"ok": True}, got
+    assert "RemoteProtocolError" in out.getvalue(), out.getvalue()
+
+
+@test("call_claude still raises when every attempt's stream drops")
+def test_call_claude_dropped_stream_gives_up():
+    import types
+
+    import httpx
+
+    import claude_api
+
+    client = types.SimpleNamespace(
+        messages=types.SimpleNamespace(stream=lambda **kw: _DroppingStream(None)))
+    saved_sleep = claude_api.time.sleep
+    claude_api.time.sleep = lambda s: None
+    try:
+        with redirect_stdout(io.StringIO()):
+            claude_api.call_claude(client, model="m", system="s",
+                                   user_msg="u", tool={"name": "t"})
+        raise AssertionError("three dropped streams must raise, not return")
+    except httpx.RemoteProtocolError:
+        pass
+    finally:
+        claude_api.time.sleep = saved_sleep
+
+
 @test("clocks: both nightly readers still surface the sleep diagnostic")
 def test_readers_use_describe_elapsed():
     # A grep, not a behavioural assert, for the same reason the other clocks:
