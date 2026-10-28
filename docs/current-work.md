@@ -77,28 +77,18 @@ seeing some projects but not all) is rated very unlikely.
 **`docs/nightly-pipeline-plan.md`: steps 1, 2, 3 and 5 are DONE (2026-08-29).** Step 4 is
 mostly absorbed (report catch-up done, reader catch-up optional) and unbuilt beyond that.
 
-**Sleeping-host test: the result is in, and it fails (found 2026-10-27).** Since 10-23 the
-laptop has slept across 02:30 on its own. launchd fires the nightly inside a ~10s maintenance
-DarkWake with no DNS yet; the gate's 180s budget is monotonic so it ticks only while awake,
-accumulates across a dozen dark wakes over 3-13 hours, then gives up and the night exits 1.
-Nights 10-23, 10-25 and 10-26 produced nothing; 10-24 resolved after 71s and ran. The
-`--- network: resolved after Ns ---` line did appear, so the gate earned its place as
-evidence. Decision for Nico, not a one-line fix: either the run holds a sleep assertion for
-its duration (`caffeinate -ims -w <pid> -t …`, per the global caffeinate rule), or the gate
-waits for a full wake instead of failing. Separate from this: the review email died
-2026-10-21..26 on post-wake mornings with a silent-connection read timeout; fixed by
-streaming the request (see the trap in CLAUDE.md).
+**Sleeping-host nights: decided and shipped (#97, 2026-10-27).** launchd fires the
+nightly inside a ~10s maintenance dark wake with no DNS, and the old 180s gate budget
+ran out across a dozen of those (nights 10-23, -25, -26 produced nothing). The gate now
+waits until 11:00 local (`NETWORK_DEADLINE_HOUR`) and never gives up in under 180s
+awake, so the run happens when the lid opens; a laptop shut past 11:00 is a missed
+night that the next night catches up. #100 (2026-10-28) added a retry for a stream
+dropped mid-response, which killed the 10-28 review stage.
 
-**Still outstanding: step 2's sleeping-host test**, and it needs a real overnight, not a
-healthy awake host (an awake laptop passes either way — that is why it needs staging). With
-the machine deliberately asleep across 02:30, confirm one wake produces one run in the correct
-order and Turso's newest `review_snapshots` date equals the run date. The network gate sits in
-front of it now, so the run should print `--- network: resolved after Ns ---` rather than dying
-on `gaierror` — that line is itself the evidence the gate earns its place.
-First attempt is the night of 2026-10-09. Idle sleep will not do it: `pmset -g log`
-shows no sleep or wake event since 2026-10-07 (a `PreventUserIdleSystemSleep`
-assertion from `Siri AI` has been held since then), which is why the 10-08 and 10-09
-runs started at 02:30:04 sharp. The laptop has to be put to sleep by hand.
+**Still to confirm on a real morning:** the first nights after #97 and #100. Pass = the
+health email arrives with the review stage green, `nightly.log` shows
+`--- network: resolved after Ns ---`, and Turso's newest `review_snapshots` date
+equals the run date.
 
 Also unverified until it happens: the health-email changes are Vercel-side code reading Turso,
 so the first real morning email carrying a `nightly_runs` row is their acceptance test — **and
