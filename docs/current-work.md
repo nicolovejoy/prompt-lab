@@ -6,6 +6,18 @@
    delete `~/src/stars-demo-codex` once stars-demo has triaged its branches, and
    each sibling repo commits its staged `AGENTS.md` deletion + CLAUDE.md re-sync.
 
+**Health email leads with problems (2026-10-27, #98).** The daily email now opens
+with "What needs attention": one line per problem, prefixed NEW today, Day N or
+Ongoing, or the single line "nothing needs attention" on a clean run. Everything
+working sits below a separator; the subject is the top block in one line. The
+Turso `health_email_state` key `reported_problems` stores {problem key: first lab
+day reported} for the problems in the last email sent. Day N comes from the
+artifact's own age where one exists, else days since first seen. Dry runs and
+paused runs neither read nor write it. A failed read still sends, marks nothing
+NEW and skips the write; the write happens only after a successful send. The
+memory starts empty, so the first email after deploy marks every current problem
+NEW.
+
 **stars-demo is not being onboarded (Nico, 2026-10-09):** it was a one-off and is
 mostly done, so it stays a grey "more" entry in the dashboard chart.
 

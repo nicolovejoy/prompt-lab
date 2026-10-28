@@ -544,9 +544,10 @@ def _apply_recent_bad(entry):
     """Force the entry not-ok when any OTHER run in the window was bad, even
     though the newest row it was just graded on is fine.
 
-    This is what makes a backfilled failure escalate the email: `_compose`'s
-    subject logic already keys entirely off `entry["ok"]`, so nothing else
-    needs to know a catch-up row ever existed."""
+    This is what makes a backfilled failure escalate the email: `_problems`
+    builds the problem list (and so the subject) from `entry["ok"]` and the
+    recent_bad facts, so nothing else needs to know a catch-up row ever
+    existed."""
     if entry.get("recent_bad"):
         entry["ok"] = False
         count_note = (f"{len(entry['recent_bad'])} bad night(s) in the last "
