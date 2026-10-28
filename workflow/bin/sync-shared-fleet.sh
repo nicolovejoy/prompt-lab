@@ -1,6 +1,9 @@
 #!/bin/bash
 # sync-shared-fleet.sh — inventory shared-conventions state across sibling repos.
 #
+# Only CLAUDE.md is managed. AGENTS.md was Codex's copy; Codex is retired
+# (2026-10-16), so a leftover AGENTS.md is neither reported nor refreshed.
+#
 # Default mode is read-only. --apply refreshes only files whose verified block is
 # behind or whose existing file has no block. It never creates an absent file,
 # overwrites a tampered block, commits, or pushes.
@@ -40,29 +43,28 @@ for repo in "$ROOT"/*; do
     git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || continue
     found=1
     repo_name="$(basename "$repo")"
-    for filename in CLAUDE.md AGENTS.md; do
-        target="$repo/$filename"
-        output="$("$SYNC" --check "$target" 2>&1)"
-        state="${output%%:*}"
-        [ "$state" = "in sync" ] && state=current
-        case "$state" in
-            current|behind|tampered|missing|absent) ;;
-            *) state=unknown; problems=1 ;;
-        esac
+    filename=CLAUDE.md
+    target="$repo/$filename"
+    output="$("$SYNC" --check "$target" 2>&1)"
+    state="${output%%:*}"
+    [ "$state" = "in sync" ] && state=current
+    case "$state" in
+        current|behind|tampered|missing|absent) ;;
+        *) state=unknown; problems=1 ;;
+    esac
 
-        if [ "$MODE" = "--apply" ] && { [ "$state" = behind ] || [ "$state" = missing ]; }; then
-            apply_output="$("$SYNC" --apply "$target" 2>&1)"
-            if [ $? -eq 0 ]; then
-                printf '%s\t%s\t%s -> updated\n' "$repo_name" "$filename" "$state"
-            else
-                printf '%s\t%s\terror: %s\n' "$repo_name" "$filename" "$apply_output"
-                problems=1
-            fi
+    if [ "$MODE" = "--apply" ] && { [ "$state" = behind ] || [ "$state" = missing ]; }; then
+        apply_output="$("$SYNC" --apply "$target" 2>&1)"
+        if [ $? -eq 0 ]; then
+            printf '%s\t%s\t%s -> updated\n' "$repo_name" "$filename" "$state"
         else
-            printf '%s\t%s\t%s\n' "$repo_name" "$filename" "$state"
-            [ "$state" = tampered ] && problems=1
+            printf '%s\t%s\terror: %s\n' "$repo_name" "$filename" "$apply_output"
+            problems=1
         fi
-    done
+    else
+        printf '%s\t%s\t%s\n' "$repo_name" "$filename" "$state"
+        [ "$state" = tampered ] && problems=1
+    fi
 done
 
 if [ "$found" = 0 ]; then

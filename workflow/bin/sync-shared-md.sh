@@ -1,5 +1,5 @@
 #!/bin/bash
-# sync-shared-md.sh — materialize the shared-conventions block into a repo's CLAUDE.md or AGENTS.md.
+# sync-shared-md.sh — materialize the shared-conventions block into a repo's CLAUDE.md.
 #
 # The shared block (prompt-lab/workflow/claude-md-shared.md) is the single source of
 # truth for Nico's cross-repo output rules. This script writes it verbatim between
