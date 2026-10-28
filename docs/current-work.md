@@ -2,9 +2,12 @@
 
 **Next session, start here (2026-10-08):**
 1. **Codex removal, stage 2 done 2026-10-16.** Stage 1 (PR #89) and the docs
-   sweep are merged; `docs/remove-codex-plan.md` has the record. Still for Nico:
-   delete `~/src/stars-demo-codex` once stars-demo has triaged its branches, and
-   each sibling repo commits its staged `AGENTS.md` deletion + CLAUDE.md re-sync.
+   sweep are merged; `docs/remove-codex-plan.md` has the record. The `*-codex`
+   clones are gone and the fleet sync manages CLAUDE.md only (2026-10-28). Left:
+   `AGENTS.md` still committed in musicforge, person-tracking and split-recording
+   (each repo's own call, asked via handoff). The Codex desktop app (installed as
+   `ChatGPT.app`, bundle id `com.openai.codex`) and `~/.codex` went to the Trash
+   2026-10-28.
 
 **Health email leads with problems (2026-10-27, #98).** The daily email now opens
 with "What needs attention": one line per problem, prefixed NEW today, Day N or

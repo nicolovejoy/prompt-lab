@@ -80,8 +80,8 @@ done
 # claude-md-shared.md is the single source of truth for Nico's cross-repo output
 # rules. Installed to ~/.claude/ so sync-shared-md.sh (a bin script, installed above)
 # can find it from any repo. Edit the in-repo copy, re-run install.sh, then
-# `sync-shared-md.sh --apply ./CLAUDE.md` (or `./AGENTS.md`) in each repo to
-# materialize the block into that file.
+# `sync-shared-fleet.sh --apply` (or `sync-shared-md.sh --apply ./CLAUDE.md` in one
+# repo) to materialize the block into each CLAUDE.md.
 install_file "$REPO_DIR/workflow/claude-md-shared.md" "$HOME/.claude/claude-md-shared.md" "claude-md-shared.md"
 echo "Copied conventions source: claude-md-shared.md → $HOME/.claude/"
 echo ""

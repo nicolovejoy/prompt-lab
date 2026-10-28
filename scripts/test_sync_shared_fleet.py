@@ -48,14 +48,11 @@ with tempfile.TemporaryDirectory(prefix="shared-fleet-") as tmp:
         subprocess.run([str(SYNC), "--apply", str(path / "CLAUDE.md")],
                        env=env, check=True, capture_output=True, text=True)
     (missing / "CLAUDE.md").write_text("# Missing block\n")
-    (current / "AGENTS.md").write_text("Read CLAUDE.md first.\n")
-    subprocess.run([str(SYNC), "--apply", str(current / "AGENTS.md")],
-                   env=env, check=True, capture_output=True, text=True)
+    leftover_agents = "Read CLAUDE.md first.\n"
+    (behind / "AGENTS.md").write_text(leftover_agents)
 
     canonical.write_text("## Shared conventions\n\n- New canonical rule\n")
     subprocess.run([str(SYNC), "--apply", str(current / "CLAUDE.md")],
-                   env=env, check=True, capture_output=True, text=True)
-    subprocess.run([str(SYNC), "--apply", str(current / "AGENTS.md")],
                    env=env, check=True, capture_output=True, text=True)
     tampered_file = tampered / "CLAUDE.md"
     tampered_text = tampered_file.read_text().replace("Original rule", "Local edit")
@@ -79,6 +76,9 @@ with tempfile.TemporaryDirectory(prefix="shared-fleet-") as tmp:
     check("apply adds block to existing missing file",
           "missing\tCLAUDE.md\tmissing -> updated" in applied.stdout)
     check("apply leaves tampered block untouched", tampered_file.read_text() == tampered_text)
+    check("apply ignores a leftover AGENTS.md",
+          "AGENTS.md" not in applied.stdout + audit.stdout
+          and (behind / "AGENTS.md").read_text() == leftover_agents)
     check("apply does not create absent files", not (absent / "CLAUDE.md").exists())
     check("apply makes no commits",
           all(not (path / ".git/refs/heads/main").exists() and

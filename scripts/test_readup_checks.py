@@ -27,7 +27,6 @@ with tempfile.TemporaryDirectory(prefix="readup-checks-") as tmp:
 [ -n "${FAKE_CONV_LOG:-}" ] && printf '%s\n' "$2" >> "$FAKE_CONV_LOG"
 case "$2" in
   *CLAUDE.md) state="${FAKE_CONV_CLAUDE:-in sync}" ;;
-  *AGENTS.md) state="${FAKE_CONV_AGENTS:-in sync}" ;;
 esac
 printf '%s: fixture\n' "$state"
 [ "$state" = "in sync" ] && exit 0
