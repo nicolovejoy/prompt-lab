@@ -129,6 +129,11 @@ echo ""
 # --- launchd plists (macOS only) ---
 if [[ "$OSTYPE" == darwin* ]] && command -v launchctl &>/dev/null; then
     mkdir -p "$LAUNCH_AGENTS"
+    # Private job output lives outside the checkout (see the nightly plist).
+    # launchd opens the log before the job runs, so the directory must exist
+    # before the plist is loaded, or the job never starts and says nothing.
+    STATE_DIR="$HOME/.claude/state/prompt-lab"
+    mkdir -p "$STATE_DIR/logs"
     for plist in "$REPO_DIR/workflow/"*.plist; do
         name=$(basename "$plist")
         label="${name%.plist}"
@@ -140,6 +145,7 @@ if [[ "$OSTYPE" == darwin* ]] && command -v launchctl &>/dev/null; then
         sed \
             -e "s|__REPO_DIR__|$REPO_DIR|g" \
             -e "s|__PYTHON3__|$PYTHON3|g" \
+            -e "s|__STATE_DIR__|$STATE_DIR|g" \
             "$plist" > "$rendered"
 
         # Only unload if the dest exists and the agent is currently loaded.

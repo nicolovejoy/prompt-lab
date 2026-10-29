@@ -5,16 +5,19 @@ import json
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import heartbeat
-from claude_api import (SONNET, REPO_DIR, call_claude, describe_elapsed,
+from claude_api import (SONNET, call_claude, describe_elapsed,
                         get_client, load_env)
 from store import get_store
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "web"))
 from day_helper import lab_days_ago  # noqa: E402
 
-REPORTS_DIR = REPO_DIR / "reports"
+# Outside the checkout: reports are private prose, and a deploy from the repo
+# root once served reports/ publicly (2026-10-29).
+REPORTS_DIR = Path.home() / ".claude" / "state" / "prompt-lab" / "reports"
 
 
 REPORT_TOOL = {
@@ -170,8 +173,7 @@ def main():
 
     markdown = result["parsed"].get("markdown", "")
 
-    # Write to reports/
-    REPORTS_DIR.mkdir(exist_ok=True)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     today = datetime.now().strftime("%Y-%m-%d")
     filename = f"{today}-review-{days}d.md"
     filepath = REPORTS_DIR / filename
