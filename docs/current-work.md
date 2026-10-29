@@ -75,9 +75,11 @@ when two real per-app admins appeared (Nico's brother on tideline, Eric on
 musicforge). ibuild4you's Loop apps design makes Garm the one record of app admins,
 and prompt-lab relays it. Done 2026-10-29: inventory ask posted to garm (what exists
 vs. new, admin key location, Loop-key trust, `prompt-lab.prntd` vs. bare `prntd`
-naming). Neon is settled: `neon-bole-tree` sits in the paid Launch org. Waiting on
-garm's reply. Then: notes to tideline (correcting our 10-17 "Not Garm" advice),
-musicforge and photomirande. Later: byside, prntd, bakerylouise and l6-music update
+naming). Neon is settled: `neon-bole-tree` sits in the paid Launch org. Garm
+replied the same day: shape approved by Nico, build starting. Relayed to ibuild4you;
+notes sent to tideline (correcting our 10-17 "Not Garm" advice), musicforge and
+photomirande (new channel). Next: relay garm's "1 to 4 live" post to ibuild4you and
+the three apps; tideline will need a `tideline`-scoped consumer key. Later: byside, prntd, bakerylouise and l6-music update
 their widget `projectId` (old ids stay aliased). Phase B starts when prompt-lab tells
 ibuild4you that Garm's needs are live on production.
 
