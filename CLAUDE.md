@@ -340,9 +340,12 @@ binaries and the esm.sh CDN.
   wrong count (**11 domains, not ~37**) and `musicforge.org` was never on Resend. Return-path
   `send.` subdomains consume no slot; `span.`/`mail.` subdomains are separate entries.
   `musicforge.org`'s SPF must be **extended** (`include:icloud.com`), never replaced.
-- **Garm retires in January 2027 unless a second reader appears — 2026-10-17 (#94).**
-  Frozen until then per the 2026-08-27 decision; the only use case is a signed-in
-  reader who sees some projects but not all, rated very unlikely.
+- **Garm is active again; the January 2027 sunset is cancelled — 2026-10-29 (#94 closed).**
+  The cancel trigger was met: real per-app admins (Nico's brother on tideline, Eric on
+  musicforge). Garm becomes the one record of who administers which app; apps read it
+  and never copy it (ibuild4you
+  `docs/superpowers/specs/2026-10-29-loop-apps-and-garm-admins-design.md`). prompt-lab
+  carries the plan to garm and the app repos. Its own dashboard stays `GARM_GATING` off.
 - **Codex is retired — 2026-10-16.** Nico stopped using it; stage 1 of
   `docs/remove-codex-plan.md` removed the Codex command renderer, host-identity
   branches, AGENTS.md machinery and `cx`/`duet` launchers. History rows keep their

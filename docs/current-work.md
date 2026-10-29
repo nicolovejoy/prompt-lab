@@ -70,9 +70,16 @@ question.** `GARM_GATING` stays **off**, `READER_EMAILS` is the live gate — "o
 env var, not the code default, so check `vercel env ls` before trusting this line. Grant
 seeding (Pierre → `prompt-lab.prntd`) is deferred and blocks nothing. Revisit trigger: a real
 second user who needs actual access management, not "might someday."
-**Sunset set 2026-10-17: retire garm in January 2027 unless a second reader has
-asked by then (#94 lists what it touches).** The use case (a client or collaborator
-seeing some projects but not all) is rated very unlikely.
+**Sunset cancelled 2026-10-29 (#94 closed).** Set 2026-10-17; its trigger was met
+when two real per-app admins appeared (Nico's brother on tideline, Eric on
+musicforge). ibuild4you's Loop apps design makes Garm the one record of app admins,
+and prompt-lab relays it. Done 2026-10-29: inventory ask posted to garm (what exists
+vs. new, admin key location, Loop-key trust, `prompt-lab.prntd` vs. bare `prntd`
+naming). Neon is settled: `neon-bole-tree` sits in the paid Launch org. Waiting on
+garm's reply. Then: notes to tideline (correcting our 10-17 "Not Garm" advice),
+musicforge and photomirande. Later: byside, prntd, bakerylouise and l6-music update
+their widget `projectId` (old ids stay aliased). Phase B starts when prompt-lab tells
+ibuild4you that Garm's needs are live on production.
 
 **`docs/nightly-pipeline-plan.md`: steps 1, 2, 3 and 5 are DONE (2026-08-29).** Step 4 is
 mostly absorbed (report catch-up done, reader catch-up optional) and unbuilt beyond that.
