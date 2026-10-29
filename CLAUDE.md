@@ -240,6 +240,12 @@ last-step delivery failure.
   catch only.
 - **Reading `/api/public_history`: the envelope key is `rollups`, not `weekly_rollups`** — the
   wrong key reports 0 rows on a healthy endpoint.
+- **Deploy only from `web/`; a root deploy is refused on purpose.** The Vercel project's Root
+  Directory is `.`, so `vercel --prod` from the repo root once deployed the whole checkout:
+  `prompt-labs.org` served `reports/`, job logs and real-data screenshots for seven minutes
+  (2026-10-29). Root `vercel.json` + `.vercelignore` now upload nothing and fail the build.
+  Don't "fix" it by setting Root Directory to `web`: that breaks `cd web && vercel --prod`
+  and CI, and a root deploy would still upload every private file.
 - **Vercel log retention is ~1 hour** — post-hoc forensics on a daily cron is not available.
 - **CI ruff is pinned to `0.15.22` — don't unpin.** An unpinned install produced 339 new-rule
   errors on a docs-only push; local-passing + CI-failing on docs = version drift.
