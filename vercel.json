@@ -1,0 +1,3 @@
+{
+  "buildCommand": "echo 'Refusing to deploy from the repo root: it would serve every file in the checkout. Deploy from web/ instead: cd web && vercel --prod' >&2; exit 1"
+}
