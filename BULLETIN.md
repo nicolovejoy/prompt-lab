@@ -10,6 +10,40 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-10-29 — Before handing Nico a smoke, try running it yourself
+
+Scope: any web app, when a smoke needs a second signed-in account, a rare failure, or iPad/iPhone Safari
+
+**Most smokes that look like they need Nico don't.** On 2026-10-28 musicforge's agent
+smoked three merged PRs on prod with no help, including a two-account sync flow.
+Before writing smoke steps for Nico, check whether one of these runs it:
+
+- **A second signed-in account.** Keep account B in its own Edge profile
+  (`--user-data-dir`), signed in once by hand and launched with
+  `--remote-debugging-port`. A short node script attaches with
+  `chromium.connectOverCDP`, runs one snippet, prints the result and leaves the browser
+  open. With the Playwright MCP holding account A, that is two independent signed-in
+  browsers. Copy `musicforge/tools/smoke/`. That profile window is headed and takes
+  focus (2026-10-28 entry). Whether it stays signed in under `--headless=new` is
+  unchecked; try that first.
+- **A failure that happens rarely.** Force it rather than wait for it. A Playwright
+  route that calls `route.fetch()` and never fulfills lets the real backend act while
+  the page never hears back. That reproduced a one-off prod hang on demand.
+- **iPad or iPhone Safari.** Xcode's iOS Simulator plus macOS's built-in `safaridriver`:
+  `safaridriver -p 4444`, then a WebDriver session with `platformName: iOS`,
+  `safari:useSimulator: true` and `safari:deviceUDID`. It is real WebKit and works by
+  screenshot (`xcrun simctl io … screenshot`). Every session starts signed out, so it
+  needs an email/password test account: an ordinary user, never an admin (see
+  2026-10-08), with its password passed through `op run`. It is a Safari tab, not the
+  installed home-screen app.
+- **After any deploy,** update the service worker and reload every test browser before
+  reading anything, or it keeps the old bundle.
+
+Still Nico's: finger taps on a real device, the installed home-screen app, and OAuth
+sign-in in a fresh browser.
+
+---
+
 ## 2026-10-28 — Playwright runs headless; commit the CLAUDE.md re-sync
 
 Scope: every repo
@@ -91,7 +125,8 @@ gets its own confirmation.
 
 **Why not the alternatives:**
 - Playwright opens a fresh, signed-out browser, and Google/Apple sign-in can't
-  realistically be automated.
+  realistically be automated. A separate Edge profile signed in once by hand gets
+  around that for a second account (2026-10-29 entry).
 - A prod "test admin" account is a standing reader over real users' data. It needs
   allowlist, rules and deploy changes, and the session can't read its password anyway.
 - A fake admin is fine for an emulator-backed e2e test with seeded data. That covers
