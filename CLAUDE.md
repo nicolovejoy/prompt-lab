@@ -98,7 +98,9 @@ Four rules that fall out of it, each earned:
   table is *stale* ("never produced"), not fresh.
 - **Check the job's log before concluding anything from table rows.** The dead review
   email had 60 identical 403s in `send-review.log`. That log only exists under launchd
-  — a manual run prints to the terminal instead, so the file looks empty.
+  — a manual run prints to the terminal instead, so the file looks empty. The nightly
+  log is `~/.claude/state/prompt-lab/logs/nightly-pipeline.log` (moved out of the
+  checkout 2026-10-29; the pre-pipeline logs are in `logs/old/`).
 - **A failure whose own cause also blocks its reporting path erases its own
   evidence.** The wake/DNS deaths couldn't push their run records, so the email
   stayed green. Fix it on the reading side: grade a WINDOW, not the newest row.

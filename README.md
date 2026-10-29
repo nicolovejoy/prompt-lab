@@ -97,7 +97,7 @@ These files contain your personal configuration and are **never committed** (git
 
 - `.env` / `.env.local` — API keys and email addresses
 - `~/.claude/prompt-history.db` — your session data
-- `reports/` — generated reports (personal project details)
+- `~/.claude/state/prompt-lab/` — generated reports and the nightly log (personal project details). Kept outside the checkout on purpose: anything inside it is one bad deploy from public.
 
 Everything else in the repo is shared infrastructure with no personal details.
 
@@ -143,13 +143,13 @@ repositories under `~/src`. Its explicit `--apply` mode updates only verified
 One launchd job installed by `install.sh` (macOS only):
 
 `com.promptlab.nightly` — runs `nightly_pipeline.py` at 2:30am, logs to
-`nightly-pipeline.log`. One ordered run: cost pull → synthesizer → sync
+`~/.claude/state/prompt-lab/logs/nightly-pipeline.log`. One ordered run: cost pull → synthesizer → sync
 summaries to Turso → review email → bi-monthly report (when the current
 half-month has none yet) → publish to Turso. Ordering, dependencies, and per-stage (monotonic) timeouts
 live in `nightly_pipeline.py`, which runs from the repo checkout — editing it
 is live the next night with no reinstall; only the plist's start time needs a
 re-render. The review email includes daily and weekly recaps (Saturday goes
-deeper) and only sends if Resend is configured; reports land in `reports/`.
+deeper) and only sends if Resend is configured; reports land in `~/.claude/state/prompt-lab/reports/`.
 
 Manage it:
 
