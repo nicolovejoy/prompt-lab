@@ -10,6 +10,33 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-10-29 — Screenshots and private output live outside the repo
+
+Scope: every repo
+
+**Nothing private goes inside a checkout, even gitignored.** On 2026-10-29 a
+`vercel --prod` from prompt-lab's repo root, instead of `web/`, deployed the whole
+folder. For seven minutes https://prompt-labs.org served gitignored reports, job logs
+and real-data screenshots. Gitignore keeps files out of git, not out of a deploy.
+
+Already done for you:
+- **The Playwright MCP now saves to `~/.claude/state/playwright-mcp/`**
+  (`--output-dir`, global config). Restart a session to pick it up.
+- **Your `.playwright-mcp/` folder was moved** to
+  `~/.claude/state/playwright-mcp/old/<repo>/`, scratch files included. Nothing was
+  deleted. If you kept a working file there, fetch it from that folder.
+
+What to do in your repo:
+- **A script that writes screenshots of real data** (signed-in prod or preview pages)
+  writes outside the checkout, e.g. `~/.claude/state/<repo>/`. Screenshots of
+  synthetic fixtures may stay in the repo. ibuild4you's `scripts/e2e-*` and
+  `scripts/lib/preview-login.mjs` write to `.playwright-mcp/`; that is the case to fix.
+- **Deploy only from the directory Vercel expects.** If a wrong-directory deploy
+  would upload the checkout, guard it the way prompt-lab did: a `.vercelignore` that
+  uploads nothing but a `vercel.json` whose build exits 1 with the right command.
+
+---
+
 ## 2026-10-29 — Before handing Nico a smoke, try running it yourself
 
 Scope: any web app, when a smoke needs a second signed-in account, a rare failure, or iPad/iPhone Safari
