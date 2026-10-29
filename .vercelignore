@@ -1,0 +1,6 @@
+# A deploy from the repo root must never upload the checkout. On 2026-10-29 one
+# served reports/, job logs and real-data screenshots from prompt-labs.org for
+# seven minutes. Upload only vercel.json, whose build refuses with the fix.
+# The real deploy runs from web/ (its own vercel.json), which never reads this.
+/*
+!vercel.json
