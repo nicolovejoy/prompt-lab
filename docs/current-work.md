@@ -44,10 +44,9 @@ and its helper is installed under `~/.claude/bin`. 351 stale open rows were clos
 hand the same day (list: `~/.claude/state/closed-stale-sessions-2026-10-08.txt`).
 #81 merged 2026-10-09 at 07:45 PDT, after that morning's 02:30 run: the nightly now
 opens with a `scrub` stage that closes rows idle for a week, and a pointer file in
-`~/.claude/state` no longer protects its row for good. **Still to verify:** the
-2026-10-10 run is the first with the stage. `nightly-pipeline.log` should show
-`--- stage scrub: ok` and `Closed 58` (a dry run on 2026-10-09 found 58 of 60 open
-rows due). Until then those 58 rows stay open.
+`~/.claude/state` no longer protects its row for good. Verified 2026-10-30:
+`nightly-pipeline.log` shows `Closed 58` on the stage's first run, and
+`--- stage scrub: ok` every night since.
 
 **Mini shut down 2026-09-25.** Idle for weeks: no jobs, no containers, no handoff clone; only the parked `disabled-promptlab-20260820` LaunchAgents. Clean shutdown over ssh. Nothing depends on it. Possible future role: an independent watcher for the "cron dead" heartbeat hole. Details in memory `user_two_machines.md`.
 
@@ -67,9 +66,9 @@ status, deployment later.
 
 **Garm: HARDEN-THEN-FREEZE — Nico's decision 2026-08-27, don't re-litigate the unwind
 question.** `GARM_GATING` stays **off**, `READER_EMAILS` is the live gate — "off" is a Vercel
-env var, not the code default, so check `vercel env ls` before trusting this line. Grant
-seeding (Pierre → `prompt-lab.prntd`) is deferred and blocks nothing. Revisit trigger: a real
-second user who needs actual access management, not "might someday."
+env var, not the code default, so check `vercel env ls` before trusting this line. The
+August viewer seeds (Pierre → `prompt-lab.prntd`, the brother → a dashboard label) are
+withdrawn (2026-10-30): they mattered only with gating on, and garm has dropped them.
 **Sunset cancelled 2026-10-29 (#94 closed).** Set 2026-10-17; its trigger was met
 when two real per-app admins appeared (Nico's brother on tideline, Eric on
 musicforge). ibuild4you's Loop apps design makes Garm the one record of app admins,
@@ -78,10 +77,14 @@ vs. new, admin key location, Loop-key trust, `prompt-lab.prntd` vs. bare `prntd`
 naming). Neon is settled: `neon-bole-tree` sits in the paid Launch org. Garm
 replied the same day: shape approved by Nico, build starting. Relayed to ibuild4you;
 notes sent to tideline (correcting our 10-17 "Not Garm" advice), musicforge and
-photomirande (new channel). Next: relay garm's "1 to 4 live" post to ibuild4you and
-the three apps; tideline will need a `tideline`-scoped consumer key. Later: byside, prntd, bakerylouise and l6-music update
-their widget `projectId` (old ids stay aliased). Phase B starts when prompt-lab tells
-ibuild4you that Garm's needs are live on production.
+photomirande (new channel). Garm's registry and delegated admins went live 10-29
+(garm PR #10), the `loop` key was minted, and Nico created the seven Loop apps; all
+relayed, and ibuild4you started Phase B the same day. 2026-10-30: Elijah Lovejoy
+(Nico's brother) holds owner on tideline, confirmed by garm; no other owners on
+photomirande, byside, prntd or bakerylouise for now. Widget `projectId` notes sent to
+prntd and l6-music only (Nico skipped byside and bakerylouise; old ids stay aliased).
+Tideline will still need a `tideline`-scoped consumer key. Next: ibuild4you posts when
+Phase B reaches preview.
 
 **`docs/nightly-pipeline-plan.md`: steps 1, 2, 3 and 5 are DONE (2026-08-29).** Step 4 is
 mostly absorbed (report catch-up done, reader catch-up optional) and unbuilt beyond that.
@@ -94,10 +97,9 @@ awake, so the run happens when the lid opens; a laptop shut past 11:00 is a miss
 night that the next night catches up. #100 (2026-10-28) added a retry for a stream
 dropped mid-response, which killed the 10-28 review stage.
 
-**Still to confirm on a real morning:** the first nights after #97 and #100. Pass = the
-health email arrives with the review stage green, `nightly.log` shows
-`--- network: resolved after Ns ---`, and Turso's newest `review_snapshots` date
-equals the run date.
+**Confirmed in the log 2026-10-30:** the nights of 10-29 and 10-30 both show
+`--- network: resolved immediately ---` and `stage review: ok` (122s, 133s). The email
+arriving and Turso's `review_snapshots` date were not checked.
 
 Also unverified until it happens: the health-email changes are Vercel-side code reading Turso,
 so the first real morning email carrying a `nightly_runs` row is their acceptance test — **and
