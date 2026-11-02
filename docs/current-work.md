@@ -98,8 +98,8 @@ night that the next night catches up. #100 (2026-10-28) added a retry for a stre
 dropped mid-response, which killed the 10-28 review stage.
 
 **Confirmed in the log 2026-10-30:** the nights of 10-29 and 10-30 both show
-`--- network: resolved immediately ---` and `stage review: ok` (122s, 133s). The email
-arriving and Turso's `review_snapshots` date were not checked.
+`--- network: resolved immediately ---` and `stage review: ok` (122s, 133s). Nico
+confirmed 2026-11-02 that the review emails are arriving again.
 
 Also unverified until it happens: the health-email changes are Vercel-side code reading Turso,
 so the first real morning email carrying a `nightly_runs` row is their acceptance test — **and
@@ -136,10 +136,10 @@ Batch 2 was sent 2026-10-09 as five items and **none is answered yet**:
 - C4, window totals footnote: suggested cutting "one fetch, so switching metric is instant".
 - C5, day page: "12p · 3s · 4c" is cryptic, and its error is lowercase where Activity's is not.
 
-**Project-name follow-ups from the 2026-08-05 cleanup, all unconfirmed** — they need Nico's
-memory of which directory he was in; the names alone aren't evidence. `koma_art`/`koma-launch`
-look like the underscore/dash pair fixed elsewhere; `freevite` (167 prompts) may be `invitekit`
-under an older directory name; `spike` (4 prompts) has the shape of the hidden artifacts.
+**Project-name follow-ups from the 2026-08-05 cleanup: closed 2026-11-02.** Nico
+confirmed `freevite` became `invitekit` and `koma_art` became `koma-launch`; both are
+now aliases (`scripts/alias.py`) and synced to Turso, where the old-name rows still
+live (the local DB no longer has them). `spike` (4 prompts) is left alone.
 
 Open, from the 2026-08-02 uptime/health thread and the issue backlog:
 - **`#/health` was seen by Nico on desktop 2026-10-09** (dark theme; 11/11 targets up, all
