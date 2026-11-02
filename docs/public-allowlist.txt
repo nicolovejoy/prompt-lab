@@ -12,11 +12,14 @@
 #
 # Blank lines and #-comments are ignored. One historyKey per line.
 #
-# Last synced from manifest: 2026-10-17 (added raconte — Recountly rebuilt native as
+# Last synced from manifest: 2026-11-02 (added anomatom — new art page, selected-projects PR #39,
+# historyKey anomatom, no alias; no public rows exist yet, this only permits a future publish)
+# 2026-10-17: added raconte — Recountly rebuilt native as
 # Raconte; the site's historyKey is now `raconte`, and `recountly` is aliased to it)
 # 2026-07-20: dropped am-i-an-ai — the site removed lojong; its public rows were
 # unpublished via scripts/unpublish_public.py
 
+anomatom
 bakerylouise
 ibuild4you
 musicforge
