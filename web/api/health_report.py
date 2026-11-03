@@ -1007,8 +1007,9 @@ def _problems(results, heartbeats, nightly_run, uptime_rows,
                         "text": f"API spend from {len(ws)} unmapped "
                                 f"workspace(s) in the last 30 days "
                                 f"(${total:.2f}): {ids} — map in "
-                                "scripts/seed_project_workspaces.py, then run "
-                                "it with --remap",
+                                "scripts/seed_project_workspaces.py, run it "
+                                "with --remap, then run a full python "
+                                "sync_to_turso.py",
                         "short": "unmapped API spend", "age_days": None,
                         "since": min(w["last"] for w in ws) or None})
     today_iso = today.isoformat()

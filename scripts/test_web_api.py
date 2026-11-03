@@ -3288,7 +3288,7 @@ def _():
     # "1.25" + "10.5" as strings must sum numerically, not concatenate
     assert "2 unmapped workspace(s) in the last 30 days ($11.75)" in p["text"], p
     assert "wrkspc_a, wrkspc_b" in p["text"], p
-    assert p["text"].endswith("--remap"), p
+    assert p["text"].endswith("then run a full python sync_to_turso.py"), p
     sql, args = mod._unmapped_queries[0]
     cutoff = (lab_today() - timedelta(days=30)).isoformat()
     assert args == [cutoff], args

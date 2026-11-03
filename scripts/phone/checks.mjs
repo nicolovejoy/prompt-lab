@@ -562,6 +562,15 @@ CHECKS.push({
   },
 });
 
+// The day page's API spend lists the unmapped row with the same sub-label.
+CHECKS.push({
+  name: 'day-unmapped', profile: 'phone', hash: '#/day/' + labDay(1), ready: 'text=API spend',
+  async run(page, t) {
+    t.ok(await page.locator('text=not mapped to a project').count() === 1, 'day page: Unmapped spend row says it is not mapped to a project');
+    t.ok(await page.locator('text=__unmapped__').count() === 0, 'day page: the raw key is never shown');
+  },
+});
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const shortDate = (iso) => MONTHS[Number(iso.slice(5, 7)) - 1] + ' ' + Number(iso.slice(8));
 

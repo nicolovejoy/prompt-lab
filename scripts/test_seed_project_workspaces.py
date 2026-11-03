@@ -84,7 +84,10 @@ with tempfile.TemporaryDirectory() as tmp:
     check("per-table line printed",
           f"api_costs: {RECOUNTLY} prompt-lab -> raconte: 1 rows" in out)
 
-    total, _ = run(db, "--remap")
+    SYNC = "Run a full python sync_to_turso.py (no --days)"
+    check("first run prints the full-sync line", SYNC in out)
+    total, out2 = run(db, "--remap")
+    check("second run omits the full-sync line", SYNC not in out2)
     check("second run changes 0 rows", total == 0)
     check("second run leaves data stable", projects(db) == got)
 

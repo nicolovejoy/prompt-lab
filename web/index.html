@@ -3281,7 +3281,8 @@
             ${section('API spend', data.spend && data.spend.by_project.length && html`
               ${data.spend.by_project.map(s => html`
                 <div style="display:flex; gap:8px; padding:3px 0">
-                  <span>${s.project ? costProjectLabel(s.project) : 'unattributed'}</span>
+                  <span>${s.project ? costProjectLabel(s.project) : 'unattributed'}
+                    ${s.project === UNMAPPED_PROJECT && html`<div style="font-size: 0.85rem; color: var(--text-secondary)">not mapped to a project</div>`}</span>
                   <span style="margin-left:auto; font-variant-numeric:tabular-nums">
                     ${fmtUsd(s.usd)}</span>
                 </div>`)}`)}

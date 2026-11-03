@@ -12,7 +12,9 @@ Flags:
   --remap    after seeding, rewrite `project` on existing api_costs and
              api_usage rows whose workspace_id is mapped to a different
              project (rows are stamped at write time, so a corrected mapping
-             does not touch history on its own). Local SQLite only.
+             does not touch history on its own). Local SQLite only. Afterwards
+             run a full `python sync_to_turso.py` (no --days) so Turso picks up
+             remapped rows older than the nightly 7-day window.
 """
 import argparse
 import sys
@@ -85,6 +87,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.remap:
         total = remap(store.conn)
         print(f"Remapped total: {total} rows")
+        if total:
+            print("Run a full python sync_to_turso.py (no --days) so Turso "
+                  "picks up remapped rows older than the nightly 7-day window.")
     store.close()
     return total
 
