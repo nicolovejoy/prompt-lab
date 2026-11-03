@@ -150,10 +150,17 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   reappears in every future draft by design.
 - **#48 residual:** the "8am" cron is `0 15 * * *` — 8am Pacific in summer, 7am in winter.
   Vercel crons are UTC-only, so this is a choice to make, not a bug to fix.
-- Open issues (2026-10-08): **#14** design tokens, **#43** sign-ins panel (gated on a second
-  reader), **#9** beacon fan-out, **#49** copy review (this file is the only record of batch
-  progress), **#51** unmapped costs (the close rested on a guess). #53 (iOS chart-tap zoom)
-  closed 2026-09-28 with #76.
+- Open issues (2026-11-03): **#14** design tokens, **#43** sign-ins panel (gated on a second
+  reader), **#9** beacon fan-out (prntd asked via handoff 2026-11-03), **#85** localize
+  second language, **#91** Neon fees. #49 closed 2026-11-03 (all four batches); #51 closed
+  by the unmapped-costs PR.
+- **Unmapped API spend (#51, 2026-11-03).** The Admin API workspace list is the source of
+  workspace names: the August "assumed prompt-lab" workspace is recountly (→ raconte), the
+  one unmapped workspace was byside, and elusion was mapped ahead of its first spend. A new
+  workspace still lands `__unmapped__`, but now the health email says so (30-day window)
+  and Costs shows it as "Unmapped". Fix path: add it to `scripts/seed_project_workspaces.py`,
+  run it with `--remap`, then a FULL `sync_to_turso.py` — the nightly `--days 7` sync never
+  carries older remapped rows to Turso.
 - Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
 
 
