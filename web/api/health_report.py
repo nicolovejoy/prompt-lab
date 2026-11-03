@@ -928,7 +928,32 @@ def _nightly_problems(nr, today):
     return out
 
 
-def _problems(results, heartbeats, nightly_run, uptime_rows):
+def _check_unmapped_costs():
+    """Spend stamped `__unmapped__` in the last 30 lab days. Never raises.
+
+    ok is True (`workspaces` lists any unmapped spend; empty = none) or None
+    (could not check). Like _check_heartbeats and unlike the pause lookup, a
+    failed query must not read as "nothing unmapped".
+    """
+    since = (lab_today() - timedelta(days=30)).isoformat()
+    try:
+        rows = turso_query(
+            "SELECT workspace_id, SUM(cost_reported_usd) AS cost, "
+            "MAX(date) AS last FROM api_costs "
+            "WHERE project = '__unmapped__' AND date >= ? "
+            "GROUP BY workspace_id", [since])
+        # Turso hands SUM() back as a JSON string.
+        workspaces = [{"workspace_id": r.get("workspace_id"),
+                       "cost_usd": float(r.get("cost") or 0),
+                       "last": str(r.get("last") or "")[:10]} for r in rows]
+    except Exception as e:
+        print(f"health_report: unmapped costs unreadable: {e}"[:200])
+        return {"ok": None, "note": f"{type(e).__name__}"}
+    return {"ok": True, "workspaces": workspaces}
+
+
+def _problems(results, heartbeats, nightly_run, uptime_rows,
+              unmapped_costs=None):
     """Everything the email should lead with, as a flat list of problems.
     Pure: grading was done by the _check_* functions; this only restates it."""
     today = lab_today()
@@ -967,6 +992,25 @@ def _problems(results, heartbeats, nightly_run, uptime_rows):
                     "text": "uptime archive wrote 0 rows today",
                     "short": "uptime archive empty", "age_days": None,
                     "since": None})
+    if unmapped_costs:
+        if unmapped_costs.get("ok") is None:
+            out.append({"key": "costs:unmapped", "severity": "unchecked",
+                        "text": "could not check unmapped API spend "
+                                f"({unmapped_costs.get('note')})",
+                        "short": "unmapped spend unchecked", "age_days": None,
+                        "since": None})
+        elif unmapped_costs.get("workspaces"):
+            ws = unmapped_costs["workspaces"]
+            total = sum(w["cost_usd"] for w in ws)
+            ids = ", ".join(str(w["workspace_id"]) for w in ws)
+            out.append({"key": "costs:unmapped", "severity": "stale",
+                        "text": f"API spend from {len(ws)} unmapped "
+                                f"workspace(s) in the last 30 days "
+                                f"(${total:.2f}): {ids} — map in "
+                                "scripts/seed_project_workspaces.py, then run "
+                                "it with --remap",
+                        "short": "unmapped API spend", "age_days": None,
+                        "since": min(w["last"] for w in ws) or None})
     today_iso = today.isoformat()
     # stable sorts, least significant first: key, then since (newest first),
     # then severity
@@ -1273,10 +1317,12 @@ class handler(BaseHTTPRequestHandler):
             # them, so the comparison needs both halves and this order.
             heartbeats = _check_heartbeats()
             nightly_run = _check_nightly_run(heartbeats)
+            unmapped_costs = _check_unmapped_costs()
 
             if dry:
                 self._json({"targets": results, "heartbeats": heartbeats,
                             "nightly_run": nightly_run,
+                            "unmapped_costs": unmapped_costs,
                             "paused_until": paused_until,
                             "would_send": not paused})
                 return
@@ -1303,7 +1349,8 @@ class handler(BaseHTTPRequestHandler):
             # failed read (None) still sends, with no NEW markers.
             prior = _get_problem_state()
             problems, new_state = _mark_new(
-                _problems(results, heartbeats, nightly_run, uptime_rows),
+                _problems(results, heartbeats, nightly_run, uptime_rows,
+                          unmapped_costs),
                 prior, lab_today())
 
             pause_url = ("https://prompt-labs.org/api/health_report"
