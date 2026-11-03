@@ -2088,7 +2088,7 @@
       const header = html`
         <h1 style="margin: 0 0 4px; font-size: 1.91rem; color: var(--accent-light)">Todos</h1>
         <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 16px">
-          Open GitHub issues across your repos, grouped by project.
+          Open GitHub issues, grouped by project.
         </div>`;
 
       if (loading && !data) return html`<div>${header}<div class="cost-placeholder">Loading todos…</div></div>`;
@@ -2103,7 +2103,7 @@
       const allNames = Object.keys(projects).sort((a, b) =>
         projects[b].length - projects[a].length || a.localeCompare(b));
       if (!allNames.length) return html`<div>${header}
-        <div class="empty">No open issues. 🎉</div></div>`;
+        <div class="empty">No open issues.</div></div>`;
 
       // Tracked = projects the dashboard knows about (canonical names). The
       // endpoint already folds repo→canonical, so these match. Null until the
@@ -2162,14 +2162,14 @@
           <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; flex-wrap: wrap">
             <div style="font-size: 2.18rem; font-weight: 700; color: var(--accent-light)">${shownTotal}</div>
             <div style="font-size: 1.06rem; color: var(--text-secondary)">
-              ${q ? 'matching' : 'open'} across ${filtered.length} project${filtered.length === 1 ? '' : 's'}${showAll ? '' : ' (tracked)'}
+              ${q ? 'matching' : 'open'} across ${filtered.length} project${filtered.length === 1 ? '' : 's'}
             </div>
             <div style="margin-left: auto; display: flex; gap: 12px; align-items: baseline">
               ${(showAll || hiddenRepos > 0) && html`
                 <button class="tap" onClick=${() => setShowAll(s => !s)}
                   style="font-size: 0.95rem; color: var(--accent); background: none; border: none;
                          cursor: pointer; font-family: inherit">
-                  ${showAll ? 'Tracked only' : `Show all repos (+${hiddenRepos})`}
+                  ${showAll ? 'Prompt Lab projects only' : `Show all repos (+${hiddenRepos})`}
                 </button>`}
               <button class="tap" onClick=${toggleAll}
                 style="font-size: 0.95rem; color: var(--accent); background: none; border: none;
@@ -2190,7 +2190,7 @@
                 <span style="font-size: 0.95rem; color: var(--text-secondary); width: 10px; flex: none">${isOpen ? '▾' : '▸'}</span>
                 <span style="font-size: 1.3rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere">${p}</span>
                 <span style="font-size: 0.95rem; color: var(--text-secondary); flex: none">${issues.length}${q && issues.length !== projects[p].length ? '/' + projects[p].length : ''}</span>
-                ${!isTracked(p) && html`<span style="font-size: 0.79rem; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 0 5px">untracked</span>`}
+                ${!isTracked(p) && html`<span style="font-size: 0.79rem; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 0 5px">not in Prompt Lab</span>`}
                 <a class="tap" onClick=${(e) => { e.stopPropagation(); navigate('#/project/' + encodeURIComponent(p)); }}
                    style="margin-left: auto; flex: none; white-space: nowrap; font-size: 0.9rem; color: var(--accent); cursor: pointer; text-decoration: none">
                   project →
@@ -2745,9 +2745,9 @@
         </div>
         <${PageNote}>
           <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
-            API spend across all projects. Claude Code (subscription) usage isn't
-            attributable per project, so subscription-only projects read $0 here —
-            these totals are API spend, not all spend.
+            API spend across all projects. Claude Code runs on a flat subscription
+            that can't be split by project, so these totals are API spend only, and
+            a project built only in Claude Code reads $0.
           </div>
         <//>`;
 
@@ -2823,7 +2823,7 @@
                 <button class="tap" onClick=${() => setSortBy(s => s === 'cost' ? 'name' : 'cost')}
                   style="font-size: 0.9rem; color: var(--accent); background: none; border: none;
                          cursor: pointer; font-family: inherit">
-                  sort: ${sortBy} ↕
+                  Sorted by ${sortBy} ↕
                 </button>
               </div>
               ${legend.map(([p, v]) => html`
@@ -3025,7 +3025,7 @@
                 <button class="tap" onClick=${() => setSortBy(s => nextSort[s] || '30d')}
                   style="font-size: 0.9rem; color: var(--accent); background: none; border: none;
                          cursor: pointer; font-family: inherit">
-                  sort: ${sortBy} ↕
+                  Sorted by ${sortBy} ↕
                 </button>
               </div>
               <div style="display: flex; gap: 8px; font-size: 0.85rem; color: var(--text-secondary);
@@ -3352,14 +3352,15 @@
         </div>
         <${PageNote}>
           <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
-            Anonymous page views from the first-party beacon — cookie-less, IPs
-            never stored, visitor hashes rotate daily (so uniques are per-day by
-            design). Only instrumented sites appear here.
+            Anonymous page views, counted by Prompt Lab's own script on each site.
+            No cookies, no IP addresses stored, and visitor IDs reset daily, so
+            unique visitors are counted per day. Only sites with the script
+            installed appear here.
           </div>
           <div class="heatmap-note" style="margin: -12px 0 20px">
-            Browser automation is excluded from ${AGENT_LABEL_DAY} onward. Earlier
-            rows predate the label and may include test traffic — the beacon
-            stores no user-agent, so it can't be sorted out after the fact.
+            Visits from browser automation are excluded from ${AGENT_LABEL_DAY}
+            onward. Earlier days may include test traffic, and it can't be removed
+            now because no browser details are stored.
           </div>
         <//>`;
 
@@ -3446,14 +3447,14 @@
                   ${sectionTitle('By role')}
                   ${byRole.length
                     ? byRole.map(([role, c]) => listRow(role, role === 'unknown' ? 'role not recorded' : null, c))
-                    : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">Not broken out.</div>`}
+                    : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">No breakdown recorded.</div>`}
                 </div>
                 <div>
                   ${sectionTitle('By day')}
                   ${shownDays.length
                     ? shownDays.map(([d, c]) =>
                         listRow(fmtShortDate(d), d.slice(0, 4) === thisYear ? null : d.slice(0, 4), c))
-                    : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">Not broken out.</div>`}
+                    : html`<div style="font-size: 1.06rem; color: var(--text-secondary)">No breakdown recorded.</div>`}
                   ${restDays.length > 0 && html`
                     <div style="font-size: 0.98rem; color: var(--text-secondary); padding-top: 6px">
                       +${restCount.toLocaleString()} on ${restDays.length} earlier day${restDays.length === 1 ? '' : 's'}
@@ -4285,7 +4286,7 @@
       if (!costs.length) return html`
         <div class="cost-placeholder">
           No API spend in the last 30 days.
-          <span style="opacity: 0.7">Claude Code (subscription) work isn't attributed per project.</span>
+          <span style="opacity: 0.7">Claude Code (subscription) work can't be split by project, so it isn't counted here.</span>
         </div>`;
 
       // Per-day, per-model spend. One colour for every model, as this chart has
@@ -4404,10 +4405,10 @@
             <label>Window:
               <select value=${days} onChange=${e => setDays(Number(e.target.value))}
                       style="margin-left: 4px">
-                <option value=${7}>7 days</option>
-                <option value=${30}>30 days</option>
-                <option value=${90}>90 days</option>
-                <option value=${365}>1 year</option>
+                <option value=${7}>7d</option>
+                <option value=${30}>30d</option>
+                <option value=${90}>90d</option>
+                <option value=${365}>1y</option>
               </select>
             </label>
             <label>Model:
@@ -4425,7 +4426,7 @@
           </div>
 
           ${sorted.length === 0
-            ? html`<div class="empty">No cost rows in this window.</div>`
+            ? html`<div class="empty">No API spend in this window.</div>`
             : html`
               <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: 6px">
                 <table style="width: 100%; border-collapse: collapse; font-size: 1.06rem;
