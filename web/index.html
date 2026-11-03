@@ -2916,8 +2916,7 @@
         <${PageNote}>
           <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 16px">
             Sessions, prompts and commits per day across every project, from the
-            nightly daily summaries. Counts follow project renames (aliases are
-            folded into the canonical name).
+            nightly daily summaries. Counts follow project renames.
           </div>
         <//>
         ${metricSwitch}`;
@@ -3051,10 +3050,10 @@
                 </a>`)}
               <div style="font-size: 0.85rem; color: var(--text-secondary); padding-top: 6px; line-height: 1.5">
                 Bar is each project's share of the last ${windowLabel(effDays)};
-                the 7d / 30d columns are fixed windows, so they don't change with the zoom.
+                the 7d / 30d columns are fixed windows and don't follow the chart's range.
                 ${otherCount > 0 && html`<span> The chart stacks the top ${ACTIVITY_TOP_N}; the
-                  other ${otherCount} (grey swatch) fold into one band — every project is
-                  still listed here, so the band always reconciles.</span>`}
+                  other ${otherCount} (grey) share one band, and every project is
+                  still listed here.</span>`}
               </div>
             </div>
 
@@ -3074,8 +3073,7 @@
                                min-width: 64px; text-align: right">${fmtInt(totals[k])}</span>
                 </a>`)}
               <div style="font-size: 0.85rem; color: var(--text-secondary); padding-top: 6px; line-height: 1.5">
-                All three over the last ${windowLabel(effDays)} — one fetch, so
-                switching metric is instant.
+                All three over the last ${windowLabel(effDays)}.
               </div>
             </div>
           </div>
@@ -3222,7 +3220,7 @@
                       color:var(--text-secondary); margin-bottom:18px">${date}</div>
 
           ${err && html`
-            <div class="card" style="color:var(--red, #c62828)">could not load this day — ${err}</div>`}
+            <div class="card" style="color:var(--red, #c62828)">Couldn't load this day. (${err})</div>`}
           ${!data && !err && html`<${SkeletonList} />`}
 
           ${data && html`
@@ -3259,9 +3257,9 @@
                             min-width:0; overflow-wrap:anywhere">
                     ${p.project}</a>
                   <div style="font-family:'SF Mono',ui-monospace,monospace; font-size:0.82rem;
-                              color:var(--text-secondary); white-space:nowrap;
+                              color:var(--text-secondary);
                               font-variant-numeric:tabular-nums">
-                    ${p.prompts}p · ${p.sessions}s · ${p.commits}c
+                    ${p.prompts} prompts · ${p.sessions} sessions · ${p.commits} commits
                   </div>
                 </div>
                 ${p.summary && html`
