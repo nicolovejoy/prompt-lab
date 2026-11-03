@@ -102,6 +102,11 @@ Q: right call, or should a day with no spend say "no spend"?
 
 ## Batch 3 — Costs, Visitors, Todos
 
+**Closed 2026-11-03.** All of 12–25 answered in chat; proposals accepted, with
+13, 20, 22 and 24 kept unchanged. The shipped wording is in `web/index.html`;
+the quotes below are the pre-review text. Item 25's classifier chrome had
+already been removed (2026-09-28); only the "tracked" wording was left.
+
 ### #/costs
 
 **12.** Page intro:

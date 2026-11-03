@@ -102,7 +102,7 @@ export const CHECKS = [
       const note = page.locator('[data-test="page-note"]');
       t.ok(await note.isVisible(), 'page note disclosure is visible on a phone');
       // Scoped to the disclosure: the wide copy of the same text is always in the DOM.
-      t.ok(!(await note.getByText('cookie-less', { exact: false }).isVisible()), 'explanation is collapsed by default');
+      t.ok(!(await note.getByText('No cookies', { exact: false }).isVisible()), 'explanation is collapsed by default');
       const summaryHeight = await note.locator('summary').evaluate((e) => Math.round(e.getBoundingClientRect().height));
       t.ok(summaryHeight >= 44, `disclosure is at least 44px tall (${summaryHeight})`);
       // flex on summary drops the native triangle, so the chevron is the only sign it opens.
@@ -113,7 +113,7 @@ export const CHECKS = [
       const closedChevron = await chevron();
       t.ok(!['none', 'normal', ''].includes(closedChevron.content), `disclosure shows a chevron (content ${closedChevron.content})`);
       await note.locator('summary').tap();
-      t.ok(await note.getByText('cookie-less', { exact: false }).isVisible(), 'tapping it shows the explanation');
+      t.ok(await note.getByText('No cookies', { exact: false }).isVisible(), 'tapping it shows the explanation');
       const openChevron = await chevron();
       t.ok(openChevron.transform !== closedChevron.transform,
         `chevron turns when opened (${closedChevron.transform} -> ${openChevron.transform})`);
@@ -230,8 +230,8 @@ export const CHECKS = [
 // does, or on the error path, so they are not used.
 const ROUTES = [
   ['home', '#/', '.timeline-entry'],                   // the stream needs /api/overview
-  ['activity', '#/activity', 'text=By project'],
-  ['costs', '#/costs', 'text=By project'],
+  ['activity', '#/activity', 'text="By project"'],
+  ['costs', '#/costs', 'text="By project"'],
   ['todos', '#/todos', 'text=open across'],
   ['health', '#/health', 'text=Reading the strip'],    // needs the report AND the archive
   ['about', '#/about', 'text=Ask a question'],         // needs the admin login
@@ -538,9 +538,9 @@ CHECKS.push({
 // The four charts that moved onto StackedBars after Visitors. The window
 // buttons each page offers, with the bars a phone draws for each.
 CHECKS.push(
-  chartCheck({ name: 'costs-chart', hash: '#/costs', ready: 'text=By project', id: 'costs',
+  chartCheck({ name: 'costs-chart', hash: '#/costs', ready: 'text="By project"', id: 'costs',
     windows: [['30d', 30, 30], ['90d', 13, 14], ['1y', 12, 13], ['7d', 7, 7]] }),
-  chartCheck({ name: 'activity-chart', hash: '#/activity', ready: 'text=By project', id: 'activity',
+  chartCheck({ name: 'activity-chart', hash: '#/activity', ready: 'text="By project"', id: 'activity',
     windows: [['30d', 30, 30], ['90d', 13, 14], ['1y', 12, 13], ['7d', 7, 7]] }),
   chartCheck({ name: 'home-chart', hash: '#/', ready: '.timeline-entry', id: 'home',
     windows: [['30d', 30, 30], ['7d', 7, 7]] }),

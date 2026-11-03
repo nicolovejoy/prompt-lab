@@ -129,7 +129,10 @@ mid-batch; the first pass lost two items that way. Left: batch 2 (Activity + day
 3 (Costs, Visitors, Todos), batch 4 (Health, About, project pages). Open question: a plain
 `About` button in the primary row may beat the `More` panel.
 Batch 2 closed 2026-11-02 (#104): C1, C3, C4 and C5 edited as proposed, C2 kept
-lowercase. Batches 3 and 4 not yet sent.
+lowercase. Batch 3 closed 2026-11-03: items 12–25 all answered (proposals
+accepted; 13, 20, 22, 24 kept as-is; item 25's classifier chrome was already
+gone, only the "tracked" wording remained). Batch 4 not yet sent; fold the
+About-button-vs-More question into it (Nico: no preference on order).
 
 **Project-name follow-ups from the 2026-08-05 cleanup: closed 2026-11-02.** Nico
 confirmed `freevite` became `invitekit` and `koma_art` became `koma-launch`; both are
