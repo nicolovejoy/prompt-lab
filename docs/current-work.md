@@ -110,11 +110,11 @@ them at leisure, merge-or-discard, delete each folder as judged (the dir emptyin
 meter). Settled 2026-08-17, don't revisit: freevite (= invitekit under its old name),
 roll-your-own and skitrack-ntzb-poc are deliberately unpushed.
 
-**Check the September Neon CU numbers for garm (`neon-bole-tree`) and byside.** Both were
-burned by prompt-lab's own 5-min deep health poll never letting Neon's free tier autosuspend;
-fixed 2026-08-14 (byside) and 2026-08-18 (garm). Nothing alarms on the number.
-Nico has the console steps (2026-10-09) and the numbers are not back yet. A database
-that never suspends burns 6 CU-hours a day, about 180 a month; pass is far below that.
+**Neon autosuspend fixes: confirmed, closed 2026-11-03.** September is unrecoverable
+(console monitoring keeps about a week), but October (#91, ~15 CU-h for garm by the 17th) and
+Nov 1–3 (`neonctl projects get`: garm 2.69 CU-h, ~29/month pace; byside 0.00, last active
+24 days ago) are far below the ~180/month a never-suspending database burns. Per-project
+numbers for the current month: `neonctl projects get <id> --org-id org-spring-cherry-36158724`.
 
 **Per-Pi service inventory: `docs/pi-inventory.md`** — prompt-lab owns it; read it before
 touching phrpi or homeassistant.local. Two leftovers from the 2026-08-13 closet move, neither
