@@ -28,7 +28,7 @@ if (src.indexOf('// <pure>', open + 1) >= 0) {
 
 const NAMES = ['fmtShortDate', 'fmtMonth', 'fmtMonthShort', 'addDays', 'mondayOf', 'bucketSizeFor',
                'bucketDates', 'bucketTotals', 'bucketIndexAt', 'fmtUsdAxis', 'fmtUsdFine', 'bucketUptime',
-               'projectStatus', 'shownNames'];
+               'projectStatus', 'shownNames', 'costProjectLabel'];
 const pure = new Function(`"use strict";\n${src.slice(open, close)}\nreturn { ${NAMES.join(', ')} };`)();
 
 const tests = [];
@@ -246,6 +246,11 @@ test('shownNames: drops what the private toggle hides, keeps order', () => {
   assert.deepEqual(pure.shownNames(list, new Set(['b'])), ['a', 'c']);
   assert.deepEqual(pure.shownNames(list, new Set()), list);
   assert.deepEqual(pure.shownNames(list, undefined), list);
+});
+
+test('costProjectLabel: names the unmapped bucket, leaves real projects alone', () => {
+  assert.equal(pure.costProjectLabel('__unmapped__'), 'Unmapped');
+  assert.equal(pure.costProjectLabel('prompt-lab'), 'prompt-lab');
 });
 
 let failed = 0;
