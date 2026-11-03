@@ -131,8 +131,11 @@ mid-batch; the first pass lost two items that way. Left: batch 2 (Activity + day
 Batch 2 closed 2026-11-02 (#104): C1, C3, C4 and C5 edited as proposed, C2 kept
 lowercase. Batch 3 closed 2026-11-03: items 12–25 all answered (proposals
 accepted; 13, 20, 22, 24 kept as-is; item 25's classifier chrome was already
-gone, only the "tracked" wording remained). Batch 4 not yet sent; fold the
-About-button-vs-More question into it (Nico: no preference on order).
+gone, only the "tracked" wording remained). Batch 4 closed 2026-11-03 too:
+items 26–40 answered (27, 32, 35, 39 kept; 28/30 shortened on review;
+"suppressed" dropped because the API sets it on the same condition as
+"paused"). About stays behind More; that open question is closed. #49 is
+complete and can be closed.
 
 **Project-name follow-ups from the 2026-08-05 cleanup: closed 2026-11-02.** Nico
 confirmed `freevite` became `invitekit` and `koma_art` became `koma-launch`; both are

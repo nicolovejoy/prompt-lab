@@ -715,7 +715,7 @@ CHECKS.push({
     const box = await chartBox(page, `uptime-${name}`);
     await tapAt(page, box.x + box.width - 3, box.y + box.height / 2);
     const text = (await chart.locator('[data-test="chart-readout"]').innerText()).replace(/\s+/g, ' ');
-    t.ok(/uptime|not archived/.test(text) && !/NaN|undefined/.test(text), `uptime readout is well formed ("${text.slice(0, 60)}")`);
+    t.ok(/uptime|no record/.test(text) && !/NaN|undefined/.test(text), `uptime readout is well formed ("${text.slice(0, 60)}")`);
 
     await first.locator('[data-test="uptime-toggle"]').tap();
     t.ok(!(await first.locator('[data-test="uptime-detail"]').isVisible()), 'tapping again collapses it');

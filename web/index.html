@@ -3113,16 +3113,16 @@
             from a local prompt history that never leaves the machine it was typed on.
           </p>
           <p style="line-height:1.55; margin:0 0 20px; color:var(--text-secondary)">
-            This dashboard reads only processed data — daily counts, summaries and
-            metrics. Raw prompts, commit messages, hostnames and file paths have no
-            table here to be read from.
+            This dashboard reads only processed data: daily counts, summaries and
+            metrics. Raw prompts, commit messages, hostnames and file paths are never
+            stored anywhere it can read.
           </p>
 
           <div style="margin-bottom:20px">
             ${row('Build', built, info?.build_time ? freshClass(info.build_time) : '')}
             ${row('Data synced', info?.data_freshness ? timeAgo(info.data_freshness) : '—',
                   info?.data_freshness ? freshClass(info.data_freshness) : '')}
-            ${row('Calendar days', 'America/Los_Angeles')}
+            ${row('Days counted in', 'Pacific time (America/Los_Angeles)')}
           </div>
 
           <p style="line-height:1.55; color:var(--text-secondary); margin:0">
@@ -3137,7 +3137,7 @@
                 Ask a question
               </button>
               <p style="line-height:1.55; color:var(--text-secondary); margin:8px 0 0; font-size:0.9rem">
-                Put a question to the store in plain language. Press
+                Ask a plain-language question about past sessions and projects. Press
                 <span style="font-family:'SF Mono',ui-monospace,monospace">/</span> from any page
                 to open it.
               </p>
@@ -3688,7 +3688,7 @@
             </div>
             <div style="font-size: 1.06rem; color: var(--text-secondary)">
               target${targets.length === 1 ? '' : 's'} up
-              ${paused ? ' · email paused' : (data?.would_send === false ? ' · email suppressed' : '')}
+              ${paused ? ` · email paused until ${fmtShortDate(new Date(pausedUntil).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }))}` : ''}
             </div>
           </div>
 
@@ -3741,8 +3741,7 @@
               </div>
               <div style="font-size: 1.02rem; color: var(--text-secondary); margin-bottom: 12px;
                           line-height: 1.5">
-                Age of each recurring job's real output, not whether the job reported success —
-                a job that dies never gets to tell you.
+                Age of each job's latest output. A job that dies can't report its own failure.
               </div>
               <div style="display: grid; gap: 8px">
                 ${heartbeats.map(h => {
@@ -3970,7 +3969,7 @@
               <span style="color: var(--text)">response</span>
               <span style="margin-left: auto">${fmtMs(v.ms)}</span>
             </div>`
-            : html`<div style="color: var(--text-secondary)">not archived</div>`}`;
+            : html`<div style="color: var(--text-secondary)">no record</div>`}`;
       };
 
       // The readout's rows for a selected bucket. "lowest of N days" says why a
@@ -3988,7 +3987,7 @@
             <span style="color: var(--text-secondary)"> · mean</span>` : ''}</span>
           <span class="chart-readout-value">${fmtMs(c.ms)}</span>
         </div>`
-        : html`<div class="chart-readout-more">not archived</div>`);
+        : html`<div class="chart-readout-more">no record</div>`);
 
       const row = html`
         <div data-test="chart-bars" ref=${rowRef} class=${narrow ? 'chart-bars narrow' : 'chart-bars'}
@@ -4104,10 +4103,10 @@
         </div>
         <${PageNote}>
           <div style="font-size: 1.02rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5">
-            What UptimeRobot saw, kept past its 3-month retention — one row per
-            monitor per day, written by the same 8am cron. The 1d / 7d / 30d
-            figures are its rolling ratios at the last pull, so they don't move
-            with the window above; the strip and the trend do.
+            What UptimeRobot saw, kept beyond its 3-month limit: one row per
+            monitor per day, saved by the morning health check. The 1d / 7d / 30d
+            figures are UptimeRobot's own averages as of that check, so they don't
+            change with the window above; the strip and the trend do.
           </div>
         <//>`;
 
@@ -4118,8 +4117,7 @@
       if (error) {
         return section(html`
           <div class="cost-placeholder">
-            Couldn't load the uptime archive (${error}). The live targets above are
-            unaffected — they're polled directly, not read from this table.
+            Couldn't load the uptime archive.
           </div>`);
       }
 
@@ -4130,9 +4128,8 @@
       if (data?.unavailable) {
         return section(html`
           <div class="cost-placeholder">
-            <strong>Archive unreadable</strong> — the query against
-            <code>uptime_daily</code> failed, so this is not "no data yet". The
-            live targets above are unaffected; they're polled directly.
+            <strong>Archive unreadable</strong> — not the same as empty. The live
+            status above is unaffected.
           </div>`);
       }
 
@@ -4187,7 +4184,7 @@
         ['var(--green)', 1, 'no downtime recorded', '≥ 99.9%'],
         ['var(--yellow)', 1, 'a check or two missed', '99 – 99.9%'],
         ['var(--red)', 1, 'real downtime', '< 99%'],
-        [NO_DATA_COLOR, NO_DATA_OPACITY, 'not archived — a gap, not a zero', 'no row'],
+        [NO_DATA_COLOR, NO_DATA_OPACITY, 'no record — a gap, not a zero', 'no row'],
       ];
 
       return section(html`
@@ -4507,7 +4504,7 @@
             <option value="">no category</option>
             ${CATEGORIES.map(c => html`<option value=${c}>${c}</option>`)}
           </select>
-          <label title="Cosmetic only — hides and mutes this project in the dashboard. Not a confidentiality control.">
+          <label title="Hides and mutes this project in the dashboard only. It doesn't make anything private.">
             <input type="checkbox" disabled=${readOnly || saving} checked=${meta.private}
               onChange=${(e) => save({ private: e.target.checked })} />
             private
@@ -4536,7 +4533,7 @@
         return () => { alive = false; };
       }, [name]);
 
-      if (data?.status === 403) return html`<p style="color: var(--text-secondary); padding: 24px 0">This project isn't in your view.</p>`;
+      if (data?.status === 403) return html`<p style="color: var(--text-secondary); padding: 24px 0">This project isn't available.</p>`;
 
       if (section === 'cost') return html`<${CostDetailPage} project=${name} />`;
 
@@ -4607,7 +4604,7 @@
                 <//>
               </div>
             `
-            : html`<div class="project-summary">No state summary yet.</div>`}
+            : html`<div class="project-summary">No summary yet.</div>`}
 
           <div class="section-label">Trajectory</div>
           <${ActivityHeatmap} activity=${data.activity} />
