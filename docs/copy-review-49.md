@@ -205,6 +205,11 @@ Q: "tracked" is used three ways here without being defined anywhere on the page.
 
 ## Batch 4 — Health, About, project pages
 
+**Closed 2026-11-03.** All of 26–40 answered in chat; 27, 32, 35 and 39 kept,
+28 and 30 shortened further on review, 31's gap label became `no record`. Item
+40's status pills were already gone (#83). About stays behind More. The quotes
+below are the pre-review text; the shipped wording is in `web/index.html`.
+
 ### #/health
 
 **26.** Status line under the count:
