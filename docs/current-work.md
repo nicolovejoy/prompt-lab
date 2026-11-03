@@ -110,11 +110,11 @@ them at leisure, merge-or-discard, delete each folder as judged (the dir emptyin
 meter). Settled 2026-08-17, don't revisit: freevite (= invitekit under its old name),
 roll-your-own and skitrack-ntzb-poc are deliberately unpushed.
 
-**Check the September Neon CU numbers for garm (`neon-bole-tree`) and byside.** Both were
-burned by prompt-lab's own 5-min deep health poll never letting Neon's free tier autosuspend;
-fixed 2026-08-14 (byside) and 2026-08-18 (garm). Nothing alarms on the number.
-Nico has the console steps (2026-10-09) and the numbers are not back yet. A database
-that never suspends burns 6 CU-hours a day, about 180 a month; pass is far below that.
+**Neon autosuspend fixes: confirmed, closed 2026-11-03.** September is unrecoverable
+(console monitoring keeps about a week), but October (#91, ~15 CU-h for garm by the 17th) and
+Nov 1–3 (`neonctl projects get`: garm 2.69 CU-h, ~29/month pace; byside 0.00, last active
+24 days ago) are far below the ~180/month a never-suspending database burns. Per-project
+numbers for the current month: `neonctl projects get <id> --org-id org-spring-cherry-36158724`.
 
 **Per-Pi service inventory: `docs/pi-inventory.md`** — prompt-lab owns it; read it before
 touching phrpi or homeassistant.local. Two leftovers from the 2026-08-13 closet move, neither
@@ -150,10 +150,17 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   reappears in every future draft by design.
 - **#48 residual:** the "8am" cron is `0 15 * * *` — 8am Pacific in summer, 7am in winter.
   Vercel crons are UTC-only, so this is a choice to make, not a bug to fix.
-- Open issues (2026-10-08): **#14** design tokens, **#43** sign-ins panel (gated on a second
-  reader), **#9** beacon fan-out, **#49** copy review (this file is the only record of batch
-  progress), **#51** unmapped costs (the close rested on a guess). #53 (iOS chart-tap zoom)
-  closed 2026-09-28 with #76.
+- Open issues (2026-11-03): **#14** design tokens, **#43** sign-ins panel (gated on a second
+  reader), **#9** beacon fan-out (prntd asked via handoff 2026-11-03), **#85** localize
+  second language, **#91** Neon fees. #49 closed 2026-11-03 (all four batches); #51 closed
+  by the unmapped-costs PR.
+- **Unmapped API spend (#51, 2026-11-03).** The Admin API workspace list is the source of
+  workspace names: the August "assumed prompt-lab" workspace is recountly (→ raconte), the
+  one unmapped workspace was byside, and elusion was mapped ahead of its first spend. A new
+  workspace still lands `__unmapped__`, but now the health email says so (30-day window)
+  and Costs shows it as "Unmapped". Fix path: add it to `scripts/seed_project_workspaces.py`,
+  run it with `--remap`, then a FULL `sync_to_turso.py` — the nightly `--days 7` sync never
+  carries older remapped rows to Turso.
 - Deferred deliberately: UptimeRobot paid plan / real `HEARTBEAT` monitors.
 
 

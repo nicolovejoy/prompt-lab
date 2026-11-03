@@ -549,6 +549,28 @@ CHECKS.push(
     windows: [['30d', 30, 30]], picker: false }),
 );
 
+// Spend from an unmapped Anthropic workspace shows as plain "Unmapped" text,
+// never as a link to a project page that does not exist.
+CHECKS.push({
+  name: 'costs-unmapped', profile: 'phone', hash: '#/costs', ready: 'text="By project"',
+  async run(page, t) {
+    const row = page.locator('.row-link', { hasText: 'Unmapped' });
+    t.ok(await row.count() === 1, 'one Unmapped row in the By project list');
+    t.ok(await row.first().getAttribute('href') === null, 'the Unmapped row does not link anywhere');
+    t.ok(await row.first().innerText().then(x => x.includes('not mapped to a project')), 'the row says it is not mapped to a project');
+    t.ok(await page.locator('text=__unmapped__').count() === 0, 'the raw key is never shown');
+  },
+});
+
+// The day page's API spend lists the unmapped row with the same sub-label.
+CHECKS.push({
+  name: 'day-unmapped', profile: 'phone', hash: '#/day/' + labDay(1), ready: 'text=API spend',
+  async run(page, t) {
+    t.ok(await page.locator('text=not mapped to a project').count() === 1, 'day page: Unmapped spend row says it is not mapped to a project');
+    t.ok(await page.locator('text=__unmapped__').count() === 0, 'day page: the raw key is never shown');
+  },
+});
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const shortDate = (iso) => MONTHS[Number(iso.slice(5, 7)) - 1] + ' ' + Number(iso.slice(8));
 

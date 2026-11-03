@@ -155,7 +155,9 @@ function costRows(since, projects) {
     const date = labDay(i);
     if (since && date < since) continue;
     const rnd = seeded(seedOf('cost' + date));
-    for (const [p, w] of PROJECTS) {
+    // Spend from an unmapped workspace: only in the all-projects view.
+    const spendRows = projects ? PROJECTS : [...PROJECTS, ['__unmapped__', 6]];
+    for (const [p, w] of spendRows) {
       if (projects && !projects.includes(p)) continue;
       if (rnd() > 0.2 + w / 50) continue;
       for (const model of MODELS) {
@@ -244,7 +246,7 @@ function day(date) {
     projects.push({ project: LONG_PROJECT, prompts: 9, sessions: 1, commits: 2, summary: LONG_SUMMARY, key_decisions: [] });
   }
   const sum = (k) => projects.reduce((s, p) => s + p[k], 0);
-  const spend = [['alpha-app', 2.41], ['bravo-site', 0.87], [null, 0.12]];
+  const spend = [['alpha-app', 2.41], ['bravo-site', 0.87], ['__unmapped__', 0.31], [null, 0.12]];
   const sites = SITES.filter(([site]) => site !== 'previews')
     .map(([site, w]) => ({ site, views: Math.round(w * (0.5 + rnd())) }));
   return {

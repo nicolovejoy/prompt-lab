@@ -2221,6 +2221,8 @@
     // unit-tests it under Node — the only way to test logic in a page that has
     // no build step. A reference to window, document or html in here fails
     // that run, which is what keeps the block honest.
+    const UNMAPPED_PROJECT = '__unmapped__';
+    function costProjectLabel(p) { return p === UNMAPPED_PROJECT ? 'Unmapped' : p; }
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun',
                     'Jul','Aug','Sep','Oct','Nov','Dec'];
     function fmtShortDate(iso) {
@@ -2568,7 +2570,7 @@
     //   todaySuffix appended to today's heading while today is still counting.
     function StackedBars({ id, dates, days, byDateSeg, segColor, fmtValue = (n) => Math.round(n).toLocaleString(),
                            unit = '', chartH = 140, markToday = false, gutter = true, scroll = true, fmtAxis = fmtValue,
-                           minPeak = 1, tailSeg = null, todaySuffix = '' }) {
+                           minPeak = 1, tailSeg = null, todaySuffix = '', segLabel = (s) => s }) {
       const narrow = useNarrow();
       const [hovered, setHovered] = useState(null);
       const layout = days + '|' + dates.length + '|' + narrow;
@@ -2634,7 +2636,7 @@
                 ${segs.slice(0, 6).map(([s, v]) => html`
                   <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
                     <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(s)}; display: inline-block"></span>
-                    <span style="color: var(--text)">${s}</span>
+                    <span style="color: var(--text)">${segLabel(s)}</span>
                     <span style="margin-left: auto">${fmtValue(v)}</span>
                   </div>`)}
                 ${segs.length > 6 && html`<div style="color: var(--text-secondary)">+${segs.length - 6} more</div>`}
@@ -2675,7 +2677,7 @@
               ${plot}
             </div>` : plot}
           ${sel && html`<${ChartReadout} bucket=${sel} heading=${heading(sel, totals[selected].total)}
-                          segs=${totals[selected].segs} segColor=${segColor} fmtValue=${fmtValue}
+                          segs=${totals[selected].segs} segColor=${segColor} fmtValue=${fmtValue} segLabel=${segLabel}
                           byDateTotal=${(d) => bucketTotals({ dates: [d] }, byDateSeg).total} />`}
         </div>`;
     }
@@ -2688,7 +2690,7 @@
     // keeps the same heading and the same way into its days.
     const READOUT_SEGS = 6;
     function ChartReadout({ bucket, heading, segs, segColor, fmtValue = (n) => Math.round(n).toLocaleString(),
-                            byDateTotal, body = null }) {
+                            byDateTotal, body = null, segLabel = (s) => s }) {
       return html`
         <div data-test="chart-readout" class="chart-readout">
           <div class="chart-readout-head">${heading}</div>
@@ -2697,7 +2699,7 @@
               ${segs.slice(0, READOUT_SEGS).map(([s, v]) => html`
                 <div class="chart-readout-row">
                   <span class="chart-readout-swatch" style="background: ${segColor(s)}"></span>
-                  <span class="chart-readout-name">${s}</span>
+                  <span class="chart-readout-name">${segLabel(s)}</span>
                   <span class="chart-readout-value">${fmtValue(v)}</span>
                 </div>`)}
               ${segs.length > READOUT_SEGS && html`
@@ -2810,7 +2812,8 @@
 
           ${panel(html`
             <${StackedBars} id="costs" dates=${dates} days=${days} byDateSeg=${byDateProject}
-              segColor=${segColor} fmtValue=${fmtUsd} fmtAxis=${fmtUsdAxis} minPeak=${0.0001} />
+              segColor=${segColor} fmtValue=${fmtUsd} fmtAxis=${fmtUsdAxis} minPeak=${0.0001}
+              segLabel=${costProjectLabel} />
           `)}
 
           <div class="two-col">
@@ -2827,18 +2830,20 @@
                 </button>
               </div>
               ${legend.map(([p, v]) => html`
-                <a href="#/project/${encodeURIComponent(p)}/cost"
+                <${p === UNMAPPED_PROJECT ? 'div' : 'a'}
+                   href=${p === UNMAPPED_PROJECT ? undefined : '#/project/' + encodeURIComponent(p) + '/cost'}
                    class="row-link">
                   <div style="display: flex; align-items: center; gap: 8px">
                     <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(p)}; flex: none"></span>
-                    <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${p}</span>
+                    <span style="font-size: 1.12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${costProjectLabel(p)}</span>
                     <span style="margin-left: auto; font-size: 0.85rem; color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
                     <span style="font-size: 1.12rem; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${fmtUsd(v)}</span>
                   </div>
                   <div style="height: 3px; border-radius: 2px; margin-top: 3px;
                               width: ${(v / maxProj * 100).toFixed(1)}%;
                               background: ${segColor(p)}; opacity: 0.6"></div>
-                </a>`)}
+                  ${p === UNMAPPED_PROJECT && html`<div style="font-size: 0.85rem; color: var(--text-secondary)">not mapped to a project</div>`}
+                </${p === UNMAPPED_PROJECT ? 'div' : 'a'}>`)}
               ${hasOther && html`
                 <div style="font-size: 0.85rem; color: var(--text-secondary); padding-top: 6px">
                   ${ranked.length - COST_PALETTE.length} smaller projects share the “other” color.
@@ -3276,7 +3281,8 @@
             ${section('API spend', data.spend && data.spend.by_project.length && html`
               ${data.spend.by_project.map(s => html`
                 <div style="display:flex; gap:8px; padding:3px 0">
-                  <span>${s.project || 'unattributed'}</span>
+                  <span>${s.project ? costProjectLabel(s.project) : 'unattributed'}
+                    ${s.project === UNMAPPED_PROJECT && html`<div style="font-size: 0.85rem; color: var(--text-secondary)">not mapped to a project</div>`}</span>
                   <span style="margin-left:auto; font-variant-numeric:tabular-nums">
                     ${fmtUsd(s.usd)}</span>
                 </div>`)}`)}

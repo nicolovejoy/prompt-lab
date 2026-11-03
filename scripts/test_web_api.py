@@ -2785,7 +2785,7 @@ def _health_env():
     return restore
 
 
-def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
+def _health_mod(up=True, hb="fresh", ur="ok", nr="ok", um="none"):
     """Load health_report with targets, joke, send, and the UptimeRobot pull
     stubbed. Returns (mod, sent) where sent collects (subject, html, text)
     tuples. Every poll appends to `mod._polls`, so a test can pin that an
@@ -2821,7 +2821,12 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
     raise; every read appends to `mod._state_reads` and every write appends
     its decoded state to `mod._state_writes`. Reads, writes and sends are
     also logged in `mod._sql_kinds` ("state-read", "state-write", "send") so
-    a test can pin that the write comes after the send."""
+    a test can pin that the write comes after the send.
+
+    `um` drives the unmapped-spend query (matched on "__unmapped__", its own
+    branch): none (no rows) / rows (two workspaces, SUM as a string, the way
+    Turso returns aggregates) / error (raises). Calls append to
+    `mod._unmapped_queries` as (sql, args)."""
     # `nr` may be a `+`-joined set of scenarios, so a test can combine two
     # that legitimately co-occur (a failing newest run AND an older bad row).
     nr_set = set((nr or "").split("+"))
@@ -2835,6 +2840,7 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
     mod._prior_state = {}
     mod._state_reads = []
     mod._state_writes = []
+    mod._unmapped_queries = []
 
     def fake_check(name, url, deep=False):
         mod._polls.append(name)
@@ -2910,6 +2916,17 @@ def _health_mod(up=True, hb="fresh", ur="ok", nr="ok"):
         # Match the write on INSERT, not on the table name: the "uptime archive"
         # heartbeat SELECTs from uptime_daily too, and conflating the two would
         # make the freshness read look like a write and return no rows.
+        if "__unmapped__" in sql:
+            mod._sql_kinds.append("unmapped")
+            mod._unmapped_queries.append((sql, args))
+            if um == "error":
+                raise RuntimeError("turso unreachable")
+            if um == "rows":
+                return [{"workspace_id": "wrkspc_a", "cost": "1.25",
+                         "last": "2026-10-20"},
+                        {"workspace_id": "wrkspc_b", "cost": "10.5",
+                         "last": "2026-10-28"}]
+            return []
         if "INSERT INTO uptime_daily" in sql:
             mod._sql_kinds.append("uptime-write")
             mod._uptime_writes.append(args)
@@ -3239,6 +3256,70 @@ def _():
         assert h.status_code == 200, f"got {h.status_code}: {h.body}"
         assert h.body["sent"] is True, h.body
         assert len(sent) == 1, sent
+    finally:
+        restore()
+
+
+# === unmapped API spend (issue #51) ===
+
+def _unmapped_problems(um):
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(um=um)
+        h = invoke(mod, "/api/health_report?dry=1",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        probs = [p for p in mod._problems(
+            h.body["targets"], h.body["heartbeats"], h.body["nightly_run"],
+            None, h.body["unmapped_costs"]) if p["key"] == "costs:unmapped"]
+        return mod, h.body["unmapped_costs"], probs
+    finally:
+        restore()
+
+
+@test("unmapped costs: rows → one stale problem with the numeric total and ids")
+def _():
+    mod, uc, probs = _unmapped_problems("rows")
+    assert uc["ok"] is True and len(uc["workspaces"]) == 2, uc
+    assert len(probs) == 1, probs
+    p = probs[0]
+    assert p["severity"] == "stale" and p["short"] == "unmapped API spend", p
+    assert p["since"] == "2026-10-20" and p["age_days"] is None, p
+    # "1.25" + "10.5" as strings must sum numerically, not concatenate
+    assert "2 unmapped workspace(s) in the last 30 days ($11.75)" in p["text"], p
+    assert "wrkspc_a, wrkspc_b" in p["text"], p
+    assert p["text"].endswith("then run a full python sync_to_turso.py"), p
+    sql, args = mod._unmapped_queries[0]
+    cutoff = (lab_today() - timedelta(days=30)).isoformat()
+    assert args == [cutoff], args
+
+
+@test("unmapped costs: no rows → no problem")
+def _():
+    _, uc, probs = _unmapped_problems("none")
+    assert uc == {"ok": True, "workspaces": []}, uc
+    assert probs == [], probs
+
+
+@test("unmapped costs: unreadable Turso → one unchecked problem, never fine")
+def _():
+    _, uc, probs = _unmapped_problems("error")
+    assert uc["ok"] is None, uc
+    assert len(probs) == 1 and probs[0]["severity"] == "unchecked", probs
+    assert probs[0]["text"].startswith("could not check unmapped API spend ("), probs
+    assert probs[0]["short"] == "unmapped spend unchecked", probs
+
+
+@test("unmapped costs: the sent email names the problem")
+def _():
+    restore = _health_env()
+    try:
+        mod, sent = _health_mod(um="rows")
+        h = invoke(mod, "/api/health_report",
+                   {"authorization": "Bearer cron-secret"})
+        assert h.status_code == 200, f"got {h.status_code}: {h.body}"
+        above, _ = _fold(sent[0][2])
+        assert "API spend from 2 unmapped workspace(s)" in above, above
     finally:
         restore()
 
@@ -4554,9 +4635,11 @@ def _():
         assert h.status_code == 200, h.body
         assert not sent
         assert mod._state_reads == [] and mod._state_writes == [], mod._sql_kinds
-        # The #/health page's JSON shape is unchanged: no problems key.
+        # The #/health page's JSON shape: no problems key (unmapped_costs
+        # added for #51).
         assert set(h.body) == {"targets", "heartbeats", "nightly_run",
-                               "paused_until", "would_send"}, h.body
+                               "unmapped_costs", "paused_until",
+                               "would_send"}, h.body
     finally:
         restore()
 
