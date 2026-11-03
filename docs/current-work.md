@@ -105,7 +105,7 @@ Also unverified until it happens: the health-email changes are Vercel-side code 
 so the first real morning email carrying a `nightly_runs` row is their acceptance test — **and
 it does not run until the merge is pushed and deployed.**
 
-**mini-rescue curation — open, unhurried.** `~/src/mini-rescue/` holds 13 rescued repos; walk
+**mini-rescue curation — open, unhurried.** `~/src/mini-rescue/` holds 12 rescued repos (study-scheduler mothballed and removed 2026-11-03: repo archived, Vercel and Firebase projects deleted, key revoked); walk
 them at leisure, merge-or-discard, delete each folder as judged (the dir emptying is the
 meter). Settled 2026-08-17, don't revisit: freevite (= invitekit under its old name),
 roll-your-own and skitrack-ntzb-poc are deliberately unpushed.
