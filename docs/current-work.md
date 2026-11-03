@@ -128,13 +128,8 @@ were actually answered, not which batch was sent** — Nico answers by number an
 mid-batch; the first pass lost two items that way. Left: batch 2 (Activity + day page), batch
 3 (Costs, Visitors, Todos), batch 4 (Health, About, project pages). Open question: a plain
 `About` button in the primary row may beat the `More` panel.
-Batch 2 was sent 2026-10-09 as five items and **none is answered yet**:
-- C1, Activity page note: suggested cutting "(aliases are folded into the canonical name)".
-- C2, Activity controls, headline and states: fine; lowercase metric tabs against a
-  capitalised nav is the only call.
-- C3, by-project table footnote: "so the band always reconciles" and "zoom" are the weak words.
-- C4, window totals footnote: suggested cutting "one fetch, so switching metric is instant".
-- C5, day page: "12p · 3s · 4c" is cryptic, and its error is lowercase where Activity's is not.
+Batch 2 closed 2026-11-02 (#104): C1, C3, C4 and C5 edited as proposed, C2 kept
+lowercase. Batches 3 and 4 not yet sent.
 
 **Project-name follow-ups from the 2026-08-05 cleanup: closed 2026-11-02.** Nico
 confirmed `freevite` became `invitekit` and `koma_art` became `koma-launch`; both are
