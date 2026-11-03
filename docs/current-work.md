@@ -105,10 +105,17 @@ Also unverified until it happens: the health-email changes are Vercel-side code 
 so the first real morning email carrying a `nightly_runs` row is their acceptance test — **and
 it does not run until the merge is pushed and deployed.**
 
-**mini-rescue curation — open, unhurried.** `~/src/mini-rescue/` holds 12 rescued repos (study-scheduler mothballed and removed 2026-11-03: repo archived, Vercel and Firebase projects deleted, key revoked); walk
-them at leisure, merge-or-discard, delete each folder as judged (the dir emptying is the
-meter). Settled 2026-08-17, don't revisit: freevite (= invitekit under its old name),
-roll-your-own and skitrack-ntzb-poc are deliberately unpushed.
+**mini-rescue curation — walked 2026-11-03; four folders stay.** `~/src/mini-rescue/` now
+holds freevite (= invitekit under its old name), roll-your-own and skitrack-ntzb-poc
+(deliberately unpushed, settled 2026-08-17; Nico 2026-11-03: keep them as folders), plus
+ntz-conveyor, waiting on person-tracking (handoff 2026-11-03): its gitignored `db.sqlite3`
+holds real run/turn/gaze data, so it is kept until they confirm it lives elsewhere. Removed
+to the Trash 2026-11-03: study-scheduler (mothballed), bookstore, eli-example,
+lilypond-lead-sheets, spread-eagle, musicforge, notemaxxing (RLS stash dropped),
+robot-orchestra (stash dropped), rock-art-fab. rock-art-fab's gitignored `drawings/` and
+`sculptures/` (~55 MB, the only copy) were first copied into `~/src/rock-art-fab` and
+checked file by file. Lesson: a clean `git status` is not "nothing unique" — check
+`git status --ignored` before deleting any rescued checkout.
 
 **Neon autosuspend fixes: confirmed, closed 2026-11-03.** September is unrecoverable
 (console monitoring keeps about a week), but October (#91, ~15 CU-h for garm by the 17th) and
