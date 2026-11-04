@@ -152,7 +152,7 @@ live (the local DB no longer has them). `spike` (4 prompts) is left alone.
 Open, from the 2026-08-02 uptime/health thread and the issue backlog:
 - **`#/health` was seen by Nico on desktop 2026-10-09** (dark theme; 11/11 targets up, all
   6 heartbeats fresh) and works. The nav below 640px has still not been looked at.
-- **Beacon fan-out: `prntd`** never got the snippet; `page_views` has zero rows ever for it.
+- **Beacon fan-out: `prntd`**: tag is in prntd PR #363, not merged (Nico has two questions on it); prntd posts when it ships, then check #/visitors. prntd pointed out the beacon counts page loads, not client-side navigations: intro reworded (#108), navigation tracking filed as #109.
 - **Public rollups:** only ibuild4you `2026-05-18` is unpublished — a deliberate skip that
   reappears in every future draft by design.
 - **#48 residual:** the "8am" cron is `0 15 * * *` — 8am Pacific in summer, 7am in winter.
