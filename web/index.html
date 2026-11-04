@@ -2371,6 +2371,13 @@
     function shownNames(list, hide) {
       return hide?.size ? list.filter(p => !hide.has(p)) : list;
     }
+
+    // A site's share of page loads as a whole percentage, or '' when there is
+    // no total to share: a window with only in-app views has sites but zero
+    // page loads, which would otherwise render NaN%.
+    function sharePct(v, total) {
+      return Number.isFinite(total) && total > 0 ? `${(v / total * 100).toFixed(0)}%` : '';
+    }
     // </pure>
 
     // ---- Costs Overview (all projects, over time) ----
@@ -3517,7 +3524,7 @@
 
           ${panel(html`
             <${StackedBars} id="visitors" dates=${dates} days=${days} byDateSeg=${byDateSite}
-              segColor=${segColor} fmtValue=${(v) => Math.round(v).toLocaleString()} unit="views" />
+              segColor=${segColor} fmtValue=${(v) => Math.round(v).toLocaleString()} unit="page loads" />
           `)}
 
           <div class="two-col">
@@ -3541,7 +3548,7 @@
                       })()}
                     </div>
                     <span data-test="share-pct" style="margin-left: auto; flex: none; font-size: 0.85rem; color: var(--text-secondary)">
-                      ${(v / totalViews * 100).toFixed(0)}%</span>
+                      ${sharePct(v, totalViews)}</span>
                     <span data-test="share-value" style="flex: none; font-size: 1.12rem; font-variant-numeric: tabular-nums;
                                  min-width: 56px; text-align: right">${v.toLocaleString()}</span>
                   </div>

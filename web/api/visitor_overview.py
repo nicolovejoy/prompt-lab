@@ -107,6 +107,8 @@ class handler(BaseHTTPRequestHandler):
         where = " AND ".join(["event = 'pageview'", "agent = 0"] + bounds)
         # `daily` and `paths` also count `nav` rows (in-app route changes). Nav
         # rows carry no visitor_hash, so uniques count pageview rows only.
+        # A nav row's ts is a UTC-day bucket (midnight UTC) with no time of
+        # day: never range-shift it to a Pacific day.
         seen_where = " AND ".join(
             ["event IN ('pageview','nav')", "agent = 0"] + bounds)
         login_where = " AND ".join(["event = 'login'", "agent = 0"] + bounds)

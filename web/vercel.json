@@ -60,7 +60,7 @@
       ]
     },
     {
-      "source": "/beacon-v(.*).js",
+      "source": "/beacon-v1.js",
       "headers": [
         {
           "key": "Cache-Control",
