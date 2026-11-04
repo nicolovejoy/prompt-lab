@@ -3366,8 +3366,7 @@
             installed appear here.
           </div>
           <div class="heatmap-note" style="margin: -12px 0 20px">
-            Visits from browser automation are excluded from ${AGENT_LABEL_DAY}
-            onward. Earlier days may include test traffic, and it can't be removed
+            Visits from browser automation are excluded from ${AGENT_LABEL_DAY}${' '}onward. Earlier days may include test traffic, and it can't be removed
             now because no browser details are stored.
           </div>
         <//>`;
@@ -3474,7 +3473,7 @@
 
       const daily = data.daily || [];
       if (!daily.length) return html`<div>${header}
-        <div class="cost-placeholder">No page views in this window yet — only
+        <div class="cost-placeholder">No page loads in this window yet — only
         instrumented sites report. Roll out beacon.js to more sites to see them here.</div>
         ${signIns}</div>`;
 
@@ -3511,7 +3510,7 @@
           <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px">
             <div style="font-size: 2.18rem; font-weight: 700; color: var(--accent-light)">${totalViews.toLocaleString()}</div>
             <div style="font-size: 1.06rem; color: var(--text-secondary)">
-              page views · ${ranked.length} site${ranked.length === 1 ? '' : 's'} ·
+              page loads · ${ranked.length} site${ranked.length === 1 ? '' : 's'} ·
               last ${days === 365 ? 'year' : days + ' days'}
             </div>
           </div>
@@ -3531,15 +3530,20 @@
                                  background: ${segColor(s)}; flex: none"></span>
                     <div class="list-row-text">
                       <span class="list-row-label">${s}</span>
-                      ${s === 'previews' && Number.isFinite(previewHosts) && previewHosts > 0 && html`
-                        <span class="list-row-sub">
-                          ${previewHosts} preview host${previewHosts === 1 ? '' : 's'}
-                        </span>`}
+                      ${(() => {
+                        const parts = [];
+                        if (s === 'previews' && Number.isFinite(previewHosts) && previewHosts > 0) {
+                          parts.push(`${previewHosts} preview host${previewHosts === 1 ? '' : 's'}`);
+                        }
+                        const n = navsBySite[s] || 0;
+                        if (n > 0) parts.push(`${n.toLocaleString()} in-app view${n === 1 ? '' : 's'}`);
+                        return parts.length ? html`<span class="list-row-sub">${parts.join(' · ')}</span>` : null;
+                      })()}
                     </div>
                     <span data-test="share-pct" style="margin-left: auto; flex: none; font-size: 0.85rem; color: var(--text-secondary)">
                       ${(v / totalViews * 100).toFixed(0)}%</span>
                     <span data-test="share-value" style="flex: none; font-size: 1.12rem; font-variant-numeric: tabular-nums;
-                                 min-width: 56px; text-align: right">${v.toLocaleString()}${navsBySite[s] > 0 ? ` · ${navsBySite[s].toLocaleString()} in-app` : ''}</span>
+                                 min-width: 56px; text-align: right">${v.toLocaleString()}</span>
                   </div>
                   <div data-test="share-bar" style="height: 3px; border-radius: 2px; margin-top: 3px;
                               width: ${(v / maxSite * 100).toFixed(1)}%;
