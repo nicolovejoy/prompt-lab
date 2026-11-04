@@ -25,7 +25,7 @@ import os
 import re
 import secrets
 import time
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 import turso_helper
 
@@ -168,24 +168,77 @@ def _agent_flag(headers, body=None):
     return 0
 
 
+# A colon that is not the start of the `:id` placeholder (so re-scrubbing a
+# scrubbed path is a no-op, while `name:Jane` and `:idiot` still match).
+_KEY_VALUE = re.compile(r":(?!id(?![A-Za-z0-9_]))")
+_DASHED_TOKEN_SEG = re.compile(r"^[A-Za-z0-9_.-]{16,}$")
+_UUID_SUB = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)
+_ALNUM_PIECE = re.compile(r"^[A-Za-z0-9]{8,}$")
+
+
+def _class_count(s):
+    """How many of lowercase / uppercase / digit appear in `s`."""
+    return (any(c.islower() for c in s) + any(c.isupper() for c in s)
+            + any(c.isdigit() for c in s))
+
+
 def _is_id_segment(seg):
+    """Whole-segment ID test. Email and key:value are checked on the
+    percent-decoded text; everything else on the raw segment."""
     if not seg:
         return False
+    decoded = unquote(seg)
+    if "@" in decoded or _KEY_VALUE.search(decoded):
+        return True
     if _UUID_SEG.match(seg) or _DIGITS_SEG.match(seg):
         return True
-    if _TOKEN_SEG.match(seg):
-        classes = (any(c.islower() for c in seg) + any(c.isupper() for c in seg)
-                   + any(c.isdigit() for c in seg))
-        return classes >= 2
-    return False
+    if _TOKEN_SEG.match(seg) and _class_count(seg) >= 2:
+        return True
+    # base64url / nanoid / Firebase push IDs: dashes and dots allowed,
+    # but all three character classes required.
+    return bool(_DASHED_TOKEN_SEG.match(seg)) and _class_count(seg) == 3
+
+
+def _switches(s):
+    """Letter<->digit transitions reading left to right."""
+    return sum(a.isdigit() != b.isdigit() for a, b in zip(s, s[1:]))
+
+
+def _is_id_piece(piece):
+    """One dash-separated piece of a slug: 5+ digits, a mixed letter/digit
+    run with 3+ switches (`a1b2c3d4`, not `ibuild4you`), or a long token."""
+    if piece.isdigit():
+        return len(piece) >= 5
+    if _ALNUM_PIECE.match(piece):
+        if (any(c.isdigit() for c in piece) and any(c.isalpha() for c in piece)
+                and _switches(piece) >= 3):
+            return True
+    return bool(_TOKEN_SEG.match(piece)) and _class_count(piece) >= 2
+
+
+def _scrub_inside(seg):
+    """Replace UUIDs, then ID-like dash pieces, inside a segment that is not
+    an ID as a whole (`how-to-bake-48213` -> `how-to-bake-:id`)."""
+    seg = _UUID_SUB.sub(":id", seg)
+    return "-".join(":id" if _is_id_piece(p) else p for p in seg.split("-"))
 
 
 def scrub_path(path):
-    """Replace ID-like `/`-separated segments (UUID, all digits, or a 16+
-    char token mixing at least two of lower/upper/digit) with `:id`. Empty
-    segments are kept, so `/` stays `/` and a trailing slash survives."""
-    return "/".join(":id" if _is_id_segment(seg) else seg
-                    for seg in path.split("/"))
+    """Replace ID-like `/`-separated segments with `:id`, and ID-like pieces
+    inside a slug. A safety net, not a guarantee: docs/beacon.md lists what it
+    misses. Empty segments are kept, so `/` stays `/` and a trailing slash
+    survives."""
+    out = []
+    for seg in path.split("/"):
+        if _is_id_segment(seg):
+            out.append(":id")
+            continue
+        inner = _scrub_inside(seg)
+        # Re-test: a `:id` left touching a word character (`:id_v2`) would
+        # read as key:value on the next pass, so collapse it now.
+        out.append(":id" if _is_id_segment(inner) else inner)
+    return "/".join(out)
 
 
 def _drop(reason, detail=""):

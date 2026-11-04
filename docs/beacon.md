@@ -63,18 +63,42 @@ it is any of:
 - all digits (`/orders/48213` becomes `/orders/:id`)
 - a token of 16 or more letters, digits or `_` that mixes at least two of
   lowercase, uppercase and digits
+- an email address (the segment contains `@`)
+- a key:value pair (the segment contains a `:`, such as `name:Jane`)
+- a token of 16 or more letters, digits, `_`, `.` or `-` that contains all
+  three of a lowercase letter, an uppercase letter and a digit (nanoid,
+  base64url and Firebase push IDs, which can contain `-`)
+
+The email and `:` checks read the percent-decoded segment, so `%40` and `%3A`
+count as `@` and `:`. The placeholder `:id` itself is not treated as a
+key:value pair, so scrubbing an already-scrubbed path changes nothing.
+
+A segment that is not an ID as a whole still has IDs removed from inside it:
+any UUID becomes `:id`, and each `-`-separated piece becomes `:id` if it is 5
+or more digits (`how-to-bake-48213` becomes `how-to-bake-:id`, while `2026`
+survives), or 8 or more letters and digits that switch between letter and
+digit at least three times (`a1b2c3d4`; `ibuild4you` survives), or a 16+
+character letters/digits/underscore token that mixes at least two of
+lowercase, uppercase and digits.
 
 Empty segments are kept, so `/` stays `/` and a trailing slash survives. This
 applies to every event.
 
+The rule favours safety over detail: a whole segment of 16 or more characters
+that mixes upper and lower case with a digit becomes `:id` even if it is a
+readable slug (`Top-10-Tips-For-Writers`).
+
 It is a safety net, not a reason to put identifiers in URLs. It does not
 catch:
 
-- IDs that contain `-`, such as nanoid or base64url IDs and Firebase push IDs
-- letter-and-digit IDs shorter than 16 characters (all-digit IDs are caught
-  at any length)
-- an email address used as a segment
-- an ID inside a longer segment, such as a slug that ends in an ID
+- letter-and-digit IDs shorter than 16 characters with fewer than three
+  letter/digit switches, or inside a slug shorter than 8
+- numbers of under 5 digits inside a slug (`order-1234`)
+- names or other identifying words in a plain slug (`/u/jane-roe`)
+- an ID joined to the rest of a segment by `.` or `_` rather than `-`
+  (`/invoice/48213.pdf`, `/t/trip_a1b2c3d4`)
+- double percent-encoding (`jane%2540example.com`)
+- matrix parameters (`/a/b;name=Jane`)
 
 So do not send paths that carry identifiers in the first place. Skip admin and
 other private pages, and where you can, send the route pattern rather than the
