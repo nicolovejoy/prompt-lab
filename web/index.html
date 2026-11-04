@@ -2371,6 +2371,13 @@
     function shownNames(list, hide) {
       return hide?.size ? list.filter(p => !hide.has(p)) : list;
     }
+
+    // A site's share of page loads as a whole percentage, or '' when there is
+    // no total to share: a window with only in-app views has sites but zero
+    // page loads, which would otherwise render NaN%.
+    function sharePct(v, total) {
+      return Number.isFinite(total) && total > 0 ? `${(v / total * 100).toFixed(0)}%` : '';
+    }
     // </pure>
 
     // ---- Costs Overview (all projects, over time) ----
@@ -3358,14 +3365,15 @@
         </div>
         <${PageNote}>
           <div style="font-size: 1.06rem; color: var(--text-secondary); margin-bottom: 20px">
-            Anonymous page views, counted by Prompt Lab's own script on each site.
+            Anonymous page loads, counted by Prompt Lab on each site. Some sites
+            also report moves between pages inside the app; those show as in-app
+            views beside the site, and aren't in the totals or the chart.
             No cookies, no IP addresses stored, and visitor IDs reset daily, so
             unique visitors are counted per day. Only sites with the script
             installed appear here.
           </div>
           <div class="heatmap-note" style="margin: -12px 0 20px">
-            Visits from browser automation are excluded from ${AGENT_LABEL_DAY}
-            onward. Earlier days may include test traffic, and it can't be removed
+            Visits from browser automation are excluded from ${AGENT_LABEL_DAY}${' '}onward. Earlier days may include test traffic, and it can't be removed
             now because no browser details are stored.
           </div>
         <//>`;
@@ -3472,15 +3480,16 @@
 
       const daily = data.daily || [];
       if (!daily.length) return html`<div>${header}
-        <div class="cost-placeholder">No page views in this window yet — only
+        <div class="cost-placeholder">No page loads in this window yet — only
         instrumented sites report. Roll out beacon.js to more sites to see them here.</div>
         ${signIns}</div>`;
 
-      const bySite = {}, byDateSite = {};
+      const bySite = {}, byDateSite = {}, navsBySite = {};
       let totalViews = 0;
       for (const r of daily) {
         const v = Number(r.views) || 0;
         totalViews += v;
+        navsBySite[r.site] = (navsBySite[r.site] || 0) + (Number(r.navs) || 0);
         bySite[r.site] = (bySite[r.site] || 0) + v;
         (byDateSite[r.date] ||= {})[r.site] = ((byDateSite[r.date]?.[r.site]) || 0) + v;
       }
@@ -3508,14 +3517,14 @@
           <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px">
             <div style="font-size: 2.18rem; font-weight: 700; color: var(--accent-light)">${totalViews.toLocaleString()}</div>
             <div style="font-size: 1.06rem; color: var(--text-secondary)">
-              page views · ${ranked.length} site${ranked.length === 1 ? '' : 's'} ·
+              page loads · ${ranked.length} site${ranked.length === 1 ? '' : 's'} ·
               last ${days === 365 ? 'year' : days + ' days'}
             </div>
           </div>
 
           ${panel(html`
             <${StackedBars} id="visitors" dates=${dates} days=${days} byDateSeg=${byDateSite}
-              segColor=${segColor} fmtValue=${(v) => Math.round(v).toLocaleString()} unit="views" />
+              segColor=${segColor} fmtValue=${(v) => Math.round(v).toLocaleString()} unit="page loads" />
           `)}
 
           <div class="two-col">
@@ -3528,13 +3537,18 @@
                                  background: ${segColor(s)}; flex: none"></span>
                     <div class="list-row-text">
                       <span class="list-row-label">${s}</span>
-                      ${s === 'previews' && Number.isFinite(previewHosts) && previewHosts > 0 && html`
-                        <span class="list-row-sub">
-                          ${previewHosts} preview host${previewHosts === 1 ? '' : 's'}
-                        </span>`}
+                      ${(() => {
+                        const parts = [];
+                        if (s === 'previews' && Number.isFinite(previewHosts) && previewHosts > 0) {
+                          parts.push(`${previewHosts} preview host${previewHosts === 1 ? '' : 's'}`);
+                        }
+                        const n = navsBySite[s] || 0;
+                        if (n > 0) parts.push(`${n.toLocaleString()} in-app view${n === 1 ? '' : 's'}`);
+                        return parts.length ? html`<span class="list-row-sub">${parts.join(' · ')}</span>` : null;
+                      })()}
                     </div>
                     <span data-test="share-pct" style="margin-left: auto; flex: none; font-size: 0.85rem; color: var(--text-secondary)">
-                      ${(v / totalViews * 100).toFixed(0)}%</span>
+                      ${sharePct(v, totalViews)}</span>
                     <span data-test="share-value" style="flex: none; font-size: 1.12rem; font-variant-numeric: tabular-nums;
                                  min-width: 56px; text-align: right">${v.toLocaleString()}</span>
                   </div>
@@ -3546,6 +3560,8 @@
             ${tabBar}
             <div class=${panelClass('pages')} data-test="panel-pages">
               ${panelTitle('Top pages')}
+              ${(Number(data.navs_total) || 0) > 0 && html`
+                <div class="heatmap-note" style="margin: -6px 0 10px">Includes in-app views.</div>`}
               ${paths.map(r => listRow(r.path, r.site, r.views))}
             </div>
           </div>

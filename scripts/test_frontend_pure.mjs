@@ -28,7 +28,7 @@ if (src.indexOf('// <pure>', open + 1) >= 0) {
 
 const NAMES = ['fmtShortDate', 'fmtMonth', 'fmtMonthShort', 'addDays', 'mondayOf', 'bucketSizeFor',
                'bucketDates', 'bucketTotals', 'bucketIndexAt', 'fmtUsdAxis', 'fmtUsdFine', 'bucketUptime',
-               'projectStatus', 'shownNames', 'costProjectLabel'];
+               'projectStatus', 'shownNames', 'costProjectLabel', 'sharePct'];
 const pure = new Function(`"use strict";\n${src.slice(open, close)}\nreturn { ${NAMES.join(', ')} };`)();
 
 const tests = [];
@@ -251,6 +251,16 @@ test('shownNames: drops what the private toggle hides, keeps order', () => {
 test('costProjectLabel: names the unmapped bucket, leaves real projects alone', () => {
   assert.equal(pure.costProjectLabel('__unmapped__'), 'Unmapped');
   assert.equal(pure.costProjectLabel('prompt-lab'), 'prompt-lab');
+});
+
+test('sharePct: a whole-number percentage, and nothing when the total is 0', () => {
+  assert.equal(pure.sharePct(1, 4), '25%');
+  assert.equal(pure.sharePct(2, 3), '67%');
+  assert.equal(pure.sharePct(5, 5), '100%');
+  // A nav-only window has sites but no page loads: no NaN%, no Infinity%.
+  assert.equal(pure.sharePct(0, 0), '');
+  assert.equal(pure.sharePct(3, 0), '');
+  assert.equal(pure.sharePct(0, NaN), '');
 });
 
 let failed = 0;

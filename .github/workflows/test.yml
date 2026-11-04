@@ -78,6 +78,9 @@ jobs:
           python scripts/test_nightly_pipeline.py
           python scripts/test_close_stale_sessions.py
 
+      - name: Page-view path scrub tests
+        run: python scripts/test_scrub_page_view_paths.py
+
       - name: Workspace seed/remap tests
         run: python scripts/test_seed_project_workspaces.py
 

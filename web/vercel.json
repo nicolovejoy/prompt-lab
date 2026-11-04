@@ -24,6 +24,10 @@
       "destination": "/beacon.js"
     },
     {
+      "source": "/beacon-v1.js",
+      "destination": "/beacon-v1.js"
+    },
+    {
       "source": "/manifest.webmanifest",
       "destination": "/manifest.webmanifest"
     },
@@ -52,6 +56,19 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=3600, stale-while-revalidate=86400"
+        }
+      ]
+    },
+    {
+      "source": "/beacon-v1.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
         }
       ]
     },

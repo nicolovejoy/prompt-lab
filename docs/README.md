@@ -13,6 +13,7 @@ rules and follow the relevant pointers below rather than loading every plan.
 | Nightly jobs and outstanding overnight test | [Nightly pipeline](nightly-pipeline-plan.md) |
 | Costs and measurement | [Cost tracking](cost-tracking.md), [measurement policy](measurement-policy.md) |
 | Health checks and machines | [Health convention](health-convention.md), [Pi inventory](pi-inventory.md) |
+| Installing or changing the page-view beacon | [Beacon interface](beacon.md) |
 | Cross-session communication | [Handoff channel](handoff-repo-plan.md) |
 | Routine versus historical scripts | [Script inventory](../scripts/README.md) |
 | Why an earlier decision was made | [History](history.md) |

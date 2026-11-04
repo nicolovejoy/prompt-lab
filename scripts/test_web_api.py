@@ -867,11 +867,51 @@ GOOD_HEADERS = {
 }
 
 
+def _with_salt(fn):
+    """Run a test with BEACON_SALT set to a synthetic value, then put the
+    environment back exactly as it was (unset stays unset)."""
+    def run():
+        import os
+        saved = os.environ.get("BEACON_SALT")
+        os.environ["BEACON_SALT"] = "test-salt"
+        try:
+            fn()
+        finally:
+            if saved is None:
+                os.environ.pop("BEACON_SALT", None)
+            else:
+                os.environ["BEACON_SALT"] = saved
+    return run
+
+
+def _post_beacon(mod, headers, payload):
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        return []
+
+    restore = patch_turso_query(mod, fake_turso)
+    try:
+        h = invoke_post(mod, "/api/beacon", payload, headers)
+        assert h.status_code == 204, f"got {h.status_code}"
+    finally:
+        restore()
+    return [c for c in captured if "INSERT INTO page_views" in c[0]]
+
+
+def _insert_cols(sql, args):
+    """Map an `INSERT INTO page_views (cols) VALUES (...)` call to
+    {column: value}, so tests do not depend on argument positions."""
+    cols = [c.strip() for c in sql.split("(", 1)[1].split(")", 1)[0].split(",")]
+    assert len(cols) == len(args), f"{len(cols)} columns, {len(args)} args: {sql}"
+    return dict(zip(cols, args))
+
+
 @test("beacon: valid pageview builds a clean row")
+@_with_salt
 def _():
-    import os
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_ok")
-    os.environ.setdefault("BEACON_SALT", "test-salt")
     body = json.dumps({"path": "/pricing?token=secret#frag",
                        "ref": "https://www.google.com/search?q=x"}).encode()
     row = mod.parse_event(GOOD_HEADERS, body)
@@ -887,6 +927,7 @@ def _():
 
 
 @test("beacon: self-referral stored as null referrer")
+@_with_salt
 def _():
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_selfref")
     body = json.dumps({"path": "/a", "ref": "https://ibuild4you.com/b"}).encode()
@@ -897,10 +938,9 @@ def _():
 # === beacon: automation labelling (issue #52) ===
 
 @test("beacon #52: a normal browser hit is NOT flagged")
+@_with_salt
 def _():
-    import os
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_agent_human")
-    os.environ.setdefault("BEACON_SALT", "test-salt")
     row = mod.parse_event(GOOD_HEADERS, json.dumps({"path": "/"}).encode())
     assert row, "valid hit was dropped"
     assert row["agent"] == 0, f"human traffic flagged as automation: {row}"
@@ -914,10 +954,9 @@ def _():
 
 
 @test("beacon #52: navigator.webdriver is stored as a label, not dropped")
+@_with_salt
 def _():
-    import os
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_agent_wd")
-    os.environ.setdefault("BEACON_SALT", "test-salt")
     for payload in ({"path": "/", "wd": 1}, {"path": "/", "wd": True},
                     {"path": "/", "wd": "true"}, {"path": "/", "agent": 1}):
         row = mod.parse_event(GOOD_HEADERS, json.dumps(payload).encode())
@@ -928,10 +967,9 @@ def _():
 
 
 @test("beacon #52: X-Test-Agent header flags header-capable callers")
+@_with_salt
 def _():
-    import os
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_agent_header")
-    os.environ.setdefault("BEACON_SALT", "test-salt")
     h = {**GOOD_HEADERS, mod.AGENT_HEADER: "1"}
     row = mod.parse_event(h, json.dumps({"path": "/"}).encode())
     assert row and row["agent"] == 1, f"header not honored: {row}"
@@ -943,10 +981,9 @@ def _():
 
 
 @test("beacon #52: the agent flag reaches the INSERT")
+@_with_salt
 def _():
-    import os
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_agent_insert")
-    os.environ.setdefault("BEACON_SALT", "test-salt")
     captured = []
 
     def fake_turso(sql, args=None):
@@ -1031,9 +1068,10 @@ def _():
 @test("beacon: drops unknown event types and bad payloads")
 def _():
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_events")
-    # `login` used to be the not-allowed example here; it joined ALLOWED_EVENTS
-    # in issue #10, so the drop case is now an event that is still unknown.
+    # `login` is server-side only (record_login), so the public endpoint
+    # drops it like any unknown event.
     bad = [json.dumps({"path": "/", "event": "signup"}).encode(),
+           json.dumps({"path": "/", "event": "login"}).encode(),
            json.dumps({"path": "/", "event": "click"}).encode(),
            json.dumps({"path": "no-slash"}).encode(),
            json.dumps(["not", "a", "dict"]).encode(),
@@ -1042,17 +1080,32 @@ def _():
         assert mod.parse_event(GOOD_HEADERS, body) is None, f"not dropped: {body!r}"
 
 
-@test("beacon: login event is accepted and inserted (issue #10)")
+@test("beacon: a public login hit is dropped as bad-event, inserts nothing")
+@_with_salt
 def _():
-    import os
+    import contextlib
+    import io
+    # `login` is written server-side only (record_login, from callback.py).
+    # Accepting it on the public endpoint let any site inflate the sign-ins
+    # panel, so parse_event rejects it like any other unknown event.
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_login_event")
-    os.environ.setdefault("BEACON_SALT", "test-salt")
+    assert "login" not in mod.ALLOWED_EVENTS, mod.ALLOWED_EVENTS
     body = json.dumps({"path": "/login/admin", "event": "login"}).encode()
-    row = mod.parse_event(GOOD_HEADERS, body)
-    assert row, "login event was dropped"
-    assert row["event"] == "login", f"event not preserved: {row}"
-    assert row["path"] == "/login/admin", f"path not preserved: {row}"
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        row = mod.parse_event(GOOD_HEADERS, body)
+    assert row is None, f"public login hit accepted: {row}"
+    assert "bad-event" in out.getvalue(), f"wrong drop reason: {out.getvalue()!r}"
 
+    with contextlib.redirect_stdout(io.StringIO()):
+        inserts = _post_beacon(mod, GOOD_HEADERS, body)
+    assert not inserts, f"public login hit reached the DB: {inserts}"
+
+
+@test("beacon: record_login still inserts a login row (server-side path)")
+@_with_salt
+def _():
+    import beacon_helper as mod
     captured = []
 
     def fake_turso(sql, args=None):
@@ -1061,21 +1114,258 @@ def _():
 
     restore = patch_turso_query(mod, fake_turso)
     try:
-        h = invoke_post(mod, "/api/beacon", body, GOOD_HEADERS)
-        assert h.status_code == 204, f"got {h.status_code}"
-        inserts = [c for c in captured if "INSERT INTO page_views" in c[0]]
-        assert len(inserts) == 1, f"expected 1 insert, got {captured}"
-        assert "login" in inserts[0][1], f"event not in args: {inserts[0][1]}"
-        assert "/login/admin" in inserts[0][1], f"path not in args: {inserts[0][1]}"
+        ok = mod.record_login({**GOOD_HEADERS, "host": "prompt-labs.org"}, "admin")
     finally:
         restore()
+    assert ok is True, "record_login reported no row"
+    inserts = [c for c in captured if "INSERT INTO page_views" in c[0]]
+    assert len(inserts) == 1, f"expected 1 insert, got {captured}"
+    sql, args = inserts[0]
+    assert sql == mod.INSERT_SQL, f"login must use the plain INSERT: {sql}"
+    assert args[6] == "login" and args[2] == "/login/admin", args
+
+
+@test("beacon: scrub_path replaces ID-like segments and leaves slugs alone")
+def _():
+    import beacon_helper as mod
+    changed = {
+        "/offer/status/0b7c1e2a-4d3f-4a1b-9c8d-7e6f5a4b3c2d": "/offer/status/:id",
+        "/setlist/Xq7RkL2mNp9TzW4vBc1D": "/setlist/:id",
+        "/projects/QwErTyUiOpAsDfGhJkLz": "/projects/:id",
+        "/orders/42": "/orders/:id",
+        "/d/8f3a2b1c9d0e4f5a6b7c": "/d/:id",
+        "/blog/2026/": "/blog/:id/",
+    }
+    for src, want in changed.items():
+        got = mod.scrub_path(src)
+        assert got == want, f"{src} -> {got}, want {want}"
+    for same in ("/", "/fr/about", "/song/smoke-723",
+                 "/projects/piano-backing-tracks-theory",
+                 "/join/summer-camp-2026",
+                 "/studio/presentation/homePage/homePage",
+                 "/review/country-book.html",
+                 "/notes/abcdefghijklmnopqrst"):
+        got = mod.scrub_path(same)
+        assert got == same, f"{same} was altered to {got}"
+
+
+@test("beacon: parse_event scrubs the path for every event")
+@_with_salt
+def _():
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_scrub_parse")
+    for ev in ("pageview", "nav"):
+        body = json.dumps({"path": "/orders/42?x=1", "event": ev}).encode()
+        row = mod.parse_event(GOOD_HEADERS, body)
+        assert row and row["path"] == "/orders/:id", f"{ev}: {row}"
+
+
+@test("beacon contract: text/plain JSON body from a site is stored (pageview and nav)")
+@_with_salt
+def _():
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_contract")
+    headers = {**GOOD_HEADERS, "content-type": "text/plain",
+               "origin": "https://shop.example.com"}
+    raw = json.dumps({"path": "/shop", "ref": "https://www.example.org/x",
+                      "wd": 0}).encode()
+    ins = _post_beacon(mod, headers, raw)
+    assert len(ins) == 1, f"expected 1 insert, got {ins}"
+    a = ins[0][1]
+    assert a[1] == "shop.example.com" and a[2] == "/shop", a
+    # _hostname strips a leading www. (existing behaviour, unchanged).
+    assert a[3] == "example.org", f"referrer: {a}"
+    assert a[6] == "pageview", a
+
+    raw = json.dumps({"path": "/shop", "event": "nav",
+                      "ref": "https://shop.example.com/shop", "wd": 0}).encode()
+    ins = _post_beacon(mod, headers, raw)
+    assert len(ins) == 1, f"expected 1 insert, got {ins}"
+    assert _insert_cols(*ins[0])["event"] == "nav", ins[0]
+
+
+@test("beacon: nav rows are coarsened and need no BEACON_SALT")
+def _():
+    import os
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_nav")
+    saved = os.environ.get("BEACON_SALT")
+    os.environ["BEACON_SALT"] = "test-salt"
+    try:
+        body = json.dumps({"path": "/a", "event": "nav", "wd": 1,
+                           "ref": "https://elsewhere.example.org/"}).encode()
+        # Read the UTC date on both sides of the call, so a run that crosses
+        # 00:00 UTC accepts either day instead of failing.
+        before = time.strftime("%Y-%m-%d", time.gmtime())
+        row = mod.parse_event(GOOD_HEADERS, body)
+        after = time.strftime("%Y-%m-%d", time.gmtime())
+        assert row, "nav dropped"
+        assert row["visitor_hash"] == "", row
+        assert row["ts"] in (f"{before}T00:00:00Z", f"{after}T00:00:00Z"), row["ts"]
+        assert row["country"] is None and row["device"] is None, row
+        assert row["referrer"] is None, row
+        assert row["agent"] == 1, "agent label must follow wd"
+        # pageview keeps its detail
+        pv = mod.parse_event(GOOD_HEADERS, json.dumps({"path": "/a"}).encode())
+        assert pv["visitor_hash"] and pv["country"] == "US", pv
+
+        del os.environ["BEACON_SALT"]
+        row = mod.parse_event(GOOD_HEADERS, body)
+        assert row and row["event"] == "nav", "nav needs no salt"
+        assert mod.parse_event(
+            GOOD_HEADERS, json.dumps({"path": "/a"}).encode()) is None, \
+            "pageview without a salt must still drop"
+    finally:
+        if saved is None:
+            os.environ.pop("BEACON_SALT", None)
+        else:
+            os.environ["BEACON_SALT"] = saved
+
+
+_NAV_ROW = {"ts": "2026-08-17T00:00:00Z", "site": "x.example", "path": "/a",
+            "referrer": None, "country": None, "device": None, "event": "nav",
+            "visitor_hash": "", "agent": 0}
+_PV_ROW = {**_NAV_ROW, "ts": "2026-08-17T10:11:12Z", "event": "pageview",
+           "country": "US", "device": "desktop", "visitor_hash": "abc"}
+
+
+@test("beacon: nav rows get an explicit random negative id; pageviews do not")
+def _():
+    # A nav row taking the next sequential rowid would sit, in id order,
+    # between the pageview rows that carry exact ts + visitor_hash: the
+    # session path the nav coarsening exists to prevent.
+    import beacon_helper as mod
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, list(args or [])))
+        return []
+
+    restore = patch_turso_query(mod, fake_turso)
+    try:
+        mod.insert_row(dict(_NAV_ROW))
+        mod.insert_row(dict(_NAV_ROW))
+        mod.insert_row(dict(_PV_ROW))
+    finally:
+        restore()
+    assert len(captured) == 3, captured
+    ids = []
+    for sql, args in captured[:2]:
+        cols = _insert_cols(sql, args)
+        assert "id" in cols, f"nav INSERT has no explicit id: {sql}"
+        assert isinstance(cols["id"], int) and cols["id"] < 0, cols["id"]
+        assert cols["id"] >= -(2 ** 62), f"id out of range: {cols['id']}"
+        assert cols["event"] == "nav" and cols["visitor_hash"] == "", cols
+        ids.append(cols["id"])
+    assert ids[0] != ids[1], f"two nav rows got the same id: {ids}"
+    pv_sql, pv_args = captured[2]
+    assert pv_sql == mod.INSERT_SQL, f"pageview INSERT changed: {pv_sql}"
+    assert "id" not in _insert_cols(pv_sql, pv_args), pv_sql
+
+
+@test("beacon: a nav id collision retries once with a new id, then raises")
+def _():
+    import beacon_helper as mod
+    attempts = []
+
+    def collide_once(sql, args=None):
+        attempts.append(list(args or []))
+        if len(attempts) == 1:
+            raise RuntimeError("SQLITE_CONSTRAINT: UNIQUE constraint failed: "
+                               "page_views.id")
+        return []
+
+    restore = patch_turso_query(mod, collide_once)
+    try:
+        mod.insert_row(dict(_NAV_ROW))
+    finally:
+        restore()
+    assert len(attempts) == 2, f"expected one retry, got {attempts}"
+    assert attempts[0][0] != attempts[1][0], "retry reused the colliding id"
+    assert attempts[1][0] < 0, attempts[1]
+
+    attempts.clear()
+
+    def always_collide(sql, args=None):
+        attempts.append(list(args or []))
+        raise RuntimeError("SQLITE_CONSTRAINT_PRIMARYKEY: PRIMARY KEY must be unique")
+
+    restore = patch_turso_query(mod, always_collide)
+    try:
+        try:
+            mod.insert_row(dict(_NAV_ROW))
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("second collision must raise")
+    finally:
+        restore()
+    assert len(attempts) == 2, f"retry must happen exactly once: {attempts}"
+
+    # Any other failure is not a collision: no retry.
+    attempts.clear()
+
+    def down(sql, args=None):
+        attempts.append(list(args or []))
+        raise RuntimeError("turso down")
+
+    restore = patch_turso_query(mod, down)
+    try:
+        try:
+            mod.insert_row(dict(_NAV_ROW))
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("a DB failure must raise")
+    finally:
+        restore()
+    assert len(attempts) == 1, f"non-collision error was retried: {attempts}"
+
+
+@test("beacon: a nav row is dropped loudly when the agent column is missing")
+def _():
+    import contextlib
+    import io
+    import beacon_helper as mod
+    calls = []
+
+    def unmigrated(sql, args=None):
+        calls.append(sql)
+        if "agent" in sql:
+            raise RuntimeError("SQLITE_ERROR: table page_views has no column "
+                               "named agent")
+        return []
+
+    restore = patch_turso_query(mod, unmigrated)
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            mod.insert_row(dict(_NAV_ROW))
+    finally:
+        restore()
+    assert len(calls) == 1, f"nav row fell back to a legacy INSERT: {calls}"
+    assert "agent MISSING" in out.getvalue(), f"not loud: {out.getvalue()!r}"
+
+
+@test("beacon: a posted nav hit reaches the DB with a negative id")
+@_with_salt
+def _():
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_nav_id")
+    ins = _post_beacon(mod, GOOD_HEADERS,
+                       json.dumps({"path": "/a", "event": "nav"}).encode())
+    assert len(ins) == 1, ins
+    cols = _insert_cols(*ins[0])
+    assert cols["event"] == "nav" and cols["id"] < 0, cols
+
+
+@test("beacon: navigate is not an event (only nav is)")
+def _():
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_navigate")
+    body = json.dumps({"path": "/", "event": "navigate"}).encode()
+    assert mod.parse_event(GOOD_HEADERS, body) is None
 
 
 @test("beacon: visitor hash varies by IP, never exposes it")
+@_with_salt
 def _():
-    import os
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_hash")
-    os.environ.setdefault("BEACON_SALT", "test-salt")
     a = mod._visitor_hash("203.0.113.9", GOOD_UA)
     b = mod._visitor_hash("203.0.113.10", GOOD_UA)
     a2 = mod._visitor_hash("203.0.113.9", GOOD_UA)
@@ -1124,6 +1414,7 @@ def _():
 
 
 @test("beacon: do_POST inserts row and returns 204; turso failure still 204")
+@_with_salt
 def _():
     mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_post")
     captured_sql = []
@@ -1197,7 +1488,11 @@ def _():
         captured.append((sql, args or []))
         if "GROUP BY date, site" in sql:
             return [{"date": "2026-07-01", "site": "prntd.org",
-                     "views": "12", "uniques": "3"}]
+                     "views": "12", "navs": "7", "uniques": "3"},
+                    {"date": "2026-07-01", "site": "a1.example.vercel.app",
+                     "views": "2", "navs": "4", "uniques": "1"},
+                    {"date": "2026-07-01", "site": "preview.example.org",
+                     "views": "1", "navs": "5", "uniques": "1"}]
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
@@ -1215,6 +1510,13 @@ def _():
             assert key in body, f"missing {key}"
         assert body["daily"][0]["views"] == 12, f"views not int: {body['daily']}"
         assert body["daily"][0]["uniques"] == 3
+        assert body["daily"][0]["navs"] == 7, f"navs not int: {body['daily']}"
+        prev = [r for r in body["daily"] if r["site"] == "previews"]
+        assert len(prev) == 1 and prev[0]["navs"] == 9 and prev[0]["views"] == 3, prev
+        assert body["navs_total"] == 16, body.get("navs_total")
+        dq = [s for s, _ in captured if "GROUP BY date, site" in s][0]
+        assert "event IN ('pageview','nav')" in dq.replace(", ", ",")
+        assert "CASE WHEN event = 'pageview' THEN visitor_hash END" in dq
         assert all("2026-06-05" in a for _, a in captured), "since bound missing"
         # The four page-view queries must all pin event = 'pageview'. The login
         # queries added in issue #10 deliberately filter event = 'login'
@@ -1222,6 +1524,9 @@ def _():
         pv = [s for s, _ in captured if "'login'" not in s]
         assert len(pv) == 4, f"expected 4 pageview queries, got {len(pv)}"
         assert all("pageview" in s for s in pv), "event filter missing"
+        ref = [s for s in pv if "referrer IS NOT NULL" in s]
+        cty = [s for s in pv if "country IS NOT NULL" in s]
+        assert ref and cty and not any("'nav'" in s for s in ref + cty)
     finally:
         restore()
 
@@ -1307,7 +1612,9 @@ def _():
         pv = [s for s in captured if "'login'" not in s]
         assert len(pv) == 4, f"expected 4 pageview queries, got {pv}"
         for s in pv:
-            assert "event = 'pageview'" in s, f"pageview filter dropped: {s}"
+            assert ("event = 'pageview'" in s
+                    or "event IN ('pageview','nav')" in s), f"event filter dropped: {s}"
+            assert "'login'" not in s
         lg = [s for s in captured if "'login'" in s]
         assert len(lg) == 2, f"expected 2 login queries, got {lg}"
         for s in lg:
@@ -1390,10 +1697,10 @@ def _():
 @test("visitor_overview fold: daily rows merge per date, real sites untouched")
 def _():
     _, body = _visov_fold(daily=[
-        {"date": "2026-09-01", "site": "a-git-x.vercel.app", "views": "2", "uniques": "1"},
-        {"date": "2026-09-01", "site": "musicforge.example", "views": "40", "uniques": "9"},
-        {"date": "2026-09-01", "site": "preview.musicforge.example", "views": "3", "uniques": "2"},
-        {"date": "2026-09-02", "site": "a-git-x.vercel.app", "views": "1", "uniques": "1"},
+        {"date": "2026-09-01", "site": "a-git-x.vercel.app", "views": "2", "navs": "0", "uniques": "1"},
+        {"date": "2026-09-01", "site": "musicforge.example", "views": "40", "navs": "0", "uniques": "9"},
+        {"date": "2026-09-01", "site": "preview.musicforge.example", "views": "3", "navs": "0", "uniques": "2"},
+        {"date": "2026-09-02", "site": "a-git-x.vercel.app", "views": "1", "navs": "0", "uniques": "1"},
     ])
     rows = {(r["date"], r["site"]): r for r in body["daily"]}
     assert len(body["daily"]) == 3, f"expected 3 rows after folding: {body['daily']}"
@@ -1437,11 +1744,11 @@ def _():
 @test("visitor_overview fold: no preview hosts means zero and unchanged rows")
 def _():
     _, body = _visov_fold(daily=[
-        {"date": "2026-09-01", "site": "musicforge.example", "views": "40", "uniques": "9"},
+        {"date": "2026-09-01", "site": "musicforge.example", "views": "40", "navs": "6", "uniques": "9"},
     ])
     assert body["preview_hosts"] == 0
     assert body["daily"] == [
-        {"date": "2026-09-01", "site": "musicforge.example", "views": 40, "uniques": 9}]
+        {"date": "2026-09-01", "site": "musicforge.example", "views": 40, "navs": 6, "uniques": 9}]
 
 
 @test("day #52: the visitors block excludes agent-flagged rows")
@@ -6633,6 +6940,48 @@ def _():
     assert rule is not None, "no headers rule for /manifest.webmanifest"
     got = {h["key"]: h["value"] for h in rule["headers"]}
     assert got.get("Content-Type") == "application/manifest+json", got
+
+
+BEACON_V1_INTEGRITY = "sha384-ONhBQw+nUkm9sHSzjh0NB2eoYzwhlmsVfP8Lyw1f2/ViSNHr+lwr82DK7p2W4pOI"
+
+
+@test("beacon: beacon-v1.js is frozen (SRI value never changes)")
+def _():
+    import base64
+    import hashlib
+    data = (ROOT / "web" / "beacon-v1.js").read_bytes()
+    got = "sha384-" + base64.b64encode(hashlib.sha384(data).digest()).decode()
+    assert got == BEACON_V1_INTEGRITY, (
+        f"beacon-v1.js changed ({got}). Versioned beacons never change: sites pin "
+        "this hash. Restore the file and publish beacon-v2.js instead.")
+
+
+@test("beacon: versioned file is routed before the catch-all and served immutable with CORS")
+def _():
+    cfg = json.loads((ROOT / "web" / "vercel.json").read_text())
+    sources = [r["source"] for r in cfg["rewrites"]]
+    assert "/beacon-v1.js" in sources, "no rewrite for /beacon-v1.js"
+    assert sources.index("/beacon-v1.js") < sources.index("/(.*)")
+    assert sources[-1] == "/(.*)", "the catch-all must stay last"
+    # Exact match: a pattern such as /beacon-v(.*).js would also match a
+    # nonexistent /beacon-v2.js, which the SPA catch-all answers with
+    # index.html, cached immutable for a year.
+    rule = next((h for h in cfg["headers"] if h["source"] == "/beacon-v1.js"), None)
+    assert rule is not None, "no headers rule for /beacon-v1.js"
+    assert not [h["source"] for h in cfg["headers"]
+                if h["source"].startswith("/beacon-v") and h["source"] != "/beacon-v1.js"], (
+        "a versioned-beacon header rule must name an exact file")
+    got = {h["key"]: h["value"] for h in rule["headers"]}
+    assert got.get("Cache-Control") == "public, max-age=31536000, immutable", got
+    assert got.get("Access-Control-Allow-Origin") == "*", got
+
+
+@test("visitors: the chart unit says page loads, matching the headline")
+def _():
+    src = (ROOT / "web" / "index.html").read_text()
+    i = src.index('<${StackedBars} id="visitors"')
+    call = src[i:src.index("/>", i)]
+    assert 'unit="page loads"' in call, call
 
 
 if __name__ == "__main__":

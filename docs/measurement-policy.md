@@ -11,12 +11,38 @@ granularity that answers it.** Never because collection is easy. The right
 shape for new signal is one named event with a purpose, not a general tracking
 upgrade.
 
-Allowlist as of 2026-07-29: `pageview`, and `login` (#10) — written server-side
-by `callback.py` on a successful Google sign-in, `path=/login/<role>` with the
-role checked against an allowlist so the email in scope at that moment cannot
-reach the row. It answers "who signs in, how often" at role granularity, which
-is the coarsest answer that answers it: with two accounts the role is a strong
-hint, but the data holds no identity, so the page counts sign-ins, not people.
+Allowlist as of 2026-11-04: `pageview` and `nav` (#109) from the public
+beacon, and `login` (#10), which only the server writes. The public endpoint
+drops a `login` hit.
+
+Every event's path is scrubbed of ID-like segments before storage: UUIDs,
+all-digit segments, and tokens of 16 or more characters that mix lowercase,
+uppercase and digits become `:id`. That is a safety net, not a guarantee. It
+misses IDs that contain `-` (nanoid, base64url, Firebase push IDs),
+letter-and-digit IDs shorter than 16 characters, an email address used as a
+segment, and an ID inside a longer slug. Sites should still avoid sending
+identifier-bearing paths: skip `/admin` and other private pages, and send
+route-level paths where they can.
+
+`login` is written server-side by `callback.py` on a successful Google
+sign-in, `path=/login/<role>` with the role checked against an allowlist so
+the email in scope at that moment cannot reach the row. It answers "who signs
+in, how often" at role granularity, which is the coarsest answer that answers
+it: with two accounts the role is a strong hint, but the data holds no
+identity, so the page counts sign-ins, not people.
+
+`nav` is an in-app route change on a client-routed site. It answers which
+pages visitors of those apps actually see, which a page-load count cannot
+(issue #109). It is coarsened at write time: no visitor hash, a day-level
+timestamp (midnight UTC), and no country, device or referrer. The reason is
+point 2 below: a per-visitor, timestamped trail of navigations is a session
+path, and on small-N sites that is surveillance of a specific person. Only
+site, scrubbed path, day and the automation label are kept. Each `nav` row is
+also stored under a random id, not the next number in sequence, so the table
+keeps no record of the order the rows were written in. The caveat: the
+database host's point-in-time recovery keeps the order of writes for as long
+as it retains its backups, so within that window the order is recoverable by
+whoever can restore the database.
 
 ## Why minimal, in order of weight
 
@@ -31,7 +57,9 @@ hint, but the data holds no identity, so the page counts sign-ins, not people.
    these sites have single-digit users Nico knows by name (by-side.net ≈ Matt,
    under an NDA). Session paths or time-on-page there wouldn't be analytics —
    they'd be surveillance of a specific person. "We structurally can't see what
-   you do, only that someone visited" is a posture worth keeping stateable.
+   you do, only that someone visited" is a posture worth keeping stateable,
+   with one stated caveat: the database host's point-in-time recovery keeps
+   the order of writes for its retention window.
 
 3. **Decision test.** At current traffic, pageviews + referrer + device class
    answer every question we actually have. Funnels, scroll depth, replay
