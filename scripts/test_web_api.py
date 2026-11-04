@@ -1149,6 +1149,40 @@ def _():
         assert got == same, f"{same} was altered to {got}"
 
 
+@test("beacon: scrub_path widened rule (emails, key:value, dashed IDs, IDs in slugs)")
+def _():
+    import beacon_helper as mod
+    changed = {
+        "/u/jane.doe@example.com": "/u/:id",
+        "/u/jane.doe%40example.com": "/u/:id",
+        "/dashboard/person/name%3AJane%20Roe": "/dashboard/person/:id",
+        "/dashboard/person/name:Jane": "/dashboard/person/:id",
+        "/s/V1StGXR8_Z5jdHi6B-myT": "/s/:id",
+        "/chat/-NxYz12AbCdEfGhIjK": "/chat/:id",
+        "/entry/imp_2025_JUL_28_08.46": "/entry/:id",
+        "/p/Xq7RkL2mNp9TzW4vBc1D-summer": "/p/:id",
+        "/post/how-to-bake-48213": "/post/how-to-bake-:id",
+        "/post/my-trip-a1b2c3d4": "/post/my-trip-:id",
+        "/post/notes-0b7c1e2a-4d3f-4a1b-9c8d-7e6f5a4b3c2d": "/post/notes-:id",
+        "/x/:idiot": "/x/:id",
+    }
+    for src, want in changed.items():
+        got = mod.scrub_path(src)
+        assert got == want, f"{src} -> {got}, want {want}"
+        again = mod.scrub_path(got)
+        assert again == got, f"not idempotent: {src} -> {got} -> {again}"
+    for same in ("/projects/6l-universal-deconstruction-app-2",
+                 "/song/nms-12-month-technology-roadmap-v1-final",
+                 "/projects/provenance-demo-121-delete-me",
+                 "/song/smoke-extender-767", "/song/smoke-716-pdf",
+                 "/song/Every%20Morning", "/join/sam-camp-2026",
+                 "/projects/byside-b2b2c-pivot-discussion",
+                 "/fr/projects/ibuild4you", "/robots.txt", "/setlist/:id",
+                 "/song/smoke-:id", "/post/how-to-bake-:id"):
+        got = mod.scrub_path(same)
+        assert got == same, f"{same} was altered to {got}"
+
+
 @test("beacon: parse_event scrubs the path for every event")
 @_with_salt
 def _():
