@@ -150,8 +150,9 @@ now aliases (`scripts/alias.py`) and synced to Turso, where the old-name rows st
 live (the local DB no longer has them). `spike` (4 prompts) is left alone.
 
 Open, from the 2026-08-02 uptime/health thread and the issue backlog:
-- **`#/health` was seen by Nico on desktop 2026-10-09** (dark theme; 11/11 targets up, all
-  6 heartbeats fresh) and works. The nav below 640px has still not been looked at.
+- **`#/health` works on desktop (Nico, 2026-10-09) and on a phone.** The phone layout
+  was covered by #76 (`health`, `health-cards` in `scripts/phone/checks.mjs`); the full
+  phone run on 2026-11-04 passed 404/404 and the screenshot was checked by eye.
 - **Beacon interface (2026-11-04, #110 merged, deployed).** `/api/beacon` is a documented contract (`docs/beacon.md`): new `nav` event for in-app views (stored with no visitor hash, day-level date, random id), ID-like path segments become `:id`, sites can no longer post `login`, frozen `beacon-v1.js` with SRI (headers verified live). prntd's #363 tag is live; their own call with `nav` is in progress and they post the ship date, then check #/visitors. The first `--apply` backfill is done (no unscrubbed old-rule paths remain). Widened ID rule (emails, key:value such as `name%3A<person>`, dashed IDs, IDs inside slugs) merged as #111 2026-11-04 and its `--apply` backfill ran the same day (5 paths / 8 rows, including 3 person-name paths); a dry run afterwards shows 0 paths to change. #109 is optional now that sites can report `nav` themselves.
 - **Public rollups:** only ibuild4you `2026-05-18` is unpublished — a deliberate skip that
   reappears in every future draft by design.
