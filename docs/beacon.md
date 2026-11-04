@@ -19,11 +19,21 @@ the normal choice because it avoids a CORS preflight. Fields:
   same site is stored as empty.
 - `wd` or `agent`: set to `1`/`true` when the page is driven by browser
   automation. The hit is stored but labelled, and the dashboard leaves it out.
-- `event`: `pageview` (default) or `nav`.
+- `event`: `pageview` (default) or `nav`. Nothing else is accepted.
+
+The whole body must fit in 2 KB. A longer body is cut at 2 KB, which leaves
+JSON that does not parse, so the hit is dropped.
 
 The site is taken from the `Origin` header (falling back to `Referer`), with a
 leading `www.` removed. Browsers set `Origin` on `POST`; do not try to send it
-yourself.
+yourself. A page served with `Referrer-Policy: no-referrer` sends
+`Origin: null` on a `POST`, and every hit from it is dropped as a bad origin.
+Use a policy that keeps the origin: `strict-origin-when-cross-origin` (the
+browser default) or `origin`.
+
+A caller that can set headers can also mark a hit as automation with an
+`X-Test-Agent: 1` header. It has the same effect as `wd` or `agent` in the
+body. `sendBeacon` cannot set headers, which is why the body fields exist.
 
 ### Events
 
@@ -35,6 +45,14 @@ yourself.
   event and the automation label are kept. This is deliberate: a per-visitor
   timestamped trail of navigations would be a session path. A `nav` hit does
   not need a visitor hash, so it is recorded even when the server has no salt.
+  Each `nav` row is also stored under a random id rather than the next number
+  in sequence, so the table holds no record of the order `nav` rows were
+  written in. One caveat: the database host's point-in-time recovery keeps
+  the order of writes for as long as it retains its backups.
+
+Sign-ins (`login`) are recorded by Prompt Lab's own server when someone signs
+in to the dashboard. They are not a beacon event: a `login` hit sent to this
+endpoint is dropped.
 
 ### ID scrubbing
 
@@ -47,7 +65,20 @@ it is any of:
   lowercase, uppercase and digits
 
 Empty segments are kept, so `/` stays `/` and a trailing slash survives. This
-applies to every event. It is a safety net, not a reason to put secrets in URLs.
+applies to every event.
+
+It is a safety net, not a reason to put identifiers in URLs. It does not
+catch:
+
+- IDs that contain `-`, such as nanoid or base64url IDs and Firebase push IDs
+- letter-and-digit IDs shorter than 16 characters (all-digit IDs are caught
+  at any length)
+- an email address used as a segment
+- an ID inside a longer segment, such as a slug that ends in an ID
+
+So do not send paths that carry identifiers in the first place. Skip admin and
+other private pages, and where you can, send the route pattern rather than the
+filled-in path.
 
 ### What gets dropped
 
@@ -55,8 +86,9 @@ A dropped hit gets no error that you can use; do not retry. Dropped:
 
 - user agents that look like bots, crawlers, monitors or HTTP libraries
 - an `Origin` that is missing, malformed, `localhost`, `127.*` or `*.local`
-- a body that is not a JSON object
-- an unknown `event`
+- a body that is not a JSON object, including one cut short at 2 KB
+- an `Origin` of `null`, which a `no-referrer` policy produces
+- any `event` other than `pageview` or `nav`, including `login`
 - a `path` that is not a string starting with `/`
 - a `pageview` when the server has no salt configured (a `nav` is not affected)
 
@@ -73,10 +105,13 @@ contract test in `scripts/test_web_api.py` guards the behaviour, and
 ### Option A: copy-in snippet (recommended)
 
 Use this where you own the site's code, or where some pages are sensitive and
-you want to choose exactly what is sent. Plain JS, never throws:
+you want to choose exactly what is sent. Plain JS, never throws. Save it as a
+module (the Next.js example below imports it from `@/lib/pl-beacon`). To use
+it from a plain `<script>` tag instead, remove the `export` keyword and call
+`plBeacon('pageview')` once the page has loaded.
 
 ```js
-function plBeacon(event) {
+export function plBeacon(event) {
   try {
     var agent = 0;
     try {
@@ -122,8 +157,9 @@ export function Beacon() {
 ```
 
 Skip admin and other private paths, as above. The server scrubs ID-like
-segments, but not-sending is safer than scrubbing. Because the early return leaves `first` alone, a visit that starts on an
-admin page sends its `pageview` on the first public page.
+segments, but not sending is safer than scrubbing. Because the early return
+leaves `first` alone, a visit that starts on an admin page sends its
+`pageview` on the first public page.
 
 ### Option B: versioned script tag
 
