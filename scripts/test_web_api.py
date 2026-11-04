@@ -1313,7 +1313,11 @@ def _():
         captured.append((sql, args or []))
         if "GROUP BY date, site" in sql:
             return [{"date": "2026-07-01", "site": "prntd.org",
-                     "views": "12", "uniques": "3"}]
+                     "views": "12", "navs": "7", "uniques": "3"},
+                    {"date": "2026-07-01", "site": "a1.example.vercel.app",
+                     "views": "2", "navs": "4", "uniques": "1"},
+                    {"date": "2026-07-01", "site": "preview.example.org",
+                     "views": "1", "navs": "5", "uniques": "1"}]
         return []
 
     restore_q = patch_turso_query(mod, fake_turso)
@@ -1331,6 +1335,13 @@ def _():
             assert key in body, f"missing {key}"
         assert body["daily"][0]["views"] == 12, f"views not int: {body['daily']}"
         assert body["daily"][0]["uniques"] == 3
+        assert body["daily"][0]["navs"] == 7, f"navs not int: {body['daily']}"
+        prev = [r for r in body["daily"] if r["site"] == "previews"]
+        assert len(prev) == 1 and prev[0]["navs"] == 9 and prev[0]["views"] == 3, prev
+        assert body["navs_total"] == 16, body.get("navs_total")
+        dq = [s for s, _ in captured if "GROUP BY date, site" in s][0]
+        assert "event IN ('pageview','nav')" in dq.replace(", ", ",")
+        assert "CASE WHEN event = 'pageview' THEN visitor_hash END" in dq
         assert all("2026-06-05" in a for _, a in captured), "since bound missing"
         # The four page-view queries must all pin event = 'pageview'. The login
         # queries added in issue #10 deliberately filter event = 'login'
@@ -1338,6 +1349,9 @@ def _():
         pv = [s for s, _ in captured if "'login'" not in s]
         assert len(pv) == 4, f"expected 4 pageview queries, got {len(pv)}"
         assert all("pageview" in s for s in pv), "event filter missing"
+        ref = [s for s in pv if "referrer IS NOT NULL" in s]
+        cty = [s for s in pv if "country IS NOT NULL" in s]
+        assert ref and cty and not any("'nav'" in s for s in ref + cty)
     finally:
         restore()
 
@@ -1423,7 +1437,9 @@ def _():
         pv = [s for s in captured if "'login'" not in s]
         assert len(pv) == 4, f"expected 4 pageview queries, got {pv}"
         for s in pv:
-            assert "event = 'pageview'" in s, f"pageview filter dropped: {s}"
+            assert ("event = 'pageview'" in s
+                    or "event IN ('pageview','nav')" in s), f"event filter dropped: {s}"
+            assert "'login'" not in s
         lg = [s for s in captured if "'login'" in s]
         assert len(lg) == 2, f"expected 2 login queries, got {lg}"
         for s in lg:
@@ -1506,10 +1522,10 @@ def _():
 @test("visitor_overview fold: daily rows merge per date, real sites untouched")
 def _():
     _, body = _visov_fold(daily=[
-        {"date": "2026-09-01", "site": "a-git-x.vercel.app", "views": "2", "uniques": "1"},
-        {"date": "2026-09-01", "site": "musicforge.example", "views": "40", "uniques": "9"},
-        {"date": "2026-09-01", "site": "preview.musicforge.example", "views": "3", "uniques": "2"},
-        {"date": "2026-09-02", "site": "a-git-x.vercel.app", "views": "1", "uniques": "1"},
+        {"date": "2026-09-01", "site": "a-git-x.vercel.app", "views": "2", "navs": "0", "uniques": "1"},
+        {"date": "2026-09-01", "site": "musicforge.example", "views": "40", "navs": "0", "uniques": "9"},
+        {"date": "2026-09-01", "site": "preview.musicforge.example", "views": "3", "navs": "0", "uniques": "2"},
+        {"date": "2026-09-02", "site": "a-git-x.vercel.app", "views": "1", "navs": "0", "uniques": "1"},
     ])
     rows = {(r["date"], r["site"]): r for r in body["daily"]}
     assert len(body["daily"]) == 3, f"expected 3 rows after folding: {body['daily']}"
@@ -1553,11 +1569,11 @@ def _():
 @test("visitor_overview fold: no preview hosts means zero and unchanged rows")
 def _():
     _, body = _visov_fold(daily=[
-        {"date": "2026-09-01", "site": "musicforge.example", "views": "40", "uniques": "9"},
+        {"date": "2026-09-01", "site": "musicforge.example", "views": "40", "navs": "6", "uniques": "9"},
     ])
     assert body["preview_hosts"] == 0
     assert body["daily"] == [
-        {"date": "2026-09-01", "site": "musicforge.example", "views": 40, "uniques": 9}]
+        {"date": "2026-09-01", "site": "musicforge.example", "views": 40, "navs": 6, "uniques": 9}]
 
 
 @test("day #52: the visitors block excludes agent-flagged rows")

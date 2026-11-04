@@ -7,7 +7,8 @@ alias folding applies here. One fold does: preview deployments
 each branch deploy gets its own hostname and a dozen one-view "sites" bury
 the real ones. It is a rule on the hostname's shape, not a list of names.
 
-The four traffic queries all pin `event = 'pageview'`, so `login` rows
+The referrer and country queries pin `event = 'pageview'` (daily and paths
+also count `nav`, kept separate as `navs`), so `login` rows
 (issue #10) can never inflate a view count — which also means they are
 invisible unless asked for separately. Hence the `logins` block, built from two
 `event = 'login'` queries. Role comes from the path (`/login/admin`); the row
@@ -104,18 +105,25 @@ class handler(BaseHTTPRequestHandler):
         # the column is missing the query fails loudly, because a read that
         # silently degraded to unfiltered would rebuild the bug it fixes.
         where = " AND ".join(["event = 'pageview'", "agent = 0"] + bounds)
+        # `daily` and `paths` also count `nav` rows (in-app route changes). Nav
+        # rows carry no visitor_hash, so uniques count pageview rows only.
+        seen_where = " AND ".join(
+            ["event IN ('pageview','nav')", "agent = 0"] + bounds)
         login_where = " AND ".join(["event = 'login'", "agent = 0"] + bounds)
 
         daily = turso_query(
             f"SELECT substr(ts, 1, 10) AS date, site, "
-            f"       COUNT(*) AS views, COUNT(DISTINCT visitor_hash) AS uniques "
-            f"FROM page_views WHERE {where} "
+            f"       SUM(CASE WHEN event = 'pageview' THEN 1 ELSE 0 END) AS views, "
+            f"       SUM(CASE WHEN event = 'nav' THEN 1 ELSE 0 END) AS navs, "
+            f"       COUNT(DISTINCT CASE WHEN event = 'pageview' "
+            f"THEN visitor_hash END) AS uniques "
+            f"FROM page_views WHERE {seen_where} "
             f"GROUP BY date, site ORDER BY date, site",
             args,
         )
         paths = turso_query(
             f"SELECT site, path, COUNT(*) AS views "
-            f"FROM page_views WHERE {where} "
+            f"FROM page_views WHERE {seen_where} "
             f"GROUP BY site, path ORDER BY views DESC LIMIT 300",
             args,
         )
@@ -160,7 +168,7 @@ class handler(BaseHTTPRequestHandler):
             role = _login_role(r.get("path"))
             by_role[role] = by_role.get(role, 0) + int(r["count"] or 0)
 
-        daily = _ints(daily, ["views", "uniques"])
+        daily = _ints(daily, ["views", "navs", "uniques"])
         preview_hosts = len({r["site"] for r in daily
                              if _site_label(r["site"]) == PREVIEWS})
 
@@ -177,8 +185,11 @@ class handler(BaseHTTPRequestHandler):
             _fold(_ints(referrers, ["views"]), ["site", "referrer"], ["views"]),
             key=by_views)
 
+        folded_daily = _fold(daily, ["date", "site"], ["views", "navs", "uniques"])
+
         payload = {
-            "daily": _fold(daily, ["date", "site"], ["views", "uniques"]),
+            "daily": folded_daily,
+            "navs_total": sum(r["navs"] for r in folded_daily),
             "paths": folded_paths,
             "referrers": folded_referrers,
             "countries": _ints(countries, ["views", "uniques"]),
