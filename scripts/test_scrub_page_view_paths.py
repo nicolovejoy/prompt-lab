@@ -40,27 +40,34 @@ ROWS = [
 ]
 
 
-def run(argv):
+def run(argv, rows=None, fail_on_update=None):
     mod = load()
     calls = []
 
     def stub(sql, args=None):
         calls.append((sql, list(args) if args else None))
         if sql.lstrip().upper().startswith("SELECT"):
-            return ROWS
+            return ROWS if rows is None else rows
+        n_up = sum(1 for c in calls if c[0].lstrip().upper().startswith("UPDATE"))
+        if fail_on_update == n_up:
+            raise RuntimeError("boom")
         return []
 
     mod.turso_query = stub
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        mod.main(argv)
+        code = mod.main(argv)
     updates = [c for c in calls if c[0].lstrip().upper().startswith("UPDATE")]
+    run.calls, run.code = calls, code
     return updates, out.getvalue()
 
 
 print("dry run")
 updates, out = run([])
 check("no UPDATE issued", updates, [])
+check("every dry-run call is a SELECT",
+      all(c[0].lstrip().upper().startswith("SELECT") for c in run.calls), True)
+check("dry run exit 0", run.code, 0)
 check("says dry run", "dry run" in out.lower(), True)
 check("prints old -> new", "/items/12345 -> /items/:id" in out, True)
 check("unchanged path not listed", "/about ->" in out, False)
@@ -77,6 +84,20 @@ check(
     ]),
 )
 check("update sql", {s for s, _ in updates}, {"UPDATE page_views SET path = ? WHERE path = ?"})
+check("per-path applied line", "applied: /items/12345 -> /items/:id (4 rows)" in out, True)
+check("totals line", "Applied 2 paths, 6 rows" in out and "pre-write SELECT" in out, True)
+check("apply exit 0", run.code, 0)
+
+print("failure partway")
+updates, out = run(["--apply"], fail_on_update=2)
+check("nonzero exit", run.code, 1)
+check("progress message", "applied 1 of 2 paths" in out and "failed at" in out, True)
+check("first path recorded", "applied: /items/12345" in out, True)
+
+print("already scrubbed")
+updates, out = run(["--apply"], rows=[{"path": "/items/:id", "n": 9}, {"path": "/", "n": 1}])
+check("no UPDATE", updates, [])
+check("zero totals", "0 paths change" in out, True)
 
 if failures:
     print(f"\n{len(failures)} failed")

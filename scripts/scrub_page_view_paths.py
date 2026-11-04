@@ -42,14 +42,24 @@ def main(argv=None):
 
     if not args.apply:
         print("Dry run: nothing written. Re-run with --apply to update.")
-        return
-    for old, new, _ in changes:
-        turso_query("UPDATE page_views SET path = ? WHERE path = ?", [new, old])
-    print(f"Applied: {len(changes)} UPDATEs.")
+        return 0
+    applied_rows = 0
+    for k, (old, new, n) in enumerate(changes):
+        try:
+            turso_query("UPDATE page_views SET path = ? WHERE path = ?", [new, old])
+        except Exception as e:
+            print(f"failed at {old} -> {new}: {e}; applied {k} of {len(changes)} "
+                  "paths; re-run to finish (applied paths no longer match)")
+            return 1
+        applied_rows += n
+        print(f"applied: {old} -> {new} ({n} rows)")
+    print(f"Applied {len(changes)} paths, {applied_rows} rows "
+          "(row counts come from the pre-write SELECT, not the UPDATEs).")
+    return 0
 
 
 if __name__ == "__main__":
     from claude_api import load_env
 
     load_env()
-    main()
+    sys.exit(main())
