@@ -10,6 +10,26 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-11-04 — Never ask Nico to recall a past moment
+
+Scope: every repo, every agent
+
+**No "think of the last time X happened" or "walk me through the last time…"
+questions**, nor anything else he can only answer by remembering an event. Nico's
+instruction, 2026-11-03. It overrides the brainstorming skill's suggested question
+style. Look the history up yourself (`~/.claude/prompt-history.db`, git, logs, the
+data), then propose something concrete for him to react to, or ask directly what
+he wants.
+
+What to do in your repo: re-sync the shared block, which now carries this rule.
+Review the `git diff`, then commit.
+
+```
+~/.claude/bin/sync-shared-md.sh --apply ./CLAUDE.md
+```
+
+---
+
 ## 2026-10-29 — Screenshots and private output live outside the repo
 
 Scope: every repo
