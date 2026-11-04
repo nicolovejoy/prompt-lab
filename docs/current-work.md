@@ -152,7 +152,7 @@ live (the local DB no longer has them). `spike` (4 prompts) is left alone.
 Open, from the 2026-08-02 uptime/health thread and the issue backlog:
 - **`#/health` was seen by Nico on desktop 2026-10-09** (dark theme; 11/11 targets up, all
   6 heartbeats fresh) and works. The nav below 640px has still not been looked at.
-- **Beacon fan-out: `prntd`**: tag is in prntd PR #363, not merged (Nico has two questions on it); prntd posts when it ships, then check #/visitors. prntd pointed out the beacon counts page loads, not client-side navigations: intro reworded (#108), navigation tracking filed as #109.
+- **Beacon interface (2026-11-04, #110 merged, deployed).** `/api/beacon` is a documented contract (`docs/beacon.md`): new `nav` event for in-app views (stored with no visitor hash, day-level date, random id), ID-like path segments become `:id`, sites can no longer post `login`, frozen `beacon-v1.js` with SRI (headers verified live). prntd's #363 tag is live; their own call with `nav` is in progress and they post the ship date, then check #/visitors. Open: run `scripts/scrub_page_view_paths.py --apply` (Nico; dry run 2026-11-04 showed 26 paths / 93 rows); whether to widen the ID rule (dashes, emails, IDs inside slugs). #109 is optional now that sites can report `nav` themselves.
 - **Public rollups:** only ibuild4you `2026-05-18` is unpublished — a deliberate skip that
   reappears in every future draft by design.
 - **#48 residual:** the "8am" cron is `0 15 * * *` — 8am Pacific in summer, 7am in winter.
