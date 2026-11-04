@@ -39,7 +39,15 @@ BOT_UA = re.compile(
     re.IGNORECASE,
 )
 HOST_OK = re.compile(r"^[a-z0-9][a-z0-9.-]{0,99}$")
-ALLOWED_EVENTS = {"pageview", "login"}
+ALLOWED_EVENTS = {"pageview", "login", "nav"}
+
+# Path scrubbing (beacon interface): a segment that looks like an identifier
+# becomes `:id` before storage, for every event, so a token in a URL never
+# reaches the table.
+_UUID_SEG = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+_DIGITS_SEG = re.compile(r"^[0-9]+$")
+_TOKEN_SEG = re.compile(r"^[A-Za-z0-9_]{16,}$")
 
 # Issue #52. BOT_UA above is a DROP — a declared crawler never becomes a row.
 # This is the other case: browser automation that presents a perfectly normal
@@ -148,6 +156,26 @@ def _agent_flag(headers, body=None):
     return 0
 
 
+def _is_id_segment(seg):
+    if not seg:
+        return False
+    if _UUID_SEG.match(seg) or _DIGITS_SEG.match(seg):
+        return True
+    if _TOKEN_SEG.match(seg):
+        classes = (any(c.islower() for c in seg) + any(c.isupper() for c in seg)
+                   + any(c.isdigit() for c in seg))
+        return classes >= 2
+    return False
+
+
+def scrub_path(path):
+    """Replace ID-like `/`-separated segments (UUID, all digits, or a 16+
+    char token mixing at least two of lower/upper/digit) with `:id`. Empty
+    segments are kept, so `/` stays `/` and a trailing slash survives."""
+    return "/".join(":id" if _is_id_segment(seg) else seg
+                    for seg in path.split("/"))
+
+
 def _drop(reason, detail=""):
     print(f"beacon drop: {reason} {detail}"[:200])
     return None
@@ -180,7 +208,7 @@ def parse_event(headers, body_bytes):
     path = body.get("path", "")
     if not isinstance(path, str) or not path.startswith("/"):
         return _drop("bad-path")
-    path = path.split("?")[0].split("#")[0][:MAX_PATH]
+    path = scrub_path(path.split("?")[0].split("#")[0])[:MAX_PATH]
 
     referrer = None
     ref = body.get("ref", "")
@@ -188,6 +216,24 @@ def parse_event(headers, body_bytes):
         ref_host = _hostname(ref)
         if ref_host and ref_host != site:
             referrer = ref_host[:MAX_HOST]
+
+    agent = _agent_flag(headers, body)
+
+    if event == "nav":
+        # Coarsened at write time (measurement-policy point 2): a per-visitor
+        # timestamped trail of navigations would be a session path. Keep the
+        # page and the day, drop who, where from, and on what.
+        return {
+            "ts": time.strftime("%Y-%m-%dT00:00:00Z", time.gmtime()),
+            "site": site,
+            "path": path,
+            "referrer": None,
+            "country": None,
+            "device": None,
+            "event": event,
+            "visitor_hash": "",
+            "agent": agent,
+        }
 
     country = headers.get("x-vercel-ip-country", "") or None
     ip = _client_ip(headers)
@@ -205,7 +251,7 @@ def parse_event(headers, body_bytes):
         "device": _device(ua),
         "event": event,
         "visitor_hash": visitor_hash,
-        "agent": _agent_flag(headers, body),
+        "agent": agent,
     }
 
 

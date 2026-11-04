@@ -11,12 +11,25 @@ granularity that answers it.** Never because collection is easy. The right
 shape for new signal is one named event with a purpose, not a general tracking
 upgrade.
 
-Allowlist as of 2026-07-29: `pageview`, and `login` (#10) — written server-side
-by `callback.py` on a successful Google sign-in, `path=/login/<role>` with the
-role checked against an allowlist so the email in scope at that moment cannot
-reach the row. It answers "who signs in, how often" at role granularity, which
-is the coarsest answer that answers it: with two accounts the role is a strong
-hint, but the data holds no identity, so the page counts sign-ins, not people.
+Allowlist as of 2026-11-04: `pageview`, `login` (#10) and `nav` (#109).
+Every event's path is scrubbed of ID-like segments (UUIDs, all-digit and
+mixed-class token segments become `:id`) before storage, so an identifier in a
+URL never reaches the table.
+
+`login` is written server-side by `callback.py` on a successful Google
+sign-in, `path=/login/<role>` with the role checked against an allowlist so
+the email in scope at that moment cannot reach the row. It answers "who signs
+in, how often" at role granularity, which is the coarsest answer that answers
+it: with two accounts the role is a strong hint, but the data holds no
+identity, so the page counts sign-ins, not people.
+
+`nav` is an in-app route change on a client-routed site. It answers which
+pages visitors of those apps actually see, which a page-load count cannot
+(issue #109). It is coarsened at write time: no visitor hash, a day-level
+timestamp (midnight UTC), and no country, device or referrer. The reason is
+point 2 below: a per-visitor, timestamped trail of navigations is a session
+path, and on small-N sites that is surveillance of a specific person. Only
+site, scrubbed path, day and the automation label are kept.
 
 ## Why minimal, in order of weight
 

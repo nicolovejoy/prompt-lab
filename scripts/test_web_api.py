@@ -1071,6 +1071,122 @@ def _():
         restore()
 
 
+@test("beacon: scrub_path replaces ID-like segments and leaves slugs alone")
+def _():
+    import beacon_helper as mod
+    changed = {
+        "/offer/status/0b7c1e2a-4d3f-4a1b-9c8d-7e6f5a4b3c2d": "/offer/status/:id",
+        "/setlist/Xq7RkL2mNp9TzW4vBc1D": "/setlist/:id",
+        "/projects/QwErTyUiOpAsDfGhJkLz": "/projects/:id",
+        "/orders/42": "/orders/:id",
+        "/d/8f3a2b1c9d0e4f5a6b7c": "/d/:id",
+        "/blog/2026/": "/blog/:id/",
+    }
+    for src, want in changed.items():
+        got = mod.scrub_path(src)
+        assert got == want, f"{src} -> {got}, want {want}"
+    for same in ("/", "/fr/about", "/song/smoke-723",
+                 "/projects/piano-backing-tracks-theory",
+                 "/join/summer-camp-2026",
+                 "/studio/presentation/homePage/homePage",
+                 "/review/country-book.html",
+                 "/notes/abcdefghijklmnopqrst"):
+        got = mod.scrub_path(same)
+        assert got == same, f"{same} was altered to {got}"
+
+
+@test("beacon: parse_event scrubs the path for every event")
+def _():
+    import os
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_scrub_parse")
+    os.environ.setdefault("BEACON_SALT", "test-salt")
+    for ev in ("pageview", "login", "nav"):
+        body = json.dumps({"path": "/orders/42?x=1", "event": ev}).encode()
+        row = mod.parse_event(GOOD_HEADERS, body)
+        assert row and row["path"] == "/orders/:id", f"{ev}: {row}"
+
+
+def _post_beacon(mod, headers, payload):
+    captured = []
+
+    def fake_turso(sql, args=None):
+        captured.append((sql, args or []))
+        return []
+
+    restore = patch_turso_query(mod, fake_turso)
+    try:
+        h = invoke_post(mod, "/api/beacon", payload, headers)
+        assert h.status_code == 204, f"got {h.status_code}"
+    finally:
+        restore()
+    return [c for c in captured if "INSERT INTO page_views" in c[0]]
+
+
+@test("beacon contract: text/plain JSON body from a site is stored (pageview and nav)")
+def _():
+    import os
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_contract")
+    os.environ.setdefault("BEACON_SALT", "test-salt")
+    headers = {**GOOD_HEADERS, "content-type": "text/plain",
+               "origin": "https://shop.example.com"}
+    raw = json.dumps({"path": "/shop", "ref": "https://www.example.org/x",
+                      "wd": 0}).encode()
+    ins = _post_beacon(mod, headers, raw)
+    assert len(ins) == 1, f"expected 1 insert, got {ins}"
+    a = ins[0][1]
+    assert a[1] == "shop.example.com" and a[2] == "/shop", a
+    # _hostname strips a leading www. (existing behaviour, unchanged).
+    assert a[3] == "example.org", f"referrer: {a}"
+    assert a[6] == "pageview", a
+
+    raw = json.dumps({"path": "/shop", "event": "nav",
+                      "ref": "https://shop.example.com/shop", "wd": 0}).encode()
+    ins = _post_beacon(mod, headers, raw)
+    assert len(ins) == 1, f"expected 1 insert, got {ins}"
+    assert ins[0][1][6] == "nav", ins[0][1]
+
+
+@test("beacon: nav rows are coarsened and need no BEACON_SALT")
+def _():
+    import os
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_nav")
+    saved = os.environ.get("BEACON_SALT")
+    os.environ["BEACON_SALT"] = "test-salt"
+    try:
+        body = json.dumps({"path": "/a", "event": "nav", "wd": 1,
+                           "ref": "https://elsewhere.example.org/"}).encode()
+        row = mod.parse_event(GOOD_HEADERS, body)
+        assert row, "nav dropped"
+        assert row["visitor_hash"] == "", row
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        assert row["ts"] == f"{today}T00:00:00Z", row["ts"]
+        assert row["country"] is None and row["device"] is None, row
+        assert row["referrer"] is None, row
+        assert row["agent"] == 1, "agent label must follow wd"
+        # pageview keeps its detail
+        pv = mod.parse_event(GOOD_HEADERS, json.dumps({"path": "/a"}).encode())
+        assert pv["visitor_hash"] and pv["country"] == "US", pv
+
+        del os.environ["BEACON_SALT"]
+        row = mod.parse_event(GOOD_HEADERS, body)
+        assert row and row["event"] == "nav", "nav needs no salt"
+        assert mod.parse_event(
+            GOOD_HEADERS, json.dumps({"path": "/a"}).encode()) is None, \
+            "pageview without a salt must still drop"
+    finally:
+        if saved is None:
+            os.environ.pop("BEACON_SALT", None)
+        else:
+            os.environ["BEACON_SALT"] = saved
+
+
+@test("beacon: navigate is not an event (only nav is)")
+def _():
+    mod = load_endpoint("web/api/beacon.py", "endpoint_beacon_navigate")
+    body = json.dumps({"path": "/", "event": "navigate"}).encode()
+    assert mod.parse_event(GOOD_HEADERS, body) is None
+
+
 @test("beacon: visitor hash varies by IP, never exposes it")
 def _():
     import os
