@@ -354,12 +354,16 @@ function visitorOverview(since) {
   for (let i = 364; i >= 0; i--) {
     for (const [site, weight] of SITES) {
       const views = Math.round(weight * rnd());
-      if (views > 0) daily.push({ date: labDay(i), site, views, uniques: Math.ceil(views * 0.6) });
+      const navs = (site === 'musicforge.example' || site === 'builder.example')
+        ? Math.round(views * 1.5) : 0;
+      if (views > 0) daily.push({ date: labDay(i), site, views, navs, uniques: Math.ceil(views * 0.6) });
     }
   }
+  const kept = daily.filter(r => (!since || r.date >= since)
+    && (!fixtureOptions.quietStart || r.date >= labDay(40)));
   const out = {
-    daily: daily.filter(r => (!since || r.date >= since)
-      && (!fixtureOptions.quietStart || r.date >= labDay(40))),
+    daily: kept,
+    navs_total: kept.reduce((n, r) => n + r.navs, 0),
     paths: [
       ['/', 'musicforge.example', 406], ['/', 'bakery.example', 159],
       [LONG_PATH, 'builder.example', 52], ['/dashboard', 'musicforge.example', 110],
