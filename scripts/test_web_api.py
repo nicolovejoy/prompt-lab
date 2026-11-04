@@ -6767,5 +6767,33 @@ def _():
     assert got.get("Content-Type") == "application/manifest+json", got
 
 
+BEACON_V1_INTEGRITY = "sha384-ONhBQw+nUkm9sHSzjh0NB2eoYzwhlmsVfP8Lyw1f2/ViSNHr+lwr82DK7p2W4pOI"
+
+
+@test("beacon: beacon-v1.js is frozen (SRI value never changes)")
+def _():
+    import base64
+    import hashlib
+    data = (ROOT / "web" / "beacon-v1.js").read_bytes()
+    got = "sha384-" + base64.b64encode(hashlib.sha384(data).digest()).decode()
+    assert got == BEACON_V1_INTEGRITY, (
+        f"beacon-v1.js changed ({got}). Versioned beacons never change: sites pin "
+        "this hash. Restore the file and publish beacon-v2.js instead.")
+
+
+@test("beacon: versioned file is routed before the catch-all and served immutable with CORS")
+def _():
+    cfg = json.loads((ROOT / "web" / "vercel.json").read_text())
+    sources = [r["source"] for r in cfg["rewrites"]]
+    assert "/beacon-v1.js" in sources, "no rewrite for /beacon-v1.js"
+    assert sources.index("/beacon-v1.js") < sources.index("/(.*)")
+    assert sources[-1] == "/(.*)", "the catch-all must stay last"
+    rule = next((h for h in cfg["headers"] if h["source"].startswith("/beacon-v")), None)
+    assert rule is not None, "no headers rule for the versioned beacon"
+    got = {h["key"]: h["value"] for h in rule["headers"]}
+    assert got.get("Cache-Control") == "public, max-age=31536000, immutable", got
+    assert got.get("Access-Control-Allow-Origin") == "*", got
+
+
 if __name__ == "__main__":
     sys.exit(main())
