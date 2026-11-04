@@ -1165,6 +1165,10 @@ def _():
         "/post/my-trip-a1b2c3d4": "/post/my-trip-:id",
         "/post/notes-0b7c1e2a-4d3f-4a1b-9c8d-7e6f5a4b3c2d": "/post/notes-:id",
         "/x/:idiot": "/x/:id",
+        "/f/0b7c1e2a-4d3f-4a1b-9c8d-7e6f5a4b3c2d_v2": "/f/:id",
+        "/f/0b7c1e2a-4d3f-4a1b-9c8d-7e6f5a4b3c2d1": "/f/:id",
+        "/f/x0b7c1e2a-4d3f-4a1b-9c8d-7e6f5a4b3c2dy": "/f/:id",
+        "/f/0b7c1e2a-4d3f-4a1b-9c8d-7e6f5a4b3c2d%5Fx": "/f/:id",
     }
     for src, want in changed.items():
         got = mod.scrub_path(src)

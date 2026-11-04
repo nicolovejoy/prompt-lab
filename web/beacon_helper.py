@@ -229,8 +229,16 @@ def scrub_path(path):
     inside a slug. A safety net, not a guarantee: docs/beacon.md lists what it
     misses. Empty segments are kept, so `/` stays `/` and a trailing slash
     survives."""
-    return "/".join(":id" if _is_id_segment(seg) else _scrub_inside(seg)
-                    for seg in path.split("/"))
+    out = []
+    for seg in path.split("/"):
+        if _is_id_segment(seg):
+            out.append(":id")
+            continue
+        inner = _scrub_inside(seg)
+        # Re-test: a `:id` left touching a word character (`:id_v2`) would
+        # read as key:value on the next pass, so collapse it now.
+        out.append(":id" if _is_id_segment(inner) else inner)
+    return "/".join(out)
 
 
 def _drop(reason, detail=""):

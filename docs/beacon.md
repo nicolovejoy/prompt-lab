@@ -78,10 +78,15 @@ any UUID becomes `:id`, and each `-`-separated piece becomes `:id` if it is 5
 or more digits (`how-to-bake-48213` becomes `how-to-bake-:id`, while `2026`
 survives), or 8 or more letters and digits that switch between letter and
 digit at least three times (`a1b2c3d4`; `ibuild4you` survives), or a 16+
-character token as above.
+character letters/digits/underscore token that mixes at least two of
+lowercase, uppercase and digits.
 
 Empty segments are kept, so `/` stays `/` and a trailing slash survives. This
 applies to every event.
+
+The rule favours safety over detail: a whole segment of 16 or more characters
+that mixes upper and lower case with a digit becomes `:id` even if it is a
+readable slug (`Top-10-Tips-For-Writers`).
 
 It is a safety net, not a reason to put identifiers in URLs. It does not
 catch:
@@ -90,6 +95,10 @@ catch:
   letter/digit switches, or inside a slug shorter than 8
 - numbers of under 5 digits inside a slug (`order-1234`)
 - names or other identifying words in a plain slug (`/u/jane-roe`)
+- an ID joined to the rest of a segment by `.` or `_` rather than `-`
+  (`/invoice/48213.pdf`, `/t/trip_a1b2c3d4`)
+- double percent-encoding (`jane%2540example.com`)
+- matrix parameters (`/a/b;name=Jane`)
 
 So do not send paths that carry identifiers in the first place. Skip admin and
 other private pages, and where you can, send the route pattern rather than the
