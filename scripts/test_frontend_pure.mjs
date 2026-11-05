@@ -34,6 +34,21 @@ const pure = new Function(`"use strict";\n${src.slice(open, close)}\nreturn { ${
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
+// Source-level guards share these. stripComments drops /* */ and // line
+// comments (a // must follow whitespace, so https:// survives). The three
+// colour token blocks are the dark :root and the light palette written twice.
+const stripComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/[^\n]*/g, '$1');
+const TOKEN_BLOCK_RES = {
+  dark: /:root\s*\{([^}]*)\}/,
+  lightOs: /:root:not\(\[data-theme\]\)\s*\{([^}]*)\}/,
+  lightSet: /:root\[data-theme="light"\]\s*\{([^}]*)\}/,
+};
+const tokenBlock = (which) => src.match(TOKEN_BLOCK_RES[which])[1];
+// A block as a { '--name': 'value' } map (comments stripped).
+const tokenMap = (which) => Object.fromEntries(
+  [...stripComments(tokenBlock(which)).matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
+const tok = (block, name) => (block.match(new RegExp(`${name}\\s*:\\s*([^;]+);`)) || [])[1];
+
 // Ascending run of calendar days, built with the helper under test's own
 // arithmetic deliberately avoided: plain UTC math, so a bug in addDays cannot
 // hide itself.
@@ -277,6 +292,143 @@ test('font sizes: every font-size is a --fs-* token, and every token used is def
   const undef = [...used].filter((t) => !defined.has(t));
   assert.deepEqual(undef, [], `undefined tokens: ${undef.join(', ')}`);
   assert.ok(used.size > 0);
+});
+
+test('opacity is not used as a text colour', () => {
+  // Limits: this only sees ONE declaration block at a time (a CSS {...} body or
+  // one style="..." string). It cannot see a parent's opacity dimming a child
+  // that sets its own colour, nor opacity applied by a different rule to the
+  // same element. A computed value (opacity: ${...}, a loading/disabled state)
+  // is skipped on purpose. It catches the common slip: color: var(--text...) and
+  // opacity: written together.
+  const stripped = src.replace(/\/\*[\s\S]*?\*\//g, '');
+  const blocks = [
+    ...[...stripped.matchAll(/\{([^{}]*)\}/g)].map((m) => m[1]),
+    ...[...stripped.matchAll(/style="([^"]*)"/g)].map((m) => m[1]),
+  ];
+  const bad = blocks.filter((b) => /color\s*:\s*var\(--text/.test(b) && /(^|[;\s])opacity\s*:(?!\s*\$\{)/.test(b));
+  assert.deepEqual(bad.map((b) => b.trim().slice(0, 80)), [], 'use --text-muted instead of opacity on text');
+});
+
+test('accent roles: text uses --link, text on a fill uses --on-accent', () => {
+  // --accent is for fills, borders and rings; accent-coloured text is --link, and
+  // text on an accent (or any coloured) fill is --on-accent. Only colour
+  // declarations are checked: background-color and border-color are excluded by
+  // the lookbehind. A JS key (color: 'var(--accent)') is caught via the quote.
+  const stripped = stripComments(src);
+  const values = [...stripped.matchAll(/(?<![-\w])color\s*:\s*['"]?([^;"'`}\n]*)/g)].map((m) => m[1].trim());
+  const accent = values.filter((v) => /var\(--accent\)/.test(v));
+  assert.deepEqual(accent, [], 'color: var(--accent) on text; use var(--link)');
+  const white = values.filter((v) => /(^|[^\w-])(#fff(fff)?|white)(?![\w-])/i.test(v));
+  assert.deepEqual(white, [], 'color: #fff/white; use var(--on-accent)');
+  const dark = tokenBlock('dark');
+  for (const name of ['--link', '--on-accent']) {
+    assert.ok(tok(dark, name), `dark :root must define ${name}`);
+  }
+});
+
+test('chart palette: tokens in all three blocks, no palette hex outside them', () => {
+  const names = [...Array.from({ length: 8 }, (_, i) => `--chart-${i + 1}`), '--chart-other'];
+  const dark = tokenBlock('dark');
+  for (const name of names) {
+    assert.ok(tok(dark, name), `dark :root must define ${name}`);
+  }
+  // A palette hex anywhere but the token blocks is a colour that ignores the
+  // theme. The lookahead keeps #555 from matching #5558e6.
+  let rest = stripComments(src);
+  for (const re of Object.values(TOKEN_BLOCK_RES)) rest = rest.replace(re, '');
+  const HEX = ['06b6d4', '6366f1', '22c55e', 'eab308', 'ef4444', 'ec4899', 'f97316', 'a855f7', '555', '777', '6b6b6b', 'c62828', '6e6e6e'];
+  const found = [...rest.matchAll(new RegExp(`#(${HEX.join('|')})(?![0-9a-f])`, 'gi'))].map((m) => m[0]);
+  assert.deepEqual(found, [], `palette hex outside :root; use var(--chart-N): ${found.join(', ')}`);
+});
+
+// ---- contrast ---------------------------------------------------------------
+const lum = (hex) => {
+  let h = hex.replace('#', '');
+  if (h.length === 3) h = [...h].map((c) => c + c).join('');
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const ratio = (a, b) => {
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
+const THEMES = () => ({ dark: tokenMap('dark'), light: tokenMap('lightSet') });
+const checkRatios = (pairs, min) => {
+  const out = [], low = [];
+  for (const [theme, map] of Object.entries(THEMES())) {
+    for (const [fg, bg] of pairs) {
+      assert.match(map[fg] || '', /^#[0-9a-f]{3}([0-9a-f]{3})?$/i, `${theme} ${fg} must be a hex value`);
+      assert.match(map[bg] || '', /^#[0-9a-f]{3}([0-9a-f]{3})?$/i, `${theme} ${bg} must be a hex value`);
+      const r = ratio(map[fg], map[bg]);
+      out.push(`${theme} ${fg} on ${bg}: ${r.toFixed(2)}`);
+      if (r < min) low.push(`${theme} ${fg} ${map[fg]} on ${bg} ${map[bg]} = ${r.toFixed(2)} (< ${min})`);
+    }
+  }
+  if (process.env.SHOW_RATIOS) console.log(out.join('\n'));
+  assert.deepEqual(low, [], `contrast below ${min}:1`);
+};
+
+test('light palette is written identically in both places', () => {
+  const a = tokenMap('lightOs'), b = tokenMap('lightSet');
+  assert.ok(Object.keys(a).length > 10, 'OS-light block parsed empty');
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    assert.ok(k in a, `${k} missing from the OS-light block`);
+    assert.ok(k in b, `${k} missing from the data-theme="light" block`);
+    assert.equal(a[k], b[k], `${k} differs between the two light blocks`);
+  }
+});
+
+test('every light token has a dark definition', () => {
+  const dark = tokenMap('dark');
+  const missing = Object.keys(tokenMap('lightSet')).filter((k) => !(k in dark));
+  assert.deepEqual(missing, [], 'light-only tokens');
+});
+
+test('text tokens pass 4.5:1 on bg and card', () => {
+  const pairs = [];
+  for (const t of ['--text', '--text-secondary', '--text-muted', '--link', '--green', '--yellow', '--red']) {
+    pairs.push([t, '--bg'], [t, '--card']);
+  }
+  checkRatios(pairs, 4.5);
+});
+
+test('--on-accent on --accent passes 4.5:1', () => {
+  checkRatios([['--on-accent', '--accent']], 4.5);
+});
+
+test('chart tokens pass 3:1 on bg', () => {
+  const names = [...Array.from({ length: 8 }, (_, i) => `--chart-${i + 1}`), '--chart-other'];
+  checkRatios(names.map((n) => [n, '--bg']), 3);
+});
+
+test('radius, shadow and z-index are tokens: no raw values outside :root', () => {
+  // Comments stripped and the dark :root (where the tokens are defined) removed.
+  // 50% stays: an element with equal width and height may be a circle.
+  const body = stripComments(src).replace(TOKEN_BLOCK_RES.dark, '');
+  const decl = (prop) => [...body.matchAll(new RegExp(`(?<![-\\w])${prop}\\s*:\\s*([^;"'\`}\\n]*)`, 'g'))].map((m) => m[1].trim());
+  const radius = decl('border-radius').filter((v) => v.split(/\s+/).some((x) => x !== '0' && x !== '50%' && !/^var\(--r-[\w-]+\)$/.test(x)));
+  assert.deepEqual(radius, [], 'border-radius must use var(--r-*) (or 50%)');
+  const shadow = decl('box-shadow').filter((v) => /rgba?\(/.test(v));
+  assert.deepEqual(shadow, [], 'box-shadow must use var(--shadow-*)');
+  const z = decl('z-index').filter((v) => /^-?\d+$/.test(v));
+  assert.deepEqual(z, [], 'z-index must use var(--z-*)');
+  const dark = tokenMap('dark');
+  for (const n of ['--r-xs', '--r-sm', '--r-md', '--r-lg', '--shadow-pop', '--shadow-modal', '--shadow-tip',
+                   '--z-tip', '--z-dropdown', '--z-bar', '--z-modal']) assert.ok(dark[n], `:root must define ${n}`);
+});
+
+test('spacing is tokens: no raw 4/8/12/16/24/32px in padding, margin or gap outside :root', () => {
+  // Comments stripped and the dark :root removed. Only whole scale values count:
+  // 14px, 48px and 2px are off-scale and stay raw; a negative (-8px) is left raw
+  // on purpose (five of them, too many for calc(-1 * var(--sp-*))).
+  const body = stripComments(src).replace(TOKEN_BLOCK_RES.dark, '');
+  const decls = [...body.matchAll(/(?<![-\w])(padding|margin|gap|row-gap|column-gap)(-(?:top|right|bottom|left))?\s*:\s*([^;"'`}\n]*)/g)];
+  const raw = decls.filter((m) => /(?<![-\w.])(4|8|12|16|24|32)px\b/.test(m[3])).map((m) => m[0].trim());
+  assert.deepEqual(raw, [], 'padding/margin/gap must use var(--sp-*) for scale values');
+  const dark = tokenMap('dark');
+  for (const n of ['--sp-1', '--sp-2', '--sp-3', '--sp-4', '--sp-5', '--sp-6']) assert.ok(dark[n], `:root must define ${n}`);
 });
 
 let failed = 0;
