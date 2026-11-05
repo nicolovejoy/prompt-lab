@@ -68,7 +68,7 @@ light: `--accent` #4f46e5, 6.02) for any accent-coloured text; `--on-accent`
 fill one step darker (around #5558e6) so white on it clears 4.5; verify the
 number at implementation. Accent itself stays for fills, rings and chart series.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R2. Light-theme green and yellow as text
 
@@ -80,7 +80,7 @@ about #a16207; both clear 4.5 on #fafafa and #fff), leave the `-dim` fills
 alone. Status badges then pass too. Dark values are unchanged. One-line change
 in each of the two light blocks; no new token.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R3. `--bg-elevated`
 
@@ -91,7 +91,7 @@ Recommend: define it (dark #222, the existing `--card-hover` value; light #fff)
 and drop the inline fallbacks. The alternative, replacing all five with
 `--card`, loses the distinction the author was reaching for.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R4. Opacity as a colour
 
@@ -103,7 +103,7 @@ Recommend: one `--text-muted` token (dark about #9a9a9a, light about #5c5c5c,
 both over 6:1) and replace the text-opacity uses with it. Opacity stays for
 genuinely transparent things (disabled states, heatmap cells, chart dimming).
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R5. The 600/640 breakpoint split
 
@@ -114,7 +114,7 @@ Recommend: one breakpoint at 640px, written once as a comment-documented
 constant, and the `max-width: 600px` rules moved to it. The phone check runs at
 390px so nothing it guards changes.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R6. Chart palette
 
@@ -128,7 +128,7 @@ darkened light-theme values, read by the chart code at render time. Dark values
 stay as they are. Its own PR, because it touches the pure helpers and the
 frontend test.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R7. Spacing, radius, shadow, z-index
 
@@ -142,7 +142,7 @@ one. Second, spacing (4/8/12/16/24/32 as `--sp-1` to `--sp-6`), which is a large
 mechanical edit. z-index: four named layers (base, sticky header, dropdown,
 overlay). Sizes preserved throughout.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R8. Chips, badges and buttons
 
@@ -156,7 +156,7 @@ window picker and the tab bar keep their own classes because they are
 segmented controls, not buttons. Expect small visible deltas (a chip gaining or
 losing 1px of padding); accept them.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R9. Page titles and headings
 
@@ -169,7 +169,7 @@ name becomes the project page's `<h1>`; home gets a visually hidden `<h1>`
 Cosmetic change only on the three 2xl pages (More, About, Day), which grow one
 step.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R10. Review email: fixed template
 
@@ -185,7 +185,7 @@ fixed and testable, and the mock in the screenshot folder becomes a real
 rendering. This is the largest item in the review; it changes the prompt and
 the tool schema, so the first few nights need a read.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R11. Shared email palette, and dark mode
 
@@ -201,7 +201,7 @@ rendering differs across Mail, Gmail and iOS enough that a light-only email with
 a declared scheme is the predictable choice; revisit if a dark-mode complaint
 ever appears.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R12. Machine voice in emails and in Ask
 
@@ -213,7 +213,7 @@ R10 lands); the Ask answer renders through `MachineText`. The health email's jok
 line is one sentence and already italic; mark it too, for consistency, or leave
 it as the one exception. Recommend marking it.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R13. Phone gutter and desktop tap floor
 
@@ -224,7 +224,7 @@ several buttons are about 28px tall.
 Recommend: 16px gutter below the breakpoint; a 32px `min-height` on `.btn`,
 `.win-btn` and `.sub-tab` on desktop. Both small.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R14. Home-screen tab bar contents
 
@@ -237,7 +237,7 @@ unchanged. Todos moves to More for the admin, where it is one tap further.
 Alternative is to leave it, since the health email already carries the alarm;
 the page is for drilling in, not for noticing.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R15. Type scale values
 
@@ -249,7 +249,7 @@ header meta. Leave the twelve steps as they are until R7's spacing pass, then
 look at folding `md` into `body` with the sizes in front of us. Do not change
 the step count in this review.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R16. `color-scheme` and `theme-color`
 
@@ -262,7 +262,7 @@ Recommend: `color-scheme: dark` on `:root`, `light` in both light blocks; two
 `theme-color` metas with `media="(prefers-color-scheme: …)"`, and the head
 script that sets `data-theme` also rewrites the active one. Trivial.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R17. Light block duplication
 
@@ -273,7 +273,7 @@ Recommend: keep the duplication (CSS offers no clean single-source form here)
 and add a frontend test that parses both blocks and asserts they are identical.
 The guard is cheaper than the refactor.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R18. Accessibility pass (one PR, no visual change)
 
@@ -290,7 +290,7 @@ with an Enter/Space handler on the clickable divs, or turning them into
 `<button>`s. The red-on-red-dim error banner (4.33 dark, 3.98 light) moves to
 `--text` on the tinted background with a red left border.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
 
 ### R19. Order of work
 
@@ -309,4 +309,12 @@ Recommend, if the rulings land roughly as proposed:
 Each PR gets the phone check and the frontend pure tests; a before/after
 screenshot pair goes in the state folder, never the repo.
 
-Decision:
+Decision: yes, as recommended (Nico, 2026-11-04).
+
+### Mocks vs build (Nico, 2026-11-04)
+
+Build first. Token and scale work preserves the look, so each PR ships with
+before/after screenshots (synthetic data, state folder) instead of mocks. Mocks
+are made only for the four items whose look changes: R8 (chips and buttons),
+R9 (page titles), R10 (review email template) and R14 (admin tab bar). One
+synthetic screenshot of the proposed look each, Nico picks, then build.
