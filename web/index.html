@@ -181,7 +181,7 @@
 
     /* Login */
     .login { max-width: 320px; margin: 120px auto; text-align: center; }
-    .login h2 { font-size: var(--fs-xl); font-weight: 600; margin-bottom: var(--sp-1); letter-spacing: -0.3px; }
+    .login h1 { font-size: var(--fs-xl); font-weight: 600; margin-bottom: var(--sp-1); letter-spacing: -0.3px; }
     .login p { color: var(--text-secondary); font-size: var(--fs-md); margin-bottom: var(--sp-5); }
     .login input {
       width: 100%; padding: 10px 14px; margin-bottom: 10px;
@@ -804,8 +804,10 @@
       font-family: "SF Mono", ui-monospace, monospace; white-space: nowrap;
     }
 
-    /* Section labels (project page Now/Trajectory/Cost/History) */
+    /* One title style for every page's h1 */
     .page-title { margin: 0; font-size: var(--fs-3xl); color: var(--accent-light); line-height: 1.15; }
+
+    /* Section labels (project page Now/Trajectory/Cost/History) */
     h2.section-label {
       font-size: var(--fs-body-sm); font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.5px; color: var(--text-secondary);
@@ -1209,7 +1211,7 @@
       return html`
         <div class="container">
           <div class="login">
-            <h2>Prompt Lab</h2>
+            <h1>Prompt Lab</h1>
             <p>Sign in to continue</p>
             ${googleLogin && html`
               <button class="btn btn-lg google-btn" onClick=${() => { window.location = '/api/login?provider=google'; }}>
@@ -4556,7 +4558,7 @@
                       min-width: 0; overflow-wrap: anywhere">
               ← ${project}
             </a>
-            <h2 style="margin: 0; font-size: var(--fs-2xl)">Cost detail</h2>
+            <h1 class="page-title">Cost detail</h1>
             <div style="margin-left: auto; font-size: var(--fs-lg); font-weight: 600">
               $${total.toFixed(2)} <span style="font-weight: 400; color: var(--text-secondary);
                 font-size: var(--fs-body)">(${sorted.length} rows)</span>
