@@ -44,6 +44,9 @@ const TOKEN_BLOCK_RES = {
   lightSet: /:root\[data-theme="light"\]\s*\{([^}]*)\}/,
 };
 const tokenBlock = (which) => src.match(TOKEN_BLOCK_RES[which])[1];
+// A block as a { '--name': 'value' } map (comments stripped).
+const tokenMap = (which) => Object.fromEntries(
+  [...stripComments(tokenBlock(which)).matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
 const tok = (block, name) => (block.match(new RegExp(`${name}\\s*:\\s*([^;]+);`)) || [])[1];
 
 // Ascending run of calendar days, built with the helper under test's own
@@ -325,7 +328,6 @@ test('accent roles: text uses --link, text on a fill uses --on-accent', () => {
     assert.ok(tok(dark, name), `dark :root must define ${name}`);
     assert.ok(tok(lightOs, name), `OS-light block must define ${name}`);
     assert.ok(tok(lightSet, name), `data-theme="light" block must define ${name}`);
-    assert.equal(tok(lightOs, name), tok(lightSet, name), `${name} differs between the two light blocks`);
   }
 });
 
@@ -338,7 +340,6 @@ test('chart palette: tokens in all three blocks, no palette hex outside them', (
     assert.ok(tok(dark, name), `dark :root must define ${name}`);
     assert.ok(tok(lightOs, name), `OS-light block must define ${name}`);
     assert.ok(tok(lightSet, name), `data-theme="light" block must define ${name}`);
-    assert.equal(tok(lightOs, name), tok(lightSet, name), `${name} differs between the two light blocks`);
   }
   // A palette hex anywhere but the token blocks is a colour that ignores the
   // theme. The lookahead keeps #555 from matching #5558e6.
@@ -347,6 +348,67 @@ test('chart palette: tokens in all three blocks, no palette hex outside them', (
   const HEX = ['06b6d4', '6366f1', '22c55e', 'eab308', 'ef4444', 'ec4899', 'f97316', 'a855f7', '555'];
   const found = [...rest.matchAll(new RegExp(`#(${HEX.join('|')})(?![0-9a-f])`, 'gi'))].map((m) => m[0]);
   assert.deepEqual(found, [], `palette hex outside :root; use var(--chart-N): ${found.join(', ')}`);
+});
+
+// ---- contrast ---------------------------------------------------------------
+const lum = (hex) => {
+  let h = hex.replace('#', '');
+  if (h.length === 3) h = [...h].map((c) => c + c).join('');
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const ratio = (a, b) => {
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
+const THEMES = () => ({ dark: tokenMap('dark'), light: tokenMap('lightSet') });
+const checkRatios = (pairs, min) => {
+  const out = [], low = [];
+  for (const [theme, map] of Object.entries(THEMES())) {
+    for (const [fg, bg] of pairs) {
+      assert.match(map[fg] || '', /^#[0-9a-f]{3}([0-9a-f]{3})?$/i, `${theme} ${fg} must be a hex value`);
+      assert.match(map[bg] || '', /^#[0-9a-f]{3}([0-9a-f]{3})?$/i, `${theme} ${bg} must be a hex value`);
+      const r = ratio(map[fg], map[bg]);
+      out.push(`${theme} ${fg} on ${bg}: ${r.toFixed(2)}`);
+      if (r < min) low.push(`${theme} ${fg} ${map[fg]} on ${bg} ${map[bg]} = ${r.toFixed(2)} (< ${min})`);
+    }
+  }
+  if (process.env.SHOW_RATIOS) console.log(out.join('\n'));
+  assert.deepEqual(low, [], `contrast below ${min}:1`);
+};
+
+test('light palette is written identically in both places', () => {
+  const a = tokenMap('lightOs'), b = tokenMap('lightSet');
+  assert.ok(Object.keys(a).length > 10, 'OS-light block parsed empty');
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    assert.ok(k in a, `${k} missing from the OS-light block`);
+    assert.ok(k in b, `${k} missing from the data-theme="light" block`);
+    assert.equal(a[k], b[k], `${k} differs between the two light blocks`);
+  }
+});
+
+test('every light token has a dark definition', () => {
+  const dark = tokenMap('dark');
+  const missing = Object.keys(tokenMap('lightSet')).filter((k) => !(k in dark));
+  assert.deepEqual(missing, [], 'light-only tokens');
+});
+
+test('text tokens pass 4.5:1 on bg and card', () => {
+  const pairs = [];
+  for (const t of ['--text', '--text-secondary', '--text-muted', '--link', '--green', '--yellow', '--red']) {
+    pairs.push([t, '--bg'], [t, '--card']);
+  }
+  checkRatios(pairs, 4.5);
+});
+
+test('--on-accent on --accent passes 4.5:1', () => {
+  checkRatios([['--on-accent', '--accent']], 4.5);
+});
+
+test('chart tokens pass 3:1 on bg', () => {
+  const names = [...Array.from({ length: 8 }, (_, i) => `--chart-${i + 1}`), '--chart-other'];
+  checkRatios(names.map((n) => [n, '--bg']), 3);
 });
 
 let failed = 0;
