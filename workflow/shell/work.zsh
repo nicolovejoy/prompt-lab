@@ -23,8 +23,11 @@
 #           starts the session on /readup.
 #           `work musicforge opus`      -> skips the model question.
 #           `work musicforge opus high` -> skips both questions.
-#           `recap`           -> newest session per project: what it said
-#                                to do next (`recap 14`, `recap musicforge`)
+#           `recap`           -> numbered list of repos touched in the last
+#                                14 days, with commits and what to do next
+#                                (`recap 30`, `recap musicforge`)
+#           `work 1 3 4`      -> opens recap lines 1, 3 and 4, asking the
+#                                model and effort once for all of them
 #           (The Codex launchers `cx` and `duet` were removed 2026-10-16
 #           when Codex was retired.)
 # ============================================================
@@ -190,20 +193,64 @@ _work_cmds() {
   reply=("$top_cmd" "$shell_cmd")
 }
 
-_work_launch() {
-  _work_pick "$1" || return 1
-  local name="$REPLY"
-  # NB: can't name this "path" — zsh ties that name to $PATH.
-  local proj_dir="$WORK_SRC_DIR/$name"
+WORK_RECAP_STATE="$HOME/.claude/state/recap-last.txt"   # written by `recap`
 
-  _work_model "$2" || return 1
+# Resolve recap numbers ("1 3 4") into project names in reply.
+_work_from_recap() {
+  if [[ ! -f "$WORK_RECAP_STATE" || -z "$(find "$WORK_RECAP_STATE" -mmin -1440 2>/dev/null)" ]]; then
+    echo "No recap from the last day; run recap first."
+    return 1
+  fi
+  local names=("${(@f)$(<$WORK_RECAP_STATE)}") n
+  reply=()
+  for n in "$@"; do
+    if [[ -z "${names[$n]}" ]]; then
+      echo "recap has no line $n (it lists ${#names})."
+      return 1
+    fi
+    reply+=("${names[$n]}")
+  done
+}
+
+_work_launch() {
+  # `work 1 3 4 [model] [effort]` opens recap lines 1, 3 and 4. A leading
+  # number counts as a recap line only when ~/src has no folder by that name.
+  local nums=()
+  while [[ "$1" == <1-> && ! -d "$WORK_SRC_DIR/$1" ]]; do
+    nums+=("$1"); shift
+  done
+  local names=()
+  if (( ${#nums} )); then
+    _work_from_recap $nums || return 1
+    names=($reply)
+    local n
+    for n in $names; do
+      [[ -d "$WORK_SRC_DIR/$n" ]] || { echo "No such directory: $WORK_SRC_DIR/$n"; return 1; }
+    done
+    echo "Opening: ${(j:, :)names}"
+  else
+    _work_pick "$1" || return 1
+    names=("$REPLY"); (( $# )) && shift
+  fi
+
+  # Asked once, applied to every window.
+  _work_model "$1" || return 1
   local model="$REPLY"
-  _work_effort "$3" || return 1
+  _work_effort "$2" || return 1
   local effort="$REPLY"
 
-  _work_cmds "$name" "$proj_dir" "$model" "$effort"
-  local top_cmd="${reply[1]}" shell_cmd="${reply[2]}"
+  local name
+  for name in $names; do
+    # NB: can't name this "path" — zsh ties that name to $PATH.
+    _work_cmds "$name" "$WORK_SRC_DIR/$name" "$model" "$effort"
+    _work_window "${reply[1]}" "${reply[2]}" || return 1
+  done
+}
 
+# Open one iTerm2 window: Claude pane on top, shell strip below.
+#   _work_window <top_cmd> <shell_cmd>
+_work_window() {
+  local top_cmd="$1" shell_cmd="$2"
   osascript - "$top_cmd" "$shell_cmd" "$WORK_COLS" "$WORK_ROWS" "$WORK_BOTTOM_PCT" <<'APPLESCRIPT'
 on run argv
   set topCommand to item 1 of argv
@@ -239,7 +286,7 @@ APPLESCRIPT
 
 
 # --- 2b. RECAP ---------------------------------------------
-# What each recent session said to do next, from the history DB.
+# Repos touched lately and what each said to do next (history DB + git log).
 # `recap [DAYS] [PROJECT]` — see workflow/bin/recap.py.
 recap() { ~/.claude/bin/recap.py "$@"; }
 
