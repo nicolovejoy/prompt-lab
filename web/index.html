@@ -61,6 +61,7 @@
       --fs-body-sm: 0.95rem;
       --fs-body: 1.06rem;
       --fs-md: 1.12rem;
+      --fs-prose: 1.2rem; /* running text people read: home timeline, project summary */
       --fs-lg: 1.3rem;
       --fs-xl: 1.43rem;
       --fs-2xl: 1.7rem;
@@ -394,7 +395,7 @@
       font-size: var(--fs-md); color: var(--text-secondary); margin-bottom: 10px;
       font-family: "SF Mono", ui-monospace, monospace;
     }
-    .project-summary { font-size: var(--fs-lg); color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px; }
+    .project-summary { font-size: var(--fs-prose); color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px; }
     .project-layout { display: grid; grid-template-columns: 1fr 300px; gap: 24px; }
     @media (max-width: 800px) { .project-layout { grid-template-columns: 1fr; } }
     .project-sidebar > * + * { margin-top: 16px; }
@@ -622,7 +623,7 @@
     }
     .timeline-date:first-child { margin-top: 0; }
     .timeline-entry {
-      position: relative; font-size: var(--fs-md); color: var(--text-secondary);
+      position: relative; font-size: var(--fs-prose); color: var(--text-secondary);
       line-height: 1.6; padding: 6px 0; cursor: pointer;
       border-radius: 6px; transition: background 0.15s;
     }
@@ -636,7 +637,7 @@
     .timeline-entry.rollup:hover { background: none; margin: 0; padding: 6px 0; }
     .timeline-entry.rollup::before { background: var(--green); }
     .timeline-entry.rollup:hover::before { left: -20px; }
-    .timeline-phrase { font-size: var(--fs-md); }
+    .timeline-phrase { font-size: var(--fs-prose); }
     .timeline-expand {
       margin-top: 8px; padding: 10px 12px; background: var(--card);
       border: 1px solid var(--border); border-radius: 6px;
