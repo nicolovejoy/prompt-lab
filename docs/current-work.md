@@ -154,6 +154,14 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   was covered by #76 (`health`, `health-cards` in `scripts/phone/checks.mjs`); the full
   phone run on 2026-11-04 passed 404/404 and the screenshot was checked by eye.
 - **Beacon interface (2026-11-04, #110 merged, deployed).** `/api/beacon` is a documented contract (`docs/beacon.md`): new `nav` event for in-app views (stored with no visitor hash, day-level date, random id), ID-like path segments become `:id`, sites can no longer post `login`, frozen `beacon-v1.js` with SRI (headers verified live). prntd's #363 tag is live; their own call with `nav` is in progress and they post the ship date, then check #/visitors. The first `--apply` backfill is done (no unscrubbed old-rule paths remain). Widened ID rule (emails, key:value such as `name%3A<person>`, dashed IDs, IDs inside slugs) merged as #111 2026-11-04 and its `--apply` backfill ran the same day (5 paths / 8 rows, including 3 person-name paths); a dry run afterwards shows 0 paths to change. #109 is optional now that sites can report `nav` themselves.
+- **Design system pass 1 is PR #113 (2026-11-04), open for Nico to merge.** Built by SDD from
+  `docs/superpowers/plans/2026-11-04-design-system-dashboard.md`: rulings R1–R7, R13, R15–R18 of
+  `docs/design-review/review.md` (colour roles, chart/spacing/radius/shadow/z tokens, one 640px
+  breakpoint, color-scheme, a11y pass, seven source guards + two phone checks). Before/after shots:
+  `~/.claude/state/prompt-lab/design-review/{dashboard,after}/`. Parked follow-ups: roving tabindex on
+  chart bars (first; Health has 360+ tab stops), iOS standalone status bar is `black-translucent` so
+  `theme-color` may not show, optional dark `--chart-1` → `#5558e6`. Still to do from the review: mocks
+  for R8 (chips/buttons), R9 (page titles), R14 (admin tab bar), then build; emails R10–R12 as their own plan.
 - **Design review of prompt-labs.org and its emails (2026-11-04).** Facts for a Fable
   review are in `docs/design-review/facts.md`; synthetic-data screenshots and email
   renders are outside the repo in `~/.claude/state/prompt-lab/design-review/`. Scope is

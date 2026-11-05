@@ -318,3 +318,7 @@ before/after screenshots (synthetic data, state folder) instead of mocks. Mocks
 are made only for the four items whose look changes: R8 (chips and buttons),
 R9 (page titles), R10 (review email template) and R14 (admin tab bar). One
 synthetic screenshot of the proposed look each, Nico picks, then build.
+
+### Status (2026-11-04)
+
+R1–R7, R13, R15–R18: built on branch `claude/design-system-1`, PR #113. R8, R9, R14: mocks next. R10–R12: separate plan.
