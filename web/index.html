@@ -55,8 +55,11 @@
       --text-secondary: #d0d0d0;
       --text-muted: #9a9a9a;
       --border: #2a2a2a;
-      --accent: #6366f1;
+      --accent: #5558e6;
       --accent-light: #818cf8;
+      /* accent-coloured text: links, "open day", inline actions. --accent is for fills and rings. */
+      --link: #818cf8;
+      --on-accent: #fff;
       --accent-dim: rgba(99, 102, 241, 0.15);
       --green: #22c55e;
       --green-dim: rgba(34, 197, 94, 0.15);
@@ -97,7 +100,9 @@
         --text-muted: #5c5c5c;
         --border: #e5e5e5;
         --accent: #4f46e5;
-        --accent-light: #6366f1;
+        --accent-light: #4338ca;
+        --link: #4f46e5;
+        --on-accent: #fff;
         --accent-dim: rgba(79, 70, 229, 0.1);
         --green: #14743a;
         --green-dim: rgba(22, 163, 74, 0.1);
@@ -118,7 +123,9 @@
       --text-muted: #5c5c5c;
       --border: #e5e5e5;
       --accent: #4f46e5;
-      --accent-light: #6366f1;
+      --accent-light: #4338ca;
+      --link: #4f46e5;
+      --on-accent: #fff;
       --accent-dim: rgba(79, 70, 229, 0.1);
       --green: #14743a;
       --green-dim: rgba(22, 163, 74, 0.1);
@@ -146,7 +153,7 @@
     }
     .login input:focus { outline: none; border-color: var(--accent); }
     .login button {
-      width: 100%; padding: 10px; background: var(--accent); color: white;
+      width: 100%; padding: 10px; background: var(--accent); color: var(--on-accent);
       border: none; border-radius: var(--radius); font-size: var(--fs-lg); font-weight: 600; cursor: pointer;
     }
     .login button:disabled { opacity: 0.4; }
@@ -372,7 +379,7 @@
       cursor: pointer; font-family: inherit; border: 1px solid var(--border);
       background: transparent; color: var(--text-secondary);
     }
-    .win-btn[aria-pressed="true"] { background: var(--accent); color: #fff; }
+    .win-btn[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 
     /* A list row that links through (Costs and Activity, By project). */
     .row-link {
@@ -489,7 +496,7 @@
       padding: 7px 16px; font-size: var(--fs-md); font-weight: 600; color: var(--text-secondary);
       background: none; border: none; cursor: pointer; border-radius: 6px; font-family: inherit;
     }
-    .sub-tab.active { background: var(--accent); color: white; }
+    .sub-tab.active { background: var(--accent); color: var(--on-accent); }
     @media (max-width: 600px) {
       .sub-tabs { overflow-x: auto; flex-wrap: nowrap; }
       .sub-tab { white-space: nowrap; flex-shrink: 0; }
@@ -519,7 +526,7 @@
     .chart-readout-more { color: var(--text-secondary); padding: 2px 0; }
     .chart-open-day, .chart-day-chip {
       min-height: 44px; border: 1px solid var(--border); border-radius: 6px;
-      background: transparent; color: var(--accent); font: inherit; cursor: pointer;
+      background: transparent; color: var(--link); font: inherit; cursor: pointer;
     }
     .chart-open-day { display: block; width: 100%; margin-top: 10px; }
     .chart-day-chips {
@@ -588,7 +595,7 @@
       .page-note-narrow { display: block; margin: 0 0 16px; }
       .page-note-narrow summary {
         display: flex; align-items: center; min-height: 44px; cursor: pointer;
-        font-size: var(--fs-body); color: var(--accent); list-style: none;
+        font-size: var(--fs-body); color: var(--link); list-style: none;
       }
       /* flex on the summary drops the native triangle; this chevron replaces it,
          pointing right when closed and down when open. */
@@ -715,7 +722,7 @@
     }
     .ask-input::placeholder { color: var(--text-secondary); }
     .ask-btn {
-      padding: 10px 16px; background: var(--accent); color: white;
+      padding: 10px 16px; background: var(--accent); color: var(--on-accent);
       border: none; border-radius: var(--radius); font-size: var(--fs-md); font-weight: 600;
       cursor: pointer; font-family: inherit;
     }
@@ -1563,7 +1570,7 @@
             <div class="error">
               <p>${error}</p>
               <button onClick=${loadOverview} style="margin-top: 10px; padding: 6px 14px;
-                background: var(--accent); color: white; border: none; border-radius: var(--radius);
+                background: var(--accent); color: var(--on-accent); border: none; border-radius: var(--radius);
                 cursor: pointer; font-size: var(--fs-md);">Retry</button>
             </div>
           `}
@@ -2202,12 +2209,12 @@
             <div style="margin-left: auto; display: flex; gap: 12px; align-items: baseline">
               ${(showAll || hiddenRepos > 0) && html`
                 <button class="tap" onClick=${() => setShowAll(s => !s)}
-                  style="font-size: var(--fs-body-sm); color: var(--accent); background: none; border: none;
+                  style="font-size: var(--fs-body-sm); color: var(--link); background: none; border: none;
                          cursor: pointer; font-family: inherit">
                   ${showAll ? 'Prompt Lab projects only' : `Show all repos (+${hiddenRepos})`}
                 </button>`}
               <button class="tap" onClick=${toggleAll}
-                style="font-size: var(--fs-body-sm); color: var(--accent); background: none; border: none;
+                style="font-size: var(--fs-body-sm); color: var(--link); background: none; border: none;
                        cursor: pointer; font-family: inherit">
                 ${allOpen ? 'Collapse all' : 'Expand all'}
               </button>
@@ -2227,7 +2234,7 @@
                 <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); flex: none">${issues.length}${q && issues.length !== projects[p].length ? '/' + projects[p].length : ''}</span>
                 ${!isTracked(p) && html`<span style="font-size: var(--fs-xs); color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 0 5px">not in Prompt Lab</span>`}
                 <a class="tap" onClick=${(e) => { e.stopPropagation(); navigate('#/project/' + encodeURIComponent(p)); }}
-                   style="margin-left: auto; flex: none; white-space: nowrap; font-size: var(--fs-body-sm); color: var(--accent); cursor: pointer; text-decoration: none">
+                   style="margin-left: auto; flex: none; white-space: nowrap; font-size: var(--fs-body-sm); color: var(--link); cursor: pointer; text-decoration: none">
                   project →
                 </a>
               </div>
@@ -2241,7 +2248,7 @@
                       <span style="font-size: var(--fs-md); flex: 1; min-width: 0">${iss.title}</span>
                       ${iss.labels.map(lb => html`
                         <span style="font-size: var(--fs-sm); padding: 1px 6px; border-radius: 8px; flex: none;
-                                     background: ${labelColor(lb)}; color: #fff; white-space: nowrap">${lb}</span>`)}
+                                     background: ${labelColor(lb)}; color: var(--on-accent); white-space: nowrap">${lb}</span>`)}
                       <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); flex: none">${timeAgo(iss.updated_at)}</span>
                     </a>`)}
                 </div>`}
@@ -2866,7 +2873,7 @@
                   By project
                 </div>
                 <button class="tap" onClick=${() => setSortBy(s => s === 'cost' ? 'name' : 'cost')}
-                  style="font-size: var(--fs-body-sm); color: var(--accent); background: none; border: none;
+                  style="font-size: var(--fs-body-sm); color: var(--link); background: none; border: none;
                          cursor: pointer; font-family: inherit">
                   Sorted by ${sortBy} ↕
                 </button>
@@ -3070,7 +3077,7 @@
                   By project
                 </div>
                 <button class="tap" onClick=${() => setSortBy(s => nextSort[s] || '30d')}
-                  style="font-size: var(--fs-body-sm); color: var(--accent); background: none; border: none;
+                  style="font-size: var(--fs-body-sm); color: var(--link); background: none; border: none;
                          cursor: pointer; font-family: inherit">
                   Sorted by ${sortBy} ↕
                 </button>
@@ -3705,7 +3712,7 @@
         <div class="cost-placeholder">Couldn't load the health report. (${error})
           <div style="margin-top: 10px">
             <button onClick=${() => setNonce(n => n + 1)}
-              style="font-size: var(--fs-body); padding: 6px 14px; background: var(--accent); color: #fff;
+              style="font-size: var(--fs-body); padding: 6px 14px; background: var(--accent); color: var(--on-accent);
                      border: none; border-radius: var(--radius); cursor: pointer; font-family: inherit">
               Retry
             </button>
@@ -4371,7 +4378,7 @@
                 $${total.toFixed(2)}
               </div>
               <a class="tap" href="#/project/${encodeURIComponent(project)}/cost"
-                 style="font-size: var(--fs-body-sm); color: var(--accent); text-decoration: none;
+                 style="font-size: var(--fs-body-sm); color: var(--link); text-decoration: none;
                         font-family: 'SF Mono', ui-monospace, monospace">
                 details →
               </a>

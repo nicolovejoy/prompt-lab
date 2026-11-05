@@ -295,6 +295,29 @@ test('opacity is not used as a text colour', () => {
   assert.deepEqual(bad.map((b) => b.trim().slice(0, 80)), [], 'use --text-muted instead of opacity on text');
 });
 
+test('accent roles: text uses --link, text on a fill uses --on-accent', () => {
+  // --accent is for fills, borders and rings; accent-coloured text is --link, and
+  // text on an accent (or any coloured) fill is --on-accent. Only colour
+  // declarations are checked: background-color and border-color are excluded by
+  // the lookbehind. A JS key (color: 'var(--accent)') is caught via the quote.
+  const stripped = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/[^\n]*/g, '$1');
+  const values = [...stripped.matchAll(/(?<![-\w])color\s*:\s*['"]?([^;"'`}\n]*)/g)].map((m) => m[1].trim());
+  const accent = values.filter((v) => /var\(--accent\)/.test(v));
+  assert.deepEqual(accent, [], 'color: var(--accent) on text; use var(--link)');
+  const white = values.filter((v) => /(^|[^\w-])(#fff(fff)?|white)(?![\w-])/i.test(v));
+  assert.deepEqual(white, [], 'color: #fff/white; use var(--on-accent)');
+  const dark = src.match(/:root\s*\{([^}]*)\}/)[1];
+  const lightOs = src.match(/:root:not\(\[data-theme\]\)\s*\{([^}]*)\}/)[1];
+  const lightSet = src.match(/:root\[data-theme="light"\]\s*\{([^}]*)\}/)[1];
+  const tok = (block, name) => (block.match(new RegExp(`${name}\\s*:\\s*([^;]+);`)) || [])[1];
+  for (const name of ['--link', '--on-accent']) {
+    assert.ok(tok(dark, name), `dark :root must define ${name}`);
+    assert.ok(tok(lightOs, name), `OS-light block must define ${name}`);
+    assert.ok(tok(lightSet, name), `data-theme="light" block must define ${name}`);
+    assert.equal(tok(lightOs, name), tok(lightSet, name), `${name} differs between the two light blocks`);
+  }
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {
