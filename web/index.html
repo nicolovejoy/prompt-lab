@@ -453,13 +453,12 @@
     .project-name { font-size: var(--fs-3xl); font-weight: 600; letter-spacing: -0.3px; color: var(--accent-light);
                     min-width: 0; overflow-wrap: anywhere; }
     .project-links { display: flex; gap: var(--sp-2); align-items: center; min-width: 0; max-width: 100%; }
-    .project-link {
-      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      font-size: var(--fs-body-sm); color: var(--text-secondary); text-decoration: none;
-      padding: 2px var(--sp-2); border: 1px solid var(--border); border-radius: var(--r-sm);
-      font-family: "SF Mono", ui-monospace, monospace; transition: border-color 0.15s;
+    /* A chip that truncates: needs a block box for the ellipsis, and keeps
+       the monospace face of a URL/repo name. */
+    .chip.project-link {
+      display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+      font-family: "SF Mono", ui-monospace, monospace;
     }
-    .project-link:hover { border-color: var(--text-secondary); color: var(--text); }
     .project-meta {
       font-size: var(--fs-md); color: var(--text-secondary); margin-bottom: 10px;
       font-family: "SF Mono", ui-monospace, monospace;
@@ -666,19 +665,32 @@
     .card-date { font-size: var(--fs-body-sm); color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace; }
     .card-body { font-size: var(--fs-md); color: var(--text-secondary); line-height: 1.55; }
     .card-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: var(--sp-2); }
-    .tag { font-size: var(--fs-body-sm); padding: 2px 7px; background: var(--border); color: var(--text-secondary); border-radius: var(--r-sm); }
     .count-badges { display: flex; gap: 10px; margin-top: var(--sp-2); }
     .count-badge { font-size: var(--fs-body-sm); color: var(--text-secondary); }
     .count-badge strong { color: var(--text); }
 
-    /* Status badges */
-    .status-badge {
-      display: inline-block; padding: 2px 7px; font-size: var(--fs-body-sm);
-      font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; border-radius: var(--r-sm);
+    /* Chips (R8): one shape; outlined, tinted (status, with a .sev-* class)
+       or filled. Replaces the old tag/badge/status/dormant/link variants. */
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body-sm);
+      line-height: 1.4; padding: 2px var(--sp-2); border-radius: var(--r-sm);
+      border: 1px solid transparent; color: var(--text-secondary); white-space: nowrap;
+      text-decoration: none; font-family: inherit; background: none;
     }
-    .status-active { background: var(--green-dim); color: var(--green); }
-    .status-completed { background: var(--accent-dim); color: var(--accent-light); }
-    .status-stalled { background: var(--yellow-dim); color: var(--yellow); }
+    .chip-outlined { border-color: var(--border); }
+    .chip-outlined.chip-strong { border-color: var(--text-secondary); }
+    a.chip-outlined, button.chip-outlined { transition: border-color 0.15s; }
+    a.chip-outlined:hover, button.chip-outlined:hover { border-color: var(--text-secondary); color: var(--text); }
+    .chip-tinted { background: var(--sev-dim); color: var(--sev); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+    .chip-filled { background: var(--border); }
+    button.chip-filled { border: 1px solid transparent; cursor: pointer; }
+    button.chip-filled:hover { color: var(--text); }
+    .chip.muted { color: var(--text-muted); }
+    .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot); flex: none; }
+    .sev-ok { --sev: var(--green); --sev-dim: var(--green-dim); }
+    .sev-warn { --sev: var(--yellow); --sev-dim: var(--yellow-dim); }
+    .sev-bad { --sev: var(--red); --sev-dim: var(--red-dim); }
+    .sev-info { --sev: var(--accent-light); --sev-dim: var(--accent-dim); }
 
     /* Vertical timeline */
     .timeline { position: relative; padding-left: 20px; }
@@ -780,12 +792,6 @@
     .ask-examples {
       display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--sp-3);
     }
-    .ask-example {
-      font-size: var(--fs-body-sm); padding: var(--sp-1) 10px; background: var(--border);
-      color: var(--text-secondary); border: none; border-radius: var(--r-sm);
-      cursor: pointer; font-family: inherit;
-    }
-    .ask-example:hover { color: var(--text); }
 
     /* Machine-voice marker (AI-authored text — tenet #1) */
     .machine { font-style: italic; color: var(--text-secondary); }
@@ -813,14 +819,6 @@
     }
     .stream-project:hover { color: var(--accent-light); }
     .dormant-list { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
-    .dormant-chip {
-      font-size: var(--fs-md); color: var(--text-secondary); cursor: pointer;
-      padding: var(--sp-1) 10px; border: 1px solid var(--border); border-radius: var(--r-sm);
-    }
-    .dormant-chip:hover { border-color: var(--text-secondary); color: var(--text); }
-    a.dormant-chip { text-decoration: none; }
-    .dormant-chip.muted { color: var(--text-muted); border-color: var(--border); }
-    .dormant-chip.muted:hover, .dormant-chip.is-private:hover { border-color: var(--text-secondary); color: var(--text); }
 
     /* Pulse KPI tiles (issue #31).
        A tile that goes somewhere carries a PERSISTENT cue (↗ for navigation,
@@ -862,15 +860,9 @@
     .meta-editor label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
     .meta-saved { color: var(--green); }
     .meta-error { color: var(--red); }
-    .badge {
-      font-size: var(--fs-body-sm); letter-spacing: 0.06em; text-transform: uppercase;
-      padding: 2px 7px; border-radius: var(--r-sm); border: 1px solid var(--border);
-      color: var(--text-secondary); white-space: nowrap;
-    }
-    .badge-private { border-color: var(--text-secondary); }
     .timeline-entry.is-private { opacity: 0.62; }
     .project-name.is-private { opacity: 0.75; }
-    .dormant-chip.is-private { color: var(--text-muted); border-color: var(--border); }
+    .chip.is-private { color: var(--text-muted); }
 
     /* Misc */
     .loading { text-align: center; padding: 40px; color: var(--text-secondary); font-size: var(--fs-md); }
@@ -948,7 +940,8 @@
       .chart-legend { row-gap: 0; }
       .row-link { display: flex; flex-direction: column; justify-content: center; min-height: 44px; }
       /* An ellipsis needs a block box, so these grow by line-height, not flex. */
-      .project-link { min-height: 44px; line-height: 42px; padding-top: 0; padding-bottom: 0; }
+      .chip.project-link { min-height: 44px; line-height: 42px; padding-top: 0; padding-bottom: 0; }
+      a.chip { min-height: 44px; }
     }
   </style>
 </head>
@@ -1806,9 +1799,9 @@
         return html`
           <div class="dormant-list">
             ${shown.map(p => html`
-              <a class="dormant-chip ${muted ? 'muted' : ''}" href=${'#/project/' + encodeURIComponent(p)}>${p}</a>`)}
+              <a class="chip chip-outlined ${muted ? 'muted' : ''}" href=${'#/project/' + encodeURIComponent(p)}>${p}</a>`)}
             ${hidden > 0 && html`
-              <span class="dormant-chip muted" style="cursor:default"
+              <span class="chip chip-outlined muted" style="cursor:default"
                     title="Hidden by the private toggle below">+${hidden} private</span>`}
           </div>`;
       };
@@ -2082,7 +2075,7 @@
             ${showDormant && html`
               <div class="dormant-list">
                 ${dormantProjects.map(p => html`
-                  <a class="dormant-chip ${isPrivate(p) ? 'is-private' : ''}" href=${'#/project/' + encodeURIComponent(p)}>${p}</a>
+                  <a class="chip chip-outlined ${isPrivate(p) ? 'is-private' : ''}" href=${'#/project/' + encodeURIComponent(p)}>${p}</a>
                 `)}
               </div>
             `}
@@ -2341,8 +2334,8 @@
                       <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none">#${iss.number}</span>
                       <span style="font-size: var(--fs-md); flex: 1; min-width: 0">${iss.title}</span>
                       ${iss.labels.map(lb => html`
-                        <span style="font-size: var(--fs-sm); padding: 1px 6px; border-radius: var(--r-lg); flex: none;
-                                     background: ${labelColor(lb)}; color: var(--on-accent); white-space: nowrap">${lb}</span>`)}
+                        <span class="chip chip-outlined" style="flex: none; --dot: ${labelColor(lb)}">
+                          <span class="dot"></span>${lb}</span>`)}
                       <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); flex: none">${timeAgo(iss.updated_at)}</span>
                     </a>`)}
                 </div>`}
@@ -4755,11 +4748,11 @@
           <div class="project-header">
             <div class="project-title-row">
               <span class="project-name ${meta.private ? 'is-private' : ''}">${name}</span>
-              ${meta.private && html`<span class="badge badge-private">private</span>`}
-              ${meta.category && html`<span class="badge">${meta.category}</span>`}
+              ${meta.private && html`<span class="chip chip-outlined chip-strong">private</span>`}
+              ${meta.category && html`<span class="chip chip-outlined">${meta.category}</span>`}
               <div class="project-links">
-                ${githubUrl && html`<a class="project-link" style="flex: none" href=${githubUrl} target="_blank" rel="noopener">GitHub</a>`}
-                ${siteLabel && html`<a class="project-link" href=${siteUrl} target="_blank" rel="noopener">${siteLabel}</a>`}
+                ${githubUrl && html`<a class="chip chip-outlined project-link" style="flex: none" href=${githubUrl} target="_blank" rel="noopener">GitHub</a>`}
+                ${siteLabel && html`<a class="chip chip-outlined project-link" href=${siteUrl} target="_blank" rel="noopener">${siteLabel}</a>`}
               </div>
             </div>
             <${MetadataEditor} project=${name} meta=${meta} role=${role} onMetaChange=${onMetaChange} />
@@ -4884,7 +4877,7 @@
                     </span>
                     ${isOpen && highlights.length > 0 && html`
                       <div class="card-tags" style="margin-top: 6px">
-                        ${highlights.map(h => html`<span class="tag">${h}</span>`)}
+                        ${highlights.map(h => html`<span class="chip chip-filled">${h}</span>`)}
                       </div>
                     `}
                   </div>
@@ -4999,7 +4992,7 @@
             ${!answer && !asking && html`
               <div class="ask-examples">
                 ${examples.map(q => html`
-                  <button class="ask-example" onClick=${() => setQ(q)}>${q}</button>
+                  <button class="chip chip-filled" onClick=${() => setQ(q)}>${q}</button>
                 `)}
               </div>
             `}
