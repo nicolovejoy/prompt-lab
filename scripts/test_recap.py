@@ -42,7 +42,7 @@ con = sqlite3.connect(db)
 con.execute("CREATE TABLE sessions (id INTEGER PRIMARY KEY, project TEXT, started_at TEXT, ended_at TEXT, summary TEXT)")
 rows = [
     ("alpha", ago(3), ago(3), "Did old thing. Next: stale item"),
-    ("alpha", ago(1), ago(1), "Merged #1. Next: ship   the\n  widget"),
+    ("alpha", ago(0, 20), ago(0, 20), "Merged #1. Next: ship   the\n  widget"),
     ("beta", ago(2), "", "Fixed the parser. Then more words here."),
     ("gamma", ago(20), ago(20), "Ancient. Next: nothing"),
     ("scratch", ago(0, 1), ago(0, 1), "Scratch work. Next: ignore"),
