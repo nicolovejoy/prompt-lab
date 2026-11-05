@@ -34,6 +34,27 @@ export async function smallTargets(page) {
   });
 }
 
+// Things that look clickable but a keyboard cannot reach. A pointer cursor is
+// the proxy for an onClick (Preact attaches handlers as properties, so there is
+// no [onclick] to query). Only the element where the pointer cursor starts is
+// judged, since cursor inherits; it passes if it, or something inside it, is
+// focusable: a timeline row is clicked anywhere but focused on its phrase.
+export async function unreachableClickables(page) {
+  return page.evaluate(() => {
+    const FOCUSABLE = 'a[href], button, select, input, textarea, summary, [role=button][tabindex="0"]';
+    const out = [];
+    for (const el of document.querySelectorAll('body *')) {
+      if (getComputedStyle(el).cursor !== 'pointer') continue;
+      if (el.parentElement && getComputedStyle(el.parentElement).cursor === 'pointer') continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) continue;                      // not rendered
+      if (el.matches(FOCUSABLE) || el.closest('label') || el.querySelector(FOCUSABLE)) continue;
+      out.push((el.innerText || el.getAttribute('aria-label') || el.className || el.tagName).trim().slice(0, 24));
+    }
+    return out;
+  });
+}
+
 export const CHECKS = [
   {
     name: 'visitors',
@@ -264,6 +285,9 @@ function baseline([name, hash, ready], profile) {
         t.ok(header.height <= 76, `header is one line tall (${header.height}px)`);
         t.ok(header.menuRight <= header.vw, `Menu is inside the viewport (right edge ${header.menuRight}px)`);
       }
+      const unreachable = await unreachableClickables(page);
+      t.ok(unreachable.length === 0, `every clickable element is reachable by keyboard (${unreachable.length} not: ${
+        unreachable.slice(0, 6).join('; ')})`);
       await BASELINE_EXTRA[checkName]?.(page, t, ready);
       // Last, because it opens every note: the phone screenshot shows them expanded.
       await pageNotes(page, t, name, profile);
@@ -956,5 +980,25 @@ CHECKS.push({
       && await page.locator('[data-test="tab"]').count() === TABS.length, 'the bar shows with its five tabs');
     const current = await page.locator('[data-test="tab"][aria-current="page"]').count();
     t.ok(current === 0, `a project page highlights no tab (${current})`);
+  },
+});
+
+// The keyboard path through what used to be mouse-only: a stream row's phrase
+// toggles its detail on Enter and Space, and a chart bar selects on Enter.
+CHECKS.push({
+  name: 'home-keyboard', profile: 'phone', hash: '#/', ready: '.timeline-entry',
+  async run(page, t) {
+    const phrase = page.locator('.timeline-phrase[role=button]').first();
+    await phrase.focus();
+    await page.keyboard.press('Enter');
+    t.ok(await page.locator('.timeline-expand').first().isVisible(), 'Enter on a stream phrase opens its detail');
+    t.ok(await phrase.getAttribute('aria-expanded') === 'true', 'the phrase reports itself expanded');
+    await page.keyboard.press(' ');
+    t.ok(await page.locator('.timeline-expand').count() === 0, 'Space closes it again');
+    const bar = page.locator('[data-chart="home"] [data-test="chart-bar"]').last();
+    await bar.focus();
+    await page.keyboard.press('Enter');
+    t.ok(await page.locator('[data-chart="home"] [data-test="chart-readout"]').isVisible(),
+      'Enter on a chart bar selects it and shows the readout');
   },
 });

@@ -846,10 +846,6 @@
       transition: transform 0.15s;
     }
     .kpi-cue.open { transform: rotate(180deg); }
-    @media (prefers-reduced-motion: reduce) {
-      .kpi-tile, .kpi-cue { transition: none; }
-      .kpi-tile-action:hover, .kpi-tile-action:focus-visible { transform: none; }
-    }
 
     /* Project metadata (issue #23) — category / private / status */
     .meta-editor {
@@ -877,7 +873,11 @@
 
     /* Misc */
     .loading { text-align: center; padding: 40px; color: var(--text-secondary); font-size: var(--fs-md); }
-    .error { color: var(--red); text-align: center; padding: 20px; font-size: var(--fs-md); }
+    /* The severity colour marks the edge; the words stay in the text colour. */
+    .error {
+      color: var(--text); background: var(--red-dim); border-left: 3px solid var(--red);
+      border-radius: var(--r-md); text-align: center; padding: 20px; font-size: var(--fs-md);
+    }
     .empty {
       color: var(--text-secondary); text-align: center; padding: 40px; font-size: var(--fs-md);
       border: 1px dashed var(--border); border-radius: var(--r-lg); margin-bottom: var(--sp-3);
@@ -890,6 +890,32 @@
       50% { opacity: 0.3; }
     }
     .skeleton-card { height: 80px; margin-bottom: 10px; }
+    .ask-pulse {
+      display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent); animation: pulse 1s infinite;
+    }
+
+    /* Text for a screen reader only: in the accessibility tree, not on screen. */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+    /* A real <button> that looks like the link or text it replaced. */
+    .btn-plain {
+      font: inherit; color: inherit; background: none; border: 0; padding: 0;
+      text-align: inherit; cursor: pointer;
+    }
+
+    /* Reduced motion: every animation and transition in this file is named
+       here, after the rules that set them, so a new one shows up missing.
+       The chart bars' opacity fades are inline styles, hence !important. */
+    @media (prefers-reduced-motion: reduce) {
+      .kpi-tile, .kpi-cue { transition: none; }
+      .kpi-tile-action:hover, .kpi-tile-action:focus-visible { transform: none; }
+      .header-meta.refreshing, .skeleton, .ask-pulse { animation: none; }
+      .project-link, .timeline-entry, .review-content { transition: none; }
+      .chart-bars * { transition: none !important; }
+    }
 
     /* Tap targets on a phone: 44px tall at least, grown with min-height so the
        text keeps its size. .tap marks a control whose wide-screen styling is
@@ -978,6 +1004,11 @@
     }
 
     function navigate(hash) { location.hash = hash; }
+
+    // Enter and Space on a role="button" element, as a native button does.
+    const onActivate = (fn) => (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(e); }
+    };
 
     function useRoute() {
       const [route, setRoute] = useState(parseHash);
@@ -1192,7 +1223,9 @@
               <input type="password" placeholder="Password" autofocus
                 value=${password} onInput=${e => setPassword(e.target.value)}
                 onKeyDown=${e => e.key === 'Enter' && submit()} />
-              ${error && html`<p class="error" style="margin-bottom: 10px; padding: 0">${error}</p>`}
+              <div aria-live="polite">
+                ${error && html`<p class="error" style="margin-bottom: 10px; padding: var(--sp-2) var(--sp-3)">${error}</p>`}
+              </div>
               <button onClick=${submit} disabled=${loading || !password}>
                 ${loading ? 'Signing in...' : 'Sign in'}
               </button>
@@ -1346,7 +1379,7 @@
       return html`
         <header>
           <div class="header-left ${route.view === 'project' ? 'has-picker' : ''}">
-            <a class="header-logo" aria-label="Prompt Lab" onClick=${() => navigate('#/')}>
+            <a class="header-logo" aria-label="Prompt Lab" href="#/">
               <span class="logo-full">Prompt Lab</span><span class="logo-short" aria-hidden="true">PL</span>
             </a>
             ${route.view === 'project' && html`
@@ -1356,7 +1389,7 @@
             ${refreshing && html`<span class="header-meta refreshing" title="Refreshing…">↻</span>`}
           </div>
           <div class="header-right" ref=${navRef}>
-            <div class="nav-wide">
+            <nav class="nav-wide" aria-label="Primary">
               ${nav.map(([view, label, hash]) => html`
                 <button class="header-btn ${route.view === view ? 'active' : ''}"
                         onClick=${() => navigate(hash)}>${label}</button>`)}
@@ -1364,7 +1397,7 @@
               <button class="header-btn ${more ? 'active' : ''}"
                       onClick=${() => setMore(m => !m)}>More ${more ? '\u25B4' : '\u25BE'}</button>
               ${more && html`<div class="nav-more">${secondary}</div>`}
-            </div>
+            </nav>
 
             <!-- Phone: theme sits beside the hamburger, still one tap. -->
             <span class="theme-narrow">${themeBtn}</span>
@@ -1378,7 +1411,7 @@
               <span class="nav-toggle-label">${menu ? 'Close' : 'Menu'}</span>
             </button>
 
-            <div class="nav-drop ${menu ? 'open' : ''}">
+            <nav class="nav-drop ${menu ? 'open' : ''}" aria-label="Primary">
               ${nav.map(([view, label, hash]) => html`
                 <button class="header-btn ${route.view === view ? 'active' : ''}"
                         onClick=${() => { setMenu(false); navigate(hash); }}>${label}</button>`)}
@@ -1387,7 +1420,7 @@
                 More ${more ? '\u25B4' : '\u25BE'}
               </button>
               ${more && secondary}
-            </div>
+            </nav>
           </div>
         </header>
       `;
@@ -1454,6 +1487,7 @@
     // ---- Skeleton Loaders ----
     function SkeletonList() {
       return html`<div>
+        <span class="sr-only">Loading…</span>
         ${[1,2,3].map(() => html`<div class="skeleton skeleton-card"></div>`)}
       </div>`;
     }
@@ -1591,7 +1625,7 @@
         await probeAuth();  // 401 branch populates the sign-in buttons
       };
 
-      if (authed === null) return html`<div class="loading">Loading...</div>`;
+      if (authed === null) return html`<div class="loading" role="status">Loading...</div>`;
       if (!authed) return html`<${Login} passwordLogin=${passwordLogin} googleLogin=${googleLogin}
         onLogin=${(r) => { setRole(r); setEmail(null); setAuthed(true); }} />`;
 
@@ -1611,15 +1645,18 @@
             active=${active} dormant=${dormant} refreshing=${refreshing}
             theme=${theme} onToggleTheme=${toggleTheme} />
 
-          ${loading && !overview && html`<${SkeletonList} />`}
-          ${error && html`
-            <div class="error">
-              <p>${error}</p>
-              <button onClick=${loadOverview} style="margin-top: 10px; padding: 6px 14px;
-                background: var(--accent); color: var(--on-accent); border: none; border-radius: var(--r-lg);
-                cursor: pointer; font-size: var(--fs-md);">Retry</button>
-            </div>
-          `}
+          <main>
+          <div aria-live="polite">
+            ${loading && !overview && html`<${SkeletonList} />`}
+            ${error && html`
+              <div class="error">
+                <p>${error}</p>
+                <button onClick=${loadOverview} style="margin-top: 10px; padding: 6px 14px;
+                  background: var(--accent); color: var(--on-accent); border: none; border-radius: var(--r-lg);
+                  cursor: pointer; font-size: var(--fs-md);">Retry</button>
+              </div>
+            `}
+          </div>
 
           ${overview && route.view === 'home' && html`
             <${HomeView} overview=${overview} role=${role} />
@@ -1643,6 +1680,7 @@
 
           ${route.view === 'more' && html`<${MoreView} role=${role} email=${email} info=${info}
             theme=${theme} onToggleTheme=${toggleTheme} onLogout=${logout} />`}
+          </main>
 
           ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
         </div>
@@ -1662,7 +1700,7 @@
     // ---- Home: Pulse (metrics-first) over the activity stream ----
 
     // Inline SVG sparkline from a value series. Returns null-safe markup.
-    function Spark({ values, color, w = 96, h = 28 }) {
+    function Spark({ values, color, w = 96, h = 28, label }) {
       if (!values || values.length < 2) return null;
       const max = Math.max(...values, 1);
       const n = values.length;
@@ -1671,6 +1709,7 @@
       const last = pts[pts.length - 1].split(',');
       return html`
         <svg width=${w} height=${h} viewBox=${`0 0 ${w} ${h}`} preserveAspectRatio="none"
+             role="img" aria-label=${label || `Trend over ${n} days`}
              style="display:block; overflow:visible">
           <polyline points=${`0,${h} ${pts.join(' ')} ${w},${h}`}
             fill=${color} opacity="0.1" stroke="none" />
@@ -1790,7 +1829,8 @@
                               font-variant-numeric:tabular-nums; line-height:1; color:var(--accent-light)">${t.value}</div>
                   <div style="flex:1"></div>
                   ${t.series
-                    ? html`<${Spark} values=${t.series} color=${t.color} />`
+                    ? html`<${Spark} values=${t.series} color=${t.color}
+                                     label=${'Daily ' + t.label.split(' · ')[0] + ', last ' + t.series.length + ' days'} />`
                     : t.sub
                       ? html`<div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-sm);
                                          color:var(--text-secondary)">${t.sub}</div>`
@@ -1906,7 +1946,7 @@
           <//>
           <div style="margin-bottom:var(--sp-3)">
             <${StackedBars} id="home" dates=${dates} days=${days} byDateSeg=${byDateProject}
-              segColor=${segColor} fmtValue=${(v) => String(Math.round(v))} unit="prompts"
+              segColor=${segColor} fmtValue=${(v) => String(Math.round(v))} unit="prompts" title="Prompts by project"
               chartH=${120} markToday=${true} gutter=${false} scroll=${false} todaySuffix=" so far" />
           </div>
 
@@ -1983,8 +2023,6 @@
         groups[groups.length - 1].items.push(item);
       }
 
-      const open = (p) => navigate('#/project/' + encodeURIComponent(p));
-
       return html`
         <${PulseTiles} overview=${overview} cost30=${cost30} views30=${views30} hide=${hiddenSet} role=${role} />
         <${CrossProjectActivity} overview=${overview} hide=${hiddenSet} />
@@ -2004,8 +2042,11 @@
                   const s = item.data;
                   return html`
                     <div class="timeline-entry ${isPrivate(item.project) ? 'is-private' : ''}" onClick=${() => toggle(item.id)}>
-                      <a class="stream-project" onClick=${(e) => { e.stopPropagation(); open(item.project); }}>${item.project}</a>
-                      <span class="timeline-phrase" style="margin-left: 6px">${item.phrase}</span>
+                      <a class="stream-project" href=${'#/project/' + encodeURIComponent(item.project)}
+                         onClick=${(e) => e.stopPropagation()}>${item.project}</a>
+                      <span class="timeline-phrase" style="margin-left: 6px" role="button" tabindex="0"
+                            aria-expanded=${isOpen ? 'true' : 'false'}
+                            onKeyDown=${onActivate(() => toggle(item.id))}>${item.phrase}</span>
                       ${isOpen && html`
                         <div class="timeline-expand">
                           <div class="timeline-expand-summary">
@@ -2040,7 +2081,7 @@
             ${showDormant && html`
               <div class="dormant-list">
                 ${dormantProjects.map(p => html`
-                  <span class="dormant-chip ${isPrivate(p) ? 'is-private' : ''}" onClick=${() => open(p)}>${p}</span>
+                  <a class="dormant-chip ${isPrivate(p) ? 'is-private' : ''}" href=${'#/project/' + encodeURIComponent(p)}>${p}</a>
                 `)}
               </div>
             `}
@@ -2114,6 +2155,10 @@
       // filled. Now each label occupies the slot of the week it names.
       const labelAt = {};
       for (const m of monthLabels) labelAt[m.idx] = m.label;
+      const cellsShown = weeks.flat();
+      const heatTotal = cellsShown.reduce((sum, c) => sum + (byDate[c.date] || 0), 0);
+      const heatDays = cellsShown.filter((c) => byDate[c.date] > 0).length;
+      const heatLabel = `Prompts per day, last 12 months: ${heatTotal.toLocaleString()} prompts on ${heatDays} active day${heatDays === 1 ? '' : 's'}`;
 
       return html`
         <div>
@@ -2129,7 +2174,7 @@
                   </div>
                 `)}
               </div>
-              <div class="heatmap">
+              <div class="heatmap" role="img" aria-label=${heatLabel}>
                 ${weeks.map(w => html`
                   <div class="heatmap-month">
                     ${w.map(cell => html`
@@ -2276,10 +2321,12 @@
               <div style="display: flex; align-items: center; gap: var(--sp-2); padding: 10px 0; cursor: pointer"
                    onClick=${() => toggle(p)}>
                 <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); width: 10px; flex: none">${isOpen ? '▾' : '▸'}</span>
-                <span style="font-size: var(--fs-lg); font-weight: 600; min-width: 0; overflow-wrap: anywhere">${p}</span>
+                <span style="font-size: var(--fs-lg); font-weight: 600; min-width: 0; overflow-wrap: anywhere"
+                      role="button" tabindex="0" aria-expanded=${isOpen ? 'true' : 'false'}
+                      onKeyDown=${onActivate(() => toggle(p))}>${p}</span>
                 <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); flex: none">${issues.length}${q && issues.length !== projects[p].length ? '/' + projects[p].length : ''}</span>
                 ${!isTracked(p) && html`<span style="font-size: var(--fs-xs); color: var(--text-secondary); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 0 5px">not in Prompt Lab</span>`}
-                <a class="tap" onClick=${(e) => { e.stopPropagation(); navigate('#/project/' + encodeURIComponent(p)); }}
+                <a class="tap" href=${'#/project/' + encodeURIComponent(p)} onClick=${(e) => e.stopPropagation()}
                    style="margin-left: auto; flex: none; white-space: nowrap; font-size: var(--fs-body-sm); color: var(--link); cursor: pointer; text-decoration: none">
                   project →
                 </a>
@@ -2667,7 +2714,7 @@
     //   todaySuffix appended to today's heading while today is still counting.
     function StackedBars({ id, dates, days, byDateSeg, segColor, fmtValue = (n) => Math.round(n).toLocaleString(),
                            unit = '', chartH = 140, markToday = false, gutter = true, scroll = true, fmtAxis = fmtValue,
-                           minPeak = 1, tailSeg = null, todaySuffix = '', segLabel = (s) => s }) {
+                           minPeak = 1, tailSeg = null, todaySuffix = '', segLabel = (s) => s, title = 'Chart' }) {
       const narrow = useNarrow();
       const [hovered, setHovered] = useState(null);
       const layout = days + '|' + dates.length + '|' + narrow;
@@ -2693,6 +2740,9 @@
         b.size === 'day' && b.key === today ? todaySuffix : ''];
       const label = {};
       for (const b of buckets) label[b.key] = axisLabel(b);
+      // What a screen reader hears for the chart as a whole: the window's total.
+      const grand = totals.reduce((sum, t) => sum + t.total, 0);
+      const summary = `${title}, last ${days === 365 ? 'year' : days + ' days'}, ${fmtValue(grand)}${unit ? ' ' + unit : ''} total`;
 
       // The wide chart opens at its newest day, as every chart here always has.
       useEffect(() => {
@@ -2710,9 +2760,11 @@
         return html`
           <div data-test="chart-bar" data-key=${b.key} data-selected=${selected === i ? 'true' : undefined}
                style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
+               role="button" tabindex="0" aria-label=${heading(b, total).join('')}
                onPointerEnter=${(e) => { prefetchDay(b.dates[b.dates.length - 1]); if (e.pointerType === 'mouse') setHovered(i); }}
                onPointerLeave=${() => setHovered((h2) => (h2 === i ? null : h2))}
-               onClick=${(e) => onBarClick(e, i)}>
+               onClick=${(e) => onBarClick(e, i)}
+               onKeyDown=${onActivate((e) => onBarClick(e, i))}>
             ${isToday && html`
               <div style="position: absolute; left: 0; right: 0; bottom: 0; top: 0;
                           border: 1px dashed var(--border); border-bottom: none;
@@ -2762,6 +2814,7 @@
 
       return html`
         <div data-test="chart" data-chart=${id}>
+          <span class="sr-only" role="img" aria-label=${summary}></span>
           ${gutter ? html`
             <div style="display: grid; grid-template-columns: ${narrow ? 44 : 56}px minmax(0, 1fr); gap: var(--sp-2)">
               <div style="display: flex; flex-direction: column; justify-content: space-between;
@@ -2910,7 +2963,7 @@
           ${panel(html`
             <${StackedBars} id="costs" dates=${dates} days=${days} byDateSeg=${byDateProject}
               segColor=${segColor} fmtValue=${fmtUsd} fmtAxis=${fmtUsdAxis} minPeak=${0.0001}
-              segLabel=${costProjectLabel} />
+              segLabel=${costProjectLabel} title="API spend by project" />
           `)}
 
           <div class="two-col">
@@ -3114,7 +3167,8 @@
 
           ${panel(html`
             <${StackedBars} id="activity" dates=${dates} days=${effDays} byDateSeg=${byDateSeg}
-              segColor=${segColor} fmtValue=${(v) => fmtInt(Math.round(v))} unit=${m} tailSeg=${otherLabel} />
+              segColor=${segColor} fmtValue=${(v) => fmtInt(Math.round(v))} unit=${m} tailSeg=${otherLabel}
+              title=${m[0].toUpperCase() + m.slice(1) + ' by project'} />
           `)}
 
           <div class="two-col">
@@ -3313,17 +3367,19 @@
       return html`
         <div>
           <div style="margin-bottom:6px">
-            <a class="tap" onClick=${() => history.back()}
+            <button type="button" class="tap btn-plain" onClick=${() => history.back()}
                style="cursor:pointer; color:var(--text-secondary); font-size: var(--fs-body-sm);
-                      text-decoration:none">← back</a>
+                      text-decoration:none">← back</button>
           </div>
           <h1 style="margin:0 0 var(--sp-1); font-size: var(--fs-2xl); color:var(--accent-light)">${long}</h1>
           <div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-sm);
                       color:var(--text-secondary); margin-bottom:18px">${date}</div>
 
-          ${err && html`
-            <div class="card" style="color:var(--red, #c62828)">Couldn't load this day. (${err})</div>`}
-          ${!data && !err && html`<${SkeletonList} />`}
+          <div aria-live="polite">
+            ${err && html`
+              <div class="card" style="color:var(--red, #c62828)">Couldn't load this day. (${err})</div>`}
+            ${!data && !err && html`<${SkeletonList} />`}
+          </div>
 
           ${data && html`
             ${data.provisional && html`
@@ -3614,7 +3670,8 @@
 
           ${panel(html`
             <${StackedBars} id="visitors" dates=${dates} days=${days} byDateSeg=${byDateSite}
-              segColor=${segColor} fmtValue=${(v) => Math.round(v).toLocaleString()} unit="page loads" />
+              segColor=${segColor} fmtValue=${(v) => Math.round(v).toLocaleString()} unit="page loads"
+              title="Page loads by site" />
           `)}
 
           <div class="two-col">
@@ -3772,7 +3829,8 @@
       const banner = (bg, fg, children) => html`
         <div style="display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap;
                     padding: 10px 14px; margin-bottom: var(--sp-4); border-radius: var(--r-lg);
-                    background: ${bg}; border: 1px solid ${fg}; color: ${fg};
+                    background: ${bg}; border: 1px solid ${fg}; border-left: 3px solid ${fg};
+                    color: var(--text);
                     font-size: var(--fs-body); line-height: 1.5">${children}</div>`;
 
       return html`
@@ -4116,9 +4174,12 @@
             return html`
               <div data-test="chart-bar" data-key=${b.key} data-selected=${selected === i ? 'true' : undefined}
                    style="flex: 1; min-width: 3px; position: relative; cursor: pointer"
+                   role="button" tabindex="0"
+                   aria-label=${b.label + ': ' + (c.has ? 'uptime ' + fmtPct(c.uptime) + ', response ' + fmtMs(c.ms) : 'no record')}
                    onPointerEnter=${(e) => { prefetchDay(b.dates[b.dates.length - 1]); if (e.pointerType === 'mouse') setHovered(i); }}
                    onPointerLeave=${() => setHovered(h => h === i ? null : h)}
-                   onClick=${(e) => onBarClick(e, i)}>
+                   onClick=${(e) => onBarClick(e, i)}
+                   onKeyDown=${onActivate((e) => onBarClick(e, i))}>
                 <div style="height: ${STRIP_H}px; border-radius: var(--r-sm);
                             background: ${uptimeColor(c.has ? c.uptime : null)};
                             opacity: ${dim ? 0.45 : c.has ? (active ? 1 : 0.85) : (active ? 0.85 : NO_DATA_OPACITY)};
@@ -4148,7 +4209,8 @@
         <div data-test="chart" data-chart=${'uptime-' + monitor.name}>
           <div style="margin-top: 10px; display: grid; grid-template-columns: 56px ${narrow ? 'minmax(0, 1fr)' : '1fr'}; gap: var(--sp-2)">
             <div style="font-size: var(--fs-xs); color: var(--text-secondary);
-                        font-family: 'SF Mono', ui-monospace, monospace">
+                        font-family: 'SF Mono', ui-monospace, monospace"
+                 role="img" aria-label=${`${monitor.name}: daily uptime and response time, ${points} archived day${points === 1 ? '' : 's'}, 30-day uptime ${fmtPct(monitor.uptime_30d)}, average response ${fmtMs(monitor.avg_response_ms)}`}>
               <div style="height: ${STRIP_H}px; display: flex; align-items: center; justify-content: flex-end">
                 uptime
               </div>
@@ -4434,7 +4496,7 @@
           </div>
           <${StackedBars} id="project-cost" dates=${dates} days=${30} byDateSeg=${byDateModel}
             segColor=${() => 'var(--accent)'} fmtValue=${fmtUsdFine} fmtAxis=${fmtUsdAxis}
-            minPeak=${0.0001} chartH=${100} scroll=${false} />
+            minPeak=${0.0001} chartH=${100} scroll=${false} title="API cost by model" />
           ${models.length > 0 && html`
             <div data-test="cost-legend" style="display: flex; gap: var(--sp-3); flex-wrap: wrap; margin-top: 10px;
                         font-size: var(--fs-body-sm); color: var(--text-secondary);
@@ -4466,8 +4528,9 @@
           .catch(e => { setData({ error: e.message }); setLoading(false); });
       }, [project, days]);
 
-      if (loading) return html`<${SkeletonList} />`;
-      if (data?.error) return html`<div class="error">${data.error}</div>`;
+      // The same live div in both states, so the switch to an error is announced.
+      if (loading) return html`<div aria-live="polite"><${SkeletonList} /></div>`;
+      if (data?.error) return html`<div aria-live="polite"><div class="error">${data.error}</div></div>`;
       const rows = (data?.detail || []).map(r => ({
         ...r, cost_usd: Number(r.cost_usd) || 0,
       }));
@@ -4554,8 +4617,9 @@
                                    border-bottom: 1px solid var(--border);
                                    text-align: ${col === 'cost_usd' ? 'right' : 'left'};
                                    white-space: nowrap"
+                            aria-sort=${sort.col === col ? (sort.dir === 'asc' ? 'ascending' : 'descending') : null}
                             onClick=${() => toggleSort(col)}>
-                          ${label}${arrow(col)}
+                          <span role="button" tabindex="0" onKeyDown=${onActivate(() => toggleSort(col))}>${label}${arrow(col)}</span>
                         </th>
                       `)}
                     </tr>
@@ -4621,7 +4685,7 @@
               onChange=${(e) => save({ private: e.target.checked })} />
             private
           </label>
-          ${flash && html`<span class=${flash.ok ? 'meta-saved' : 'meta-error'}>${flash.msg}</span>`}
+          <span aria-live="polite">${flash && html`<span class=${flash.ok ? 'meta-saved' : 'meta-error'}>${flash.msg}</span>`}</span>
         </div>
       `;
     }
@@ -4649,9 +4713,10 @@
 
       if (section === 'cost') return html`<${CostDetailPage} project=${name} />`;
 
-      if (loading) return html`<${SkeletonList} />`;
+      // The same live div in both states, so the switch to an error is announced.
+      if (loading) return html`<div aria-live="polite"><${SkeletonList} /></div>`;
 
-      if (data?.error) return html`<div class="error">${data.error}</div>`;
+      if (data?.error) return html`<div aria-live="polite"><div class="error">${data.error}</div></div>`;
       if (!data) return null;
 
       const snapshot = data.snapshot || {};
@@ -4709,7 +4774,10 @@
           ${stateSummary
             ? html`
               <div class="project-summary" style="cursor: ${hasMore ? 'pointer' : 'default'}"
-                   onClick=${() => hasMore && setSummaryOpen(v => !v)}>
+                   role=${hasMore ? 'button' : null} tabindex=${hasMore ? '0' : null}
+                   aria-expanded=${hasMore ? (summaryOpen ? 'true' : 'false') : null}
+                   onClick=${() => hasMore && setSummaryOpen(v => !v)}
+                   onKeyDown=${hasMore ? onActivate(() => setSummaryOpen(v => !v)) : null}>
                 <${MachineText}>
                   ${summaryOpen ? stateSummary : teaser}
                   ${hasMore && html`<span style="margin-left: 6px">${summaryOpen ? '⌃' : '⌄'}</span>`}
@@ -4779,7 +4847,9 @@
                 const s = item.data;
                 return html`
                   <div class="timeline-entry" onClick=${() => toggle(item.id)}>
-                    <span class="timeline-phrase">${item.phrase}</span>
+                    <span class="timeline-phrase" role="button" tabindex="0"
+                          aria-expanded=${isOpen ? 'true' : 'false'}
+                          onKeyDown=${onActivate(() => toggle(item.id))}>${item.phrase}</span>
                     ${isOpen && html`
                       <div class="timeline-expand">
                         <div class="timeline-expand-summary"><${MachineText}>${s.summary}<//></div>
@@ -4805,7 +4875,9 @@
                 const teaser = (r.narrative || '').split(/(?<=[.!?])\s+/)[0];
                 return html`
                   <div class="timeline-entry rollup" onClick=${() => toggle(item.id)}>
-                    <span class="timeline-rollup-label">Week of ${r.week_start}</span>
+                    <span class="timeline-rollup-label" role="button" tabindex="0"
+                          aria-expanded=${isOpen ? 'true' : 'false'}
+                          onKeyDown=${onActivate(() => toggle(item.id))}>Week of ${r.week_start}</span>
                     <span class="timeline-phrase" style="margin-left: 6px">
                       ${isOpen ? html`<${MachineText}>${r.narrative}<//>` : teaser}
                     </span>
@@ -4919,7 +4991,8 @@
       ];
 
       return html`
-        <div class="ask-overlay" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div class="ask-overlay" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}
+             onKeyDown=${(e) => { if (e.key === 'Escape') onClose(); }}>
           <div class="ask-modal">
             <div class="ask-modal-title">${project ? 'Ask about ' + project : 'Ask about your work'}</div>
             ${!answer && !asking && html`
@@ -4941,11 +5014,13 @@
             </div>
             ${asking && html`
               <div style="padding: 14px; color: var(--text-secondary); font-size: var(--fs-md); display: flex; align-items: center; gap: var(--sp-2)">
-                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite"></span>
+                <span class="ask-pulse"></span>
                 Thinking...
               </div>
             `}
-            ${error && html`<div class="error" style="padding: var(--sp-2)">${error}</div>`}
+            <div aria-live="polite">
+              ${error && html`<div class="error" style="padding: var(--sp-2)">${error}</div>`}
+            </div>
             ${answer && html`
               <div class="ask-answer">${answer}</div>
               <button style="font-size: var(--fs-body-sm); color: var(--accent-light); background: none;
