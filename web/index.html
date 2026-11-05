@@ -181,7 +181,7 @@
 
     /* Login */
     .login { max-width: 320px; margin: 120px auto; text-align: center; }
-    .login h2 { font-size: var(--fs-xl); font-weight: 600; margin-bottom: var(--sp-1); letter-spacing: -0.3px; }
+    .login h1 { font-size: var(--fs-xl); font-weight: 600; margin-bottom: var(--sp-1); letter-spacing: -0.3px; }
     .login p { color: var(--text-secondary); font-size: var(--fs-md); margin-bottom: var(--sp-5); }
     .login input {
       width: 100%; padding: 10px 14px; margin-bottom: 10px;
@@ -189,12 +189,7 @@
       color: var(--text); font-size: var(--fs-lg); font-family: inherit; text-align: center;
     }
     .login input:focus { outline: none; border-color: var(--accent); }
-    .login button {
-      width: 100%; padding: 10px; background: var(--accent); color: var(--on-accent);
-      border: none; border-radius: var(--r-lg); font-size: var(--fs-lg); font-weight: 600; cursor: pointer;
-    }
-    .login button:disabled { opacity: 0.4; }
-    .login .google-btn { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+    .login .google-btn { background: var(--card); color: var(--text); border-color: var(--border); }
     .login .login-divider {
       display: flex; align-items: center; gap: 10px;
       color: var(--text-secondary); font-size: var(--fs-body-sm); margin: 20px 0 14px;
@@ -453,13 +448,12 @@
     .project-name { font-size: var(--fs-3xl); font-weight: 600; letter-spacing: -0.3px; color: var(--accent-light);
                     min-width: 0; overflow-wrap: anywhere; }
     .project-links { display: flex; gap: var(--sp-2); align-items: center; min-width: 0; max-width: 100%; }
-    .project-link {
-      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      font-size: var(--fs-body-sm); color: var(--text-secondary); text-decoration: none;
-      padding: 2px var(--sp-2); border: 1px solid var(--border); border-radius: var(--r-sm);
-      font-family: "SF Mono", ui-monospace, monospace; transition: border-color 0.15s;
+    /* A chip that truncates: needs a block box for the ellipsis, and keeps
+       the monospace face of a URL/repo name. */
+    .chip.project-link {
+      display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+      font-family: "SF Mono", ui-monospace, monospace;
     }
-    .project-link:hover { border-color: var(--text-secondary); color: var(--text); }
     .project-meta {
       font-size: var(--fs-md); color: var(--text-secondary); margin-bottom: 10px;
       font-family: "SF Mono", ui-monospace, monospace;
@@ -666,19 +660,47 @@
     .card-date { font-size: var(--fs-body-sm); color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace; }
     .card-body { font-size: var(--fs-md); color: var(--text-secondary); line-height: 1.55; }
     .card-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: var(--sp-2); }
-    .tag { font-size: var(--fs-body-sm); padding: 2px 7px; background: var(--border); color: var(--text-secondary); border-radius: var(--r-sm); }
     .count-badges { display: flex; gap: 10px; margin-top: var(--sp-2); }
     .count-badge { font-size: var(--fs-body-sm); color: var(--text-secondary); }
     .count-badge strong { color: var(--text); }
 
-    /* Status badges */
-    .status-badge {
-      display: inline-block; padding: 2px 7px; font-size: var(--fs-body-sm);
-      font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; border-radius: var(--r-sm);
+    /* Chips (R8): one shape; outlined, tinted (status, with a .sev-* class)
+       or filled. Replaces the old tag/badge/status/dormant/link variants. */
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body-sm);
+      line-height: 1.4; padding: 2px var(--sp-2); border-radius: var(--r-sm);
+      border: 1px solid transparent; color: var(--text-secondary); white-space: nowrap;
+      text-decoration: none; font-family: inherit; background: none;
     }
-    .status-active { background: var(--green-dim); color: var(--green); }
-    .status-completed { background: var(--accent-dim); color: var(--accent-light); }
-    .status-stalled { background: var(--yellow-dim); color: var(--yellow); }
+    .chip-outlined { border-color: var(--border); }
+    .chip-outlined.chip-strong { border-color: var(--text-secondary); }
+    a.chip-outlined, button.chip-outlined { transition: border-color 0.15s; }
+    a.chip-outlined:hover, button.chip-outlined:hover { border-color: var(--text-secondary); color: var(--text); }
+    .chip-tinted { background: var(--sev-dim); color: var(--sev); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+    .chip-filled { background: var(--border); }
+    button.chip-filled { cursor: pointer; }
+    button.chip-filled:hover { color: var(--text); }
+    .chip.muted { color: var(--text-muted); }
+    .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot); flex: none; }
+    .sev-ok { --sev: var(--green); --sev-dim: var(--green-dim); }
+    .sev-warn { --sev: var(--yellow); --sev-dim: var(--yellow-dim); }
+    .sev-bad { --sev: var(--red); --sev-dim: var(--red-dim); }
+    .sev-info { --sev: var(--accent-light); --sev-dim: var(--accent-dim); }
+
+    /* One button: .btn + .btn-primary (accent fill) or .btn-ghost (outline).
+       .btn-lg is the larger full-width size, used on the login page. */
+    .btn {
+      min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      font-family: inherit; font-size: var(--fs-md); padding: var(--sp-1) var(--sp-3);
+      border-radius: var(--r-sm); border: 1px solid transparent; cursor: pointer;
+    }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn-primary { background: var(--accent); color: var(--on-accent); }
+    .btn-ghost { background: transparent; color: var(--text-secondary); border-color: var(--border); }
+    .btn-lg {
+      width: 100%; padding: 10px; font-size: var(--fs-lg); font-weight: 600;
+      border-radius: var(--r-lg);
+    }
 
     /* Vertical timeline */
     .timeline { position: relative; padding-left: 20px; }
@@ -765,13 +787,6 @@
       border-radius: var(--r-lg); color: var(--text); font-size: var(--fs-md); font-family: inherit;
     }
     .ask-input::placeholder { color: var(--text-secondary); }
-    .ask-btn {
-      min-height: 32px;
-      padding: 10px var(--sp-4); background: var(--accent); color: var(--on-accent);
-      border: none; border-radius: var(--r-lg); font-size: var(--fs-md); font-weight: 600;
-      cursor: pointer; font-family: inherit;
-    }
-    .ask-btn:disabled { opacity: 0.4; }
     .ask-answer {
       background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-lg);
       padding: 14px; font-size: var(--fs-md); line-height: 1.6; white-space: pre-wrap;
@@ -780,12 +795,6 @@
     .ask-examples {
       display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--sp-3);
     }
-    .ask-example {
-      font-size: var(--fs-body-sm); padding: var(--sp-1) 10px; background: var(--border);
-      color: var(--text-secondary); border: none; border-radius: var(--r-sm);
-      cursor: pointer; font-family: inherit;
-    }
-    .ask-example:hover { color: var(--text); }
 
     /* Machine-voice marker (AI-authored text — tenet #1) */
     .machine { font-style: italic; color: var(--text-secondary); }
@@ -796,13 +805,16 @@
       font-family: "SF Mono", ui-monospace, monospace; white-space: nowrap;
     }
 
+    /* One title style for every page's h1 */
+    .page-title { margin: 0; font-size: var(--fs-3xl); color: var(--accent-light); line-height: 1.15; }
+
     /* Section labels (project page Now/Trajectory/Cost/History) */
-    .section-label {
+    h2.section-label {
       font-size: var(--fs-body-sm); font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.5px; color: var(--text-secondary);
       margin: 28px 0 var(--sp-3);
     }
-    .section-label:first-child { margin-top: 0; }
+    h2.section-label:first-child { margin-top: 0; }
 
     /* Stream (home cross-project feed) */
     /* A project name with no break point would set the row's width; let it
@@ -813,14 +825,6 @@
     }
     .stream-project:hover { color: var(--accent-light); }
     .dormant-list { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
-    .dormant-chip {
-      font-size: var(--fs-md); color: var(--text-secondary); cursor: pointer;
-      padding: var(--sp-1) 10px; border: 1px solid var(--border); border-radius: var(--r-sm);
-    }
-    .dormant-chip:hover { border-color: var(--text-secondary); color: var(--text); }
-    a.dormant-chip { text-decoration: none; }
-    .dormant-chip.muted { color: var(--text-muted); border-color: var(--border); }
-    .dormant-chip.muted:hover, .dormant-chip.is-private:hover { border-color: var(--text-secondary); color: var(--text); }
 
     /* Pulse KPI tiles (issue #31).
        A tile that goes somewhere carries a PERSISTENT cue (↗ for navigation,
@@ -862,15 +866,9 @@
     .meta-editor label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
     .meta-saved { color: var(--green); }
     .meta-error { color: var(--red); }
-    .badge {
-      font-size: var(--fs-body-sm); letter-spacing: 0.06em; text-transform: uppercase;
-      padding: 2px 7px; border-radius: var(--r-sm); border: 1px solid var(--border);
-      color: var(--text-secondary); white-space: nowrap;
-    }
-    .badge-private { border-color: var(--text-secondary); }
     .timeline-entry.is-private { opacity: 0.62; }
     .project-name.is-private { opacity: 0.75; }
-    .dormant-chip.is-private { color: var(--text-muted); border-color: var(--border); }
+    .chip.is-private { color: var(--text-muted); }
 
     /* Misc */
     .loading { text-align: center; padding: 40px; color: var(--text-secondary); font-size: var(--fs-md); }
@@ -914,7 +912,7 @@
       .kpi-tile, .kpi-cue { transition: none; }
       .kpi-tile-action:hover, .kpi-tile-action:focus-visible { transform: none; }
       .header-meta.refreshing, .skeleton, .ask-pulse { animation: none; }
-      .project-link, .timeline-entry, .review-content { transition: none; }
+      .chip, a.chip-outlined, button.chip-outlined, .project-link, .timeline-entry, .review-content { transition: none; }
       .chart-bars * { transition: none !important; }
     }
 
@@ -926,7 +924,8 @@
        base rules whose boxes it grows. */
     @media (max-width: 640px) {
       .container { padding: var(--safe-top) var(--sp-4) var(--safe-bottom); }
-      .tap, .win-btn, .sub-tab, .picker-item, select { min-height: 44px; }
+      .tap, .win-btn, .sub-tab, .picker-item, .btn, select { min-height: 44px; }
+      button.chip { min-height: 44px; }
       /* WebKit draws a native select at a fixed height and ignores min-height
          and padding, so on a phone every select drops the native look and
          draws its own box and caret (the project page's metadata selects
@@ -948,7 +947,8 @@
       .chart-legend { row-gap: 0; }
       .row-link { display: flex; flex-direction: column; justify-content: center; min-height: 44px; }
       /* An ellipsis needs a block box, so these grow by line-height, not flex. */
-      .project-link { min-height: 44px; line-height: 42px; padding-top: 0; padding-bottom: 0; }
+      .chip.project-link { min-height: 44px; line-height: 42px; padding-top: 0; padding-bottom: 0; }
+      a.chip { min-height: 44px; }
     }
   </style>
 </head>
@@ -1212,10 +1212,10 @@
       return html`
         <div class="container">
           <div class="login">
-            <h2>Prompt Lab</h2>
+            <h1>Prompt Lab</h1>
             <p>Sign in to continue</p>
             ${googleLogin && html`
-              <button class="google-btn" onClick=${() => { window.location = '/api/login?provider=google'; }}>
+              <button class="btn btn-lg google-btn" onClick=${() => { window.location = '/api/login?provider=google'; }}>
                 Sign in with Google
               </button>
             `}
@@ -1227,7 +1227,7 @@
               <div aria-live="polite">
                 ${error && html`<p class="error" style="margin-bottom: 10px; padding: var(--sp-2) var(--sp-3)">${error}</p>`}
               </div>
-              <button onClick=${submit} disabled=${loading || !password}>
+              <button class="btn btn-lg btn-primary" onClick=${submit} disabled=${loading || !password}>
                 ${loading ? 'Signing in...' : 'Sign in'}
               </button>
             `}
@@ -1433,26 +1433,11 @@
     // views plus More sit at the bottom instead. Always rendered; CSS shows it
     // only under html[data-standalone] on a narrow screen, so a browser tab and
     // every wide screen are exactly as before.
-    const TAB_VIEWS = ['activity', 'todos', 'costs'];
-    const TABS = [
-      ['home', 'Home', '#/'],
-      ...NAV.filter(([view]) => TAB_VIEWS.includes(view)),
-      ['more', 'More', '#/more'],
-    ];
-    // Everything the bar doesn't name lives behind More. A project or a day
-    // page is reached from inside a view, so it highlights nothing rather than
-    // pretending to belong to one tab.
-    const MORE_VIEWS = ['more', 'visitors', 'health', 'about'];
-    function currentTab(view) {
-      if (MORE_VIEWS.includes(view)) return 'more';
-      return TABS.some(([v]) => v === view) ? view : null;
-    }
-
-    function TabBar({ route }) {
-      const current = currentTab(route.view);
+    function TabBar({ route, role }) {
+      const current = currentTab(route.view, role);
       return html`
         <nav class="tab-bar" data-test="tab-bar" aria-label="Sections">
-          ${TABS.map(([view, label, hash]) => html`
+          ${tabsFor(role).map(([view, label, hash]) => html`
             <button class="tab ${current === view ? 'current' : ''}" data-test="tab" data-view=${view}
                     aria-current=${current === view ? 'page' : null}
                     onClick=${() => navigate(hash)}>${label}</button>`)}
@@ -1462,12 +1447,13 @@
     // The header's second tier as a page, for the tab bar's More. A plain
     // route, so it works at any width; only the tab bar links to it.
     function MoreView({ role, email, info, theme, onToggleTheme, onLogout }) {
-      const extra = navFor(role).filter(([view]) => !TAB_VIEWS.includes(view));
+      const tabViews = tabsFor(role).map(([view]) => view);
+      const extra = navFor(role).filter(([view]) => !tabViews.includes(view));
       const buildTime = formatBuildTime(info?.build_time);
       return html`
         <div style="max-width:640px">
-          <h1 style="margin:0 0 var(--sp-3); font-size: var(--fs-2xl); color:var(--accent-light)">More</h1>
-          <div class="more-list" data-test="more-list">
+          <h1 class="page-title">More</h1>
+          <div class="more-list" data-test="more-list" style="margin-top: var(--sp-3)">
             ${extra.map(([view, label, hash]) => html`
               <button class="more-row" onClick=${() => navigate(hash)}>${label}</button>`)}
             <button class="more-row" onClick=${() => navigate('#/about')}>About</button>
@@ -1652,9 +1638,7 @@
             ${error && html`
               <div class="error">
                 <p>${error}</p>
-                <button onClick=${loadOverview} style="margin-top: 10px; padding: 6px 14px;
-                  background: var(--accent); color: var(--on-accent); border: none; border-radius: var(--r-lg);
-                  cursor: pointer; font-size: var(--fs-md);">Retry</button>
+                <button class="btn btn-primary" onClick=${loadOverview} style="margin-top: 10px">Retry</button>
               </div>
             `}
           </div>
@@ -1685,7 +1669,7 @@
 
           ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
         </div>
-        <${TabBar} route=${route} />
+        <${TabBar} route=${route} role=${role} />
         <//>
       `;
     }
@@ -1806,9 +1790,9 @@
         return html`
           <div class="dormant-list">
             ${shown.map(p => html`
-              <a class="dormant-chip ${muted ? 'muted' : ''}" href=${'#/project/' + encodeURIComponent(p)}>${p}</a>`)}
+              <a class="chip chip-outlined ${muted ? 'muted' : ''}" href=${'#/project/' + encodeURIComponent(p)}>${p}</a>`)}
             ${hidden > 0 && html`
-              <span class="dormant-chip muted" style="cursor:default"
+              <span class="chip chip-outlined muted" style="cursor:default"
                     title="Hidden by the private toggle below">+${hidden} private</span>`}
           </div>`;
       };
@@ -2025,6 +2009,7 @@
       }
 
       return html`
+        <h1 class="sr-only">Prompt Lab</h1>
         <${PulseTiles} overview=${overview} cost30=${cost30} views30=${views30} hide=${hiddenSet} role=${role} />
         <${CrossProjectActivity} overview=${overview} hide=${hiddenSet} />
 
@@ -2082,7 +2067,7 @@
             ${showDormant && html`
               <div class="dormant-list">
                 ${dormantProjects.map(p => html`
-                  <a class="dormant-chip ${isPrivate(p) ? 'is-private' : ''}" href=${'#/project/' + encodeURIComponent(p)}>${p}</a>
+                  <a class="chip chip-outlined ${isPrivate(p) ? 'is-private' : ''}" href=${'#/project/' + encodeURIComponent(p)}>${p}</a>
                 `)}
               </div>
             `}
@@ -2220,8 +2205,8 @@
       }, []);
 
       const header = html`
-        <h1 style="margin: 0 0 var(--sp-1); font-size: var(--fs-3xl); color: var(--accent-light)">Todos</h1>
-        <div style="font-size: var(--fs-body); color: var(--text-secondary); margin-bottom: var(--sp-4)">
+        <h1 class="page-title">Todos</h1>
+        <div style="font-size: var(--fs-body); color: var(--text-secondary); margin: var(--sp-1) 0 var(--sp-4)">
           Open GitHub issues, grouped by project.
         </div>`;
 
@@ -2341,8 +2326,8 @@
                       <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none">#${iss.number}</span>
                       <span style="font-size: var(--fs-md); flex: 1; min-width: 0">${iss.title}</span>
                       ${iss.labels.map(lb => html`
-                        <span style="font-size: var(--fs-sm); padding: 1px 6px; border-radius: var(--r-lg); flex: none;
-                                     background: ${labelColor(lb)}; color: var(--on-accent); white-space: nowrap">${lb}</span>`)}
+                        <span class="chip chip-outlined" style="flex: none; --dot: ${labelColor(lb)}">
+                          <span class="dot"></span>${lb}</span>`)}
                       <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); flex: none">${timeAgo(iss.updated_at)}</span>
                     </a>`)}
                 </div>`}
@@ -2513,6 +2498,24 @@
     // page loads, which would otherwise render NaN%.
     function sharePct(v, total) {
       return Number.isFinite(total) && total > 0 ? `${(v / total * 100).toFixed(0)}%` : '';
+    }
+    // The home-screen tab bar is a function of role (R14, D8). An admin gets
+    // Health in the bar and reaches Todos from More; a reader has neither
+    // Visitors nor Health, so keeps Todos. Everything the bar doesn't name
+    // lives behind More. A project or day page is reached from inside a view,
+    // so it highlights nothing rather than pretending to belong to one tab.
+    function tabsFor(role) {
+      return [
+        ['home', 'Home', '#/'],
+        ['activity', 'Activity', '#/activity'],
+        role === 'admin' ? ['health', 'Health', '#/health'] : ['todos', 'Todos', '#/todos'],
+        ['costs', 'Costs', '#/costs'],
+        ['more', 'More', '#/more'],
+      ];
+    }
+    function currentTab(view, role) {
+      if (tabsFor(role).some(([v]) => v === view)) return view;
+      return ['visitors', 'health', 'todos', 'about'].includes(view) ? 'more' : null;
     }
     // </pure>
 
@@ -2893,7 +2896,7 @@
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-1)">
-          <h1 style="margin: 0; font-size: var(--fs-3xl); color: var(--accent-light)">Costs</h1>
+          <h1 class="page-title">Costs</h1>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <${PageNote}>
@@ -3066,7 +3069,7 @@
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-1)">
-          <h1 style="margin: 0; font-size: var(--fs-3xl); color: var(--accent-light)">Activity</h1>
+          <h1 class="page-title">Activity</h1>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <${PageNote}>
@@ -3264,8 +3267,8 @@
 
       return html`
         <div style="max-width:640px">
-          <h1 style="margin:0 0 var(--sp-3); font-size: var(--fs-2xl); color:var(--accent-light)">About</h1>
-          <p style="line-height:1.55; margin:0 0 var(--sp-2)">
+          <h1 class="page-title">About</h1>
+          <p style="line-height:1.55; margin:var(--sp-3) 0 var(--sp-2)">
             Prompt Lab tracks agent sessions, spend and activity across every project,
             from a local prompt history that never leaves the machine it was typed on.
           </p>
@@ -3372,9 +3375,9 @@
                style="cursor:pointer; color:var(--text-secondary); font-size: var(--fs-body-sm);
                       text-decoration:none">← back</button>
           </div>
-          <h1 style="margin:0 0 var(--sp-1); font-size: var(--fs-2xl); color:var(--accent-light)">${long}</h1>
+          <h1 class="page-title">${long}</h1>
           <div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-sm);
-                      color:var(--text-secondary); margin-bottom:18px">${date}</div>
+                      color:var(--text-secondary); margin: var(--sp-1) 0 18px">${date}</div>
 
           <div aria-live="polite">
             ${err && html`
@@ -3507,7 +3510,7 @@
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-1)">
-          <h1 style="margin: 0; font-size: var(--fs-3xl); color: var(--accent-light)">Visitors</h1>
+          <h1 class="page-title">Visitors</h1>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <${PageNote}>
@@ -3786,7 +3789,7 @@
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-1)">
-          <h1 style="margin: 0; font-size: var(--fs-3xl); color: var(--accent-light)">Health</h1>
+          <h1 class="page-title">Health</h1>
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
             ${loading && html`<span class="header-meta refreshing" title="Polling…">↻</span>`}
             ${!loading && checkedAt && html`
@@ -3794,12 +3797,8 @@
                            font-family: 'SF Mono', ui-monospace, monospace">
                 checked ${checkedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
               </span>`}
-            <button class="tap" onClick=${() => setNonce(n => n + 1)} disabled=${loading}
-              title="Poll every target again"
-              style="font-size: var(--fs-body-sm); padding: var(--sp-1) var(--sp-3); border-radius: var(--r-sm); cursor: pointer;
-                     font-family: inherit; border: 1px solid var(--border);
-                     background: transparent; color: var(--text-secondary);
-                     opacity: ${loading ? 0.5 : 1}">
+            <button class="btn btn-ghost" onClick=${() => setNonce(n => n + 1)} disabled=${loading}
+              title="Poll every target again">
               ↻ re-poll
             </button>
           </div>
@@ -3817,9 +3816,7 @@
       if (error) return html`<div>${header}
         <div class="cost-placeholder">Couldn't load the health report. (${error})
           <div style="margin-top: 10px">
-            <button onClick=${() => setNonce(n => n + 1)}
-              style="font-size: var(--fs-body); padding: 6px 14px; background: var(--accent); color: var(--on-accent);
-                     border: none; border-radius: var(--r-lg); cursor: pointer; font-family: inherit">
+            <button class="btn btn-primary" onClick=${() => setNonce(n => n + 1)}>
               Retry
             </button>
           </div>
@@ -4038,7 +4035,7 @@
       const up = status === 'UP' || status === '';
       const paused = status === 'PAUSED';
       const chipColor = paused ? 'var(--text-secondary)' : up ? 'var(--green)' : 'var(--red)';
-      const chipBg = paused ? 'transparent' : up ? 'var(--green-dim)' : 'var(--red-dim)';
+      const badgeClass = paused ? 'chip chip-outlined' : up ? 'chip chip-tinted sev-ok' : 'chip chip-tinted sev-bad';
 
       const stat = (label, value, color) => html`
         <div style="display: flex; flex-direction: column; gap: 1px; min-width: 62px">
@@ -4048,10 +4045,7 @@
                        color: ${color || 'var(--text)'}">${value}</span>
         </div>`;
 
-      const badge = html`
-        <span style="font-size: var(--fs-body-sm); font-weight: 700; letter-spacing: 0.06em;
-                     padding: 2px var(--sp-2); border-radius: var(--r-sm); white-space: nowrap;
-                     background: ${chipBg}; color: ${chipColor}">${status || '—'}</span>`;
+      const badge = html`<span class=${badgeClass}>${status || '—'}</span>`;
       const stats = html`
         <div style="display: flex; gap: var(--sp-4); flex-wrap: wrap; margin-top: var(--sp-2)">
           ${stat('1d', fmtPct(monitor.uptime_1d), uptimeColor(monitor.uptime_1d))}
@@ -4566,7 +4560,7 @@
                       min-width: 0; overflow-wrap: anywhere">
               ← ${project}
             </a>
-            <h2 style="margin: 0; font-size: var(--fs-2xl)">Cost detail</h2>
+            <h1 class="page-title">Cost detail</h1>
             <div style="margin-left: auto; font-size: var(--fs-lg); font-weight: 600">
               $${total.toFixed(2)} <span style="font-weight: 400; color: var(--text-secondary);
                 font-size: var(--fs-body)">(${sorted.length} rows)</span>
@@ -4754,18 +4748,18 @@
         <div>
           <div class="project-header">
             <div class="project-title-row">
-              <span class="project-name ${meta.private ? 'is-private' : ''}">${name}</span>
-              ${meta.private && html`<span class="badge badge-private">private</span>`}
-              ${meta.category && html`<span class="badge">${meta.category}</span>`}
+              <h1 class="page-title project-name ${meta.private ? 'is-private' : ''}">${name}</h1>
+              ${meta.private && html`<span class="chip chip-outlined chip-strong">private</span>`}
+              ${meta.category && html`<span class="chip chip-outlined">${meta.category}</span>`}
               <div class="project-links">
-                ${githubUrl && html`<a class="project-link" style="flex: none" href=${githubUrl} target="_blank" rel="noopener">GitHub</a>`}
-                ${siteLabel && html`<a class="project-link" href=${siteUrl} target="_blank" rel="noopener">${siteLabel}</a>`}
+                ${githubUrl && html`<a class="chip chip-outlined project-link" style="flex: none" href=${githubUrl} target="_blank" rel="noopener">GitHub</a>`}
+                ${siteLabel && html`<a class="chip chip-outlined project-link" href=${siteUrl} target="_blank" rel="noopener">${siteLabel}</a>`}
               </div>
             </div>
             <${MetadataEditor} project=${name} meta=${meta} role=${role} onMetaChange=${onMetaChange} />
           </div>
 
-          <div class="section-label">Now</div>
+          <h2 class="section-label">Now</h2>
           <div class="project-meta">
             ${inception && html`<span>Since ${inception}</span>`}
             ${inception && (snapshot.session_count_7d || snapshot.commit_count_7d) && html`<span> · </span>`}
@@ -4787,13 +4781,13 @@
             `
             : html`<div class="project-summary">No summary yet.</div>`}
 
-          <div class="section-label">Trajectory</div>
+          <h2 class="section-label">Trajectory</h2>
           <${ActivityHeatmap} activity=${data.activity} />
 
-          <div class="section-label">Cost</div>
+          <h2 class="section-label">Cost</h2>
           <${CostChart} project=${name} />
 
-          <div class="section-label">History</div>
+          <h2 class="section-label">History</h2>
           <${TimelineView} data=${data} />
         </div>
       `;
@@ -4884,7 +4878,7 @@
                     </span>
                     ${isOpen && highlights.length > 0 && html`
                       <div class="card-tags" style="margin-top: 6px">
-                        ${highlights.map(h => html`<span class="tag">${h}</span>`)}
+                        ${highlights.map(h => html`<span class="chip chip-filled">${h}</span>`)}
                       </div>
                     `}
                   </div>
@@ -4999,7 +4993,7 @@
             ${!answer && !asking && html`
               <div class="ask-examples">
                 ${examples.map(q => html`
-                  <button class="ask-example" onClick=${() => setQ(q)}>${q}</button>
+                  <button class="chip chip-filled" onClick=${() => setQ(q)}>${q}</button>
                 `)}
               </div>
             `}
@@ -5009,7 +5003,7 @@
                 value=${question} onInput=${e => setQuestion(e.target.value)}
                 onKeyDown=${e => { if (e.key === 'Enter') handleAsk(); if (e.key === 'Escape') onClose(); }}
                 disabled=${asking} />
-              <button class="ask-btn" onClick=${handleAsk} disabled=${asking || !question.trim()}>
+              <button class="btn btn-primary" onClick=${handleAsk} disabled=${asking || !question.trim()}>
                 ${asking ? '...' : 'Ask'}
               </button>
             </div>
