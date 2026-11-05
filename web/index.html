@@ -768,6 +768,7 @@
     .dormant-chip:hover { border-color: var(--text-secondary); color: var(--text); }
     a.dormant-chip { text-decoration: none; }
     .dormant-chip.muted { color: var(--text-muted); border-color: var(--border); }
+    .dormant-chip.muted:hover, .dormant-chip.is-private:hover { border-color: var(--text-secondary); color: var(--text); }
 
     /* Pulse KPI tiles (issue #31).
        A tile that goes somewhere carries a PERSISTENT cue (↗ for navigation,
@@ -791,10 +792,8 @@
     .kpi-cue {
       position: absolute; top: 9px; right: 11px; line-height: 1;
       font-size: var(--fs-body); color: var(--accent-light);
-      transition: opacity 0.15s, transform 0.15s;
+      transition: transform 0.15s;
     }
-    .kpi-tile-action:hover .kpi-cue,
-    .kpi-tile-action:focus-visible .kpi-cue { opacity: 1; }
     .kpi-cue.open { transform: rotate(180deg); }
     @media (prefers-reduced-motion: reduce) {
       .kpi-tile, .kpi-cue { transition: none; }
@@ -821,7 +820,9 @@
       color: var(--text-secondary); white-space: nowrap;
     }
     .badge-private { border-color: var(--text-secondary); }
-    .is-private { color: var(--text-muted); border-color: var(--border); }
+    .timeline-entry.is-private { opacity: 0.62; }
+    .project-name.is-private { opacity: 0.75; }
+    .dormant-chip.is-private { color: var(--text-muted); border-color: var(--border); }
 
     /* Misc */
     .loading { text-align: center; padding: 40px; color: var(--text-secondary); font-size: var(--fs-md); }
