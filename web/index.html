@@ -181,7 +181,7 @@
 
     /* Login */
     .login { max-width: 320px; margin: 120px auto; text-align: center; }
-    .login h1 { font-size: var(--fs-xl); font-weight: 600; margin-top: 0.83em; margin-bottom: var(--sp-1); letter-spacing: -0.3px; }
+    .login h1 { font-size: var(--fs-xl); font-weight: 600; margin-bottom: var(--sp-1); letter-spacing: -0.3px; }
     .login p { color: var(--text-secondary); font-size: var(--fs-md); margin-bottom: var(--sp-5); }
     .login input {
       width: 100%; padding: 10px 14px; margin-bottom: 10px;
@@ -1432,26 +1432,11 @@
     // views plus More sit at the bottom instead. Always rendered; CSS shows it
     // only under html[data-standalone] on a narrow screen, so a browser tab and
     // every wide screen are exactly as before.
-    const TAB_VIEWS = ['activity', 'todos', 'costs'];
-    const TABS = [
-      ['home', 'Home', '#/'],
-      ...NAV.filter(([view]) => TAB_VIEWS.includes(view)),
-      ['more', 'More', '#/more'],
-    ];
-    // Everything the bar doesn't name lives behind More. A project or a day
-    // page is reached from inside a view, so it highlights nothing rather than
-    // pretending to belong to one tab.
-    const MORE_VIEWS = ['more', 'visitors', 'health', 'about'];
-    function currentTab(view) {
-      if (MORE_VIEWS.includes(view)) return 'more';
-      return TABS.some(([v]) => v === view) ? view : null;
-    }
-
-    function TabBar({ route }) {
-      const current = currentTab(route.view);
+    function TabBar({ route, role }) {
+      const current = currentTab(route.view, role);
       return html`
         <nav class="tab-bar" data-test="tab-bar" aria-label="Sections">
-          ${TABS.map(([view, label, hash]) => html`
+          ${tabsFor(role).map(([view, label, hash]) => html`
             <button class="tab ${current === view ? 'current' : ''}" data-test="tab" data-view=${view}
                     aria-current=${current === view ? 'page' : null}
                     onClick=${() => navigate(hash)}>${label}</button>`)}
@@ -1461,7 +1446,8 @@
     // The header's second tier as a page, for the tab bar's More. A plain
     // route, so it works at any width; only the tab bar links to it.
     function MoreView({ role, email, info, theme, onToggleTheme, onLogout }) {
-      const extra = navFor(role).filter(([view]) => !TAB_VIEWS.includes(view));
+      const tabViews = tabsFor(role).map(([view]) => view);
+      const extra = navFor(role).filter(([view]) => !tabViews.includes(view));
       const buildTime = formatBuildTime(info?.build_time);
       return html`
         <div style="max-width:640px">
@@ -1682,7 +1668,7 @@
 
           ${askOpen && html`<${AskModal} overview=${overview} project=${route.view === 'project' ? route.project : null} onClose=${() => setAskOpen(false)} />`}
         </div>
-        <${TabBar} route=${route} />
+        <${TabBar} route=${route} role=${role} />
         <//>
       `;
     }
@@ -2511,6 +2497,24 @@
     // page loads, which would otherwise render NaN%.
     function sharePct(v, total) {
       return Number.isFinite(total) && total > 0 ? `${(v / total * 100).toFixed(0)}%` : '';
+    }
+    // The home-screen tab bar is a function of role (R14, D8). An admin gets
+    // Health in the bar and reaches Todos from More; a reader has neither
+    // Visitors nor Health, so keeps Todos. Everything the bar doesn't name
+    // lives behind More. A project or day page is reached from inside a view,
+    // so it highlights nothing rather than pretending to belong to one tab.
+    function tabsFor(role) {
+      return [
+        ['home', 'Home', '#/'],
+        ['activity', 'Activity', '#/activity'],
+        role === 'admin' ? ['health', 'Health', '#/health'] : ['todos', 'Todos', '#/todos'],
+        ['costs', 'Costs', '#/costs'],
+        ['more', 'More', '#/more'],
+      ];
+    }
+    function currentTab(view, role) {
+      if (tabsFor(role).some(([v]) => v === view)) return view;
+      return ['visitors', 'health', 'todos', 'about'].includes(view) ? 'more' : null;
     }
     // </pure>
 

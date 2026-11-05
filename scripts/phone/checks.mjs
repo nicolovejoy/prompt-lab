@@ -880,7 +880,8 @@ CHECKS.push({
 });
 
 // Launched from the home screen, a bottom tab bar replaces the Menu button.
-const TABS = ['home', 'activity', 'todos', 'costs', 'more'];
+const TABS = ['home', 'activity', 'health', 'costs', 'more'];
+const READER_TABS = ['home', 'activity', 'todos', 'costs', 'more'];
 
 CHECKS.push({
   name: 'tabbar', profile: 'standalone', hash: '#/', ready: 'text=Active projects',
@@ -924,7 +925,7 @@ CHECKS.push({
     });
     t.ok(clear.lastBottom <= clear.barTop, `the last content clears the bar (${clear.what} ends ${clear.lastBottom}px, bar starts ${clear.barTop}px)`);
 
-    for (const [view, hash] of [['activity', '#/activity'], ['todos', '#/todos'], ['costs', '#/costs'], ['more', '#/more'], ['home', '#/']]) {
+    for (const [view, hash] of [['activity', '#/activity'], ['health', '#/health'], ['costs', '#/costs'], ['more', '#/more'], ['home', '#/']]) {
       await bar.locator(`[data-view="${view}"]`).tap();
       await page.waitForFunction((h) => (location.hash || '#/') === h, hash);
       t.ok(await bar.locator(`[data-view="${view}"]`).getAttribute('aria-current') === 'page', `${view}: tab goes there and becomes current`);
@@ -935,18 +936,38 @@ CHECKS.push({
 });
 
 CHECKS.push({
+  name: 'tabbar-reader', profile: 'standalone', hash: '#/', ready: 'text=Active projects',
+  async before() { fixtureOptions.role = 'reader'; },
+  async after() { fixtureOptions.role = 'admin'; },
+  async run(page, t) {
+    const bar = page.locator('[data-test="tab-bar"]');
+    const views = await bar.locator('[data-test="tab"]').evaluateAll((els) => els.map((e) => e.dataset.view));
+    t.ok(JSON.stringify(views) === JSON.stringify(READER_TABS), `the reader bar is unchanged (${views.join(', ')})`);
+    await bar.locator('[data-view="todos"]').tap();
+    await page.waitForFunction(() => location.hash === '#/todos');
+    t.ok(await bar.locator('[data-view="todos"]').getAttribute('aria-current') === 'page', 'Todos is current for a reader');
+  },
+});
+
+CHECKS.push({
   name: 'more-admin', profile: 'standalone', hash: '#/more', ready: '[data-test="more-list"]',
   async run(page, t) {
     // The runner's shot comes after the tap below, on Visitors.
     await page.screenshot({ path: path.join(SHOTS, 'more-admin-viewport.png') });
     const text = await page.locator('[data-test="more-list"]').innerText();
-    for (const label of ['Visitors', 'Health', 'About', 'Log out']) t.ok(text.includes(label), `More lists ${label}`);
+    for (const label of ['Todos', 'Visitors', 'About', 'Log out']) t.ok(text.includes(label), `More lists ${label}`);
+    t.ok(!text.includes('Health'), 'More does not repeat Health, which the bar names');
     const small = await smallTargets(page);
     t.ok(small.length === 0, `every row is at least 44px tall (${small.map((s) => `${s.what} ${s.h}`).join('; ')})`);
     await page.locator('[data-test="more-list"]').getByText('Visitors', { exact: true }).tap();
     await page.waitForFunction(() => location.hash === '#/visitors');
     t.ok(await page.locator('[data-test="tab-bar"] [data-view="more"]').getAttribute('aria-current') === 'page',
       'Visitors keeps More highlighted');
+    await page.locator('[data-test="tab-bar"] [data-view="more"]').tap();
+    await page.locator('[data-test="more-list"]').getByText('Todos', { exact: true }).tap();
+    await page.waitForFunction(() => location.hash === '#/todos');
+    t.ok(await page.locator('[data-test="tab-bar"] [data-view="more"]').getAttribute('aria-current') === 'page',
+      'Todos (admin) keeps More highlighted');
   },
 });
 

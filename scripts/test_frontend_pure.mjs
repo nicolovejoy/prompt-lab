@@ -28,7 +28,7 @@ if (src.indexOf('// <pure>', open + 1) >= 0) {
 
 const NAMES = ['fmtShortDate', 'fmtMonth', 'fmtMonthShort', 'addDays', 'mondayOf', 'bucketSizeFor',
                'bucketDates', 'bucketTotals', 'bucketIndexAt', 'fmtUsdAxis', 'fmtUsdFine', 'bucketUptime',
-               'projectStatus', 'shownNames', 'costProjectLabel', 'sharePct'];
+               'projectStatus', 'shownNames', 'costProjectLabel', 'sharePct', 'tabsFor', 'currentTab'];
 const pure = new Function(`"use strict";\n${src.slice(open, close)}\nreturn { ${NAMES.join(', ')} };`)();
 
 const tests = [];
@@ -429,6 +429,27 @@ test('spacing is tokens: no raw 4/8/12/16/24/32px in padding, margin or gap outs
   assert.deepEqual(raw, [], 'padding/margin/gap must use var(--sp-*) for scale values');
   const dark = tokenMap('dark');
   for (const n of ['--sp-1', '--sp-2', '--sp-3', '--sp-4', '--sp-5', '--sp-6']) assert.ok(dark[n], `:root must define ${n}`);
+});
+
+test('tab bar: admin gets Health, reader keeps Todos', () => {
+  const views = (role) => pure.tabsFor(role).map(([v]) => v);
+  assert.deepEqual(views('admin'), ['home', 'activity', 'health', 'costs', 'more']);
+  assert.deepEqual(views('reader'), ['home', 'activity', 'todos', 'costs', 'more']);
+  assert.deepEqual(views(null), views('reader'), 'unknown role gets the reader bar');
+  assert.deepEqual(pure.tabsFor('admin')[2], ['health', 'Health', '#/health']);
+});
+
+test('tab bar: current tab by role', () => {
+  const cur = pure.currentTab;
+  assert.equal(cur('health', 'admin'), 'health');
+  assert.equal(cur('todos', 'admin'), 'more', 'admin reaches Todos from More');
+  assert.equal(cur('visitors', 'admin'), 'more');
+  assert.equal(cur('todos', 'reader'), 'todos');
+  assert.equal(cur('health', 'reader'), 'more', 'unchanged reader behaviour');
+  assert.equal(cur('about', 'reader'), 'more');
+  assert.equal(cur('home', 'admin'), 'home');
+  assert.equal(cur('project', 'admin'), null);
+  assert.equal(cur('day', 'reader'), null);
 });
 
 let failed = 0;
