@@ -81,8 +81,9 @@
       --safe-top: env(safe-area-inset-top, 0px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
       --tabbar-h: 50px;
-      --radius: 8px; /* alias of --r-lg; retire after the spacing pass */
-      --r-sm: 4px; --r-md: 6px; --r-lg: 8px; --r-pill: 999px;
+      /* data marks: heatmap cells, swatches, bar tops; never chips */
+      --r-xs: 2px;
+      --r-sm: 4px; --r-md: 6px; --r-lg: 8px;
       --shadow-pop: 0 8px 28px rgba(0,0,0,.3);
       --shadow-modal: 0 20px 60px rgba(0,0,0,.4);
       --shadow-tip: 0 4px 16px rgba(0,0,0,.4);
@@ -214,7 +215,7 @@
       font-size: var(--fs-2xs); font-family: "SF Mono", ui-monospace, monospace;
     }
     .header-sub .fresh { color: var(--green); }
-    .header-sub .stale { color: #6e6e6e; }
+    .header-sub .stale { color: var(--text-muted); }
     .header-logo {
       font-size: var(--fs-xl); font-weight: 700; letter-spacing: -0.3px;
       cursor: pointer; color: var(--text); text-decoration: none;
@@ -355,7 +356,7 @@
       color: var(--text-muted); margin-right: 5px;
     }
     .nav-build.fresh { color: var(--green); }
-    .nav-build.stale { color: #6e6e6e; }
+    .nav-build.stale { color: var(--text-muted); }
     /* Icon-only: square, centred, and sized so the glyph matches the adjacent
        word-buttons' optical weight rather than their font-size. */
     .theme-btn {
@@ -498,7 +499,7 @@
     .heatmap-track { width: max-content; padding: 0 var(--sp-4); }
     .heatmap { display: flex; gap: 2px; flex-wrap: nowrap; }
     .heatmap-month { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
-    .heatmap-cell { width: 8px; height: 8px; border-radius: var(--r-sm); }
+    .heatmap-cell { width: 8px; height: 8px; border-radius: var(--r-xs); }
     .heatmap-cell-0 { background: var(--border); }
     .heatmap-cell-1 { background: var(--accent); opacity: 0.25; }
     .heatmap-cell-2 { background: var(--accent); opacity: 0.5; }
@@ -561,7 +562,7 @@
     .chart-readout-row {
       display: flex; align-items: center; gap: var(--sp-2); padding: 2px 0; color: var(--text-secondary);
     }
-    .chart-readout-swatch { width: 8px; height: 8px; border-radius: var(--r-sm); flex: none; }
+    .chart-readout-swatch { width: 8px; height: 8px; border-radius: var(--r-xs); flex: none; }
     /* Hostnames arrive as 70-character tokens with no break point. */
     .chart-readout-name { color: var(--text); flex: 1; min-width: 0; overflow-wrap: anywhere; }
     .chart-readout-value { flex: none; font-variant-numeric: tabular-nums; }
@@ -1404,9 +1405,9 @@
             <button class="nav-toggle" aria-expanded=${menu} aria-label="Menu"
                     onClick=${() => setMenu(m => !m)}>
               <span style="display:inline-flex; flex-direction:column; gap:3px">
-                <span style="width:16px; height:2px; background:currentColor; border-radius:var(--r-sm)"></span>
-                <span style="width:16px; height:2px; background:currentColor; border-radius:var(--r-sm)"></span>
-                <span style="width:16px; height:2px; background:currentColor; border-radius:var(--r-sm)"></span>
+                <span style="width:16px; height:2px; background:currentColor; border-radius:var(--r-xs)"></span>
+                <span style="width:16px; height:2px; background:currentColor; border-radius:var(--r-xs)"></span>
+                <span style="width:16px; height:2px; background:currentColor; border-radius:var(--r-xs)"></span>
               </span>
               <span class="nav-toggle-label">${menu ? 'Close' : 'Menu'}</span>
             </button>
@@ -1955,11 +1956,11 @@
               <a class="tap" href=${'#/project/' + encodeURIComponent(p)}
                  style="display:inline-flex; align-items:center; gap:6px; text-decoration:none;
                         color:var(--text-secondary); font-size: var(--fs-body-sm)">
-                <span style="width:8px; height:8px; border-radius:var(--r-sm); background:${segColor(p)}"></span>${p}
+                <span style="width:8px; height:8px; border-radius:var(--r-xs); background:${segColor(p)}"></span>${p}
               </a>`)}
             ${ranked.length > COST_PALETTE.length && html`
               <span style="display:inline-flex; align-items:center; gap:6px; font-size: var(--fs-body-sm); color:var(--text-secondary)">
-                <span style="width:8px; height:8px; border-radius:var(--r-sm); background:${COST_OTHER}"></span>+${ranked.length - COST_PALETTE.length} more
+                <span style="width:8px; height:8px; border-radius:var(--r-xs); background:${COST_OTHER}"></span>+${ranked.length - COST_PALETTE.length} more
               </span>`}
           </div>
         </div>`;
@@ -2768,10 +2769,10 @@
             ${isToday && html`
               <div style="position: absolute; left: 0; right: 0; bottom: 0; top: 0;
                           border: 1px dashed var(--border); border-bottom: none;
-                          border-radius: var(--r-sm) var(--r-sm) 0 0; pointer-events: none"></div>`}
+                          border-radius: var(--r-xs) var(--r-xs) 0 0; pointer-events: none"></div>`}
             <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
                         display: flex; flex-direction: column-reverse;
-                        border-radius: var(--r-sm) var(--r-sm) 0 0; overflow: hidden;
+                        border-radius: var(--r-xs) var(--r-xs) 0 0; overflow: hidden;
                         opacity: ${opacity}; transition: opacity 0.1s">
               ${segs.map(([s, v]) => html`
                 <div style="height: ${(v / total) * 100}%; background: ${segColor(s)}"></div>`)}
@@ -2784,7 +2785,7 @@
                 <div style="font-weight: 600; margin-bottom: var(--sp-1)">${heading(b, total)}</div>
                 ${segs.slice(0, 6).map(([s, v]) => html`
                   <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-                    <span style="width: 8px; height: 8px; border-radius: var(--r-sm); background: ${segColor(s)}; display: inline-block"></span>
+                    <span style="width: 8px; height: 8px; border-radius: var(--r-xs); background: ${segColor(s)}; display: inline-block"></span>
                     <span style="color: var(--text)">${segLabel(s)}</span>
                     <span style="margin-left: auto">${fmtValue(v)}</span>
                   </div>`)}
@@ -2984,12 +2985,12 @@
                    href=${p === UNMAPPED_PROJECT ? undefined : '#/project/' + encodeURIComponent(p) + '/cost'}
                    class="row-link">
                   <div style="display: flex; align-items: center; gap: var(--sp-2)">
-                    <span style="width: 9px; height: 9px; border-radius: var(--r-sm); background: ${segColor(p)}; flex: none"></span>
+                    <span style="width: 9px; height: 9px; border-radius: var(--r-xs); background: ${segColor(p)}; flex: none"></span>
                     <span style="font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${costProjectLabel(p)}</span>
                     <span style="margin-left: auto; font-size: var(--fs-sm); color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
                     <span style="font-size: var(--fs-md); font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${fmtUsd(v)}</span>
                   </div>
-                  <div style="height: 3px; border-radius: var(--r-sm); margin-top: 3px;
+                  <div style="height: 3px; border-radius: var(--r-xs); margin-top: 3px;
                               width: ${(v / maxProj * 100).toFixed(1)}%;
                               background: ${segColor(p)}; opacity: 0.6"></div>
                   ${p === UNMAPPED_PROJECT && html`<div style="font-size: var(--fs-sm); color: var(--text-secondary)">not mapped to a project</div>`}
@@ -3193,14 +3194,14 @@
                 <a href="#/project/${encodeURIComponent(row.p)}"
                    class="row-link">
                   <div style="display: flex; align-items: center; gap: var(--sp-2)">
-                    <span style="width: 9px; height: 9px; border-radius: var(--r-sm); background: ${segColor(row.p)}; flex: none"></span>
+                    <span style="width: 9px; height: 9px; border-radius: var(--r-xs); background: ${segColor(row.p)}; flex: none"></span>
                     <span style="font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${row.p}</span>
                     <span style="margin-left: auto; font-size: var(--fs-md); font-variant-numeric: tabular-nums;
                                  min-width: 56px; text-align: right">${fmtInt(row.w7)}</span>
                     <span style="font-size: var(--fs-md); font-variant-numeric: tabular-nums;
                                  min-width: 56px; text-align: right">${fmtInt(row.w30)}</span>
                   </div>
-                  <div style="height: 3px; border-radius: var(--r-sm); margin-top: 3px;
+                  <div style="height: 3px; border-radius: var(--r-xs); margin-top: 3px;
                               width: ${(row.v / maxProj * 100).toFixed(1)}%;
                               background: ${segColor(row.p)}; opacity: 0.6"></div>
                 </a>`)}
@@ -3377,7 +3378,7 @@
 
           <div aria-live="polite">
             ${err && html`
-              <div class="card" style="color:var(--red, #c62828)">Couldn't load this day. (${err})</div>`}
+              <div class="error">Couldn't load this day. (${err})</div>`}
             ${!data && !err && html`<${SkeletonList} />`}
           </div>
 
@@ -3454,7 +3455,7 @@
                   <span>${u.monitor}</span>
                   <span style="margin-left:auto; font-variant-numeric:tabular-nums;
                                color:${u.uptime_1d == null ? 'var(--text-secondary)'
-                                       : u.uptime_1d >= 99.9 ? 'var(--green)' : '#c62828'}">
+                                       : u.uptime_1d >= 99.9 ? 'var(--green)' : 'var(--red)'}">
                     ${u.uptime_1d == null ? '—' : u.uptime_1d.toFixed(2) + '%'}</span>
                 </div>`)}`)}
           `}
@@ -3680,7 +3681,7 @@
               ${ranked.map(([s, v]) => html`
                 <div data-test="share-row" class="share-row">
                   <div class="share-row-head">
-                    <span class="share-row-swatch" style="width: 9px; height: 9px; border-radius: var(--r-sm);
+                    <span class="share-row-swatch" style="width: 9px; height: 9px; border-radius: var(--r-xs);
                                  background: ${segColor(s)}; flex: none"></span>
                     <div class="list-row-text">
                       <span class="list-row-label">${s}</span>
@@ -3699,7 +3700,7 @@
                     <span data-test="share-value" style="flex: none; font-size: var(--fs-md); font-variant-numeric: tabular-nums;
                                  min-width: 56px; text-align: right">${v.toLocaleString()}</span>
                   </div>
-                  <div data-test="share-bar" style="height: 3px; border-radius: var(--r-sm); margin-top: 3px;
+                  <div data-test="share-bar" style="height: 3px; border-radius: var(--r-xs); margin-top: 3px;
                               width: ${(v / maxSite * 100).toFixed(1)}%;
                               background: ${segColor(s)}; opacity: 0.6"></div>
                 </div>`)}
@@ -4128,13 +4129,13 @@
           <div style="font-weight: 600; margin-bottom: var(--sp-1)">${fmtShortDate(d)}</div>
           ${v ? html`
             <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-              <span style="width: 8px; height: 8px; border-radius: var(--r-sm); flex: none;
+              <span style="width: 8px; height: 8px; border-radius: var(--r-xs); flex: none;
                            background: ${uptimeColor(v.uptime)}; display: inline-block"></span>
               <span style="color: var(--text)">uptime</span>
               <span style="margin-left: auto">${fmtPct(v.uptime)}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-              <span style="width: 8px; height: 8px; border-radius: var(--r-sm); flex: none;
+              <span style="width: 8px; height: 8px; border-radius: var(--r-xs); flex: none;
                            background: var(--accent); display: inline-block"></span>
               <span style="color: var(--text)">response</span>
               <span style="margin-left: auto">${fmtMs(v.ms)}</span>
@@ -4180,13 +4181,13 @@
                    onPointerLeave=${() => setHovered(h => h === i ? null : h)}
                    onClick=${(e) => onBarClick(e, i)}
                    onKeyDown=${onActivate((e) => onBarClick(e, i))}>
-                <div style="height: ${STRIP_H}px; border-radius: var(--r-sm);
+                <div style="height: ${STRIP_H}px; border-radius: var(--r-xs);
                             background: ${uptimeColor(c.has ? c.uptime : null)};
                             opacity: ${dim ? 0.45 : c.has ? (active ? 1 : 0.85) : (active ? 0.85 : NO_DATA_OPACITY)};
                             transition: opacity 0.1s"></div>
                 <div style="height: ${MS_H}px; margin-top: 6px; position: relative">
                   <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${msH}px;
-                              background: var(--accent); border-radius: var(--r-sm) var(--r-sm) 0 0;
+                              background: var(--accent); border-radius: var(--r-xs) var(--r-xs) 0 0;
                               opacity: ${dim ? 0.35 : active ? 1 : 0.75}; transition: opacity 0.1s"></div>
                 </div>
                 ${CAN_HOVER && hovered === i && b.size === 'day' && html`
@@ -4385,7 +4386,7 @@
             ${buckets.map(([color, opacity, label, range]) => html`
               <div style="display: flex; align-items: center; gap: var(--sp-2); padding: 5px 0;
                           border-bottom: 1px solid var(--border)">
-                <span style="width: 9px; height: 9px; border-radius: var(--r-sm); flex: none;
+                <span style="width: 9px; height: 9px; border-radius: var(--r-xs); flex: none;
                              background: ${color}; opacity: ${opacity}"></span>
                 <span style="font-size: var(--fs-md)">${label}</span>
                 <span style="margin-left: auto; font-size: var(--fs-sm); color: var(--text-secondary);
@@ -4407,7 +4408,7 @@
                     ${fmtMs(r.ms)}
                   </span>
                 </div>
-                <div style="height: 3px; border-radius: var(--r-sm); margin-top: 3px; background: var(--accent);
+                <div style="height: 3px; border-radius: var(--r-xs); margin-top: 3px; background: var(--accent);
                             opacity: 0.6; width: ${(r.ms / slowest * 100).toFixed(1)}%"></div>
               </div>`)
               : html`<div style="font-size: var(--fs-body); color: var(--text-secondary)">

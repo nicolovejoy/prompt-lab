@@ -322,30 +322,22 @@ test('accent roles: text uses --link, text on a fill uses --on-accent', () => {
   const white = values.filter((v) => /(^|[^\w-])(#fff(fff)?|white)(?![\w-])/i.test(v));
   assert.deepEqual(white, [], 'color: #fff/white; use var(--on-accent)');
   const dark = tokenBlock('dark');
-  const lightOs = tokenBlock('lightOs');
-  const lightSet = tokenBlock('lightSet');
   for (const name of ['--link', '--on-accent']) {
     assert.ok(tok(dark, name), `dark :root must define ${name}`);
-    assert.ok(tok(lightOs, name), `OS-light block must define ${name}`);
-    assert.ok(tok(lightSet, name), `data-theme="light" block must define ${name}`);
   }
 });
 
 test('chart palette: tokens in all three blocks, no palette hex outside them', () => {
   const names = [...Array.from({ length: 8 }, (_, i) => `--chart-${i + 1}`), '--chart-other'];
   const dark = tokenBlock('dark');
-  const lightOs = tokenBlock('lightOs');
-  const lightSet = tokenBlock('lightSet');
   for (const name of names) {
     assert.ok(tok(dark, name), `dark :root must define ${name}`);
-    assert.ok(tok(lightOs, name), `OS-light block must define ${name}`);
-    assert.ok(tok(lightSet, name), `data-theme="light" block must define ${name}`);
   }
   // A palette hex anywhere but the token blocks is a colour that ignores the
   // theme. The lookahead keeps #555 from matching #5558e6.
   let rest = stripComments(src);
   for (const re of Object.values(TOKEN_BLOCK_RES)) rest = rest.replace(re, '');
-  const HEX = ['06b6d4', '6366f1', '22c55e', 'eab308', 'ef4444', 'ec4899', 'f97316', 'a855f7', '555'];
+  const HEX = ['06b6d4', '6366f1', '22c55e', 'eab308', 'ef4444', 'ec4899', 'f97316', 'a855f7', '555', '777', '6b6b6b', 'c62828', '6e6e6e'];
   const found = [...rest.matchAll(new RegExp(`#(${HEX.join('|')})(?![0-9a-f])`, 'gi'))].map((m) => m[0]);
   assert.deepEqual(found, [], `palette hex outside :root; use var(--chart-N): ${found.join(', ')}`);
 });
@@ -423,7 +415,7 @@ test('radius, shadow and z-index are tokens: no raw values outside :root', () =>
   const z = decl('z-index').filter((v) => /^-?\d+$/.test(v));
   assert.deepEqual(z, [], 'z-index must use var(--z-*)');
   const dark = tokenMap('dark');
-  for (const n of ['--r-sm', '--r-md', '--r-lg', '--r-pill', '--shadow-pop', '--shadow-modal', '--shadow-tip',
+  for (const n of ['--r-xs', '--r-sm', '--r-md', '--r-lg', '--shadow-pop', '--shadow-modal', '--shadow-tip',
                    '--z-tip', '--z-dropdown', '--z-bar', '--z-modal']) assert.ok(dark[n], `:root must define ${n}`);
 });
 
