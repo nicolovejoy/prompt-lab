@@ -77,6 +77,7 @@ from access_helper import resolve_access
 from artifact_checks import ARTIFACT_CHECKS
 from auth_helper import _sign, _unsign
 from day_helper import lab_today
+import email_style as es
 from turso_helper import turso_query
 
 # (name, url, deep) — deep targets return JSON dependency detail and non-2xx
@@ -1113,10 +1114,11 @@ def _set_problem_state(state):
 # Colours. Red is for what is broken and amber for what could not be checked,
 # and both are used ONLY above the separator: a red line under a "working"
 # heading is the same lie as a red line under a green subject.
-_RED = "#c62828"
-_AMBER = "#b26a00"
-_GREEN = "#2e7d32"
-_MUTED = "#666"
+# Values come from the shared email palette (R11), the dashboard's light theme.
+_RED = es.BAD
+_AMBER = es.WARN
+_GREEN = es.GOOD
+_MUTED = es.MUTED
 
 # Problem keys that describe the NEWEST run row (Task 1's key scheme). When
 # none of them is present the newest row was a good run, even if an older
@@ -1220,7 +1222,7 @@ def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None,
         "\n\n--\n"
         f"Pause these emails for a week: {pause_url}\n\n"
         f"To tune this email, tell the prompt-lab agent:\n\"{TUNE_PROMPT}\"\n\n"
-        f"{joke}\n"
+        f"{joke}\n{es.MACHINE_MARK}\n"
     )
 
     def problem_html(p):
@@ -1249,21 +1251,20 @@ def _compose(results, joke, pause_url, heartbeats=None, uptime_rows=None,
         for t, colour in working)
     heading = "margin:0 0 8px;font-size:16px"
 
-    html = (
-        "<div style='font-family:-apple-system,sans-serif;font-size:15px;color:#222'>"
+    body = (
         f"<h3 style='{heading}'>What needs attention</h3>"
         f"{attention}"
-        "<hr style='border:none;border-top:1px solid #ddd;margin:16px 0'>"
+        f"<hr style='border:none;border-top:1px solid {es.BORDER};margin:16px 0'>"
         f"<h3 style='{heading};color:{_MUTED}'>Working</h3>"
         f"<table style='border-collapse:collapse'>{rows}</table>"
         f"{working_html}"
-        f"<p><a href='{escape(pause_url, quote=True)}'>Pause these emails for a week</a></p>"
-        "<p style='color:#666'>To tune this email, tell the prompt-lab agent:<br>"
-        f"<code>{escape(TUNE_PROMPT)}</code></p>"
-        f"<p style='font-style:italic'>{escape(joke)}</p>"
-        "</div>"
+        f"<p><a href='{escape(pause_url, quote=True)}' style='color:{es.LINK}'>"
+        "Pause these emails for a week</a></p>"
+        f"<p style='color:{_MUTED}'>To tune this email, tell the prompt-lab agent:<br>"
+        f"<code style='font-family:{es.MONO}'>{escape(TUNE_PROMPT)}</code></p>"
+        f"<p>{es.machine_html(escape(joke))}</p>"
     )
-    return subject, text, html
+    return subject, text, es.document(body, title=subject)
 
 
 def _send_email(subject, html, text):
@@ -1435,7 +1436,4 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(
-            f"<html><body style='font-family:-apple-system,sans-serif;"
-            f"margin:3rem'><p>{escape(message)}</p></body></html>".encode()
-        )
+        self.wfile.write(es.page(message).encode())
