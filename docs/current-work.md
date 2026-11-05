@@ -163,8 +163,7 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   `theme-color` may not show, optional dark `--chart-1` → `#5558e6`. Remaining review work, R8, R9
   and R14, is built on branch `claude/recap-and-design-system-2` (open as a PR): one `.chip`, one `.btn`,
   one `.page-title` with real headings on every page, and a role-aware tab bar (admin: Home, Activity,
-  Health, Costs, More). Emails R10–R12 remain their own plan. #114 also added `recap`; v2 (branch
-  `claude/recap-v2`) lists every repo touched in 14 days (session or commit), numbered, with git-log
+  Health, Costs, More). Emails R10–R12 are built on branch `claude/emails-r10-r12`; read the first few review emails after it merges. #114 also added `recap`; v2 (#115) lists every repo touched in 14 days (session or commit), numbered, with git-log
   commit counts and last touch, and `work 1 3 4` opens several, asking model/effort once. Live after
   `./workflow/install.sh` plus a new terminal tab.
 - **Design review of prompt-labs.org and its emails (2026-11-04).** Facts for a Fable

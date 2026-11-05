@@ -335,4 +335,4 @@ R1–R7, R13, R15–R18: built on branch `claude/design-system-1`, PR #113. R8, 
 
 ### Status (2026-11-05)
 
-R8, R9 and R14 are built on branch `claude/recap-and-design-system-2` (open as a PR). R10–R12 (emails): separate plan.
+R8, R9 and R14 merged as #114. R10–R12 are built on branch `claude/emails-r10-r12`: the review email's model returns content only (subject, Today and This Week as per-project paragraph lists) and `send-review.py` renders it; `web/email_style.py` holds the light palette, a `color-scheme: light` document wrapper and the machine-voice mark, used by both emails, the pause page and the sign-in failure page; the review footer, the health joke and the Ask answer carry "↳ from claude". Synthetic renders: `~/.claude/state/prompt-lab/design-review/emails/after/`. Read the first few review emails after it lands.

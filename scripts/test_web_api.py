@@ -3396,6 +3396,9 @@ def _():
         n = len(mod.TARGETS)  # derived, not pinned — TARGETS grows
         assert subject == f"✅ nothing needs attention · {n}/{n} up", subject
         assert "a test joke" in text and "a test joke" in html
+        # R11/R12: the joke is machine voice, and the email declares light.
+        assert "↳ from claude" in text and "↳ from claude" in html, html
+        assert "name='color-scheme' content='light'" in html, html[:300]
         assert "action=pause&token=" in text, "pause link missing"
         assert "Tune the daily health email" in text, "tune-up prompt missing"
     finally:
@@ -4146,7 +4149,7 @@ def _():
         assert "stale" not in subject, subject
         # Amber, not red: could-not-check is not the same claim as broken.
         above_html = _fold_html(sent[0][1])[0]
-        assert "#b26a00" in above_html and "#c62828" not in above_html, above_html
+        assert "#8a5a06" in above_html and "#dc2626" not in above_html, above_html
     finally:
         restore()
 
@@ -4885,7 +4888,7 @@ def _():
         html_above, _ = _fold_html(html_body)
         assert "nothing needs attention" in html_above, html_above
         # Neither an alarm colour nor a green one above the separator.
-        for colour in ("#c62828", "#b26a00", "#2e7d32"):
+        for colour in ("#dc2626", "#8a5a06", "#14743a"):
             assert colour not in html_above, (colour, html_above)
         # The working section still carries the full picture.
         n = len(mod.TARGETS)
@@ -4915,7 +4918,7 @@ def _():
             keys = h.body["problems"]
             assert len(_PREFIX_RE.findall(above)) == len(keys), (kw, above)
             assert not _PREFIX_RE.findall(below), (kw, below)
-            for colour in ("#c62828", "#b26a00"):
+            for colour in ("#dc2626", "#8a5a06"):
                 assert colour not in html_below, (kw, colour, html_below)
             for frag in ("is down", "has not landed", "synthesizer failed",
                          "network never came up, so nothing ran", "wrote 0 rows", "could not check"):
@@ -5784,7 +5787,7 @@ def _():
         assert line in _fold(text)[0] and line not in _fold(text)[1], text
         html_above, html_below = _fold_html(html)
         assert line in html_above and line not in html_below, html
-        assert "#c62828" in html_above, html_above
+        assert "#dc2626" in html_above, html_above
         assert subject.startswith("🟡") and "uptime archive empty" in subject, subject
     finally:
         restore()

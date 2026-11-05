@@ -5,13 +5,13 @@ over TLS direct from Google and needs NO signature verification (settled
 decision, docs/phase2-oauth-plan.md). urllib only, no new deps."""
 
 import base64
-import html
 import json
 import os
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler
 
+import email_style
 from auth_helper import REDIRECT_URI, set_cookie_header, verify_state
 from beacon_helper import record_login
 from garm_helper import GARM_ENABLED, fetch_grants
@@ -125,5 +125,4 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
         # message can carry request-derived text (?error=, email) — escape it.
-        self.wfile.write(
-            f"<h1>Sign-in failed</h1><p>{html.escape(message)}</p>".encode())
+        self.wfile.write(email_style.page(message, heading="Sign-in failed").encode())
