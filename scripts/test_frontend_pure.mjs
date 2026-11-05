@@ -34,6 +34,18 @@ const pure = new Function(`"use strict";\n${src.slice(open, close)}\nreturn { ${
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
+// Source-level guards share these. stripComments drops /* */ and // line
+// comments (a // must follow whitespace, so https:// survives). The three
+// colour token blocks are the dark :root and the light palette written twice.
+const stripComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/[^\n]*/g, '$1');
+const TOKEN_BLOCK_RES = {
+  dark: /:root\s*\{([^}]*)\}/,
+  lightOs: /:root:not\(\[data-theme\]\)\s*\{([^}]*)\}/,
+  lightSet: /:root\[data-theme="light"\]\s*\{([^}]*)\}/,
+};
+const tokenBlock = (which) => src.match(TOKEN_BLOCK_RES[which])[1];
+const tok = (block, name) => (block.match(new RegExp(`${name}\\s*:\\s*([^;]+);`)) || [])[1];
+
 // Ascending run of calendar days, built with the helper under test's own
 // arithmetic deliberately avoided: plain UTC math, so a bug in addDays cannot
 // hide itself.
@@ -300,22 +312,41 @@ test('accent roles: text uses --link, text on a fill uses --on-accent', () => {
   // text on an accent (or any coloured) fill is --on-accent. Only colour
   // declarations are checked: background-color and border-color are excluded by
   // the lookbehind. A JS key (color: 'var(--accent)') is caught via the quote.
-  const stripped = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/[^\n]*/g, '$1');
+  const stripped = stripComments(src);
   const values = [...stripped.matchAll(/(?<![-\w])color\s*:\s*['"]?([^;"'`}\n]*)/g)].map((m) => m[1].trim());
   const accent = values.filter((v) => /var\(--accent\)/.test(v));
   assert.deepEqual(accent, [], 'color: var(--accent) on text; use var(--link)');
   const white = values.filter((v) => /(^|[^\w-])(#fff(fff)?|white)(?![\w-])/i.test(v));
   assert.deepEqual(white, [], 'color: #fff/white; use var(--on-accent)');
-  const dark = src.match(/:root\s*\{([^}]*)\}/)[1];
-  const lightOs = src.match(/:root:not\(\[data-theme\]\)\s*\{([^}]*)\}/)[1];
-  const lightSet = src.match(/:root\[data-theme="light"\]\s*\{([^}]*)\}/)[1];
-  const tok = (block, name) => (block.match(new RegExp(`${name}\\s*:\\s*([^;]+);`)) || [])[1];
+  const dark = tokenBlock('dark');
+  const lightOs = tokenBlock('lightOs');
+  const lightSet = tokenBlock('lightSet');
   for (const name of ['--link', '--on-accent']) {
     assert.ok(tok(dark, name), `dark :root must define ${name}`);
     assert.ok(tok(lightOs, name), `OS-light block must define ${name}`);
     assert.ok(tok(lightSet, name), `data-theme="light" block must define ${name}`);
     assert.equal(tok(lightOs, name), tok(lightSet, name), `${name} differs between the two light blocks`);
   }
+});
+
+test('chart palette: tokens in all three blocks, no palette hex outside them', () => {
+  const names = [...Array.from({ length: 8 }, (_, i) => `--chart-${i + 1}`), '--chart-other'];
+  const dark = tokenBlock('dark');
+  const lightOs = tokenBlock('lightOs');
+  const lightSet = tokenBlock('lightSet');
+  for (const name of names) {
+    assert.ok(tok(dark, name), `dark :root must define ${name}`);
+    assert.ok(tok(lightOs, name), `OS-light block must define ${name}`);
+    assert.ok(tok(lightSet, name), `data-theme="light" block must define ${name}`);
+    assert.equal(tok(lightOs, name), tok(lightSet, name), `${name} differs between the two light blocks`);
+  }
+  // A palette hex anywhere but the token blocks is a colour that ignores the
+  // theme. The lookahead keeps #555 from matching #5558e6.
+  let rest = stripComments(src);
+  for (const re of Object.values(TOKEN_BLOCK_RES)) rest = rest.replace(re, '');
+  const HEX = ['06b6d4', '6366f1', '22c55e', 'eab308', 'ef4444', 'ec4899', 'f97316', 'a855f7', '555'];
+  const found = [...rest.matchAll(new RegExp(`#(${HEX.join('|')})(?![0-9a-f])`, 'gi'))].map((m) => m[0]);
+  assert.deepEqual(found, [], `palette hex outside :root; use var(--chart-N): ${found.join(', ')}`);
 });
 
 let failed = 0;

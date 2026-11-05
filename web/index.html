@@ -60,13 +60,24 @@
       /* accent-coloured text: links, "open day", inline actions. --accent is for fills and rings. */
       --link: #818cf8;
       --on-accent: #fff;
-      --accent-dim: rgba(99, 102, 241, 0.15);
+      --accent-dim: rgba(85, 88, 230, 0.15);
       --green: #22c55e;
       --green-dim: rgba(34, 197, 94, 0.15);
       --yellow: #eab308;
       --yellow-dim: rgba(234, 179, 8, 0.15);
       --red: #ef4444;
       --red-dim: rgba(239, 68, 68, 0.15);
+      /* chart series: order is rank order; light values
+         are darkened so every band clears 3:1 on #fafafa */
+      --chart-1: #6366f1;
+      --chart-2: #22c55e;
+      --chart-3: #eab308;
+      --chart-4: #ef4444;
+      --chart-5: #06b6d4;
+      --chart-6: #ec4899;
+      --chart-7: #f97316;
+      --chart-8: #a855f7;
+      --chart-other: #777;
       --safe-top: env(safe-area-inset-top, 0px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
       --tabbar-h: 50px;
@@ -110,6 +121,15 @@
         --yellow-dim: rgba(202, 138, 4, 0.1);
         --red: #dc2626;
         --red-dim: rgba(220, 38, 38, 0.1);
+        --chart-1: #4f46e5;
+        --chart-2: #15803d;
+        --chart-3: #a16207;
+        --chart-4: #dc2626;
+        --chart-5: #0e7490;
+        --chart-6: #be185d;
+        --chart-7: #c2410c;
+        --chart-8: #7e22ce;
+        --chart-other: #6b6b6b;
       }
     }
     :root[data-theme="light"] {
@@ -133,6 +153,15 @@
       --yellow-dim: rgba(202, 138, 4, 0.1);
       --red: #dc2626;
       --red-dim: rgba(220, 38, 38, 0.1);
+      --chart-1: #4f46e5;
+      --chart-2: #15803d;
+      --chart-3: #a16207;
+      --chart-4: #dc2626;
+      --chart-5: #0e7490;
+      --chart-6: #be185d;
+      --chart-7: #c2410c;
+      --chart-8: #7e22ce;
+      --chart-other: #6b6b6b;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -1703,7 +1732,7 @@
       if (role === 'admin') {
         tiles.push({ label: 'page views · 30d',
           value: views30 == null ? '…' : (views30sum ? views30sum.toLocaleString() : 'new'),
-          series: views30 == null ? null : viewsSeries, color: '#06b6d4', to: '#/visitors' });
+          series: views30 == null ? null : viewsSeries, color: 'var(--chart-5)', to: '#/visitors' });
       }
 
       // Chip list shared by both halves of the inline expansion (same visual
@@ -2423,9 +2452,11 @@
     // </pure>
 
     // ---- Costs Overview (all projects, over time) ----
-    const COST_PALETTE = ['#6366f1','#22c55e','#eab308','#ef4444','#06b6d4',
-                          '#ec4899','#f97316','#a855f7'];
-    const COST_OTHER = '#555';
+    // Theme tokens, not hex: every consumer drops these into a CSS background,
+    // inline style or SVG paint, so the light palette swaps in with the theme.
+    const COST_PALETTE = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)',
+                          'var(--chart-5)', 'var(--chart-6)', 'var(--chart-7)', 'var(--chart-8)'];
+    const COST_OTHER = 'var(--chart-other)';
     const costOverviewMemo = new Map();  // window(days) -> payload
 
     // Floating tooltips get clipped by the chart's scroll container on touch
