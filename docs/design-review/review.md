@@ -321,4 +321,18 @@ synthetic screenshot of the proposed look each, Nico picks, then build.
 
 ### Status (2026-11-04)
 
-R1–R7, R13, R15–R18: built on branch `claude/design-system-1`, PR #113. R8, R9, R14: mocks next. R10–R12: separate plan.
+R1–R7, R13, R15–R18: built on branch `claude/design-system-1`, PR #113. R8, R9, R14: mocks made, decided below. R10–R12: separate plan.
+
+### Decisions on the mocks (Nico, 2026-11-05)
+
+- D2. R8 chips: one `.chip` with `.chip-outlined`, `.chip-tinted`, `.chip-filled`; tinted chips take `.sev-ok`, `.sev-warn`, `.sev-bad` or `.sev-info`.
+- D3. The private badge keeps a stronger border than other outlined chips. Upper case may go.
+- D4. GitHub label chips are outlined with an 8px dot in the label's hue; text uses the normal chip colour.
+- D5. Dormant project chips on Home shrink to the chip size; the phone keeps 44px tap targets.
+- D6. One `.btn` (`.btn-primary`, `.btn-ghost`). Re-poll is ghost. The login page keeps a larger primary button (`.btn-lg`, login only). The Google sign-in button keeps its outlined look at that size.
+- D7. R9: one `.page-title` on all eight pages including Day. The project name is the project page's `<h1>`; Home gets a visually hidden `<h1>` "Prompt Lab"; section labels become `<h2>` with the same look. Cost detail and the login screen also got an `<h1>`.
+- D8. R14: role-aware tab bar. Admin: Home, Activity, Health, Costs, More. Reader: Home, Activity, Todos, Costs, More (unchanged). No problem dot on Health.
+
+### Status (2026-11-05)
+
+R8, R9 and R14 are built on branch `claude/recap-and-design-system-2` (PR to follow). R10–R12 (emails): separate plan.

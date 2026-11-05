@@ -160,8 +160,12 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   breakpoint, color-scheme, a11y pass, seven source guards + two phone checks). Before/after shots:
   `~/.claude/state/prompt-lab/design-review/{dashboard,after}/`. Parked follow-ups: roving tabindex on
   chart bars (first; Health has 360+ tab stops), iOS standalone status bar is `black-translucent` so
-  `theme-color` may not show, optional dark `--chart-1` → `#5558e6`. Still to do from the review: mocks
-  for R8 (chips/buttons), R9 (page titles), R14 (admin tab bar), then build; emails R10–R12 as their own plan.
+  `theme-color` may not show, optional dark `--chart-1` → `#5558e6`. Remaining review work, R8, R9
+  and R14, is built on branch `claude/recap-and-design-system-2` (PR to follow): one `.chip`, one `.btn`,
+  one `.page-title` with real headings on every page, and a role-aware tab bar (admin: Home, Activity,
+  Health, Costs, More). Emails R10–R12 remain their own plan. Same branch adds `recap`, a shell command
+  that prints each repo's newest session "Next:" line from the local history DB; it goes live after
+  `./workflow/install.sh` plus a new terminal tab.
 - **Design review of prompt-labs.org and its emails (2026-11-04).** Facts for a Fable
   review are in `docs/design-review/facts.md`; synthetic-data screenshots and email
   renders are outside the repo in `~/.claude/state/prompt-lab/design-review/`. Scope is
