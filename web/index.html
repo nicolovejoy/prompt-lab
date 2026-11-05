@@ -805,12 +805,13 @@
     }
 
     /* Section labels (project page Now/Trajectory/Cost/History) */
-    .section-label {
+    .page-title { margin: 0; font-size: var(--fs-3xl); color: var(--accent-light); line-height: 1.15; }
+    h2.section-label {
       font-size: var(--fs-body-sm); font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.5px; color: var(--text-secondary);
       margin: 28px 0 var(--sp-3);
     }
-    .section-label:first-child { margin-top: 0; }
+    h2.section-label:first-child { margin-top: 0; }
 
     /* Stream (home cross-project feed) */
     /* A project name with no break point would set the row's width; let it
@@ -1462,8 +1463,8 @@
       const buildTime = formatBuildTime(info?.build_time);
       return html`
         <div style="max-width:640px">
-          <h1 style="margin:0 0 var(--sp-3); font-size: var(--fs-2xl); color:var(--accent-light)">More</h1>
-          <div class="more-list" data-test="more-list">
+          <h1 class="page-title">More</h1>
+          <div class="more-list" data-test="more-list" style="margin-top: var(--sp-3)">
             ${extra.map(([view, label, hash]) => html`
               <button class="more-row" onClick=${() => navigate(hash)}>${label}</button>`)}
             <button class="more-row" onClick=${() => navigate('#/about')}>About</button>
@@ -2019,6 +2020,7 @@
       }
 
       return html`
+        <h1 class="sr-only">Prompt Lab</h1>
         <${PulseTiles} overview=${overview} cost30=${cost30} views30=${views30} hide=${hiddenSet} role=${role} />
         <${CrossProjectActivity} overview=${overview} hide=${hiddenSet} />
 
@@ -2214,8 +2216,8 @@
       }, []);
 
       const header = html`
-        <h1 style="margin: 0 0 var(--sp-1); font-size: var(--fs-3xl); color: var(--accent-light)">Todos</h1>
-        <div style="font-size: var(--fs-body); color: var(--text-secondary); margin-bottom: var(--sp-4)">
+        <h1 class="page-title">Todos</h1>
+        <div style="font-size: var(--fs-body); color: var(--text-secondary); margin: var(--sp-1) 0 var(--sp-4)">
           Open GitHub issues, grouped by project.
         </div>`;
 
@@ -2887,7 +2889,7 @@
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-1)">
-          <h1 style="margin: 0; font-size: var(--fs-3xl); color: var(--accent-light)">Costs</h1>
+          <h1 class="page-title">Costs</h1>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <${PageNote}>
@@ -3060,7 +3062,7 @@
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-1)">
-          <h1 style="margin: 0; font-size: var(--fs-3xl); color: var(--accent-light)">Activity</h1>
+          <h1 class="page-title">Activity</h1>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <${PageNote}>
@@ -3258,8 +3260,8 @@
 
       return html`
         <div style="max-width:640px">
-          <h1 style="margin:0 0 var(--sp-3); font-size: var(--fs-2xl); color:var(--accent-light)">About</h1>
-          <p style="line-height:1.55; margin:0 0 var(--sp-2)">
+          <h1 class="page-title">About</h1>
+          <p style="line-height:1.55; margin:var(--sp-3) 0 var(--sp-2)">
             Prompt Lab tracks agent sessions, spend and activity across every project,
             from a local prompt history that never leaves the machine it was typed on.
           </p>
@@ -3366,9 +3368,9 @@
                style="cursor:pointer; color:var(--text-secondary); font-size: var(--fs-body-sm);
                       text-decoration:none">← back</button>
           </div>
-          <h1 style="margin:0 0 var(--sp-1); font-size: var(--fs-2xl); color:var(--accent-light)">${long}</h1>
+          <h1 class="page-title">${long}</h1>
           <div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-sm);
-                      color:var(--text-secondary); margin-bottom:18px">${date}</div>
+                      color:var(--text-secondary); margin: var(--sp-1) 0 18px">${date}</div>
 
           <div aria-live="polite">
             ${err && html`
@@ -3501,7 +3503,7 @@
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-1)">
-          <h1 style="margin: 0; font-size: var(--fs-3xl); color: var(--accent-light)">Visitors</h1>
+          <h1 class="page-title">Visitors</h1>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <${PageNote}>
@@ -3780,7 +3782,7 @@
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
                     flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-1)">
-          <h1 style="margin: 0; font-size: var(--fs-3xl); color: var(--accent-light)">Health</h1>
+          <h1 class="page-title">Health</h1>
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
             ${loading && html`<span class="header-meta refreshing" title="Polling…">↻</span>`}
             ${!loading && checkedAt && html`
@@ -4742,7 +4744,7 @@
         <div>
           <div class="project-header">
             <div class="project-title-row">
-              <span class="project-name ${meta.private ? 'is-private' : ''}">${name}</span>
+              <h1 class="page-title project-name ${meta.private ? 'is-private' : ''}">${name}</h1>
               ${meta.private && html`<span class="chip chip-outlined chip-strong">private</span>`}
               ${meta.category && html`<span class="chip chip-outlined">${meta.category}</span>`}
               <div class="project-links">
@@ -4753,7 +4755,7 @@
             <${MetadataEditor} project=${name} meta=${meta} role=${role} onMetaChange=${onMetaChange} />
           </div>
 
-          <div class="section-label">Now</div>
+          <h2 class="section-label">Now</h2>
           <div class="project-meta">
             ${inception && html`<span>Since ${inception}</span>`}
             ${inception && (snapshot.session_count_7d || snapshot.commit_count_7d) && html`<span> · </span>`}
@@ -4775,13 +4777,13 @@
             `
             : html`<div class="project-summary">No summary yet.</div>`}
 
-          <div class="section-label">Trajectory</div>
+          <h2 class="section-label">Trajectory</h2>
           <${ActivityHeatmap} activity=${data.activity} />
 
-          <div class="section-label">Cost</div>
+          <h2 class="section-label">Cost</h2>
           <${CostChart} project=${name} />
 
-          <div class="section-label">History</div>
+          <h2 class="section-label">History</h2>
           <${TimelineView} data=${data} />
         </div>
       `;
