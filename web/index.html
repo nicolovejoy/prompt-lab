@@ -245,6 +245,8 @@
        hamburger — and CSS picks, same as the two navs. Exactly one is ever
        visible, so it stays one tap at every width. */
     .theme-narrow { display: none; }
+    /* Breakpoint: 640px. Nav, taps, layout and the JS chart bucketing all
+       switch here. */
     @media (max-width: 640px) {
       .nav-wide { display: none; }
       .theme-narrow { display: inline-flex; }
@@ -357,6 +359,7 @@
     /* Icon-only: square, centred, and sized so the glyph matches the adjacent
        word-buttons' optical weight rather than their font-size. */
     .theme-btn {
+      min-height: 32px;
       font-size: var(--fs-md); line-height: 1; padding: 5px 9px;
     }
     header { position: relative; }
@@ -369,6 +372,7 @@
       font-family: "SF Mono", ui-monospace, monospace;
     }
     .header-btn {
+      min-height: 32px;
       font-size: var(--fs-md); color: var(--text-secondary); cursor: pointer;
       background: none; border: none; font-family: inherit; padding: var(--sp-1) 10px;
       border-radius: var(--r-sm);
@@ -411,6 +415,7 @@
     /* Chart window buttons (WindowPicker). */
     .win-picker { display: flex; gap: var(--sp-1); }
     .win-btn {
+      min-height: 32px;
       font-size: var(--fs-body-sm); padding: var(--sp-1) 10px; border-radius: var(--r-sm);
       cursor: pointer; font-family: inherit; border: 1px solid var(--border);
       background: transparent; color: var(--text-secondary);
@@ -529,11 +534,12 @@
       background: var(--card); padding: 3px; border-radius: var(--r-lg);
     }
     .sub-tab {
+      min-height: 32px;
       padding: 7px var(--sp-4); font-size: var(--fs-md); font-weight: 600; color: var(--text-secondary);
       background: none; border: none; cursor: pointer; border-radius: var(--r-md); font-family: inherit;
     }
     .sub-tab.active { background: var(--accent); color: var(--on-accent); }
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
       .sub-tabs { overflow-x: auto; flex-wrap: nowrap; }
       .sub-tab { white-space: nowrap; flex-shrink: 0; }
     }
@@ -564,7 +570,7 @@
       min-height: 44px; border: 1px solid var(--border); border-radius: var(--r-md);
       background: transparent; color: var(--link); font: inherit; cursor: pointer;
     }
-    .chart-open-day { display: block; width: 100%; margin-top: 10px; }
+    .chart-open-day { min-height: 32px; display: block; width: 100%; margin-top: 10px; }
     .chart-day-chips {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
       gap: 6px; margin-top: 10px;
@@ -580,7 +586,7 @@
       flex: 1; min-width: 0; font-weight: 600;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
       .two-col { grid-template-columns: minmax(0, 1fr); }
     }
 
@@ -603,7 +609,7 @@
        block (its head line over its share bar), with a list row's rule and spacing. */
     .share-row { padding: 5px 0; border-bottom: 1px solid var(--border); }
     .share-row-head { display: flex; align-items: center; gap: var(--sp-2); }
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
       .list-row { align-items: flex-start; padding: var(--sp-2) 0; }
       .share-row { padding: var(--sp-2) 0; }
       .list-row-text { flex-direction: column; gap: 1px; }
@@ -612,13 +618,13 @@
       .share-row-swatch { margin-top: 7px; }
     }
 
-    /* Three lists stacked on a phone ran to 2,800px. Below 600px they share one
+    /* Three lists stacked on a phone ran to 2,800px. Below 640px they share one
        slot behind a tab bar; above it the bar is hidden and all three show, so
        the wide layout is exactly what it was. Both markups always render and
        CSS picks — no viewport state in JS to desync on rotate. */
     .vis-tabs { display: none; }
     .page-note-narrow { display: none; }
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
       .vis-tabs { display: flex; gap: var(--sp-1); margin-top: var(--sp-1); }
       .vis-tabs .sub-tab { flex: 1 1 0; min-height: 44px; padding: 7px 6px; }
       .vis-panel { display: none; }
@@ -737,6 +743,7 @@
     .review-content { max-height: 200px; overflow: hidden; transition: max-height 0.3s; }
     .review-content.expanded { max-height: none; }
     .review-expand {
+      min-height: 32px;
       font-size: var(--fs-body); color: var(--accent-light); background: none;
       border: none; cursor: pointer; margin-top: 6px; padding: 0; font-family: inherit;
     }
@@ -758,6 +765,7 @@
     }
     .ask-input::placeholder { color: var(--text-secondary); }
     .ask-btn {
+      min-height: 32px;
       padding: 10px var(--sp-4); background: var(--accent); color: var(--on-accent);
       border: none; border-radius: var(--r-lg); font-size: var(--fs-md); font-weight: 600;
       cursor: pointer; font-family: inherit;
@@ -890,6 +898,7 @@
        marked and stay as they are. Last in the sheet, so it outranks the
        base rules whose boxes it grows. */
     @media (max-width: 640px) {
+      .container { padding: var(--safe-top) var(--sp-4) var(--safe-bottom); }
       .tap, .win-btn, .sub-tab, .picker-item, select { min-height: 44px; }
       /* WebKit draws a native select at a fixed height and ignores min-height
          and padding, so on a phone every select drops the native look and
@@ -906,6 +915,7 @@
       }
       a.tap { display: inline-flex; align-items: center; }
       .win-btn { min-width: 44px; }
+      .theme-btn, .chart-open-day { min-height: 44px; }
       /* The legend's row gap was spacing between 18px lines; 44px entries
          carry their own. */
       .chart-legend { row-gap: 0; }
