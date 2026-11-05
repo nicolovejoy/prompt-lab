@@ -189,12 +189,7 @@
       color: var(--text); font-size: var(--fs-lg); font-family: inherit; text-align: center;
     }
     .login input:focus { outline: none; border-color: var(--accent); }
-    .login button {
-      width: 100%; padding: 10px; background: var(--accent); color: var(--on-accent);
-      border: none; border-radius: var(--r-lg); font-size: var(--fs-lg); font-weight: 600; cursor: pointer;
-    }
-    .login button:disabled { opacity: 0.4; }
-    .login .google-btn { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+    .login .google-btn { background: var(--card); color: var(--text); border-color: var(--border); }
     .login .login-divider {
       display: flex; align-items: center; gap: 10px;
       color: var(--text-secondary); font-size: var(--fs-body-sm); margin: 20px 0 14px;
@@ -671,6 +666,20 @@
 
     /* Chips (R8): one shape; outlined, tinted (status, with a .sev-* class)
        or filled. Replaces the old tag/badge/status/dormant/link variants. */
+    /* One button: .btn + .btn-primary (accent fill) or .btn-ghost (outline).
+       .btn-lg is the larger full-width size, used on the login page. */
+    .btn {
+      min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      font-family: inherit; font-size: var(--fs-md); padding: var(--sp-1) var(--sp-3);
+      border-radius: var(--r-sm); border: 1px solid transparent; cursor: pointer;
+    }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn-primary { background: var(--accent); color: var(--on-accent); }
+    .btn-ghost { background: transparent; color: var(--text-secondary); border-color: var(--border); }
+    .btn-lg {
+      width: 100%; padding: 10px; font-size: var(--fs-lg); font-weight: 600;
+      border-radius: var(--r-lg);
+    }
     .chip {
       display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body-sm);
       line-height: 1.4; padding: 2px var(--sp-2); border-radius: var(--r-sm);
@@ -777,13 +786,6 @@
       border-radius: var(--r-lg); color: var(--text); font-size: var(--fs-md); font-family: inherit;
     }
     .ask-input::placeholder { color: var(--text-secondary); }
-    .ask-btn {
-      min-height: 32px;
-      padding: 10px var(--sp-4); background: var(--accent); color: var(--on-accent);
-      border: none; border-radius: var(--r-lg); font-size: var(--fs-md); font-weight: 600;
-      cursor: pointer; font-family: inherit;
-    }
-    .ask-btn:disabled { opacity: 0.4; }
     .ask-answer {
       background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-lg);
       padding: 14px; font-size: var(--fs-md); line-height: 1.6; white-space: pre-wrap;
@@ -918,7 +920,8 @@
        base rules whose boxes it grows. */
     @media (max-width: 640px) {
       .container { padding: var(--safe-top) var(--sp-4) var(--safe-bottom); }
-      .tap, .win-btn, .sub-tab, .picker-item, select { min-height: 44px; }
+      .tap, .win-btn, .sub-tab, .picker-item, .btn, select { min-height: 44px; }
+      button.chip { min-height: 44px; }
       /* WebKit draws a native select at a fixed height and ignores min-height
          and padding, so on a phone every select drops the native look and
          draws its own box and caret (the project page's metadata selects
@@ -1208,7 +1211,7 @@
             <h2>Prompt Lab</h2>
             <p>Sign in to continue</p>
             ${googleLogin && html`
-              <button class="google-btn" onClick=${() => { window.location = '/api/login?provider=google'; }}>
+              <button class="btn btn-lg google-btn" onClick=${() => { window.location = '/api/login?provider=google'; }}>
                 Sign in with Google
               </button>
             `}
@@ -1220,7 +1223,7 @@
               <div aria-live="polite">
                 ${error && html`<p class="error" style="margin-bottom: 10px; padding: var(--sp-2) var(--sp-3)">${error}</p>`}
               </div>
-              <button onClick=${submit} disabled=${loading || !password}>
+              <button class="btn btn-lg btn-primary" onClick=${submit} disabled=${loading || !password}>
                 ${loading ? 'Signing in...' : 'Sign in'}
               </button>
             `}
@@ -1645,9 +1648,7 @@
             ${error && html`
               <div class="error">
                 <p>${error}</p>
-                <button onClick=${loadOverview} style="margin-top: 10px; padding: 6px 14px;
-                  background: var(--accent); color: var(--on-accent); border: none; border-radius: var(--r-lg);
-                  cursor: pointer; font-size: var(--fs-md);">Retry</button>
+                <button class="btn btn-primary" onClick=${loadOverview} style="margin-top: 10px">Retry</button>
               </div>
             `}
           </div>
@@ -3787,12 +3788,8 @@
                            font-family: 'SF Mono', ui-monospace, monospace">
                 checked ${checkedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
               </span>`}
-            <button class="tap" onClick=${() => setNonce(n => n + 1)} disabled=${loading}
-              title="Poll every target again"
-              style="font-size: var(--fs-body-sm); padding: var(--sp-1) var(--sp-3); border-radius: var(--r-sm); cursor: pointer;
-                     font-family: inherit; border: 1px solid var(--border);
-                     background: transparent; color: var(--text-secondary);
-                     opacity: ${loading ? 0.5 : 1}">
+            <button class="btn btn-ghost" onClick=${() => setNonce(n => n + 1)} disabled=${loading}
+              title="Poll every target again">
               ↻ re-poll
             </button>
           </div>
@@ -3810,9 +3807,7 @@
       if (error) return html`<div>${header}
         <div class="cost-placeholder">Couldn't load the health report. (${error})
           <div style="margin-top: 10px">
-            <button onClick=${() => setNonce(n => n + 1)}
-              style="font-size: var(--fs-body); padding: 6px 14px; background: var(--accent); color: var(--on-accent);
-                     border: none; border-radius: var(--r-lg); cursor: pointer; font-family: inherit">
+            <button class="btn btn-primary" onClick=${() => setNonce(n => n + 1)}>
               Retry
             </button>
           </div>
@@ -5002,7 +4997,7 @@
                 value=${question} onInput=${e => setQuestion(e.target.value)}
                 onKeyDown=${e => { if (e.key === 'Enter') handleAsk(); if (e.key === 'Escape') onClose(); }}
                 disabled=${asking} />
-              <button class="ask-btn" onClick=${handleAsk} disabled=${asking || !question.trim()}>
+              <button class="btn btn-primary" onClick=${handleAsk} disabled=${asking || !question.trim()}>
                 ${asking ? '...' : 'Ask'}
               </button>
             </div>
