@@ -100,6 +100,8 @@
       --fs-2xl: 1.7rem;
       --fs-3xl: 1.91rem;
       --fs-4xl: 2.18rem;
+      /* spacing scale; 2, 6, 10, 14, 20px stay raw until a later fold */
+      --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
     }
     /* Light palette applies when the OS prefers it (no explicit in-app choice yet)
        or when the theme toggle has explicitly set data-theme="light". An explicit
@@ -174,12 +176,12 @@
       background: var(--bg); color: var(--text);
       min-height: 100dvh; -webkit-font-smoothing: antialiased;
     }
-    .container { max-width: 1100px; margin: 0 auto; padding: var(--safe-top) 24px var(--safe-bottom); }
+    .container { max-width: 1100px; margin: 0 auto; padding: var(--safe-top) var(--sp-5) var(--safe-bottom); }
 
     /* Login */
     .login { max-width: 320px; margin: 120px auto; text-align: center; }
-    .login h2 { font-size: var(--fs-xl); font-weight: 600; margin-bottom: 4px; letter-spacing: -0.3px; }
-    .login p { color: var(--text-secondary); font-size: var(--fs-md); margin-bottom: 24px; }
+    .login h2 { font-size: var(--fs-xl); font-weight: 600; margin-bottom: var(--sp-1); letter-spacing: -0.3px; }
+    .login p { color: var(--text-secondary); font-size: var(--fs-md); margin-bottom: var(--sp-5); }
     .login input {
       width: 100%; padding: 10px 14px; margin-bottom: 10px;
       background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
@@ -203,12 +205,12 @@
     /* Header — stacked rows (logo, then built/synced, then nav) so the nav
        buttons stay together instead of wrapping around the meta text. */
     header {
-      padding: 16px 0 12px;
+      padding: var(--sp-4) 0 var(--sp-3);
       border-bottom: 1px solid var(--border); margin-bottom: 20px;
     }
     .header-left { display: flex; align-items: center; gap: 6px; }
     .header-sub {
-      display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 2px 0 10px;
+      display: flex; flex-wrap: wrap; gap: 2px var(--sp-3); margin: 2px 0 10px;
       font-size: var(--fs-2xs); font-family: "SF Mono", ui-monospace, monospace;
     }
     .header-sub .fresh { color: var(--green); }
@@ -224,7 +226,7 @@
     .breadcrumb a:hover { color: var(--accent-light); }
     /* flex-wrap so this row drops to its own line under a narrow viewport instead of
        clipping/squeezing buttons off-screen — this is what was hiding the theme toggle. */
-    .header-right { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+    .header-right { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) 14px; }
 
     /* Nav on a phone. The flat row wrapped onto two or three lines and pushed
        the page content down before you'd read a word of it — six destinations,
@@ -249,18 +251,18 @@
       .nav-toggle {
         display: inline-flex; align-items: center; gap: 7px;
         font-size: var(--fs-body); font-family: inherit; cursor: pointer;
-        padding: 6px 12px; border-radius: var(--r-md);
+        padding: 6px var(--sp-3); border-radius: var(--r-md);
         border: 1px solid var(--border); background: transparent; color: var(--text);
       }
       .nav-drop.open {
         display: flex; flex-direction: column; gap: 2px;
-        width: 100%; margin-top: 8px; padding: 6px;
+        width: 100%; margin-top: var(--sp-2); padding: 6px;
         background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
       }
       .nav-drop .header-btn {
-        width: 100%; text-align: left; padding: 11px 12px; font-size: var(--fs-body);
+        width: 100%; text-align: left; padding: 11px var(--sp-3); font-size: var(--fs-body);
       }
-      .nav-drop .header-user { padding: 4px 12px; }
+      .nav-drop .header-user { padding: var(--sp-1) var(--sp-3); }
       .nav-more { display: contents; }   /* phone: inline, no second surface */
       /* One line: the header is a block, so .header-left and .header-right
          stacked as two rows — right for the wide nav, which needs the whole
@@ -268,7 +270,7 @@
          header is the flex row and .header-right dissolves into it, so the
          theme toggle and Menu sit beside the logo and the open list, at
          flex-basis 100%, still wraps below as a full-width row. */
-      header { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; }
+      header { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--sp-2); }
       .header-right { display: contents; }
       .nav-drop.open { flex-basis: 100%; }
       /* min-width:0 down the chain so a long project name truncates instead
@@ -319,7 +321,7 @@
     }
     .more-list { display: flex; flex-direction: column; }
     .more-row {
-      display: flex; align-items: center; width: 100%; min-height: 44px; padding: 0 12px;
+      display: flex; align-items: center; width: 100%; min-height: 44px; padding: 0 var(--sp-3);
       text-align: left; font-family: inherit; font-size: var(--fs-md); color: var(--text);
       background: none; border: none; border-bottom: 1px solid var(--border); cursor: pointer;
     }
@@ -339,7 +341,7 @@
       background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
       box-shadow: var(--shadow-pop);
     }
-    .nav-more .header-btn { width: 100%; text-align: left; padding: 8px 10px; }
+    .nav-more .header-btn { width: 100%; text-align: left; padding: var(--sp-2) 10px; }
     .nav-sep { height: 1px; background: var(--border); margin: 5px 2px; }
     /* Now the first row in the panel, so the padding leads rather than trails. */
     .nav-build {
@@ -368,7 +370,7 @@
     }
     .header-btn {
       font-size: var(--fs-md); color: var(--text-secondary); cursor: pointer;
-      background: none; border: none; font-family: inherit; padding: 4px 10px;
+      background: none; border: none; font-family: inherit; padding: var(--sp-1) 10px;
       border-radius: var(--r-sm);
     }
     .header-btn:hover { color: var(--text); background: var(--card); }
@@ -389,14 +391,14 @@
     .picker-caret { font-size: var(--fs-body-sm); color: var(--text-muted); flex: none; }
     .picker-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .picker-menu {
-      position: absolute; top: 100%; left: 0; margin-top: 8px;
+      position: absolute; top: 100%; left: 0; margin-top: var(--sp-2);
       background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
-      min-width: 200px; max-height: 60vh; overflow-y: auto; padding: 4px;
+      min-width: 200px; max-height: 60vh; overflow-y: auto; padding: var(--sp-1);
       box-shadow: var(--shadow-pop); z-index: var(--z-bar);
     }
     .picker-section {
       font-size: var(--fs-sm); font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.5px; color: var(--text-secondary); padding: 8px 10px 3px;
+      letter-spacing: 0.5px; color: var(--text-secondary); padding: var(--sp-2) 10px 3px;
     }
     .picker-item {
       display: block; width: 100%; text-align: left; padding: 7px 10px;
@@ -407,9 +409,9 @@
     .picker-item.active { color: var(--accent-light); font-weight: 600; }
 
     /* Chart window buttons (WindowPicker). */
-    .win-picker { display: flex; gap: 4px; }
+    .win-picker { display: flex; gap: var(--sp-1); }
     .win-btn {
-      font-size: var(--fs-body-sm); padding: 4px 10px; border-radius: var(--r-sm);
+      font-size: var(--fs-body-sm); padding: var(--sp-1) 10px; border-radius: var(--r-sm);
       cursor: pointer; font-family: inherit; border: 1px solid var(--border);
       background: transparent; color: var(--text-secondary);
     }
@@ -420,35 +422,35 @@
       display: block; padding: 5px 0; text-decoration: none;
       color: var(--text); border-bottom: 1px solid var(--border);
     }
-    .chart-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+    .chart-legend { display: flex; flex-wrap: wrap; gap: 10px var(--sp-4); }
 
 
     /* Cost placeholder (loading / no-spend states) */
     .cost-placeholder {
-      margin-top: 16px; padding: 16px; background: var(--card);
+      margin-top: var(--sp-4); padding: var(--sp-4); background: var(--card);
       border: 1px solid var(--border); border-radius: var(--r-md);
       font-size: var(--fs-md); color: var(--text-secondary); line-height: 1.5;
     }
 
     .overview-stats {
-      font-size: var(--fs-lg); color: var(--text-secondary); margin-bottom: 24px;
+      font-size: var(--fs-lg); color: var(--text-secondary); margin-bottom: var(--sp-5);
     }
     .overview-stats strong { color: var(--text); }
 
     /* Project page */
-    .project-header { margin-bottom: 24px; }
+    .project-header { margin-bottom: var(--sp-5); }
     /* The row wraps, so on a phone the links drop under the name instead of
        pushing past the edge (a site link alone did, at 390px). The name is the
        page's title, so a long one wraps; the site link is a label, so it keeps
        one line and truncates. On a wide screen everything fits on one line. */
-    .project-title-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+    .project-title-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-3); margin-bottom: 6px; }
     .project-name { font-size: var(--fs-3xl); font-weight: 600; letter-spacing: -0.3px; color: var(--accent-light);
                     min-width: 0; overflow-wrap: anywhere; }
-    .project-links { display: flex; gap: 8px; align-items: center; min-width: 0; max-width: 100%; }
+    .project-links { display: flex; gap: var(--sp-2); align-items: center; min-width: 0; max-width: 100%; }
     .project-link {
       min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       font-size: var(--fs-body-sm); color: var(--text-secondary); text-decoration: none;
-      padding: 2px 8px; border: 1px solid var(--border); border-radius: var(--r-sm);
+      padding: 2px var(--sp-2); border: 1px solid var(--border); border-radius: var(--r-sm);
       font-family: "SF Mono", ui-monospace, monospace; transition: border-color 0.15s;
     }
     .project-link:hover { border-color: var(--text-secondary); color: var(--text); }
@@ -456,17 +458,17 @@
       font-size: var(--fs-md); color: var(--text-secondary); margin-bottom: 10px;
       font-family: "SF Mono", ui-monospace, monospace;
     }
-    .project-summary { font-size: var(--fs-prose); color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px; }
-    .project-layout { display: grid; grid-template-columns: 1fr 300px; gap: 24px; }
+    .project-summary { font-size: var(--fs-prose); color: var(--text-secondary); line-height: 1.6; margin-bottom: var(--sp-4); }
+    .project-layout { display: grid; grid-template-columns: 1fr 300px; gap: var(--sp-5); }
     @media (max-width: 800px) { .project-layout { grid-template-columns: 1fr; } }
-    .project-sidebar > * + * { margin-top: 16px; }
+    .project-sidebar > * + * { margin-top: var(--sp-4); }
     .sidebar-section {
       background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--r-lg); padding: 14px 16px;
+      border-radius: var(--r-lg); padding: 14px var(--sp-4);
     }
     .sidebar-label {
       font-size: var(--fs-body-sm); font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: 8px;
+      letter-spacing: 0.5px; color: var(--text-secondary); margin-bottom: var(--sp-2);
     }
 
     /* Activity heatmap.
@@ -484,11 +486,11 @@
        8px slot per week, 2px gap. Alignment is structural — there is no pitch
        constant to keep in sync, because a label is positioned by occupying its
        own week's slot. */
-    .heatmap-scroll { overflow-x: auto; margin-bottom: 16px; }
+    .heatmap-scroll { overflow-x: auto; margin-bottom: var(--sp-4); }
     /* Horizontal padding keeps the first and last month labels, which overhang
        their 8px slots, from being clipped. It applies to both rows at once, so
        it cannot pull them out of register. */
-    .heatmap-track { width: max-content; padding: 0 16px; }
+    .heatmap-track { width: max-content; padding: 0 var(--sp-4); }
     .heatmap { display: flex; gap: 2px; flex-wrap: nowrap; }
     .heatmap-month { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
     .heatmap-cell { width: 8px; height: 8px; border-radius: var(--r-sm); }
@@ -500,7 +502,7 @@
     .heatmap-labels {
       display: flex; gap: 2px; flex-wrap: nowrap;
       font-size: var(--fs-sm); color: var(--text-secondary);
-      font-family: "SF Mono", ui-monospace, monospace; margin-bottom: 4px;
+      font-family: "SF Mono", ui-monospace, monospace; margin-bottom: var(--sp-1);
     }
     /* One slot per week column, same width and gap as .heatmap-cell. */
     .heatmap-labelslot { width: 8px; flex-shrink: 0; position: relative; height: 20px; }
@@ -527,7 +529,7 @@
       background: var(--card); padding: 3px; border-radius: var(--r-lg);
     }
     .sub-tab {
-      padding: 7px 16px; font-size: var(--fs-md); font-weight: 600; color: var(--text-secondary);
+      padding: 7px var(--sp-4); font-size: var(--fs-md); font-weight: 600; color: var(--text-secondary);
       background: none; border: none; cursor: pointer; border-radius: var(--r-md); font-family: inherit;
     }
     .sub-tab.active { background: var(--accent); color: var(--on-accent); }
@@ -539,19 +541,19 @@
     /* minmax(0, …), not a bare 1fr: a 1fr track's minimum is its content, so one
        long unwrapped hostname set the width of the whole page (767px in a 390px
        viewport on #/visitors). */
-    .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+    .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-4); margin-top: var(--sp-4); }
     .chart-scroll { overflow-x: auto; }
     /* A phone chart's row keeps vertical swipes for the page and horizontal
        drags for scrubbing the selection. Only narrow: a wide chart scrolls
        sideways inside .chart-scroll, and a finger must still be able to pan it. */
     .chart-bars.narrow { touch-action: pan-y; }
     .chart-readout {
-      margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+      margin-top: var(--sp-3); padding-top: 10px; border-top: 1px solid var(--border);
       font-size: var(--fs-body-sm); min-width: 0;
     }
     .chart-readout-head { font-weight: 600; margin-bottom: 6px; overflow-wrap: anywhere; }
     .chart-readout-row {
-      display: flex; align-items: center; gap: 8px; padding: 2px 0; color: var(--text-secondary);
+      display: flex; align-items: center; gap: var(--sp-2); padding: 2px 0; color: var(--text-secondary);
     }
     .chart-readout-swatch { width: 8px; height: 8px; border-radius: var(--r-sm); flex: none; }
     /* Hostnames arrive as 70-character tokens with no break point. */
@@ -570,8 +572,8 @@
     .chart-day-chip { min-width: 44px; padding: 0; font-variant-numeric: tabular-nums; }
     /* A collapsed uptime card on a phone: one row, one tap target. */
     .uptime-toggle {
-      display: flex; align-items: center; gap: 8px; width: 100%; min-height: 48px;
-      padding: 8px 0; background: none; border: 0; color: inherit;
+      display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-height: 48px;
+      padding: var(--sp-2) 0; background: none; border: 0; color: inherit;
       font: inherit; font-size: var(--fs-body); text-align: left; cursor: pointer;
     }
     .uptime-toggle-name {
@@ -586,10 +588,10 @@
        and its sub-label drops underneath, because an ellipsis there hides the
        only part of a path that tells two pages apart. */
     .list-row {
-      display: flex; align-items: center; gap: 8px; padding: 5px 0;
+      display: flex; align-items: center; gap: var(--sp-2); padding: 5px 0;
       border-bottom: 1px solid var(--border);
     }
-    .list-row-text { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1 1 auto; }
+    .list-row-text { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; flex: 1 1 auto; }
     .list-row-label { font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .list-row-sub {
       font-size: var(--fs-sm); color: var(--text-secondary);
@@ -600,10 +602,10 @@
        wrap, so the swatch, share and count pin to the first line instead. It is a
        block (its head line over its share bar), with a list row's rule and spacing. */
     .share-row { padding: 5px 0; border-bottom: 1px solid var(--border); }
-    .share-row-head { display: flex; align-items: center; gap: 8px; }
+    .share-row-head { display: flex; align-items: center; gap: var(--sp-2); }
     @media (max-width: 600px) {
-      .list-row { align-items: flex-start; padding: 8px 0; }
-      .share-row { padding: 8px 0; }
+      .list-row { align-items: flex-start; padding: var(--sp-2) 0; }
+      .share-row { padding: var(--sp-2) 0; }
       .list-row-text { flex-direction: column; gap: 1px; }
       .list-row-label, .list-row-sub { white-space: normal; overflow-wrap: anywhere; }
       .share-row-head { align-items: flex-start; }
@@ -617,7 +619,7 @@
     .vis-tabs { display: none; }
     .page-note-narrow { display: none; }
     @media (max-width: 600px) {
-      .vis-tabs { display: flex; gap: 4px; margin-top: 4px; }
+      .vis-tabs { display: flex; gap: var(--sp-1); margin-top: var(--sp-1); }
       .vis-tabs .sub-tab { flex: 1 1 0; min-height: 44px; padding: 7px 6px; }
       .vis-panel { display: none; }
       .vis-panel.active { display: block; }
@@ -626,7 +628,7 @@
       .two-col.vis-second { margin-top: 0; }
 
       .page-note-wide { display: none; }
-      .page-note-narrow { display: block; margin: 0 0 16px; }
+      .page-note-narrow { display: block; margin: 0 0 var(--sp-4); }
       .page-note-narrow summary {
         display: flex; align-items: center; min-height: 44px; cursor: pointer;
         font-size: var(--fs-body); color: var(--link); list-style: none;
@@ -644,21 +646,21 @@
          wide layout (a negative top pulls a note up under its paragraph), and an
          inline style outranks every selector. Any child, not just a div, so a note
          wrapped in a p is covered too; the summary keeps its own spacing. */
-      .page-note-narrow > :not(summary) { margin: 0 0 12px !important; }
+      .page-note-narrow > :not(summary) { margin: 0 0 var(--sp-3) !important; }
     }
 
     /* Cards */
     .card {
       background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
-      padding: 14px 16px; margin-bottom: 10px;
+      padding: 14px var(--sp-4); margin-bottom: 10px;
     }
     .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
     .card-title { font-size: var(--fs-md); font-weight: 600; }
     .card-date { font-size: var(--fs-body-sm); color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace; }
     .card-body { font-size: var(--fs-md); color: var(--text-secondary); line-height: 1.55; }
-    .card-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+    .card-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: var(--sp-2); }
     .tag { font-size: var(--fs-body-sm); padding: 2px 7px; background: var(--border); color: var(--text-secondary); border-radius: var(--r-sm); }
-    .count-badges { display: flex; gap: 10px; margin-top: 8px; }
+    .count-badges { display: flex; gap: 10px; margin-top: var(--sp-2); }
     .count-badge { font-size: var(--fs-body-sm); color: var(--text-secondary); }
     .count-badge strong { color: var(--text); }
 
@@ -674,12 +676,12 @@
     /* Vertical timeline */
     .timeline { position: relative; padding-left: 20px; }
     .timeline::before {
-      content: ''; position: absolute; left: 4px; top: 0; bottom: 0;
+      content: ''; position: absolute; left: var(--sp-1); top: 0; bottom: 0;
       width: 1px; background: var(--border);
     }
     .timeline-date {
       font-size: var(--fs-md); font-weight: 600; color: var(--text-secondary);
-      margin: 20px 0 8px; position: relative;
+      margin: 20px 0 var(--sp-2); position: relative;
       font-family: "SF Mono", ui-monospace, monospace;
     }
     .timeline-date:first-child { margin-top: 0; }
@@ -688,9 +690,9 @@
       line-height: 1.6; padding: 6px 0; cursor: pointer;
       border-radius: var(--r-md); transition: background 0.15s;
     }
-    .timeline-entry:hover { background: var(--card); margin: 0 -8px; padding: 6px 8px; }
+    .timeline-entry:hover { background: var(--card); margin: 0 -8px; padding: 6px var(--sp-2); }
     .timeline-entry::before {
-      content: ''; position: absolute; left: -20px; top: 12px;
+      content: ''; position: absolute; left: -20px; top: var(--sp-3);
       width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
     }
     .timeline-entry:hover::before { left: -12px; }
@@ -700,24 +702,24 @@
     .timeline-entry.rollup:hover::before { left: -20px; }
     .timeline-phrase { font-size: var(--fs-prose); }
     .timeline-expand {
-      margin-top: 8px; padding: 10px 12px; background: var(--card);
+      margin-top: var(--sp-2); padding: 10px var(--sp-3); background: var(--card);
       border: 1px solid var(--border); border-radius: var(--r-md);
     }
     .timeline-expand-summary {
-      font-size: var(--fs-md); color: var(--text); line-height: 1.6; margin-bottom: 8px;
+      font-size: var(--fs-md); color: var(--text); line-height: 1.6; margin-bottom: var(--sp-2);
     }
     .timeline-expand-decisions {
-      list-style: none; padding: 0; margin: 0 0 8px;
+      list-style: none; padding: 0; margin: 0 0 var(--sp-2);
     }
     .timeline-expand-decisions li {
       font-size: var(--fs-body); color: var(--text-secondary); line-height: 1.5;
-      padding: 2px 0 2px 12px; position: relative;
+      padding: 2px 0 2px var(--sp-3); position: relative;
     }
     .timeline-expand-decisions li::before {
       content: '·'; position: absolute; left: 0; font-weight: 700;
     }
     .timeline-expand-counts {
-      display: flex; gap: 12px; font-size: var(--fs-body-sm); color: var(--text-secondary);
+      display: flex; gap: var(--sp-3); font-size: var(--fs-body-sm); color: var(--text-secondary);
       font-family: "SF Mono", ui-monospace, monospace;
     }
     .timeline-expand-counts strong { color: var(--text); }
@@ -748,15 +750,15 @@
       background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
       width: 90%; max-width: 560px; padding: 20px; box-shadow: var(--shadow-modal);
     }
-    .ask-modal-title { font-size: var(--fs-md); font-weight: 600; margin-bottom: 12px; }
-    .ask-input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .ask-modal-title { font-size: var(--fs-md); font-weight: 600; margin-bottom: var(--sp-3); }
+    .ask-input-row { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-3); }
     .ask-input {
-      flex: 1; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border);
+      flex: 1; padding: 10px var(--sp-3); background: var(--bg); border: 1px solid var(--border);
       border-radius: var(--r-lg); color: var(--text); font-size: var(--fs-md); font-family: inherit;
     }
     .ask-input::placeholder { color: var(--text-secondary); }
     .ask-btn {
-      padding: 10px 16px; background: var(--accent); color: var(--on-accent);
+      padding: 10px var(--sp-4); background: var(--accent); color: var(--on-accent);
       border: none; border-radius: var(--r-lg); font-size: var(--fs-md); font-weight: 600;
       cursor: pointer; font-family: inherit;
     }
@@ -767,10 +769,10 @@
       max-height: 50vh; overflow-y: auto;
     }
     .ask-examples {
-      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;
+      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--sp-3);
     }
     .ask-example {
-      font-size: var(--fs-body-sm); padding: 4px 10px; background: var(--border);
+      font-size: var(--fs-body-sm); padding: var(--sp-1) 10px; background: var(--border);
       color: var(--text-secondary); border: none; border-radius: var(--r-sm);
       cursor: pointer; font-family: inherit;
     }
@@ -779,7 +781,7 @@
     /* Machine-voice marker (AI-authored text — tenet #1) */
     .machine { font-style: italic; color: var(--text-secondary); }
     .machine-mark {
-      display: inline-block; margin-left: 8px;
+      display: inline-block; margin-left: var(--sp-2);
       font-style: normal; font-size: var(--fs-sm); font-weight: 600;
       text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);
       font-family: "SF Mono", ui-monospace, monospace; white-space: nowrap;
@@ -789,7 +791,7 @@
     .section-label {
       font-size: var(--fs-body-sm); font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.5px; color: var(--text-secondary);
-      margin: 28px 0 12px;
+      margin: 28px 0 var(--sp-3);
     }
     .section-label:first-child { margin-top: 0; }
 
@@ -801,10 +803,10 @@
       overflow-wrap: anywhere;
     }
     .stream-project:hover { color: var(--accent-light); }
-    .dormant-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .dormant-list { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
     .dormant-chip {
       font-size: var(--fs-md); color: var(--text-secondary); cursor: pointer;
-      padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--r-sm);
+      padding: var(--sp-1) 10px; border: 1px solid var(--border); border-radius: var(--r-sm);
     }
     .dormant-chip:hover { border-color: var(--text-secondary); color: var(--text); }
     a.dormant-chip { text-decoration: none; }
@@ -847,7 +849,7 @@
       margin-top: 10px; font-size: var(--fs-md); color: var(--text-secondary);
     }
     .meta-editor select {
-      font-family: inherit; font-size: var(--fs-md); padding: 4px 8px;
+      font-family: inherit; font-size: var(--fs-md); padding: var(--sp-1) var(--sp-2);
       background: var(--bg); color: var(--text);
       border: 1px solid var(--border); border-radius: var(--r-sm); cursor: pointer;
     }
@@ -870,7 +872,7 @@
     .error { color: var(--red); text-align: center; padding: 20px; font-size: var(--fs-md); }
     .empty {
       color: var(--text-secondary); text-align: center; padding: 40px; font-size: var(--fs-md);
-      border: 1px dashed var(--border); border-radius: var(--r-lg); margin-bottom: 12px;
+      border: 1px dashed var(--border); border-radius: var(--r-lg); margin-bottom: var(--sp-3);
     }
     .skeleton {
       background: var(--card); border-radius: var(--r-lg); animation: pulse 1.5s infinite;
@@ -894,7 +896,7 @@
          draws its own box and caret (the project page's metadata selects
          already had the box; naming them here outranks their own rule). */
       select, .meta-editor select {
-        -webkit-appearance: none; appearance: none; padding: 0 26px 0 8px;
+        -webkit-appearance: none; appearance: none; padding: 0 26px 0 var(--sp-2);
         border: 1px solid var(--border); border-radius: var(--r-sm);
         background-color: var(--bg); color: var(--text);
         background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
@@ -1420,7 +1422,7 @@
       const buildTime = formatBuildTime(info?.build_time);
       return html`
         <div style="max-width:640px">
-          <h1 style="margin:0 0 12px; font-size: var(--fs-2xl); color:var(--accent-light)">More</h1>
+          <h1 style="margin:0 0 var(--sp-3); font-size: var(--fs-2xl); color:var(--accent-light)">More</h1>
           <div class="more-list" data-test="more-list">
             ${extra.map(([view, label, hash]) => html`
               <button class="more-row" onClick=${() => navigate(hash)}>${label}</button>`)}
@@ -1623,11 +1625,11 @@
             onAsk=${role === 'admin' ? () => setAskOpen(true) : null} />`}
           ${route.view === 'visitors' && (role === 'admin'
             ? html`<${VisitorsOverview} />`
-            : html`<p style="color: var(--text-secondary); padding: 24px 0">Admins only.</p>`)}
+            : html`<p style="color: var(--text-secondary); padding: var(--sp-5) 0">Admins only.</p>`)}
           ${route.view === 'todos' && html`<${TodosView} overview=${overview} />`}
           ${route.view === 'health' && (role === 'admin'
             ? html`<${HealthView} onUnauthorized=${() => setAuthed(false)} />`
-            : html`<p style="color: var(--text-secondary); padding: 24px 0">Admins only.</p>`)}
+            : html`<p style="color: var(--text-secondary); padding: var(--sp-5) 0">Admins only.</p>`)}
 
           ${route.view === 'more' && html`<${MoreView} role=${role} email=${email} info=${info}
             theme=${theme} onToggleTheme=${toggleTheme} onLogout=${logout} />`}
@@ -1764,7 +1766,7 @@
       return html`
         <div>
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
-                      gap:12px; margin-bottom:${showProjects ? '12px' : '22px'}">
+                      gap:var(--sp-3); margin-bottom:${showProjects ? 'var(--sp-3)' : '22px'}">
             ${tiles.map(t => {
               const isAction = !!t.to || !!t.expands;
               const inner = html`
@@ -1806,9 +1808,9 @@
           </div>
 
           ${showProjects && html`
-            <div style="margin-bottom:22px; padding:14px 16px; background:var(--card);
+            <div style="margin-bottom:22px; padding:14px var(--sp-4); background:var(--card);
                         border:1px solid var(--border); border-radius:var(--r-lg)">
-              <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px">
+              <div style="display:flex; justify-content:space-between; align-items:baseline; gap:var(--sp-3)">
                 <div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-body-sm);
                             letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary)">
                   Active · ${shownNames(activeList, hide).length}
@@ -1818,15 +1820,15 @@
                          line-height:1; cursor:pointer; font-family:inherit" title="Collapse">×</button>
               </div>
               ${activeCount === 0
-                ? html`<div style="font-size: var(--fs-body); color:var(--text-secondary); padding:8px 0">None.</div>`
+                ? html`<div style="font-size: var(--fs-body); color:var(--text-secondary); padding:var(--sp-2) 0">None.</div>`
                 : chips(activeList, false)}
               <div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-body-sm);
                           letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary);
-                          margin-top:16px">
+                          margin-top:var(--sp-4)">
                 Dormant · ${shownNames(dormantList, hide).length}
               </div>
               ${dormantCount === 0
-                ? html`<div style="font-size: var(--fs-body); color:var(--text-secondary); padding:8px 0">None.</div>`
+                ? html`<div style="font-size: var(--fs-body); color:var(--text-secondary); padding:var(--sp-2) 0">None.</div>`
                 : chips(dormantList, true)}
             </div>`}
         </div>`;
@@ -1872,7 +1874,7 @@
         dates.push(labDay(i));
 
       return html`
-        <div style="margin-bottom:26px; padding:16px; background:var(--card);
+        <div style="margin-bottom:26px; padding:var(--sp-4); background:var(--card);
                     border:1px solid var(--border); border-radius:var(--r-lg)">
           <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px">
             <div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-body-sm);
@@ -1892,7 +1894,7 @@
               running isn't counted yet.
             </div>
           <//>
-          <div style="margin-bottom:12px">
+          <div style="margin-bottom:var(--sp-3)">
             <${StackedBars} id="home" dates=${dates} days=${days} byDateSeg=${byDateProject}
               segColor=${segColor} fmtValue=${(v) => String(Math.round(v))} unit="prompts"
               chartH=${120} markToday=${true} gutter=${false} scroll=${false} todaySuffix=" so far" />
@@ -1979,7 +1981,7 @@
 
         <div class="sec-label" style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-body-sm);
              letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary);
-             margin:0 0 12px">Recent activity</div>
+             margin:0 0 var(--sp-3)">Recent activity</div>
 
         ${items.length === 0
           ? html`<div class="empty">No project activity in the last 7 days.</div>`
@@ -2019,7 +2021,7 @@
           `}
 
         ${dormantProjects.length > 0 && html`
-          <div style="margin-top: 24px">
+          <div style="margin-top: var(--sp-5)">
             <button class="tap" style="font-size: var(--fs-md); color: var(--text-secondary); background: none;
               border: none; cursor: pointer; font-family: inherit; padding: 6px 0"
               onClick=${() => setShowDormant(!showDormant)}>
@@ -2036,7 +2038,7 @@
         `}
 
         ${privateCount > 0 && html`
-          <div style="margin-top: 8px">
+          <div style="margin-top: var(--sp-2)">
             <button class="tap" style="font-size: var(--fs-md); color: var(--text-secondary); background: none;
               border: none; cursor: pointer; font-family: inherit; padding: 6px 0"
               onClick=${() => setShowPrivate(v => !v)}>
@@ -2162,8 +2164,8 @@
       }, []);
 
       const header = html`
-        <h1 style="margin: 0 0 4px; font-size: var(--fs-3xl); color: var(--accent-light)">Todos</h1>
-        <div style="font-size: var(--fs-body); color: var(--text-secondary); margin-bottom: 16px">
+        <h1 style="margin: 0 0 var(--sp-1); font-size: var(--fs-3xl); color: var(--accent-light)">Todos</h1>
+        <div style="font-size: var(--fs-body); color: var(--text-secondary); margin-bottom: var(--sp-4)">
           Open GitHub issues, grouped by project.
         </div>`;
 
@@ -2225,7 +2227,7 @@
       const searchBox = html`
         <input class="tap" type="text" placeholder="Search issues — title, label, #number, repo"
           value=${query} onInput=${e => setQuery(e.target.value)}
-          style="width: 100%; box-sizing: border-box; margin-bottom: 14px; padding: 8px 12px;
+          style="width: 100%; box-sizing: border-box; margin-bottom: 14px; padding: var(--sp-2) var(--sp-3);
                  font-size: var(--fs-md); font-family: inherit; color: var(--text);
                  background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg)" />`;
 
@@ -2235,12 +2237,12 @@
           ${header}
           ${searchBox}
 
-          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; flex-wrap: wrap">
+          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: var(--sp-4); flex-wrap: wrap">
             <div style="font-size: var(--fs-4xl); font-weight: 700; color: var(--accent-light)">${shownTotal}</div>
             <div style="font-size: var(--fs-body); color: var(--text-secondary)">
               ${q ? 'matching' : 'open'} across ${filtered.length} project${filtered.length === 1 ? '' : 's'}
             </div>
-            <div style="margin-left: auto; display: flex; gap: 12px; align-items: baseline">
+            <div style="margin-left: auto; display: flex; gap: var(--sp-3); align-items: baseline">
               ${(showAll || hiddenRepos > 0) && html`
                 <button class="tap" onClick=${() => setShowAll(s => !s)}
                   style="font-size: var(--fs-body-sm); color: var(--link); background: none; border: none;
@@ -2261,7 +2263,7 @@
             const isOpen = isOpenFor(p);
             return html`
             <div style="border-bottom: 1px solid var(--border)">
-              <div style="display: flex; align-items: center; gap: 8px; padding: 10px 0; cursor: pointer"
+              <div style="display: flex; align-items: center; gap: var(--sp-2); padding: 10px 0; cursor: pointer"
                    onClick=${() => toggle(p)}>
                 <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); width: 10px; flex: none">${isOpen ? '▾' : '▸'}</span>
                 <span style="font-size: var(--fs-lg); font-weight: 600; min-width: 0; overflow-wrap: anywhere">${p}</span>
@@ -2276,7 +2278,7 @@
                 <div style="padding: 0 0 10px 18px">
                   ${issues.map(iss => html`
                     <a href=${iss.url} target="_blank" rel="noopener"
-                       style="display: flex; align-items: baseline; gap: 8px; padding: 6px 0;
+                       style="display: flex; align-items: baseline; gap: var(--sp-2); padding: 6px 0;
                               text-decoration: none; color: var(--text); border-top: 1px solid var(--border)">
                       <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none">#${iss.number}</span>
                       <span style="font-size: var(--fs-md); flex: 1; min-width: 0">${iss.title}</span>
@@ -2713,11 +2715,11 @@
                 <div style="height: ${(v / total) * 100}%; background: ${segColor(s)}"></div>`)}
             </div>
             ${CAN_HOVER && isHovered && total > 0 && html`
-              <div style="position: absolute; bottom: 100%; z-index: var(--z-tip); margin-bottom: 4px; ${tipAnchor};
+              <div style="position: absolute; bottom: 100%; z-index: var(--z-tip); margin-bottom: var(--sp-1); ${tipAnchor};
                           background: var(--bg); border: 1px solid var(--border);
-                          border-radius: var(--r-md); padding: 8px 10px; white-space: nowrap;
+                          border-radius: var(--r-md); padding: var(--sp-2) 10px; white-space: nowrap;
                           box-shadow: var(--shadow-tip); font-size: var(--fs-body-sm)">
-                <div style="font-weight: 600; margin-bottom: 4px">${heading(b, total)}</div>
+                <div style="font-weight: 600; margin-bottom: var(--sp-1)">${heading(b, total)}</div>
                 ${segs.slice(0, 6).map(([s, v]) => html`
                   <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
                     <span style="width: 8px; height: 8px; border-radius: var(--r-sm); background: ${segColor(s)}; display: inline-block"></span>
@@ -2738,7 +2740,7 @@
           ${bars}
         </div>`;
       const axis = html`<${DateAxis} dates=${buckets.map((b) => b.key)} fmt=${(k) => label[k]}
-                                     style="margin-top: 4px" />`;
+                                     style="margin-top: var(--sp-1)" />`;
       const sel = selected != null ? buckets[selected] : null;
 
       const plot = narrow || !scroll
@@ -2751,7 +2753,7 @@
       return html`
         <div data-test="chart" data-chart=${id}>
           ${gutter ? html`
-            <div style="display: grid; grid-template-columns: ${narrow ? 44 : 56}px minmax(0, 1fr); gap: 8px">
+            <div style="display: grid; grid-template-columns: ${narrow ? 44 : 56}px minmax(0, 1fr); gap: var(--sp-2)">
               <div style="display: flex; flex-direction: column; justify-content: space-between;
                           align-items: flex-end; height: ${chartH}px; font-size: var(--fs-sm);
                           color: var(--text-secondary); ${MONO}">
@@ -2826,7 +2828,7 @@
 
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
-                    flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
+                    flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-1)">
           <h1 style="margin: 0; font-size: var(--fs-3xl); color: var(--accent-light)">Costs</h1>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
@@ -2881,14 +2883,14 @@
       const maxProj = ranked[0]?.[1] || 1;
 
       const panel = (children) => html`
-        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated);
+        <div style="margin-top: var(--sp-4); padding: 14px; background: var(--bg-elevated);
                     border: 1px solid var(--border); border-radius: var(--r-md)">${children}</div>`;
 
       return html`
         <div>
           ${header}
 
-          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px">
+          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: var(--sp-1)">
             <div style="font-size: var(--fs-4xl); font-weight: 700; color: var(--accent-light)">${fmtUsd(total)}</div>
             <div style="font-size: var(--fs-body); color: var(--text-secondary)">
               total · last ${days === 365 ? 'year' : days + ' days'}
@@ -2903,7 +2905,7 @@
 
           <div class="two-col">
             <div>
-              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px">
+              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--sp-2)">
                 <div style="font-size: var(--fs-body-sm); font-weight: 600; color: var(--text-secondary);
                             font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase">
                   By project
@@ -2918,7 +2920,7 @@
                 <${p === UNMAPPED_PROJECT ? 'div' : 'a'}
                    href=${p === UNMAPPED_PROJECT ? undefined : '#/project/' + encodeURIComponent(p) + '/cost'}
                    class="row-link">
-                  <div style="display: flex; align-items: center; gap: 8px">
+                  <div style="display: flex; align-items: center; gap: var(--sp-2)">
                     <span style="width: 9px; height: 9px; border-radius: var(--r-sm); background: ${segColor(p)}; flex: none"></span>
                     <span style="font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${costProjectLabel(p)}</span>
                     <span style="margin-left: auto; font-size: var(--fs-sm); color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
@@ -2937,11 +2939,11 @@
 
             <div>
               <div style="font-size: var(--fs-body-sm); font-weight: 600; color: var(--text-secondary);
-                          font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
+                          font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: var(--sp-2)">
                 By model
               </div>
               ${models.map(([m, v]) => html`
-                <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
+                <div style="display: flex; align-items: center; gap: var(--sp-2); padding: 5px 0;
                             border-bottom: 1px solid var(--border)">
                   <span style="font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${m}</span>
                   <span style="margin-left: auto; font-size: var(--fs-sm); color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
@@ -2991,7 +2993,7 @@
       // Metric switch writes the hash, so the current view is always shareable
       // and the Pulse tiles' #/activity/<metric> deep links round-trip.
       const metricSwitch = html`
-        <div class="sub-tabs" style="display: inline-flex; margin-bottom: 16px">
+        <div class="sub-tabs" style="display: inline-flex; margin-bottom: var(--sp-4)">
           ${ACTIVITY_METRICS.map(k => html`
             <button class="sub-tab ${k === m ? 'active' : ''}"
                     onClick=${() => navigate('#/activity/' + k)}>${k}</button>`)}
@@ -2999,12 +3001,12 @@
 
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
-                    flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
+                    flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-1)">
           <h1 style="margin: 0; font-size: var(--fs-3xl); color: var(--accent-light)">Activity</h1>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <${PageNote}>
-          <div style="font-size: var(--fs-body); color: var(--text-secondary); margin-bottom: 16px">
+          <div style="font-size: var(--fs-body); color: var(--text-secondary); margin-bottom: var(--sp-4)">
             Sessions, prompts and commits per day across every project, from the
             nightly daily summaries. Counts follow project renames.
           </div>
@@ -3086,14 +3088,14 @@
       const nextSort = { '30d': '7d', '7d': 'name', name: '30d' };
 
       const panel = (children) => html`
-        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated);
+        <div style="margin-top: var(--sp-4); padding: 14px; background: var(--bg-elevated);
                     border: 1px solid var(--border); border-radius: var(--r-md)">${children}</div>`;
 
       return html`
         <div>
           ${header}
 
-          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; flex-wrap: wrap">
+          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: var(--sp-1); flex-wrap: wrap">
             <div style="font-size: var(--fs-4xl); font-weight: 700; color: var(--accent-light)">${fmtInt(total)}</div>
             <div style="font-size: var(--fs-body); color: var(--text-secondary)">
               ${m} · last ${windowLabel(effDays)} · ${ranked.length} project${ranked.length === 1 ? '' : 's'}
@@ -3107,7 +3109,7 @@
 
           <div class="two-col">
             <div>
-              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px">
+              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--sp-2)">
                 <div style="font-size: var(--fs-body-sm); font-weight: 600; color: var(--text-secondary);
                             font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase">
                   By project
@@ -3118,15 +3120,15 @@
                   Sorted by ${sortBy} ↕
                 </button>
               </div>
-              <div style="display: flex; gap: 8px; font-size: var(--fs-sm); color: var(--text-secondary);
-                          font-family: 'SF Mono', ui-monospace, monospace; padding-bottom: 4px">
+              <div style="display: flex; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-secondary);
+                          font-family: 'SF Mono', ui-monospace, monospace; padding-bottom: var(--sp-1)">
                 <span style="margin-left: auto; min-width: 56px; text-align: right">7d</span>
                 <span style="min-width: 56px; text-align: right">30d</span>
               </div>
               ${table.map(row => html`
                 <a href="#/project/${encodeURIComponent(row.p)}"
                    class="row-link">
-                  <div style="display: flex; align-items: center; gap: 8px">
+                  <div style="display: flex; align-items: center; gap: var(--sp-2)">
                     <span style="width: 9px; height: 9px; border-radius: var(--r-sm); background: ${segColor(row.p)}; flex: none"></span>
                     <span style="font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${row.p}</span>
                     <span style="margin-left: auto; font-size: var(--fs-md); font-variant-numeric: tabular-nums;
@@ -3149,12 +3151,12 @@
 
             <div>
               <div style="font-size: var(--fs-body-sm); font-weight: 600; color: var(--text-secondary);
-                          font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
+                          font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: var(--sp-2)">
                 Window totals
               </div>
               ${ACTIVITY_METRICS.map(k => html`
                 <a class="tap" href=${'#/activity/' + k}
-                   style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
+                   style="display: flex; align-items: center; gap: var(--sp-2); padding: 5px 0;
                           text-decoration: none; border-bottom: 1px solid var(--border);
                           color: ${k === m ? 'var(--accent-light)' : 'var(--text)'}">
                   <span style="font-size: var(--fs-md); font-weight: ${k === m ? 600 : 400}">${k}</span>
@@ -3179,7 +3181,7 @@
     // untouched; this page and the "/" shortcut are how you reach it now.
     function AboutView({ info, onAsk }) {
       const row = (label, value, cls) => html`
-        <div style="display:flex; gap:12px; padding:6px 0; border-bottom:1px solid var(--border)">
+        <div style="display:flex; gap:var(--sp-3); padding:6px 0; border-bottom:1px solid var(--border)">
           <span style="color:var(--text-secondary)">${label}</span>
           <span class=${cls || ''} style="margin-left:auto; font-family:'SF Mono',ui-monospace,monospace;
                        font-size: var(--fs-sm); text-align:right">${value}</span>
@@ -3197,8 +3199,8 @@
 
       return html`
         <div style="max-width:640px">
-          <h1 style="margin:0 0 12px; font-size: var(--fs-2xl); color:var(--accent-light)">About</h1>
-          <p style="line-height:1.55; margin:0 0 8px">
+          <h1 style="margin:0 0 var(--sp-3); font-size: var(--fs-2xl); color:var(--accent-light)">About</h1>
+          <p style="line-height:1.55; margin:0 0 var(--sp-2)">
             Prompt Lab tracks agent sessions, spend and activity across every project,
             from a local prompt history that never leaves the machine it was typed on.
           </p>
@@ -3223,10 +3225,10 @@
           ${onAsk && html`
             <div style="margin-top:22px; padding-top:18px; border-top:1px solid var(--border)">
               <button class="header-btn tap" onClick=${onAsk}
-                      style="padding:8px 14px; border:1px solid var(--border); color:var(--accent-light)">
+                      style="padding:var(--sp-2) 14px; border:1px solid var(--border); color:var(--accent-light)">
                 Ask a question
               </button>
-              <p style="line-height:1.55; color:var(--text-secondary); margin:8px 0 0; font-size: var(--fs-body-sm)">
+              <p style="line-height:1.55; color:var(--text-secondary); margin:var(--sp-2) 0 0; font-size: var(--fs-body-sm)">
                 Ask a plain-language question about past sessions and projects. Press
                 <span style="font-family:'SF Mono',ui-monospace,monospace">/</span> from any page
                 to open it.
@@ -3284,12 +3286,12 @@
         <div style="margin-top:22px">
           <div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-xs);
                       letter-spacing:0.12em; text-transform:uppercase;
-                      color:var(--text-secondary); margin-bottom:8px">${title}</div>
+                      color:var(--text-secondary); margin-bottom:var(--sp-2)">${title}</div>
           <div class="card" style="font-size: var(--fs-body-sm)">${body}</div>
         </div>` : null;
 
       const stat = (label, n) => html`
-        <div style="flex:1; min-width:96px; padding:12px 14px; background:var(--card);
+        <div style="flex:1; min-width:96px; padding:var(--sp-3) 14px; background:var(--card);
                     border:1px solid var(--border); border-radius:var(--r-lg)">
           <div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-xs);
                       letter-spacing:0.12em; text-transform:uppercase;
@@ -3305,7 +3307,7 @@
                style="cursor:pointer; color:var(--text-secondary); font-size: var(--fs-body-sm);
                       text-decoration:none">← back</a>
           </div>
-          <h1 style="margin:0 0 4px; font-size: var(--fs-2xl); color:var(--accent-light)">${long}</h1>
+          <h1 style="margin:0 0 var(--sp-1); font-size: var(--fs-2xl); color:var(--accent-light)">${long}</h1>
           <div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-sm);
                       color:var(--text-secondary); margin-bottom:18px">${date}</div>
 
@@ -3341,7 +3343,7 @@
             ${data.projects.map(p => html`
               <div class="card">
                 <div style="display:flex; justify-content:space-between; align-items:baseline;
-                            gap:12px; margin-bottom:${p.summary ? '8px' : '0'}">
+                            gap:var(--sp-3); margin-bottom:${p.summary ? 'var(--sp-2)' : '0'}">
                   <a class="tap" href=${'#/project/' + encodeURIComponent(p.project)}
                      style="font-weight:600; color:var(--accent-light); text-decoration:none;
                             min-width:0; overflow-wrap:anywhere">
@@ -3357,7 +3359,7 @@
                     <${MachineText}>${p.summary}<//>
                   </div>`}
                 ${p.key_decisions.length > 0 && html`
-                  <ul style="margin:8px 0 0; padding-left:18px; color:var(--text-secondary);
+                  <ul style="margin:var(--sp-2) 0 0; padding-left:18px; color:var(--text-secondary);
                              font-size: var(--fs-body-sm); line-height:1.5">
                     ${p.key_decisions.map(k => html`<li>${k}</li>`)}
                   </ul>`}
@@ -3365,7 +3367,7 @@
 
             ${section('API spend', data.spend && data.spend.by_project.length && html`
               ${data.spend.by_project.map(s => html`
-                <div style="display:flex; gap:8px; padding:3px 0">
+                <div style="display:flex; gap:var(--sp-2); padding:3px 0">
                   <span>${s.project ? costProjectLabel(s.project) : 'unattributed'}
                     ${s.project === UNMAPPED_PROJECT && html`<div style="font-size: var(--fs-sm); color: var(--text-secondary)">not mapped to a project</div>`}</span>
                   <span style="margin-left:auto; font-variant-numeric:tabular-nums">
@@ -3374,7 +3376,7 @@
 
             ${section('Page views', data.visitors && data.visitors.by_site.length && html`
               ${data.visitors.by_site.map(s => html`
-                <div style="display:flex; gap:8px; padding:3px 0">
+                <div style="display:flex; gap:var(--sp-2); padding:3px 0">
                   <span>${s.site}</span>
                   <span style="margin-left:auto; font-variant-numeric:tabular-nums">
                     ${s.views}</span>
@@ -3382,7 +3384,7 @@
 
             ${section('Uptime', data.uptime && data.uptime.length && html`
               ${data.uptime.map(u => html`
-                <div style="display:flex; gap:8px; padding:3px 0">
+                <div style="display:flex; gap:var(--sp-2); padding:3px 0">
                   <span>${u.monitor}</span>
                   <span style="margin-left:auto; font-variant-numeric:tabular-nums;
                                color:${u.uptime_1d == null ? 'var(--text-secondary)'
@@ -3437,7 +3439,7 @@
 
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
-                    flex-wrap: wrap; gap: 12px; margin-bottom: 4px">
+                    flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-1)">
           <h1 style="margin: 0; font-size: var(--fs-3xl); color: var(--accent-light)">Visitors</h1>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
@@ -3460,11 +3462,11 @@
       if (!data || data.error) return html`<div>${header}<div class="cost-placeholder">Couldn't load visitors.</div></div>`;
 
       const panel = (children) => html`
-        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated);
+        <div style="margin-top: var(--sp-4); padding: 14px; background: var(--bg-elevated);
                     border: 1px solid var(--border); border-radius: var(--r-md)">${children}</div>`;
       const sectionTitle = (t) => html`
         <div style="font-size: var(--fs-body-sm); font-weight: 600; color: var(--text-secondary);
-                    font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
+                    font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: var(--sp-2)">
           ${t}
         </div>`;
       const panelTitle = (t) => html`<div class="vis-panel-title">${sectionTitle(t)}</div>`;
@@ -3519,7 +3521,7 @@
 
         return panel(html`
           ${sectionTitle('Sign-ins')}
-          <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap">
+          <div style="display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap">
             <div style="font-size: var(--fs-2xl); font-weight: 700; color: var(--accent-light);
                         font-variant-numeric: tabular-nums">${total.toLocaleString()}</div>
             <div style="font-size: var(--fs-body); color: var(--text-secondary)">
@@ -3531,7 +3533,7 @@
             sign-ins, not people.
           </div>
           ${total === 0
-            ? html`<div style="font-size: var(--fs-body); color: var(--text-secondary); margin-top: 12px">
+            ? html`<div style="font-size: var(--fs-body); color: var(--text-secondary); margin-top: var(--sp-3)">
                 No sign-ins in this window.
               </div>`
             : html`<div class="two-col">
@@ -3592,7 +3594,7 @@
         <div>
           ${header}
 
-          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px">
+          <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: var(--sp-1)">
             <div style="font-size: var(--fs-4xl); font-weight: 700; color: var(--accent-light)">${totalViews.toLocaleString()}</div>
             <div style="font-size: var(--fs-body); color: var(--text-secondary)">
               page loads · ${ranked.length} site${ranked.length === 1 ? '' : 's'} ·
@@ -3715,7 +3717,7 @@
 
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
-                    flex-wrap: wrap; gap: 8px 12px; margin-bottom: 4px">
+                    flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-1)">
           <h1 style="margin: 0; font-size: var(--fs-3xl); color: var(--accent-light)">Health</h1>
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
             ${loading && html`<span class="header-meta refreshing" title="Polling…">↻</span>`}
@@ -3726,7 +3728,7 @@
               </span>`}
             <button class="tap" onClick=${() => setNonce(n => n + 1)} disabled=${loading}
               title="Poll every target again"
-              style="font-size: var(--fs-body-sm); padding: 4px 12px; border-radius: var(--r-sm); cursor: pointer;
+              style="font-size: var(--fs-body-sm); padding: var(--sp-1) var(--sp-3); border-radius: var(--r-sm); cursor: pointer;
                      font-family: inherit; border: 1px solid var(--border);
                      background: transparent; color: var(--text-secondary);
                      opacity: ${loading ? 0.5 : 1}">
@@ -3758,8 +3760,8 @@
       </div>`;
 
       const banner = (bg, fg, children) => html`
-        <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
-                    padding: 10px 14px; margin-bottom: 16px; border-radius: var(--r-lg);
+        <div style="display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap;
+                    padding: 10px 14px; margin-bottom: var(--sp-4); border-radius: var(--r-lg);
                     background: ${bg}; border: 1px solid ${fg}; color: ${fg};
                     font-size: var(--fs-body); line-height: 1.5">${children}</div>`;
 
@@ -3797,7 +3799,7 @@
                 <code>TARGETS</code> in <code>web/api/health_report.py</code>.</div>`
             : html`
               <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-                          gap: 12px">
+                          gap: var(--sp-3)">
                 ${targets.map(t => {
                   const ok = !!t.ok;
                   const status = t.status == null ? 'no response' : 'HTTP ' + t.status;
@@ -3806,10 +3808,10 @@
                     <div style="background: var(--card); border: 1px solid ${ok ? 'var(--border)' : 'var(--red)'};
                                 border-left: 3px solid ${ok ? 'var(--green)' : 'var(--red)'};
                                 border-radius: var(--r-lg); padding: 13px 15px">
-                      <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap">
+                      <div style="display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap">
                         <span style="font-size: var(--fs-lg); font-weight: 600; word-break: break-word">${t.name}</span>
                         <span style="margin-left: auto; font-size: var(--fs-body-sm); font-weight: 700;
-                                     letter-spacing: 0.06em; padding: 2px 8px; border-radius: var(--r-sm);
+                                     letter-spacing: 0.06em; padding: 2px var(--sp-2); border-radius: var(--r-sm);
                                      white-space: nowrap;
                                      background: ${ok ? 'var(--green-dim)' : 'var(--red-dim)'};
                                      color: ${ok ? 'var(--green)' : 'var(--red)'}">
@@ -3830,7 +3832,7 @@
           ${heartbeats.length > 0 && html`
             <div style="margin-top: 26px">
               <div style="display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-                          margin-bottom: 4px">
+                          margin-bottom: var(--sp-1)">
                 <h2 style="margin: 0; font-size: var(--fs-lg)">Heartbeats</h2>
                 <span style="font-size: var(--fs-body); color: ${stale.length || unchecked.length
                     ? 'var(--yellow)' : 'var(--green)'}">
@@ -3839,11 +3841,11 @@
                     : `all ${heartbeats.length} fresh`}
                 </span>
               </div>
-              <div style="font-size: var(--fs-body); color: var(--text-secondary); margin-bottom: 12px;
+              <div style="font-size: var(--fs-body); color: var(--text-secondary); margin-bottom: var(--sp-3);
                           line-height: 1.5">
                 Age of each job's latest output. A job that dies can't report its own failure.
               </div>
-              <div style="display: grid; gap: 8px">
+              <div style="display: grid; gap: var(--sp-2)">
                 ${heartbeats.map(h => {
                   // null = couldn't read Turso. Deliberately its own state:
                   // showing it as fresh would manufacture confidence, showing
@@ -3860,7 +3862,7 @@
                                 border-radius: var(--r-lg); padding: 9px 13px">
                       <span style="font-size: var(--fs-md); font-weight: 600">${h.name}</span>
                       <span style="font-size: var(--fs-body-sm); font-weight: 700; letter-spacing: 0.06em;
-                                   padding: 2px 8px; border-radius: var(--r-sm); white-space: nowrap;
+                                   padding: 2px var(--sp-2); border-radius: var(--r-sm); white-space: nowrap;
                                    background: ${dim}; color: ${color}">${state}</span>
                       <span style="margin-left: auto; font-size: var(--fs-body); text-align: right;
                                    color: var(--text-secondary);
@@ -3979,17 +3981,17 @@
 
       const badge = html`
         <span style="font-size: var(--fs-body-sm); font-weight: 700; letter-spacing: 0.06em;
-                     padding: 2px 8px; border-radius: var(--r-sm); white-space: nowrap;
+                     padding: 2px var(--sp-2); border-radius: var(--r-sm); white-space: nowrap;
                      background: ${chipBg}; color: ${chipColor}">${status || '—'}</span>`;
       const stats = html`
-        <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px">
+        <div style="display: flex; gap: var(--sp-4); flex-wrap: wrap; margin-top: var(--sp-2)">
           ${stat('1d', fmtPct(monitor.uptime_1d), uptimeColor(monitor.uptime_1d))}
           ${stat('7d', fmtPct(monitor.uptime_7d), uptimeColor(monitor.uptime_7d))}
           ${stat('30d', fmtPct(monitor.uptime_30d), uptimeColor(monitor.uptime_30d))}
           ${stat('avg response', fmtMs(monitor.avg_response_ms))}
         </div>`;
       const head = html`
-        <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap">
+        <div style="display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap">
           <span style="font-size: var(--fs-md); font-weight: 600; word-break: break-word">${monitor.name}</span>
           ${badge}
         </div>
@@ -4021,7 +4023,7 @@
           <div data-test="uptime-card" data-monitor=${monitor.name}
                style="background: var(--card); border: 1px solid var(--border);
                       border-left: 3px solid ${chipColor}; border-radius: var(--r-lg);
-                      padding: 0 12px; margin-top: 10px">
+                      padding: 0 var(--sp-3); margin-top: 10px">
             ${toggle}
             ${open && html`
               <div data-test="uptime-detail" style="padding-bottom: 13px">
@@ -4055,7 +4057,7 @@
       const detail = (d) => {
         const v = byDate[d];
         return html`
-          <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)}</div>
+          <div style="font-weight: 600; margin-bottom: var(--sp-1)">${fmtShortDate(d)}</div>
           ${v ? html`
             <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
               <span style="width: 8px; height: 8px; border-radius: var(--r-sm); flex: none;
@@ -4117,10 +4119,10 @@
                               opacity: ${dim ? 0.35 : active ? 1 : 0.75}; transition: opacity 0.1s"></div>
                 </div>
                 ${CAN_HOVER && hovered === i && b.size === 'day' && html`
-                  <div style="position: absolute; bottom: 100%; z-index: var(--z-tip); margin-bottom: 4px;
+                  <div style="position: absolute; bottom: 100%; z-index: var(--z-tip); margin-bottom: var(--sp-1);
                               ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
                               background: var(--bg); border: 1px solid var(--border);
-                              border-radius: var(--r-md); padding: 8px 10px; white-space: nowrap;
+                              border-radius: var(--r-md); padding: var(--sp-2) 10px; white-space: nowrap;
                               box-shadow: var(--shadow-tip); font-size: var(--fs-body-sm)">
                     ${detail(b.key)}
                   </div>`}
@@ -4129,12 +4131,12 @@
         </div>`;
       const axis = html`<${DateAxis} dates=${buckets.map((b) => b.key)}
                                      fmt=${(k) => axisLabel(buckets.find((b) => b.key === k))}
-                                     style="margin-top: 4px" />`;
+                                     style="margin-top: var(--sp-1)" />`;
       const sel = selected != null ? buckets[selected] : null;
 
       return card(html`
         <div data-test="chart" data-chart=${'uptime-' + monitor.name}>
-          <div style="margin-top: 10px; display: grid; grid-template-columns: 56px ${narrow ? 'minmax(0, 1fr)' : '1fr'}; gap: 8px">
+          <div style="margin-top: 10px; display: grid; grid-template-columns: 56px ${narrow ? 'minmax(0, 1fr)' : '1fr'}; gap: var(--sp-2)">
             <div style="font-size: var(--fs-xs); color: var(--text-secondary);
                         font-family: 'SF Mono', ui-monospace, monospace">
               <div style="height: ${STRIP_H}px; display: flex; align-items: center; justify-content: flex-end">
@@ -4197,12 +4199,12 @@
 
       const header = html`
         <div style="display: flex; justify-content: space-between; align-items: baseline;
-                    flex-wrap: wrap; gap: 8px 12px; margin-bottom: 4px">
+                    flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-1)">
           <h2 style="margin: 0; font-size: var(--fs-lg)">Uptime archive</h2>
           <${WindowPicker} days=${days} onChange=${setDays} />
         </div>
         <${PageNote}>
-          <div style="font-size: var(--fs-body); color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5">
+          <div style="font-size: var(--fs-body); color: var(--text-secondary); margin-bottom: var(--sp-3); line-height: 1.5">
             What UptimeRobot saw, kept beyond its 3-month limit: one row per
             monitor per day, saved by the morning health check. The 1d / 7d / 30d
             figures are UptimeRobot's own averages as of that check, so they don't
@@ -4288,7 +4290,7 @@
       ];
 
       return section(html`
-        <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; flex-wrap: wrap">
+        <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: var(--sp-1); flex-wrap: wrap">
           <div style="font-size: var(--fs-2xl); font-weight: 700;
                       color: ${worst == null ? 'var(--text-secondary)' : uptimeColor(worst)}">
             ${fmtPct(worst)}
@@ -4305,11 +4307,11 @@
                the viewport (21px of horizontal page scroll at 375px). -->
           <div style="min-width: 0">
             <div style="font-size: var(--fs-body-sm); font-weight: 600; color: var(--text-secondary);
-                        font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
+                        font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: var(--sp-2)">
               Reading the strip
             </div>
             ${buckets.map(([color, opacity, label, range]) => html`
-              <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
+              <div style="display: flex; align-items: center; gap: var(--sp-2); padding: 5px 0;
                           border-bottom: 1px solid var(--border)">
                 <span style="width: 9px; height: 9px; border-radius: var(--r-sm); flex: none;
                              background: ${color}; opacity: ${opacity}"></span>
@@ -4321,12 +4323,12 @@
 
           <div style="min-width: 0">
             <div style="font-size: var(--fs-body-sm); font-weight: 600; color: var(--text-secondary);
-                        font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
+                        font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: var(--sp-2)">
               Slowest to answer
             </div>
             ${ranked.length ? ranked.map(r => html`
               <div style="padding: 5px 0; border-bottom: 1px solid var(--border)">
-                <div style="display: flex; align-items: center; gap: 8px">
+                <div style="display: flex; align-items: center; gap: var(--sp-2)">
                   <span style="font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis;
                                white-space: nowrap">${r.name}</span>
                   <span style="margin-left: auto; font-size: var(--fs-md); font-variant-numeric: tabular-nums">
@@ -4345,7 +4347,7 @@
           </div>
         </div>
 
-        <div style="margin-top: 12px; font-size: var(--fs-body-sm); color: var(--text-secondary); line-height: 1.5">
+        <div style="margin-top: var(--sp-3); font-size: var(--fs-body-sm); color: var(--text-secondary); line-height: 1.5">
           Rows live in Turso's <code>uptime_daily</code> (cloud-direct, no sync leg)
           and are written by <code>web/api/health_report.py</code>'s send path only.
         </div>`);
@@ -4400,16 +4402,16 @@
       const models = Object.entries(byModel).sort((a, b) => b[1] - a[1]);
 
       return html`
-        <div style="margin-top: 16px; padding: 12px; background: var(--bg-elevated);
+        <div style="margin-top: var(--sp-4); padding: var(--sp-3); background: var(--bg-elevated);
                     border: 1px solid var(--border); border-radius: var(--r-md)">
           <div style="display: flex; justify-content: space-between; align-items: baseline;
-                      margin-bottom: 12px">
+                      margin-bottom: var(--sp-3)">
             <div style="font-size: var(--fs-body-sm); font-weight: 600;
                         color: var(--text-secondary);
                         font-family: 'SF Mono', ui-monospace, monospace">
               API cost · last 30d
             </div>
-            <div style="display: flex; align-items: baseline; gap: 12px">
+            <div style="display: flex; align-items: baseline; gap: var(--sp-3)">
               <div data-test="cost-total" style="font-size: var(--fs-lg); font-weight: 600">
                 $${total.toFixed(2)}
               </div>
@@ -4424,7 +4426,7 @@
             segColor=${() => 'var(--accent)'} fmtValue=${fmtUsdFine} fmtAxis=${fmtUsdAxis}
             minPeak=${0.0001} chartH=${100} scroll=${false} />
           ${models.length > 0 && html`
-            <div data-test="cost-legend" style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
+            <div data-test="cost-legend" style="display: flex; gap: var(--sp-3); flex-wrap: wrap; margin-top: 10px;
                         font-size: var(--fs-body-sm); color: var(--text-secondary);
                         font-family: 'SF Mono', ui-monospace, monospace">
               ${models.map(([m, v]) => html`
@@ -4484,7 +4486,7 @@
 
       return html`
         <div>
-          <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px; margin-bottom: 16px">
+          <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-4); margin-bottom: var(--sp-4)">
             <a class="tap" href="#/project/${encodeURIComponent(project)}"
                style="color: var(--text-secondary); text-decoration: none; font-size: var(--fs-md);
                       min-width: 0; overflow-wrap: anywhere">
@@ -4497,11 +4499,11 @@
             </div>
           </div>
 
-          <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+          <div style="display: flex; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-3);
                       font-size: var(--fs-body); align-items: center">
             <label>Window:
               <select value=${days} onChange=${e => setDays(Number(e.target.value))}
-                      style="margin-left: 4px">
+                      style="margin-left: var(--sp-1)">
                 <option value=${7}>7d</option>
                 <option value=${30}>30d</option>
                 <option value=${90}>90d</option>
@@ -4510,13 +4512,13 @@
             </label>
             <label>Model:
               <select value=${modelFilter} onChange=${e => setModelFilter(e.target.value)}
-                      style="margin-left: 4px">
+                      style="margin-left: var(--sp-1)">
                 ${models.map(m => html`<option value=${m}>${m}</option>`)}
               </select>
             </label>
             <label>Token type:
               <select value=${tokenFilter} onChange=${e => setTokenFilter(e.target.value)}
-                      style="margin-left: 4px">
+                      style="margin-left: var(--sp-1)">
                 ${tokens.map(t => html`<option value=${t}>${t || '(empty)'}</option>`)}
               </select>
             </label>
@@ -4633,7 +4635,7 @@
         return () => { alive = false; };
       }, [name]);
 
-      if (data?.status === 403) return html`<p style="color: var(--text-secondary); padding: 24px 0">This project isn't available.</p>`;
+      if (data?.status === 403) return html`<p style="color: var(--text-secondary); padding: var(--sp-5) 0">This project isn't available.</p>`;
 
       if (section === 'cost') return html`<${CostDetailPage} project=${name} />`;
 
@@ -4809,7 +4811,7 @@
           `)}
           ${hiddenCount > 0 && html`
             <button class="tap" onClick=${() => setShowAll(true)}
-                    style="margin-top: 12px; padding: 6px 12px;
+                    style="margin-top: var(--sp-3); padding: 6px var(--sp-3);
                            background: transparent;
                            border: 1px solid var(--border);
                            color: var(--text-secondary);
@@ -4821,7 +4823,7 @@
           `}
           ${showAll && allItems.length > TIMELINE_CAP && html`
             <button class="tap" onClick=${() => setShowAll(false)}
-                    style="margin-top: 12px; padding: 6px 12px;
+                    style="margin-top: var(--sp-3); padding: 6px var(--sp-3);
                            background: transparent;
                            border: 1px solid var(--border);
                            color: var(--text-secondary);
@@ -4928,12 +4930,12 @@
               </button>
             </div>
             ${asking && html`
-              <div style="padding: 14px; color: var(--text-secondary); font-size: var(--fs-md); display: flex; align-items: center; gap: 8px">
+              <div style="padding: 14px; color: var(--text-secondary); font-size: var(--fs-md); display: flex; align-items: center; gap: var(--sp-2)">
                 <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite"></span>
                 Thinking...
               </div>
             `}
-            ${error && html`<div class="error" style="padding: 8px">${error}</div>`}
+            ${error && html`<div class="error" style="padding: var(--sp-2)">${error}</div>`}
             ${answer && html`
               <div class="ask-answer">${answer}</div>
               <button style="font-size: var(--fs-body-sm); color: var(--accent-light); background: none;
@@ -4943,7 +4945,7 @@
 
             ${!asking && !answer && html`
               <button style="font-size: var(--fs-body-sm); color: var(--text-secondary); background: none;
-                border: none; cursor: pointer; margin-top: 4px; padding: 0; font-family: inherit"
+                border: none; cursor: pointer; margin-top: var(--sp-1); padding: 0; font-family: inherit"
                 onClick=${() => setShowHistory(!showHistory)}>
                 ${showHistory ? 'Hide' : 'Show'} previous asks
               </button>
@@ -4951,8 +4953,8 @@
             ${showHistory && html`
               <div style="margin-top: 10px; max-height: 40vh; overflow-y: auto">
                 ${getHistory().map(h => html`
-                  <div style="border-bottom: 1px solid var(--border); padding: 8px 0">
-                    <div style="font-size: var(--fs-body); color: var(--text); font-weight: 600; margin-bottom: 4px">
+                  <div style="border-bottom: 1px solid var(--border); padding: var(--sp-2) 0">
+                    <div style="font-size: var(--fs-body); color: var(--text); font-weight: 600; margin-bottom: var(--sp-1)">
                       ${h.q}
                       <span style="font-weight: 400; color: var(--text-secondary); margin-left: 6px;
                         font-family: 'SF Mono', ui-monospace, monospace; font-size: var(--fs-body-sm)">
@@ -4965,7 +4967,7 @@
                   </div>
                 `)}
                 ${getHistory().length === 0 && html`
-                  <div style="font-size: var(--fs-body); color: var(--text-secondary); padding: 8px 0">No previous asks.</div>
+                  <div style="font-size: var(--fs-body); color: var(--text-secondary); padding: var(--sp-2) 0">No previous asks.</div>
                 `}
               </div>
             `}

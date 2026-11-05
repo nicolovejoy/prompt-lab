@@ -427,6 +427,18 @@ test('radius, shadow and z-index are tokens: no raw values outside :root', () =>
                    '--z-tip', '--z-dropdown', '--z-bar', '--z-modal']) assert.ok(dark[n], `:root must define ${n}`);
 });
 
+test('spacing is tokens: no raw 4/8/12/16/24/32px in padding, margin or gap outside :root', () => {
+  // Comments stripped and the dark :root removed. Only whole scale values count:
+  // 14px, 48px and 2px are off-scale and stay raw; a negative (-8px) is left raw
+  // on purpose (five of them, too many for calc(-1 * var(--sp-*))).
+  const body = stripComments(src).replace(TOKEN_BLOCK_RES.dark, '');
+  const decls = [...body.matchAll(/(?<![-\w])(padding|margin|gap|row-gap|column-gap)(-(?:top|right|bottom|left))?\s*:\s*([^;"'`}\n]*)/g)];
+  const raw = decls.filter((m) => /(?<![-\w.])(4|8|12|16|24|32)px\b/.test(m[3])).map((m) => m[0].trim());
+  assert.deepEqual(raw, [], 'padding/margin/gap must use var(--sp-*) for scale values');
+  const dark = tokenMap('dark');
+  for (const n of ['--sp-1', '--sp-2', '--sp-3', '--sp-4', '--sp-5', '--sp-6']) assert.ok(dark[n], `:root must define ${n}`);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {
