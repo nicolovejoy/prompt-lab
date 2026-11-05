@@ -81,7 +81,12 @@
       --safe-top: env(safe-area-inset-top, 0px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
       --tabbar-h: 50px;
-      --radius: 8px;
+      --radius: 8px; /* alias of --r-lg; retire after the spacing pass */
+      --r-sm: 4px; --r-md: 6px; --r-lg: 8px; --r-pill: 999px;
+      --shadow-pop: 0 8px 28px rgba(0,0,0,.3);
+      --shadow-modal: 0 20px 60px rgba(0,0,0,.4);
+      --shadow-tip: 0 4px 16px rgba(0,0,0,.4);
+      --z-tip: 5; --z-dropdown: 40; --z-bar: 50; --z-modal: 100;
       /* Type scale. Font sizes are theme-independent: the light block does not redefine them. */
       --fs-2xs: 0.7rem;
       --fs-xs: 0.75rem;
@@ -177,13 +182,13 @@
     .login p { color: var(--text-secondary); font-size: var(--fs-md); margin-bottom: 24px; }
     .login input {
       width: 100%; padding: 10px 14px; margin-bottom: 10px;
-      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
       color: var(--text); font-size: var(--fs-lg); font-family: inherit; text-align: center;
     }
     .login input:focus { outline: none; border-color: var(--accent); }
     .login button {
       width: 100%; padding: 10px; background: var(--accent); color: var(--on-accent);
-      border: none; border-radius: var(--radius); font-size: var(--fs-lg); font-weight: 600; cursor: pointer;
+      border: none; border-radius: var(--r-lg); font-size: var(--fs-lg); font-weight: 600; cursor: pointer;
     }
     .login button:disabled { opacity: 0.4; }
     .login .google-btn { background: var(--card); color: var(--text); border: 1px solid var(--border); }
@@ -244,13 +249,13 @@
       .nav-toggle {
         display: inline-flex; align-items: center; gap: 7px;
         font-size: var(--fs-body); font-family: inherit; cursor: pointer;
-        padding: 6px 12px; border-radius: 6px;
+        padding: 6px 12px; border-radius: var(--r-md);
         border: 1px solid var(--border); background: transparent; color: var(--text);
       }
       .nav-drop.open {
         display: flex; flex-direction: column; gap: 2px;
         width: 100%; margin-top: 8px; padding: 6px;
-        background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+        background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
       }
       .nav-drop .header-btn {
         width: 100%; text-align: left; padding: 11px 12px; font-size: var(--fs-body);
@@ -294,7 +299,7 @@
     .tab-bar { display: none; }
     @media (max-width: 640px) {
       html[data-standalone] .tab-bar {
-        display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+        display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-bar);
         background: var(--bg); border-top: 1px solid var(--border);
         /* One number for the bar and the page's clearance: the height
            includes the top border (box-sizing is border-box everywhere). */
@@ -329,10 +334,10 @@
 
     /* Wide screens: the second tier is a panel hanging off "More". */
     .nav-more {
-      position: absolute; top: 100%; right: 0; z-index: 40; min-width: 190px;
+      position: absolute; top: 100%; right: 0; z-index: var(--z-dropdown); min-width: 190px;
       display: flex; flex-direction: column; gap: 2px; padding: 6px; margin-top: 6px;
-      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
+      box-shadow: var(--shadow-pop);
     }
     .nav-more .header-btn { width: 100%; text-align: left; padding: 8px 10px; }
     .nav-sep { height: 1px; background: var(--border); margin: 5px 2px; }
@@ -364,7 +369,7 @@
     .header-btn {
       font-size: var(--fs-md); color: var(--text-secondary); cursor: pointer;
       background: none; border: none; font-family: inherit; padding: 4px 10px;
-      border-radius: 4px;
+      border-radius: var(--r-sm);
     }
     .header-btn:hover { color: var(--text); background: var(--card); }
     .header-btn.active { color: var(--text); background: var(--card); }
@@ -385,9 +390,9 @@
     .picker-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .picker-menu {
       position: absolute; top: 100%; left: 0; margin-top: 8px;
-      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
       min-width: 200px; max-height: 60vh; overflow-y: auto; padding: 4px;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.4); z-index: 50;
+      box-shadow: var(--shadow-pop); z-index: var(--z-bar);
     }
     .picker-section {
       font-size: var(--fs-sm); font-weight: 600; text-transform: uppercase;
@@ -396,7 +401,7 @@
     .picker-item {
       display: block; width: 100%; text-align: left; padding: 7px 10px;
       font-size: var(--fs-md); color: var(--text); background: none; border: none;
-      cursor: pointer; border-radius: 5px; font-family: inherit;
+      cursor: pointer; border-radius: var(--r-md); font-family: inherit;
     }
     .picker-item:hover { background: var(--card-hover); }
     .picker-item.active { color: var(--accent-light); font-weight: 600; }
@@ -404,7 +409,7 @@
     /* Chart window buttons (WindowPicker). */
     .win-picker { display: flex; gap: 4px; }
     .win-btn {
-      font-size: var(--fs-body-sm); padding: 4px 10px; border-radius: 4px;
+      font-size: var(--fs-body-sm); padding: 4px 10px; border-radius: var(--r-sm);
       cursor: pointer; font-family: inherit; border: 1px solid var(--border);
       background: transparent; color: var(--text-secondary);
     }
@@ -421,7 +426,7 @@
     /* Cost placeholder (loading / no-spend states) */
     .cost-placeholder {
       margin-top: 16px; padding: 16px; background: var(--card);
-      border: 1px solid var(--border); border-radius: 6px;
+      border: 1px solid var(--border); border-radius: var(--r-md);
       font-size: var(--fs-md); color: var(--text-secondary); line-height: 1.5;
     }
 
@@ -443,7 +448,7 @@
     .project-link {
       min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       font-size: var(--fs-body-sm); color: var(--text-secondary); text-decoration: none;
-      padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px;
+      padding: 2px 8px; border: 1px solid var(--border); border-radius: var(--r-sm);
       font-family: "SF Mono", ui-monospace, monospace; transition: border-color 0.15s;
     }
     .project-link:hover { border-color: var(--text-secondary); color: var(--text); }
@@ -457,7 +462,7 @@
     .project-sidebar > * + * { margin-top: 16px; }
     .sidebar-section {
       background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 14px 16px;
+      border-radius: var(--r-lg); padding: 14px 16px;
     }
     .sidebar-label {
       font-size: var(--fs-body-sm); font-weight: 600; text-transform: uppercase;
@@ -486,7 +491,7 @@
     .heatmap-track { width: max-content; padding: 0 16px; }
     .heatmap { display: flex; gap: 2px; flex-wrap: nowrap; }
     .heatmap-month { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
-    .heatmap-cell { width: 8px; height: 8px; border-radius: 2px; }
+    .heatmap-cell { width: 8px; height: 8px; border-radius: var(--r-sm); }
     .heatmap-cell-0 { background: var(--border); }
     .heatmap-cell-1 { background: var(--accent); opacity: 0.25; }
     .heatmap-cell-2 { background: var(--accent); opacity: 0.5; }
@@ -519,11 +524,11 @@
 
     .sub-tabs {
       display: flex; gap: 2px; margin-bottom: 18px;
-      background: var(--card); padding: 3px; border-radius: var(--radius);
+      background: var(--card); padding: 3px; border-radius: var(--r-lg);
     }
     .sub-tab {
       padding: 7px 16px; font-size: var(--fs-md); font-weight: 600; color: var(--text-secondary);
-      background: none; border: none; cursor: pointer; border-radius: 6px; font-family: inherit;
+      background: none; border: none; cursor: pointer; border-radius: var(--r-md); font-family: inherit;
     }
     .sub-tab.active { background: var(--accent); color: var(--on-accent); }
     @media (max-width: 600px) {
@@ -548,13 +553,13 @@
     .chart-readout-row {
       display: flex; align-items: center; gap: 8px; padding: 2px 0; color: var(--text-secondary);
     }
-    .chart-readout-swatch { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+    .chart-readout-swatch { width: 8px; height: 8px; border-radius: var(--r-sm); flex: none; }
     /* Hostnames arrive as 70-character tokens with no break point. */
     .chart-readout-name { color: var(--text); flex: 1; min-width: 0; overflow-wrap: anywhere; }
     .chart-readout-value { flex: none; font-variant-numeric: tabular-nums; }
     .chart-readout-more { color: var(--text-secondary); padding: 2px 0; }
     .chart-open-day, .chart-day-chip {
-      min-height: 44px; border: 1px solid var(--border); border-radius: 6px;
+      min-height: 44px; border: 1px solid var(--border); border-radius: var(--r-md);
       background: transparent; color: var(--link); font: inherit; cursor: pointer;
     }
     .chart-open-day { display: block; width: 100%; margin-top: 10px; }
@@ -644,7 +649,7 @@
 
     /* Cards */
     .card {
-      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
       padding: 14px 16px; margin-bottom: 10px;
     }
     .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
@@ -652,7 +657,7 @@
     .card-date { font-size: var(--fs-body-sm); color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace; }
     .card-body { font-size: var(--fs-md); color: var(--text-secondary); line-height: 1.55; }
     .card-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
-    .tag { font-size: var(--fs-body-sm); padding: 2px 7px; background: var(--border); color: var(--text-secondary); border-radius: 3px; }
+    .tag { font-size: var(--fs-body-sm); padding: 2px 7px; background: var(--border); color: var(--text-secondary); border-radius: var(--r-sm); }
     .count-badges { display: flex; gap: 10px; margin-top: 8px; }
     .count-badge { font-size: var(--fs-body-sm); color: var(--text-secondary); }
     .count-badge strong { color: var(--text); }
@@ -660,7 +665,7 @@
     /* Status badges */
     .status-badge {
       display: inline-block; padding: 2px 7px; font-size: var(--fs-body-sm);
-      font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; border-radius: 3px;
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; border-radius: var(--r-sm);
     }
     .status-active { background: var(--green-dim); color: var(--green); }
     .status-completed { background: var(--accent-dim); color: var(--accent-light); }
@@ -681,7 +686,7 @@
     .timeline-entry {
       position: relative; font-size: var(--fs-prose); color: var(--text-secondary);
       line-height: 1.6; padding: 6px 0; cursor: pointer;
-      border-radius: 6px; transition: background 0.15s;
+      border-radius: var(--r-md); transition: background 0.15s;
     }
     .timeline-entry:hover { background: var(--card); margin: 0 -8px; padding: 6px 8px; }
     .timeline-entry::before {
@@ -696,7 +701,7 @@
     .timeline-phrase { font-size: var(--fs-prose); }
     .timeline-expand {
       margin-top: 8px; padding: 10px 12px; background: var(--card);
-      border: 1px solid var(--border); border-radius: 6px;
+      border: 1px solid var(--border); border-radius: var(--r-md);
     }
     .timeline-expand-summary {
       font-size: var(--fs-md); color: var(--text); line-height: 1.6; margin-bottom: 8px;
@@ -736,28 +741,28 @@
 
     /* Ask modal */
     .ask-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: var(--z-modal);
       display: flex; align-items: flex-start; justify-content: center; padding-top: 15vh;
     }
     .ask-modal {
-      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-      width: 90%; max-width: 560px; padding: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
+      width: 90%; max-width: 560px; padding: 20px; box-shadow: var(--shadow-modal);
     }
     .ask-modal-title { font-size: var(--fs-md); font-weight: 600; margin-bottom: 12px; }
     .ask-input-row { display: flex; gap: 8px; margin-bottom: 12px; }
     .ask-input {
       flex: 1; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border);
-      border-radius: var(--radius); color: var(--text); font-size: var(--fs-md); font-family: inherit;
+      border-radius: var(--r-lg); color: var(--text); font-size: var(--fs-md); font-family: inherit;
     }
     .ask-input::placeholder { color: var(--text-secondary); }
     .ask-btn {
       padding: 10px 16px; background: var(--accent); color: var(--on-accent);
-      border: none; border-radius: var(--radius); font-size: var(--fs-md); font-weight: 600;
+      border: none; border-radius: var(--r-lg); font-size: var(--fs-md); font-weight: 600;
       cursor: pointer; font-family: inherit;
     }
     .ask-btn:disabled { opacity: 0.4; }
     .ask-answer {
-      background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-lg);
       padding: 14px; font-size: var(--fs-md); line-height: 1.6; white-space: pre-wrap;
       max-height: 50vh; overflow-y: auto;
     }
@@ -766,7 +771,7 @@
     }
     .ask-example {
       font-size: var(--fs-body-sm); padding: 4px 10px; background: var(--border);
-      color: var(--text-secondary); border: none; border-radius: 4px;
+      color: var(--text-secondary); border: none; border-radius: var(--r-sm);
       cursor: pointer; font-family: inherit;
     }
     .ask-example:hover { color: var(--text); }
@@ -799,7 +804,7 @@
     .dormant-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .dormant-chip {
       font-size: var(--fs-md); color: var(--text-secondary); cursor: pointer;
-      padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+      padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--r-sm);
     }
     .dormant-chip:hover { border-color: var(--text-secondary); color: var(--text); }
     a.dormant-chip { text-decoration: none; }
@@ -816,7 +821,7 @@
     .kpi-tile {
       position: relative; display: block; width: 100%; text-align: left;
       background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 14px 15px; min-height: 104px;
+      border-radius: var(--r-lg); padding: 14px 15px; min-height: 104px;
       color: var(--text); text-decoration: none; font-family: inherit;
       transition: border-color 0.15s, background 0.15s, transform 0.15s;
     }
@@ -844,7 +849,7 @@
     .meta-editor select {
       font-family: inherit; font-size: var(--fs-md); padding: 4px 8px;
       background: var(--bg); color: var(--text);
-      border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+      border: 1px solid var(--border); border-radius: var(--r-sm); cursor: pointer;
     }
     .meta-editor select:disabled { opacity: 0.5; cursor: default; }
     .meta-editor label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
@@ -852,7 +857,7 @@
     .meta-error { color: var(--red); }
     .badge {
       font-size: var(--fs-body-sm); letter-spacing: 0.06em; text-transform: uppercase;
-      padding: 2px 7px; border-radius: 4px; border: 1px solid var(--border);
+      padding: 2px 7px; border-radius: var(--r-sm); border: 1px solid var(--border);
       color: var(--text-secondary); white-space: nowrap;
     }
     .badge-private { border-color: var(--text-secondary); }
@@ -865,10 +870,10 @@
     .error { color: var(--red); text-align: center; padding: 20px; font-size: var(--fs-md); }
     .empty {
       color: var(--text-secondary); text-align: center; padding: 40px; font-size: var(--fs-md);
-      border: 1px dashed var(--border); border-radius: var(--radius); margin-bottom: 12px;
+      border: 1px dashed var(--border); border-radius: var(--r-lg); margin-bottom: 12px;
     }
     .skeleton {
-      background: var(--card); border-radius: var(--radius); animation: pulse 1.5s infinite;
+      background: var(--card); border-radius: var(--r-lg); animation: pulse 1.5s infinite;
     }
     @keyframes pulse {
       0%, 100% { opacity: 0.6; }
@@ -890,7 +895,7 @@
          already had the box; naming them here outranks their own rule). */
       select, .meta-editor select {
         -webkit-appearance: none; appearance: none; padding: 0 26px 0 8px;
-        border: 1px solid var(--border); border-radius: 4px;
+        border: 1px solid var(--border); border-radius: var(--r-sm);
         background-color: var(--bg); color: var(--text);
         background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
                           linear-gradient(135deg, currentColor 50%, transparent 50%);
@@ -1354,9 +1359,9 @@
             <button class="nav-toggle" aria-expanded=${menu} aria-label="Menu"
                     onClick=${() => setMenu(m => !m)}>
               <span style="display:inline-flex; flex-direction:column; gap:3px">
-                <span style="width:16px; height:2px; background:currentColor; border-radius:1px"></span>
-                <span style="width:16px; height:2px; background:currentColor; border-radius:1px"></span>
-                <span style="width:16px; height:2px; background:currentColor; border-radius:1px"></span>
+                <span style="width:16px; height:2px; background:currentColor; border-radius:var(--r-sm)"></span>
+                <span style="width:16px; height:2px; background:currentColor; border-radius:var(--r-sm)"></span>
+                <span style="width:16px; height:2px; background:currentColor; border-radius:var(--r-sm)"></span>
               </span>
               <span class="nav-toggle-label">${menu ? 'Close' : 'Menu'}</span>
             </button>
@@ -1599,7 +1604,7 @@
             <div class="error">
               <p>${error}</p>
               <button onClick=${loadOverview} style="margin-top: 10px; padding: 6px 14px;
-                background: var(--accent); color: var(--on-accent); border: none; border-radius: var(--radius);
+                background: var(--accent); color: var(--on-accent); border: none; border-radius: var(--r-lg);
                 cursor: pointer; font-size: var(--fs-md);">Retry</button>
             </div>
           `}
@@ -1802,7 +1807,7 @@
 
           ${showProjects && html`
             <div style="margin-bottom:22px; padding:14px 16px; background:var(--card);
-                        border:1px solid var(--border); border-radius:var(--radius)">
+                        border:1px solid var(--border); border-radius:var(--r-lg)">
               <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px">
                 <div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-body-sm);
                             letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary)">
@@ -1868,7 +1873,7 @@
 
       return html`
         <div style="margin-bottom:26px; padding:16px; background:var(--card);
-                    border:1px solid var(--border); border-radius:var(--radius)">
+                    border:1px solid var(--border); border-radius:var(--r-lg)">
           <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px">
             <div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-body-sm);
                         letter-spacing:0.14em; text-transform:uppercase; color:var(--text-secondary)">
@@ -1898,11 +1903,11 @@
               <a class="tap" href=${'#/project/' + encodeURIComponent(p)}
                  style="display:inline-flex; align-items:center; gap:6px; text-decoration:none;
                         color:var(--text-secondary); font-size: var(--fs-body-sm)">
-                <span style="width:8px; height:8px; border-radius:2px; background:${segColor(p)}"></span>${p}
+                <span style="width:8px; height:8px; border-radius:var(--r-sm); background:${segColor(p)}"></span>${p}
               </a>`)}
             ${ranked.length > COST_PALETTE.length && html`
               <span style="display:inline-flex; align-items:center; gap:6px; font-size: var(--fs-body-sm); color:var(--text-secondary)">
-                <span style="width:8px; height:8px; border-radius:2px; background:${COST_OTHER}"></span>+${ranked.length - COST_PALETTE.length} more
+                <span style="width:8px; height:8px; border-radius:var(--r-sm); background:${COST_OTHER}"></span>+${ranked.length - COST_PALETTE.length} more
               </span>`}
           </div>
         </div>`;
@@ -2222,7 +2227,7 @@
           value=${query} onInput=${e => setQuery(e.target.value)}
           style="width: 100%; box-sizing: border-box; margin-bottom: 14px; padding: 8px 12px;
                  font-size: var(--fs-md); font-family: inherit; color: var(--text);
-                 background: var(--card); border: 1px solid var(--border); border-radius: var(--radius)" />`;
+                 background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg)" />`;
 
       // ---- by project (default) ----
       return html`
@@ -2261,7 +2266,7 @@
                 <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); width: 10px; flex: none">${isOpen ? '▾' : '▸'}</span>
                 <span style="font-size: var(--fs-lg); font-weight: 600; min-width: 0; overflow-wrap: anywhere">${p}</span>
                 <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); flex: none">${issues.length}${q && issues.length !== projects[p].length ? '/' + projects[p].length : ''}</span>
-                ${!isTracked(p) && html`<span style="font-size: var(--fs-xs); color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 0 5px">not in Prompt Lab</span>`}
+                ${!isTracked(p) && html`<span style="font-size: var(--fs-xs); color: var(--text-secondary); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 0 5px">not in Prompt Lab</span>`}
                 <a class="tap" onClick=${(e) => { e.stopPropagation(); navigate('#/project/' + encodeURIComponent(p)); }}
                    style="margin-left: auto; flex: none; white-space: nowrap; font-size: var(--fs-body-sm); color: var(--link); cursor: pointer; text-decoration: none">
                   project →
@@ -2276,7 +2281,7 @@
                       <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; flex: none">#${iss.number}</span>
                       <span style="font-size: var(--fs-md); flex: 1; min-width: 0">${iss.title}</span>
                       ${iss.labels.map(lb => html`
-                        <span style="font-size: var(--fs-sm); padding: 1px 6px; border-radius: 8px; flex: none;
+                        <span style="font-size: var(--fs-sm); padding: 1px 6px; border-radius: var(--r-lg); flex: none;
                                      background: ${labelColor(lb)}; color: var(--on-accent); white-space: nowrap">${lb}</span>`)}
                       <span style="font-size: var(--fs-body-sm); color: var(--text-secondary); flex: none">${timeAgo(iss.updated_at)}</span>
                     </a>`)}
@@ -2699,23 +2704,23 @@
             ${isToday && html`
               <div style="position: absolute; left: 0; right: 0; bottom: 0; top: 0;
                           border: 1px dashed var(--border); border-bottom: none;
-                          border-radius: 2px 2px 0 0; pointer-events: none"></div>`}
+                          border-radius: var(--r-sm) var(--r-sm) 0 0; pointer-events: none"></div>`}
             <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${barH}px;
                         display: flex; flex-direction: column-reverse;
-                        border-radius: 2px 2px 0 0; overflow: hidden;
+                        border-radius: var(--r-sm) var(--r-sm) 0 0; overflow: hidden;
                         opacity: ${opacity}; transition: opacity 0.1s">
               ${segs.map(([s, v]) => html`
                 <div style="height: ${(v / total) * 100}%; background: ${segColor(s)}"></div>`)}
             </div>
             ${CAN_HOVER && isHovered && total > 0 && html`
-              <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px; ${tipAnchor};
+              <div style="position: absolute; bottom: 100%; z-index: var(--z-tip); margin-bottom: 4px; ${tipAnchor};
                           background: var(--bg); border: 1px solid var(--border);
-                          border-radius: 6px; padding: 8px 10px; white-space: nowrap;
-                          box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: var(--fs-body-sm)">
+                          border-radius: var(--r-md); padding: 8px 10px; white-space: nowrap;
+                          box-shadow: var(--shadow-tip); font-size: var(--fs-body-sm)">
                 <div style="font-weight: 600; margin-bottom: 4px">${heading(b, total)}</div>
                 ${segs.slice(0, 6).map(([s, v]) => html`
                   <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-                    <span style="width: 8px; height: 8px; border-radius: 2px; background: ${segColor(s)}; display: inline-block"></span>
+                    <span style="width: 8px; height: 8px; border-radius: var(--r-sm); background: ${segColor(s)}; display: inline-block"></span>
                     <span style="color: var(--text)">${segLabel(s)}</span>
                     <span style="margin-left: auto">${fmtValue(v)}</span>
                   </div>`)}
@@ -2877,7 +2882,7 @@
 
       const panel = (children) => html`
         <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated);
-                    border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
+                    border: 1px solid var(--border); border-radius: var(--r-md)">${children}</div>`;
 
       return html`
         <div>
@@ -2914,12 +2919,12 @@
                    href=${p === UNMAPPED_PROJECT ? undefined : '#/project/' + encodeURIComponent(p) + '/cost'}
                    class="row-link">
                   <div style="display: flex; align-items: center; gap: 8px">
-                    <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(p)}; flex: none"></span>
+                    <span style="width: 9px; height: 9px; border-radius: var(--r-sm); background: ${segColor(p)}; flex: none"></span>
                     <span style="font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${costProjectLabel(p)}</span>
                     <span style="margin-left: auto; font-size: var(--fs-sm); color: var(--text-secondary)">${(v / total * 100).toFixed(0)}%</span>
                     <span style="font-size: var(--fs-md); font-variant-numeric: tabular-nums; min-width: 64px; text-align: right">${fmtUsd(v)}</span>
                   </div>
-                  <div style="height: 3px; border-radius: 2px; margin-top: 3px;
+                  <div style="height: 3px; border-radius: var(--r-sm); margin-top: 3px;
                               width: ${(v / maxProj * 100).toFixed(1)}%;
                               background: ${segColor(p)}; opacity: 0.6"></div>
                   ${p === UNMAPPED_PROJECT && html`<div style="font-size: var(--fs-sm); color: var(--text-secondary)">not mapped to a project</div>`}
@@ -3082,7 +3087,7 @@
 
       const panel = (children) => html`
         <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated);
-                    border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
+                    border: 1px solid var(--border); border-radius: var(--r-md)">${children}</div>`;
 
       return html`
         <div>
@@ -3122,14 +3127,14 @@
                 <a href="#/project/${encodeURIComponent(row.p)}"
                    class="row-link">
                   <div style="display: flex; align-items: center; gap: 8px">
-                    <span style="width: 9px; height: 9px; border-radius: 2px; background: ${segColor(row.p)}; flex: none"></span>
+                    <span style="width: 9px; height: 9px; border-radius: var(--r-sm); background: ${segColor(row.p)}; flex: none"></span>
                     <span style="font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${row.p}</span>
                     <span style="margin-left: auto; font-size: var(--fs-md); font-variant-numeric: tabular-nums;
                                  min-width: 56px; text-align: right">${fmtInt(row.w7)}</span>
                     <span style="font-size: var(--fs-md); font-variant-numeric: tabular-nums;
                                  min-width: 56px; text-align: right">${fmtInt(row.w30)}</span>
                   </div>
-                  <div style="height: 3px; border-radius: 2px; margin-top: 3px;
+                  <div style="height: 3px; border-radius: var(--r-sm); margin-top: 3px;
                               width: ${(row.v / maxProj * 100).toFixed(1)}%;
                               background: ${segColor(row.p)}; opacity: 0.6"></div>
                 </a>`)}
@@ -3285,7 +3290,7 @@
 
       const stat = (label, n) => html`
         <div style="flex:1; min-width:96px; padding:12px 14px; background:var(--card);
-                    border:1px solid var(--border); border-radius:var(--radius)">
+                    border:1px solid var(--border); border-radius:var(--r-lg)">
           <div style="font-family:'SF Mono',ui-monospace,monospace; font-size: var(--fs-xs);
                       letter-spacing:0.12em; text-transform:uppercase;
                       color:var(--text-secondary)">${label}</div>
@@ -3456,7 +3461,7 @@
 
       const panel = (children) => html`
         <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated);
-                    border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
+                    border: 1px solid var(--border); border-radius: var(--r-md)">${children}</div>`;
       const sectionTitle = (t) => html`
         <div style="font-size: var(--fs-body-sm); font-weight: 600; color: var(--text-secondary);
                     font-family: 'SF Mono', ui-monospace, monospace; text-transform: uppercase; margin-bottom: 8px">
@@ -3606,7 +3611,7 @@
               ${ranked.map(([s, v]) => html`
                 <div data-test="share-row" class="share-row">
                   <div class="share-row-head">
-                    <span class="share-row-swatch" style="width: 9px; height: 9px; border-radius: 2px;
+                    <span class="share-row-swatch" style="width: 9px; height: 9px; border-radius: var(--r-sm);
                                  background: ${segColor(s)}; flex: none"></span>
                     <div class="list-row-text">
                       <span class="list-row-label">${s}</span>
@@ -3625,7 +3630,7 @@
                     <span data-test="share-value" style="flex: none; font-size: var(--fs-md); font-variant-numeric: tabular-nums;
                                  min-width: 56px; text-align: right">${v.toLocaleString()}</span>
                   </div>
-                  <div data-test="share-bar" style="height: 3px; border-radius: 2px; margin-top: 3px;
+                  <div data-test="share-bar" style="height: 3px; border-radius: var(--r-sm); margin-top: 3px;
                               width: ${(v / maxSite * 100).toFixed(1)}%;
                               background: ${segColor(s)}; opacity: 0.6"></div>
                 </div>`)}
@@ -3721,7 +3726,7 @@
               </span>`}
             <button class="tap" onClick=${() => setNonce(n => n + 1)} disabled=${loading}
               title="Poll every target again"
-              style="font-size: var(--fs-body-sm); padding: 4px 12px; border-radius: 4px; cursor: pointer;
+              style="font-size: var(--fs-body-sm); padding: 4px 12px; border-radius: var(--r-sm); cursor: pointer;
                      font-family: inherit; border: 1px solid var(--border);
                      background: transparent; color: var(--text-secondary);
                      opacity: ${loading ? 0.5 : 1}">
@@ -3744,7 +3749,7 @@
           <div style="margin-top: 10px">
             <button onClick=${() => setNonce(n => n + 1)}
               style="font-size: var(--fs-body); padding: 6px 14px; background: var(--accent); color: var(--on-accent);
-                     border: none; border-radius: var(--radius); cursor: pointer; font-family: inherit">
+                     border: none; border-radius: var(--r-lg); cursor: pointer; font-family: inherit">
               Retry
             </button>
           </div>
@@ -3754,7 +3759,7 @@
 
       const banner = (bg, fg, children) => html`
         <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
-                    padding: 10px 14px; margin-bottom: 16px; border-radius: var(--radius);
+                    padding: 10px 14px; margin-bottom: 16px; border-radius: var(--r-lg);
                     background: ${bg}; border: 1px solid ${fg}; color: ${fg};
                     font-size: var(--fs-body); line-height: 1.5">${children}</div>`;
 
@@ -3800,11 +3805,11 @@
                   return html`
                     <div style="background: var(--card); border: 1px solid ${ok ? 'var(--border)' : 'var(--red)'};
                                 border-left: 3px solid ${ok ? 'var(--green)' : 'var(--red)'};
-                                border-radius: var(--radius); padding: 13px 15px">
+                                border-radius: var(--r-lg); padding: 13px 15px">
                       <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap">
                         <span style="font-size: var(--fs-lg); font-weight: 600; word-break: break-word">${t.name}</span>
                         <span style="margin-left: auto; font-size: var(--fs-body-sm); font-weight: 700;
-                                     letter-spacing: 0.06em; padding: 2px 8px; border-radius: 3px;
+                                     letter-spacing: 0.06em; padding: 2px 8px; border-radius: var(--r-sm);
                                      white-space: nowrap;
                                      background: ${ok ? 'var(--green-dim)' : 'var(--red-dim)'};
                                      color: ${ok ? 'var(--green)' : 'var(--red)'}">
@@ -3852,10 +3857,10 @@
                     <div style="display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
                                 background: var(--card); border: 1px solid var(--border);
                                 border-left: 3px solid ${color};
-                                border-radius: var(--radius); padding: 9px 13px">
+                                border-radius: var(--r-lg); padding: 9px 13px">
                       <span style="font-size: var(--fs-md); font-weight: 600">${h.name}</span>
                       <span style="font-size: var(--fs-body-sm); font-weight: 700; letter-spacing: 0.06em;
-                                   padding: 2px 8px; border-radius: 3px; white-space: nowrap;
+                                   padding: 2px 8px; border-radius: var(--r-sm); white-space: nowrap;
                                    background: ${dim}; color: ${color}">${state}</span>
                       <span style="margin-left: auto; font-size: var(--fs-body); text-align: right;
                                    color: var(--text-secondary);
@@ -3974,7 +3979,7 @@
 
       const badge = html`
         <span style="font-size: var(--fs-body-sm); font-weight: 700; letter-spacing: 0.06em;
-                     padding: 2px 8px; border-radius: 3px; white-space: nowrap;
+                     padding: 2px 8px; border-radius: var(--r-sm); white-space: nowrap;
                      background: ${chipBg}; color: ${chipColor}">${status || '—'}</span>`;
       const stats = html`
         <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px">
@@ -4015,7 +4020,7 @@
         ? html`
           <div data-test="uptime-card" data-monitor=${monitor.name}
                style="background: var(--card); border: 1px solid var(--border);
-                      border-left: 3px solid ${chipColor}; border-radius: var(--radius);
+                      border-left: 3px solid ${chipColor}; border-radius: var(--r-lg);
                       padding: 0 12px; margin-top: 10px">
             ${toggle}
             ${open && html`
@@ -4026,7 +4031,7 @@
         : html`
           <div data-test="uptime-card" data-monitor=${monitor.name}
                style="background: var(--card); border: 1px solid var(--border);
-                      border-left: 3px solid ${chipColor}; border-radius: var(--radius);
+                      border-left: 3px solid ${chipColor}; border-radius: var(--r-lg);
                       padding: 13px 15px; margin-top: 10px">${head}<div data-test="uptime-detail">${children}</div></div>`;
 
       // A monitor the archive hasn't reached yet gets a sentence, not an empty
@@ -4053,13 +4058,13 @@
           <div style="font-weight: 600; margin-bottom: 4px">${fmtShortDate(d)}</div>
           ${v ? html`
             <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-              <span style="width: 8px; height: 8px; border-radius: 2px; flex: none;
+              <span style="width: 8px; height: 8px; border-radius: var(--r-sm); flex: none;
                            background: ${uptimeColor(v.uptime)}; display: inline-block"></span>
               <span style="color: var(--text)">uptime</span>
               <span style="margin-left: auto">${fmtPct(v.uptime)}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px; color: var(--text-secondary)">
-              <span style="width: 8px; height: 8px; border-radius: 2px; flex: none;
+              <span style="width: 8px; height: 8px; border-radius: var(--r-sm); flex: none;
                            background: var(--accent); display: inline-block"></span>
               <span style="color: var(--text)">response</span>
               <span style="margin-left: auto">${fmtMs(v.ms)}</span>
@@ -4102,21 +4107,21 @@
                    onPointerEnter=${(e) => { prefetchDay(b.dates[b.dates.length - 1]); if (e.pointerType === 'mouse') setHovered(i); }}
                    onPointerLeave=${() => setHovered(h => h === i ? null : h)}
                    onClick=${(e) => onBarClick(e, i)}>
-                <div style="height: ${STRIP_H}px; border-radius: 2px;
+                <div style="height: ${STRIP_H}px; border-radius: var(--r-sm);
                             background: ${uptimeColor(c.has ? c.uptime : null)};
                             opacity: ${dim ? 0.45 : c.has ? (active ? 1 : 0.85) : (active ? 0.85 : NO_DATA_OPACITY)};
                             transition: opacity 0.1s"></div>
                 <div style="height: ${MS_H}px; margin-top: 6px; position: relative">
                   <div style="position: absolute; left: 0; right: 0; bottom: 0; height: ${msH}px;
-                              background: var(--accent); border-radius: 2px 2px 0 0;
+                              background: var(--accent); border-radius: var(--r-sm) var(--r-sm) 0 0;
                               opacity: ${dim ? 0.35 : active ? 1 : 0.75}; transition: opacity 0.1s"></div>
                 </div>
                 ${CAN_HOVER && hovered === i && b.size === 'day' && html`
-                  <div style="position: absolute; bottom: 100%; z-index: 5; margin-bottom: 4px;
+                  <div style="position: absolute; bottom: 100%; z-index: var(--z-tip); margin-bottom: 4px;
                               ${tipAnchor === 'left' ? 'left: 0' : tipAnchor === 'right' ? 'right: 0' : 'left: 50%; transform: translateX(-50%)'};
                               background: var(--bg); border: 1px solid var(--border);
-                              border-radius: 6px; padding: 8px 10px; white-space: nowrap;
-                              box-shadow: 0 4px 16px rgba(0,0,0,0.4); font-size: var(--fs-body-sm)">
+                              border-radius: var(--r-md); padding: 8px 10px; white-space: nowrap;
+                              box-shadow: var(--shadow-tip); font-size: var(--fs-body-sm)">
                     ${detail(b.key)}
                   </div>`}
               </div>`;
@@ -4306,7 +4311,7 @@
             ${buckets.map(([color, opacity, label, range]) => html`
               <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0;
                           border-bottom: 1px solid var(--border)">
-                <span style="width: 9px; height: 9px; border-radius: 2px; flex: none;
+                <span style="width: 9px; height: 9px; border-radius: var(--r-sm); flex: none;
                              background: ${color}; opacity: ${opacity}"></span>
                 <span style="font-size: var(--fs-md)">${label}</span>
                 <span style="margin-left: auto; font-size: var(--fs-sm); color: var(--text-secondary);
@@ -4328,7 +4333,7 @@
                     ${fmtMs(r.ms)}
                   </span>
                 </div>
-                <div style="height: 3px; border-radius: 2px; margin-top: 3px; background: var(--accent);
+                <div style="height: 3px; border-radius: var(--r-sm); margin-top: 3px; background: var(--accent);
                             opacity: 0.6; width: ${(r.ms / slowest * 100).toFixed(1)}%"></div>
               </div>`)
               : html`<div style="font-size: var(--fs-body); color: var(--text-secondary)">
@@ -4396,7 +4401,7 @@
 
       return html`
         <div style="margin-top: 16px; padding: 12px; background: var(--bg-elevated);
-                    border: 1px solid var(--border); border-radius: 6px">
+                    border: 1px solid var(--border); border-radius: var(--r-md)">
           <div style="display: flex; justify-content: space-between; align-items: baseline;
                       margin-bottom: 12px">
             <div style="font-size: var(--fs-body-sm); font-weight: 600;
@@ -4520,7 +4525,7 @@
           ${sorted.length === 0
             ? html`<div class="empty">No API spend in this window.</div>`
             : html`
-              <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: 6px">
+              <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r-md)">
                 <table style="width: 100%; border-collapse: collapse; font-size: var(--fs-body);
                               font-family: 'SF Mono', ui-monospace, monospace">
                   <thead>
@@ -4808,7 +4813,7 @@
                            background: transparent;
                            border: 1px solid var(--border);
                            color: var(--text-secondary);
-                           border-radius: 4px; cursor: pointer;
+                           border-radius: var(--r-sm); cursor: pointer;
                            font-size: var(--fs-body);
                            font-family: 'SF Mono', ui-monospace, monospace">
               Show ${hiddenCount} more
@@ -4820,7 +4825,7 @@
                            background: transparent;
                            border: 1px solid var(--border);
                            color: var(--text-secondary);
-                           border-radius: 4px; cursor: pointer;
+                           border-radius: var(--r-sm); cursor: pointer;
                            font-size: var(--fs-body);
                            font-family: 'SF Mono', ui-monospace, monospace">
               Show less

@@ -411,6 +411,22 @@ test('chart tokens pass 3:1 on bg', () => {
   checkRatios(names.map((n) => [n, '--bg']), 3);
 });
 
+test('radius, shadow and z-index are tokens: no raw values outside :root', () => {
+  // Comments stripped and the dark :root (where the tokens are defined) removed.
+  // 50% stays: an element with equal width and height may be a circle.
+  const body = stripComments(src).replace(TOKEN_BLOCK_RES.dark, '');
+  const decl = (prop) => [...body.matchAll(new RegExp(`(?<![-\\w])${prop}\\s*:\\s*([^;"'\`}\\n]*)`, 'g'))].map((m) => m[1].trim());
+  const radius = decl('border-radius').filter((v) => v.split(/\s+/).some((x) => x !== '0' && x !== '50%' && !/^var\(--r-[\w-]+\)$/.test(x)));
+  assert.deepEqual(radius, [], 'border-radius must use var(--r-*) (or 50%)');
+  const shadow = decl('box-shadow').filter((v) => /rgba?\(/.test(v));
+  assert.deepEqual(shadow, [], 'box-shadow must use var(--shadow-*)');
+  const z = decl('z-index').filter((v) => /^-?\d+$/.test(v));
+  assert.deepEqual(z, [], 'z-index must use var(--z-*)');
+  const dark = tokenMap('dark');
+  for (const n of ['--r-sm', '--r-md', '--r-lg', '--r-pill', '--shadow-pop', '--shadow-modal', '--shadow-tip',
+                   '--z-tip', '--z-dropdown', '--z-bar', '--z-modal']) assert.ok(dark[n], `:root must define ${n}`);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {
