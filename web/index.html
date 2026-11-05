@@ -38,6 +38,8 @@
       --bg: #111;
       --card: #1a1a1a;
       --card-hover: #222;
+      /* raised surface inside a card: table header, note box */
+      --bg-elevated: #222;
       --text: #e5e5e5;
       --text-secondary: #d0d0d0;
       --border: #2a2a2a;
@@ -55,7 +57,7 @@
       --tabbar-h: 50px;
       --radius: 8px;
       /* Type scale. Font sizes are theme-independent: the light block does not redefine them. */
-      --fs-2xs: 0.61rem;
+      --fs-2xs: 0.7rem;
       --fs-xs: 0.75rem;
       --fs-sm: 0.85rem;
       --fs-body-sm: 0.95rem;
@@ -76,15 +78,16 @@
         --bg: #fafafa;
         --card: #fff;
         --card-hover: #f5f5f5;
+        --bg-elevated: #fff;
         --text: #111;
         --text-secondary: #404040;
         --border: #e5e5e5;
         --accent: #4f46e5;
         --accent-light: #6366f1;
         --accent-dim: rgba(79, 70, 229, 0.1);
-        --green: #16a34a;
+        --green: #14743a;
         --green-dim: rgba(22, 163, 74, 0.1);
-        --yellow: #ca8a04;
+        --yellow: #8a5a06;
         --yellow-dim: rgba(202, 138, 4, 0.1);
         --red: #dc2626;
         --red-dim: rgba(220, 38, 38, 0.1);
@@ -94,15 +97,16 @@
       --bg: #fafafa;
       --card: #fff;
       --card-hover: #f5f5f5;
+      --bg-elevated: #fff;
       --text: #111;
       --text-secondary: #404040;
       --border: #e5e5e5;
       --accent: #4f46e5;
       --accent-light: #6366f1;
       --accent-dim: rgba(79, 70, 229, 0.1);
-      --green: #16a34a;
+      --green: #14743a;
       --green-dim: rgba(22, 163, 74, 0.1);
-      --yellow: #ca8a04;
+      --yellow: #8a5a06;
       --yellow-dim: rgba(202, 138, 4, 0.1);
       --red: #dc2626;
       --red-dim: rgba(220, 38, 38, 0.1);
@@ -2816,7 +2820,7 @@
       const maxProj = ranked[0]?.[1] || 1;
 
       const panel = (children) => html`
-        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated, var(--card));
+        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated);
                     border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
 
       return html`
@@ -3021,7 +3025,7 @@
       const nextSort = { '30d': '7d', '7d': 'name', name: '30d' };
 
       const panel = (children) => html`
-        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated, var(--card));
+        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated);
                     border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
 
       return html`
@@ -3395,7 +3399,7 @@
       if (!data || data.error) return html`<div>${header}<div class="cost-placeholder">Couldn't load visitors.</div></div>`;
 
       const panel = (children) => html`
-        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated, var(--card));
+        <div style="margin-top: 16px; padding: 14px; background: var(--bg-elevated);
                     border: 1px solid var(--border); border-radius: 6px">${children}</div>`;
       const sectionTitle = (t) => html`
         <div style="font-size: var(--fs-body-sm); font-weight: 600; color: var(--text-secondary);
