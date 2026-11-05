@@ -161,7 +161,7 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   `~/.claude/state/prompt-lab/design-review/{dashboard,after}/`. Parked follow-ups: roving tabindex on
   chart bars (first; Health has 360+ tab stops), iOS standalone status bar is `black-translucent` so
   `theme-color` may not show, optional dark `--chart-1` → `#5558e6`. Remaining review work, R8, R9
-  and R14, is built on branch `claude/recap-and-design-system-2` (PR to follow): one `.chip`, one `.btn`,
+  and R14, is built on branch `claude/recap-and-design-system-2` (open as a PR): one `.chip`, one `.btn`,
   one `.page-title` with real headings on every page, and a role-aware tab bar (admin: Home, Activity,
   Health, Costs, More). Emails R10–R12 remain their own plan. Same branch adds `recap`, a shell command
   that prints each repo's newest session "Next:" line from the local history DB; it goes live after

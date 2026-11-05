@@ -666,6 +666,27 @@
 
     /* Chips (R8): one shape; outlined, tinted (status, with a .sev-* class)
        or filled. Replaces the old tag/badge/status/dormant/link variants. */
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body-sm);
+      line-height: 1.4; padding: 2px var(--sp-2); border-radius: var(--r-sm);
+      border: 1px solid transparent; color: var(--text-secondary); white-space: nowrap;
+      text-decoration: none; font-family: inherit; background: none;
+    }
+    .chip-outlined { border-color: var(--border); }
+    .chip-outlined.chip-strong { border-color: var(--text-secondary); }
+    a.chip-outlined, button.chip-outlined { transition: border-color 0.15s; }
+    a.chip-outlined:hover, button.chip-outlined:hover { border-color: var(--text-secondary); color: var(--text); }
+    .chip-tinted { background: var(--sev-dim); color: var(--sev); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+    .chip-filled { background: var(--border); }
+    button.chip-filled { cursor: pointer; }
+    button.chip-filled:hover { color: var(--text); }
+    .chip.muted { color: var(--text-muted); }
+    .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot); flex: none; }
+    .sev-ok { --sev: var(--green); --sev-dim: var(--green-dim); }
+    .sev-warn { --sev: var(--yellow); --sev-dim: var(--yellow-dim); }
+    .sev-bad { --sev: var(--red); --sev-dim: var(--red-dim); }
+    .sev-info { --sev: var(--accent-light); --sev-dim: var(--accent-dim); }
+
     /* One button: .btn + .btn-primary (accent fill) or .btn-ghost (outline).
        .btn-lg is the larger full-width size, used on the login page. */
     .btn {
@@ -680,26 +701,6 @@
       width: 100%; padding: 10px; font-size: var(--fs-lg); font-weight: 600;
       border-radius: var(--r-lg);
     }
-    .chip {
-      display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body-sm);
-      line-height: 1.4; padding: 2px var(--sp-2); border-radius: var(--r-sm);
-      border: 1px solid transparent; color: var(--text-secondary); white-space: nowrap;
-      text-decoration: none; font-family: inherit; background: none;
-    }
-    .chip-outlined { border-color: var(--border); }
-    .chip-outlined.chip-strong { border-color: var(--text-secondary); }
-    a.chip-outlined, button.chip-outlined { transition: border-color 0.15s; }
-    a.chip-outlined:hover, button.chip-outlined:hover { border-color: var(--text-secondary); color: var(--text); }
-    .chip-tinted { background: var(--sev-dim); color: var(--sev); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
-    .chip-filled { background: var(--border); }
-    button.chip-filled { border: 1px solid transparent; cursor: pointer; }
-    button.chip-filled:hover { color: var(--text); }
-    .chip.muted { color: var(--text-muted); }
-    .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot); flex: none; }
-    .sev-ok { --sev: var(--green); --sev-dim: var(--green-dim); }
-    .sev-warn { --sev: var(--yellow); --sev-dim: var(--yellow-dim); }
-    .sev-bad { --sev: var(--red); --sev-dim: var(--red-dim); }
-    .sev-info { --sev: var(--accent-light); --sev-dim: var(--accent-dim); }
 
     /* Vertical timeline */
     .timeline { position: relative; padding-left: 20px; }
@@ -911,7 +912,7 @@
       .kpi-tile, .kpi-cue { transition: none; }
       .kpi-tile-action:hover, .kpi-tile-action:focus-visible { transform: none; }
       .header-meta.refreshing, .skeleton, .ask-pulse { animation: none; }
-      .project-link, .timeline-entry, .review-content { transition: none; }
+      .chip, a.chip-outlined, button.chip-outlined, .project-link, .timeline-entry, .review-content { transition: none; }
       .chart-bars * { transition: none !important; }
     }
 
@@ -4034,7 +4035,7 @@
       const up = status === 'UP' || status === '';
       const paused = status === 'PAUSED';
       const chipColor = paused ? 'var(--text-secondary)' : up ? 'var(--green)' : 'var(--red)';
-      const chipBg = paused ? 'transparent' : up ? 'var(--green-dim)' : 'var(--red-dim)';
+      const badgeClass = paused ? 'chip chip-outlined' : up ? 'chip chip-tinted sev-ok' : 'chip chip-tinted sev-bad';
 
       const stat = (label, value, color) => html`
         <div style="display: flex; flex-direction: column; gap: 1px; min-width: 62px">
@@ -4044,10 +4045,7 @@
                        color: ${color || 'var(--text)'}">${value}</span>
         </div>`;
 
-      const badge = html`
-        <span style="font-size: var(--fs-body-sm); font-weight: 700; letter-spacing: 0.06em;
-                     padding: 2px var(--sp-2); border-radius: var(--r-sm); white-space: nowrap;
-                     background: ${chipBg}; color: ${chipColor}">${status || '—'}</span>`;
+      const badge = html`<span class=${badgeClass}>${status || '—'}</span>`;
       const stats = html`
         <div style="display: flex; gap: var(--sp-4); flex-wrap: wrap; margin-top: var(--sp-2)">
           ${stat('1d', fmtPct(monitor.uptime_1d), uptimeColor(monitor.uptime_1d))}

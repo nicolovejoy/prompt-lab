@@ -7,6 +7,7 @@ session per project, up to 8 projects. With PROJECT: that project's newest 3.
 import os
 import re
 import shutil
+import pathlib
 import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
@@ -22,7 +23,9 @@ WHEN = "COALESCE(NULLIF(ended_at, ''), started_at)"
 def line_text(summary):
     s = " ".join(summary.split())
     if "Next:" in s:
-        return s.split("Next:", 1)[1].strip()
+        nxt = s.split("Next:", 1)[1].strip()
+        if nxt:
+            return nxt
     m = re.search(r"[.!?](\s|$)", s)
     return s[: m.start() + 1] if m else s
 
@@ -44,7 +47,7 @@ def main(argv):
         print(f"recap: no history DB at {db}", file=sys.stderr)
         return 1
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(TS)
-    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    con = sqlite3.connect(pathlib.Path(db).as_uri() + "?mode=ro", uri=True)
     try:
         rows = con.execute(
             f"SELECT project, {WHEN} AS t, summary FROM sessions "

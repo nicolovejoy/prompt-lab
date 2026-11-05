@@ -50,6 +50,7 @@ rows = [
     ("alpha", ago(5), ago(5), "Third. Next: third item"),
     ("alpha", ago(6), ago(6), "Fourth. Next: fourth item"),
     ("empty", ago(1), ago(1), ""),
+    ("bare", ago(2), ago(2), "Wrapped up the thing. Next:   "),
     ("pacific", "2026-11-05 03:00:00", "2026-11-05 03:00:00", "Late. Next: x"),
 ]
 con.executemany("INSERT INTO sessions (project, started_at, ended_at, summary) VALUES (?,?,?,?)", rows)
@@ -62,6 +63,7 @@ check("exit 0", r.returncode == 0, r.stderr)
 check("Next: extraction", any("ship the widget" in l for l in lines), r.stdout)
 check("Next: text has no summary prefix", not any("Merged #1" in l for l in lines))
 check("first-sentence fallback", any(l.startswith("beta") and l.endswith("Fixed the parser.") for l in lines), r.stdout)
+check("bare Next: falls back to first sentence", any(l.startswith("bare") and l.endswith("Wrapped up the thing.") for l in lines), r.stdout)
 check("newest per project (one alpha line)", sum(l.startswith("alpha") for l in lines) == 1)
 check("older alpha not shown", not any("stale item" in l for l in lines))
 check("empty-string ended_at falls back to started_at", any(l.startswith("beta") for l in lines))

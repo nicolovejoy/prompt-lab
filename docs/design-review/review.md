@@ -326,7 +326,7 @@ R1–R7, R13, R15–R18: built on branch `claude/design-system-1`, PR #113. R8, 
 ### Decisions on the mocks (Nico, 2026-11-05)
 
 - D2. R8 chips: one `.chip` with `.chip-outlined`, `.chip-tinted`, `.chip-filled`; tinted chips take `.sev-ok`, `.sev-warn`, `.sev-bad` or `.sev-info`.
-- D3. The private badge keeps a stronger border than other outlined chips. Upper case may go.
+- D3. The private badge keeps a stronger border than other outlined chips. Upper case was dropped on outlined chips (tinted status chips keep it).
 - D4. GitHub label chips are outlined with an 8px dot in the label's hue; text uses the normal chip colour.
 - D5. Dormant project chips on Home shrink to the chip size; the phone keeps 44px tap targets.
 - D6. One `.btn` (`.btn-primary`, `.btn-ghost`). Re-poll is ghost. The login page keeps a larger primary button (`.btn-lg`, login only). The Google sign-in button keeps its outlined look at that size.
@@ -335,4 +335,4 @@ R1–R7, R13, R15–R18: built on branch `claude/design-system-1`, PR #113. R8, 
 
 ### Status (2026-11-05)
 
-R8, R9 and R14 are built on branch `claude/recap-and-design-system-2` (PR to follow). R10–R12 (emails): separate plan.
+R8, R9 and R14 are built on branch `claude/recap-and-design-system-2` (open as a PR). R10–R12 (emails): separate plan.
