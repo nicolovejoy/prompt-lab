@@ -279,6 +279,22 @@ test('font sizes: every font-size is a --fs-* token, and every token used is def
   assert.ok(used.size > 0);
 });
 
+test('opacity is not used as a text colour', () => {
+  // Limits: this only sees ONE declaration block at a time (a CSS {...} body or
+  // one style="..." string). It cannot see a parent's opacity dimming a child
+  // that sets its own colour, nor opacity applied by a different rule to the
+  // same element. A computed value (opacity: ${...}, a loading/disabled state)
+  // is skipped on purpose. It catches the common slip: color: var(--text...) and
+  // opacity: written together.
+  const stripped = src.replace(/\/\*[\s\S]*?\*\//g, '');
+  const blocks = [
+    ...[...stripped.matchAll(/\{([^{}]*)\}/g)].map((m) => m[1]),
+    ...[...stripped.matchAll(/style="([^"]*)"/g)].map((m) => m[1]),
+  ];
+  const bad = blocks.filter((b) => /color\s*:\s*var\(--text/.test(b) && /(^|[;\s])opacity\s*:(?!\s*\$\{)/.test(b));
+  assert.deepEqual(bad.map((b) => b.trim().slice(0, 80)), [], 'use --text-muted instead of opacity on text');
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {
