@@ -7,7 +7,7 @@ Measured on `main` at `6c24ec4`. Fact-finding only: no recommendations. Where so
 - Scope: the dashboard at prompt-labs.org (`web/index.html`, 4,902 lines, one file, Preact+HTM, no build) and every email the repo sends.
 - Line numbers refer to `web/index.html` unless a file is named. CSS block is lines 36-839, the `:root` tokens are 37-95, module JS is 844-4900.
 - Counting method: regex scans over lines 97-4900 (so the token definitions themselves are excluded). Counts are declarations, not rendered elements. They will drift as #14 merges.
-- #14 (font-size scale) is in flight on a separate branch (PR #112, titled "a 12-step named scale"; the brief says 11 steps: 2xs .61, xs .75, sm .85, body-sm .95, body 1.06, md 1.12, lg 1.3, xl 1.43, 2xl 1.7, 3xl 1.91, 4xl 2.18 rem). Font sizes below are as on main, before that migration.
+- #14 (font-size scale) is PR #112, 12 named steps: 2xs .61, xs .75, sm .85, body-sm .95, body 1.06, md 1.12, prose 1.2 (running text: home timeline, project summary), lg 1.3, xl 1.43, 2xl 1.7, 3xl 1.91, 4xl 2.18 rem. Font sizes below are as on main before that migration; if #112 has merged, read sizes through the tokens.
 - Screenshots live outside the repo at `~/.claude/state/prompt-lab/design-review/` (index in section 12). All are from synthetic fixtures (`scripts/phone/fixtures.mjs`), never real data. Caveat: the unsuffixed shots written by `scripts/phone/check.mjs` carry no color-scheme setting, so Playwright's default (light) applies. Explicit `-dark` and `-light` variants were added for the main routes.
 - Shipped base font size is the browser default (16px; no `html { font-size }` rule), so 1rem = 16px.
 
@@ -236,5 +236,5 @@ Root: `~/.claude/state/prompt-lab/design-review/` (83 dashboard PNGs, 9 email fi
 12. Machine voice: the review email is machine-written and unmarked, and the Ask answer is unmarked. Is the "↳ from claude" rule meant to cover them?
 13. Desktop has no tap-target floor and a 24px gutter that does not shrink on phone. Is that a reading-width decision or an oversight?
 14. Home-screen mode hides the Menu and shows five tabs; Visitors, Health and About sit under More. Is that discoverability acceptable for the admin's most-checked page (Health)?
-15. #14 is in flight: PR #112's title says 12 steps while the brief lists 11 named steps. Which count is the source of truth, and does this review run before or after that merge?
+15. #14 (PR #112) settles the type scale's mechanics, not its values: the 12 steps preserve today's sizes. Should the review change any step's value, or the number of steps?
 16. `color-scheme` is not declared and `theme-color` is fixed `#111`: are native controls and the status bar meant to follow the app theme?
