@@ -23,6 +23,8 @@
 #           starts the session on /readup.
 #           `work musicforge opus`      -> skips the model question.
 #           `work musicforge opus high` -> skips both questions.
+#           `recap`           -> newest session per project: what it said
+#                                to do next (`recap 14`, `recap musicforge`)
 #           (The Codex launchers `cx` and `duet` were removed 2026-10-16
 #           when Codex was retired.)
 # ============================================================
@@ -234,6 +236,12 @@ end run
 APPLESCRIPT
 }
 
+
+
+# --- 2b. RECAP ---------------------------------------------
+# What each recent session said to do next, from the history DB.
+# `recap [DAYS] [PROJECT]` — see workflow/bin/recap.py.
+recap() { ~/.claude/bin/recap.py "$@"; }
 
 
 # --- 3. TAB COMPLETION -------------------------------------

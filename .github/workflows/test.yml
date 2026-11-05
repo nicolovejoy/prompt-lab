@@ -84,6 +84,9 @@ jobs:
       - name: Workspace seed/remap tests
         run: python scripts/test_seed_project_workspaces.py
 
+      - name: Recap command tests
+        run: python scripts/test_recap.py
+
   deploy:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
