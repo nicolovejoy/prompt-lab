@@ -156,8 +156,8 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
 - **Beacon interface (2026-11-04, #110 merged, deployed).** `/api/beacon` is a documented contract (`docs/beacon.md`): new `nav` event for in-app views (stored with no visitor hash, day-level date, random id), ID-like path segments become `:id`, sites can no longer post `login`, frozen `beacon-v1.js` with SRI (headers verified live). prntd's #363 tag is live; their own call with `nav` is in progress and they post the ship date, then check #/visitors. The first `--apply` backfill is done (no unscrubbed old-rule paths remain). Widened ID rule (emails, key:value such as `name%3A<person>`, dashed IDs, IDs inside slugs) merged as #111 2026-11-04 and its `--apply` backfill ran the same day (5 paths / 8 rows, including 3 person-name paths); a dry run afterwards shows 0 paths to change. #109 is optional now that sites can report `nav` themselves.
 - **Public rollups:** only ibuild4you `2026-05-18` is unpublished — a deliberate skip that
   reappears in every future draft by design.
-- **#48 residual:** the "8am" cron is `0 15 * * *` — 8am Pacific in summer, 7am in winter.
-  Vercel crons are UTC-only, so this is a choice to make, not a bug to fix.
+- **#48 residual, settled (Nico, 2026-11-04): leave it.** The "8am" cron is `0 15 * * *`,
+  8am Pacific in summer and 7am in winter; Vercel crons are UTC-only. Not a bug.
 - Open issues (2026-11-03): **#14** design tokens, **#43** sign-ins panel (gated on a second
   reader), **#9** beacon fan-out (prntd asked via handoff 2026-11-03), **#85** localize
   second language, **#91** Neon fees. #49 closed 2026-11-03 (all four batches); #51 closed
