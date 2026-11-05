@@ -263,6 +263,22 @@ test('sharePct: a whole-number percentage, and nothing when the total is 0', () 
   assert.equal(pure.sharePct(0, NaN), '');
 });
 
+test('font sizes: every font-size is a --fs-* token, and every token used is defined', () => {
+  const root = src.match(/:root\s*\{([^}]*)\}/)[1];
+  const defined = new Set([...root.matchAll(/(--fs-[\w-]+)\s*:\s*[0-9.]+rem\s*;/g)].map((m) => m[1]));
+  assert.equal(defined.size, 12, `expected 12 --fs-* tokens in :root, found ${defined.size}`);
+  // Strip comments, then drop the token definitions themselves; what is left
+  // must declare font-size only through var(--fs-*).
+  const body = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--fs-[\w-]+\s*:[^;]*;/g, '');
+  const raw = [...body.matchAll(/font-size\s*:\s*([^;"'`}]*)/g)]
+    .map((m) => m[1].trim()).filter((v) => !/^var\(--fs-[\w-]+\)$/.test(v));
+  assert.deepEqual(raw, [], `font-size must use var(--fs-*), found: ${raw.join(', ')}`);
+  const used = new Set([...body.matchAll(/var\((--fs-[\w-]+)\)/g)].map((m) => m[1]));
+  const undef = [...used].filter((t) => !defined.has(t));
+  assert.deepEqual(undef, [], `undefined tokens: ${undef.join(', ')}`);
+  assert.ok(used.size > 0);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {
