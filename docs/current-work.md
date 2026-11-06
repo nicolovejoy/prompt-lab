@@ -154,32 +154,24 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   was covered by #76 (`health`, `health-cards` in `scripts/phone/checks.mjs`); the full
   phone run on 2026-11-04 passed 404/404 and the screenshot was checked by eye.
 - **Beacon interface (2026-11-04, #110 merged, deployed).** `/api/beacon` is a documented contract (`docs/beacon.md`): new `nav` event for in-app views (stored with no visitor hash, day-level date, random id), ID-like path segments become `:id`, sites can no longer post `login`, frozen `beacon-v1.js` with SRI (headers verified live). prntd's #363 tag is live; their own call with `nav` is in progress and they post the ship date, then check #/visitors. The first `--apply` backfill is done (no unscrubbed old-rule paths remain). Widened ID rule (emails, key:value such as `name%3A<person>`, dashed IDs, IDs inside slugs) merged as #111 2026-11-04 and its `--apply` backfill ran the same day (5 paths / 8 rows, including 3 person-name paths); a dry run afterwards shows 0 paths to change. #109 is optional now that sites can report `nav` themselves.
-- **Design system pass 1 is PR #113 (2026-11-04), open for Nico to merge.** Built by SDD from
-  `docs/superpowers/plans/2026-11-04-design-system-dashboard.md`: rulings R1–R7, R13, R15–R18 of
-  `docs/design-review/review.md` (colour roles, chart/spacing/radius/shadow/z tokens, one 640px
-  breakpoint, color-scheme, a11y pass, seven source guards + two phone checks). Before/after shots:
-  `~/.claude/state/prompt-lab/design-review/{dashboard,after}/`. Parked follow-ups: roving tabindex on
-  chart bars (first; Health has 360+ tab stops), iOS standalone status bar is `black-translucent` so
-  `theme-color` may not show, optional dark `--chart-1` → `#5558e6`. Remaining review work, R8, R9
-  and R14, is built on branch `claude/recap-and-design-system-2` (open as a PR): one `.chip`, one `.btn`,
-  one `.page-title` with real headings on every page, and a role-aware tab bar (admin: Home, Activity,
-  Health, Costs, More). Emails R10–R12 are built on branch `claude/emails-r10-r12`; read the first few review emails after it merges. #114 also added `recap`; v2 (#115) lists every repo touched in 14 days (session or commit), numbered, with git-log
-  commit counts and last touch, and `work 1 3 4` opens several, asking model/effort once. Live after
-  `./workflow/install.sh` plus a new terminal tab.
-- **Design review of prompt-labs.org and its emails (2026-11-04).** Facts for a Fable
-  review are in `docs/design-review/facts.md`; synthetic-data screenshots and email
-  renders are outside the repo in `~/.claude/state/prompt-lab/design-review/`. Scope is
-  the dashboard plus the emails it sends, not the other sites; a shared-learnings doc
-  for other sites may come out of it. #14's font-size scale is PR #112 (12 steps, sizes
-  preserved, CI guard), open for Nico to merge; the review should run after it lands.
+- **Design review of prompt-labs.org and its emails: all merged 2026-11-05.** #112 font-size
+  scale, #113 pass 1 (colour roles, chart/spacing/radius tokens, one 640px breakpoint, a11y),
+  #114 pass 2 (`.chip`, `.btn`, `.page-title`, role-aware admin tab bar) plus `recap`, #115
+  recap v2 (checked live in a new tab 2026-11-05), #116 emails R10-R12 (model returns content,
+  `send-review.py` renders it), #117 review subject built in code (`Work recap · Thu 5 Nov`).
+  Facts: `docs/design-review/facts.md`; rulings: `docs/design-review/review.md`; screenshots
+  outside the repo in `~/.claude/state/prompt-lab/design-review/`. Parked follow-ups: roving
+  tabindex on chart bars (Health has 360+ tab stops), iOS standalone status bar is
+  `black-translucent` so `theme-color` may not show, optional dark `--chart-1` → `#5558e6`.
+  Next check: read the first few review emails built from #116/#117.
 - **Public rollups:** only ibuild4you `2026-05-18` is unpublished — a deliberate skip that
   reappears in every future draft by design.
 - **#48 residual, settled (Nico, 2026-11-04): leave it.** The "8am" cron is `0 15 * * *`,
   8am Pacific in summer and 7am in winter; Vercel crons are UTC-only. Not a bug.
-- Open issues (2026-11-03): **#14** design tokens, **#43** sign-ins panel (gated on a second
+- Open issues (2026-11-05): **#43** sign-ins panel (gated on a second
   reader), **#9** beacon fan-out (prntd asked via handoff 2026-11-03), **#85** localize
-  second language, **#91** Neon fees. #49 closed 2026-11-03 (all four batches); #51 closed
-  by the unmapped-costs PR.
+  second language. Closed: #49 2026-11-03 (all four batches), #51 by the unmapped-costs PR,
+  #91 Neon fees 2026-11-04, #14 design tokens 2026-11-05.
 - **Unmapped API spend (#51, 2026-11-03).** The Admin API workspace list is the source of
   workspace names: the August "assumed prompt-lab" workspace is recountly (→ raconte), the
   one unmapped workspace was byside, and elusion was mapped ahead of its first spend. A new
