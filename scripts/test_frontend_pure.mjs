@@ -28,7 +28,7 @@ if (src.indexOf('// <pure>', open + 1) >= 0) {
 
 const NAMES = ['fmtShortDate', 'fmtMonth', 'fmtMonthShort', 'addDays', 'mondayOf', 'bucketSizeFor',
                'bucketDates', 'bucketTotals', 'bucketIndexAt', 'fmtUsdAxis', 'fmtUsdFine', 'bucketUptime',
-               'projectStatus', 'shownNames', 'costProjectLabel', 'sharePct', 'tabsFor', 'currentTab'];
+               'projectStatus', 'shownNames', 'costProjectLabel', 'sharePct', 'tabsFor', 'currentTab', 'rovingIndex'];
 const pure = new Function(`"use strict";\n${src.slice(open, close)}\nreturn { ${NAMES.join(', ')} };`)();
 
 const tests = [];
@@ -169,6 +169,19 @@ test('bucket totals across a window equal the daily total', () => {
       .reduce((s, b) => s + pure.bucketTotals(b, byDate).total, 0);
     assert.equal(sum, daily, `${size} buckets lose or double-count`);
   }
+});
+
+test('rovingIndex moves within the chart, clamps at both ends, ignores other keys', () => {
+  assert.equal(pure.rovingIndex('ArrowRight', 3, 10), 4);
+  assert.equal(pure.rovingIndex('ArrowLeft', 3, 10), 2);
+  assert.equal(pure.rovingIndex('ArrowRight', 9, 10), 9);
+  assert.equal(pure.rovingIndex('ArrowLeft', 0, 10), 0);
+  assert.equal(pure.rovingIndex('Home', 5, 10), 0);
+  assert.equal(pure.rovingIndex('End', 5, 10), 9);
+  assert.equal(pure.rovingIndex('ArrowDown', 12, 10), 9, 'a stale index past the end clamps');
+  assert.equal(pure.rovingIndex('Tab', 3, 10), null);
+  assert.equal(pure.rovingIndex('Enter', 3, 10), null);
+  assert.equal(pure.rovingIndex('ArrowRight', 0, 0), null);
 });
 
 test('bucketIndexAt clamps to the chart and refuses an empty one', () => {
