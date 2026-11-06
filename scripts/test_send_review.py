@@ -550,7 +550,7 @@ def _():
     mod = _load_send_review_with_store(get_store)
     mod.get_client = lambda: object()
     mod.call_claude = lambda client, **kw: {
-        "parsed": {"subject": "s", "today": [{"project": "p", "paragraphs": ["x"]}], "week": []},
+        "parsed": {"today": [{"project": "p", "paragraphs": ["x"]}], "week": []},
         "duration_ms": 10, "awake_ms": 10, "input_tokens": 1, "output_tokens": 1,
     }
 
@@ -571,7 +571,6 @@ def _():
 # --- R10/R11/R12: the review email is content from the model, markup from us.
 
 _CONTENT = {
-    "subject": "  Two  projects ",
     "today": [
         {"project": "alpha", "paragraphs": ["We fixed <the> parser.", "  "]},
         {"project": "", "paragraphs": ["dropped: no name"]},
@@ -586,10 +585,19 @@ _CONTENT = {
 def _():
     mod = _load_send_review()
     subject, html, text = mod.render_review(_CONTENT, "2026-11-05", False)
-    assert subject == "Two projects", subject
+    assert subject == "Work recap · Thu 5 Nov", subject
     assert "We fixed &lt;the&gt; parser." in html and "<the>" not in html, html
     assert "beta" not in html and "dropped: no name" not in html, html
     assert "A week of parser work." in text, text
+
+
+@test("render: subject is built in code from the date, ignoring any model subject")
+def _():
+    mod = _load_send_review()
+    c = {**_CONTENT, "subject": "Work recap — Thursday, November 5, 2026"}
+    assert mod.render_review(c, "2026-11-05", False)[0] == "Work recap · Thu 5 Nov"
+    assert mod.render_review(c, "2026-11-01", True)[0] == "Week recap · Sun 1 Nov"
+    assert mod.render_review(c, "2026-12-25", False)[0] == "Work recap · Fri 25 Dec"
 
 
 @test("render: Today leads on a daily send, This Week leads on Saturday")
@@ -617,12 +625,12 @@ def _():
 @test("render: no data today uses the note; nothing at all raises")
 def _():
     mod = _load_send_review()
-    c = {"subject": "s", "today": [], "today_note": "No new work yesterday.",
+    c = {"today": [], "today_note": "No new work yesterday.",
          "week": [{"project": "a", "paragraphs": ["w"]}]}
     _, html, text = mod.render_review(c, "2026-11-05", False)
     assert "No new work yesterday." in html and "No new work yesterday." in text
     try:
-        mod.render_review({"subject": "s", "today": [], "week": []}, "2026-11-05", False)
+        mod.render_review({"today": [], "week": []}, "2026-11-05", False)
     except ValueError:
         pass
     else:
@@ -634,7 +642,8 @@ def _():
     mod = _load_send_review()
     props = mod.REVIEW_TOOL["input_schema"]["properties"]
     assert "html" not in props and "text" not in props, props
-    assert {"subject", "today", "week"} <= set(mod.REVIEW_TOOL["input_schema"]["required"])
+    assert {"today", "week"} <= set(mod.REVIEW_TOOL["input_schema"]["required"])
+    assert "subject" not in props, "the subject is built in code, not by the model"
     system, _ = mod.build_prompt([], [], [], False)
     assert "inline CSS" not in system and "HTML style" not in system, system
 
