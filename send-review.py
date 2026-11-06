@@ -377,6 +377,9 @@ def main():
         content_html=html, content_text=text,
         model=SONNET, input_tokens=result["input_tokens"],
         output_tokens=result["output_tokens"],
+        # The heartbeat grades this, not the row: a failed send still writes
+        # the snapshot, so a row alone cannot see a last-step failure.
+        sent_id=(email_result.get("id") or "unknown") if email_result is not None else None,
     )
     store.close()
 

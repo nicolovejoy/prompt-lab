@@ -203,6 +203,44 @@ def _():
     assert n == 3, f"expected 3 distinct rows, got {n}"
 
 
+@test("migrate adds sent_id to a production table that lacks it")
+def _():
+    db = sqlite3.connect(":memory:")
+    db.execute(LEGACY_SCHEMA)
+    make_store(db).migrate()
+    cols = {r[1] for r in db.execute("PRAGMA table_info(review_snapshots)")}
+    assert "sent_id" in cols, cols
+
+
+@test("a later failed send does not erase an earlier delivered one")
+def _():
+    db = sqlite3.connect(":memory:")
+    store = make_store(db)
+    store.migrate()
+    for sent in ("re_123", None):
+        store.save_review_snapshot(review_type="daily_email", date="2026-11-06",
+                                   subject="s", model="m", input_tokens=0,
+                                   output_tokens=0, sent_id=sent)
+    assert db.execute("SELECT sent_id FROM review_snapshots").fetchall() == [("re_123",)]
+
+
+@test("review-email heartbeat grades the newest SENT day, not the newest row")
+def _():
+    sys.path.insert(0, str(ROOT / "web"))
+    from artifact_checks import ARTIFACT_CHECKS
+    sql = next(q for label, q, _ in ARTIFACT_CHECKS if label == "review email")
+    db = sqlite3.connect(":memory:")
+    store = make_store(db)
+    store.migrate()
+    for d, sent in (("2026-11-04", "re_a"), ("2026-11-05", None)):
+        store.save_review_snapshot(review_type="daily_email", date=d, subject="s",
+                                   model="m", input_tokens=0, output_tokens=0,
+                                   sent_id=sent)
+    assert db.execute(sql).fetchone()[0] == "2026-11-04"
+    db.execute("DELETE FROM review_snapshots WHERE sent_id IS NOT NULL")
+    assert db.execute(sql).fetchone()[0] is None, "unsent only must read as never produced"
+
+
 def main() -> int:
     failed = 0
     for name, ok, msg in _results:

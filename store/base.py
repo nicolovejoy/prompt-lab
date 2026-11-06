@@ -184,7 +184,7 @@ class KnowledgeStore(ABC):
                               content_text: str | None = None,
                               content_markdown: str | None = None,
                               model: str, input_tokens: int,
-                              output_tokens: int) -> None: ...
+                              output_tokens: int, sent_id: str | None = None) -> None: ...
 
     # ---- Nightly run record (nightly-pipeline-plan step 3) ----
 
