@@ -51,11 +51,10 @@ _PROJECTS = {
 # machine-voice mark.
 REVIEW_TOOL = {
     "name": "generate_review",
-    "description": "Return the review's content: subject and the two sections, grouped by project.",
+    "description": "Return the review's content: the two sections, grouped by project.",
     "input_schema": {
         "type": "object",
         "properties": {
-            "subject": {"type": "string", "description": "One-line email subject"},
             "today": {**_PROJECTS, "description": "Today section: one entry per project"},
             "today_note": {
                 "type": "string",
@@ -63,7 +62,7 @@ REVIEW_TOOL = {
             },
             "week": {**_PROJECTS, "description": "This Week section: one entry per project"},
         },
-        "required": ["subject", "today", "week"],
+        "required": ["today", "week"],
     },
 }
 
@@ -81,13 +80,22 @@ def _clean_projects(entries):
     return out
 
 
+def review_subject(date, is_weekly):
+    """The subject is built here, never by the model: left to the model it
+    drifted nightly across date formats and dashes ("Work recap — 5 Nov 2026",
+    "Work recap – Tuesday 3 November 2026", "30-day review")."""
+    d = datetime.strptime(date, "%Y-%m-%d")
+    kind = "Week recap" if is_weekly else "Work recap"
+    return f"{kind} · {d:%a} {d.day} {d:%b}"
+
+
 def render_review(content, date, is_weekly):
     """(subject, html, text) from the model's structured content.
 
     Raises ValueError when there is nothing to send: an empty email that
     looks sent is the "absence recorded as nothing" shape.
     """
-    subject = " ".join(str(content.get("subject") or "").split()) or "Session Review"
+    subject = review_subject(date, is_weekly)
     today = _clean_projects(content.get("today"))
     note = " ".join(str(content.get("today_note") or "").split())
     week = _clean_projects(content.get("week"))
