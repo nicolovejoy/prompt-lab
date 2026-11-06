@@ -349,6 +349,8 @@ class SqliteKnowledgeStore(KnowledgeStore):
         # consumers (synthesizer, sync_to_turso, slash commands) don't blow up
         # on installs where dashboard/server.py hasn't run.
         self._add_column_if_missing("sessions", "token_count", "INTEGER")
+        # Resend's message id; NULL when the send failed (see turso_store).
+        self._add_column_if_missing("review_snapshots", "sent_id", "TEXT")
         self._add_column_if_missing("sessions", "hostname", "TEXT")
         # Binds a row to the real Claude Code conversation. Without it, "the
         # current session" was resolved positionally (newest open row for the
@@ -666,14 +668,14 @@ class SqliteKnowledgeStore(KnowledgeStore):
     def save_review_snapshot(self, *, review_type, date, subject,
                               content_html=None, content_text=None,
                               content_markdown=None, model,
-                              input_tokens, output_tokens):
+                              input_tokens, output_tokens, sent_id=None):
         self._conn.execute("""
             INSERT INTO review_snapshots
                 (review_type, date, subject, content_html, content_text,
-                 content_markdown, model, input_tokens, output_tokens)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 content_markdown, model, input_tokens, output_tokens, sent_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (review_type, date, subject, content_html, content_text,
-              content_markdown, model, input_tokens, output_tokens))
+              content_markdown, model, input_tokens, output_tokens, sent_id))
         self._conn.commit()
 
     # ---- Nightly run record ----

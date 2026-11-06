@@ -25,9 +25,14 @@ from __future__ import annotations
 
 # (label, sql, max_age_days)
 ARTIFACT_CHECKS = [
+    # Graded on delivery, not composition: a failed send still writes the
+    # snapshot (so the review is kept), and grading the bare row would read a
+    # Resend 403 as fresh — the 60-night outage's exact shape. Rows from
+    # before 2026-11-06 have no sent_id; only the newest sent day matters.
     ("review email",
      "SELECT max(date) AS d FROM review_snapshots "
-     "WHERE review_type IN ('daily_email', 'weekly_email')", 2),
+     "WHERE review_type IN ('daily_email', 'weekly_email') "
+     "AND sent_id IS NOT NULL", 2),
     ("synthesizer", "SELECT max(date) AS d FROM daily_summaries", 2),
     # max(week_start), not the write date: week W is rolled up by the nightly
     # after its Sunday (W+8), so a healthy newest week_start peaks at 14 days

@@ -112,9 +112,10 @@ system. Closing it needs a check on infrastructure that fails independently of
 Vercel's scheduler; UptimeRobot's `HEARTBEAT` type is paid-only, which is what sent
 #45 down the artifact route in the first place.
 
-A second hole in the same category: `review_snapshots` records composition, not
-delivery — a failed send still writes the row, so the #45 heartbeat cannot see a
-last-step delivery failure.
+A second hole, closed 2026-11-06: a failed send still writes the `review_snapshots`
+row, so the review-email heartbeat now grades `max(date)` over rows with a non-NULL
+`sent_id` (Resend's message id), never the bare row. A later failed re-run keeps an
+earlier day's `sent_id` (COALESCE in the Turso upsert).
 
 ### Invariants — the things that must not be broken
 

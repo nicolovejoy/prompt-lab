@@ -387,6 +387,10 @@ class TursoKnowledgeStore(KnowledgeStore):
         # as the sqlite store's _add_column_if_missing.
         self._add_column_if_missing("daily_summaries", "prompt_version", "TEXT")
         self._add_column_if_missing("weekly_rollups", "prompt_version", "TEXT")
+        # Resend's message id, NULL when the send failed. The review-email
+        # heartbeat reads it: a snapshot row alone records composition, and a
+        # failed send writes one too.
+        self._add_column_if_missing("review_snapshots", "sent_id", "TEXT")
 
     def _add_column_if_missing(self, table: str, column: str, decl: str) -> None:
         cols_result = self._execute(f"PRAGMA table_info({table})")
@@ -605,7 +609,7 @@ class TursoKnowledgeStore(KnowledgeStore):
     def save_review_snapshot(self, *, review_type, date, subject,
                               content_html=None, content_text=None,
                               content_markdown=None, model,
-                              input_tokens, output_tokens):
+                              input_tokens, output_tokens, sent_id=None):
         # Upsert, not INSERT: the nightly sync replays recent local rows, so
         # this must be idempotent (nightly-pipeline-plan step 1). created_at
         # is deliberately NOT updated on conflict — get_review_snapshots
@@ -614,8 +618,8 @@ class TursoKnowledgeStore(KnowledgeStore):
         self._execute("""
             INSERT INTO review_snapshots
                 (review_type, date, subject, content_html, content_text,
-                 content_markdown, model, input_tokens, output_tokens)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 content_markdown, model, input_tokens, output_tokens, sent_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(review_type, date) DO UPDATE SET
                 subject = excluded.subject,
                 content_html = excluded.content_html,
@@ -623,9 +627,13 @@ class TursoKnowledgeStore(KnowledgeStore):
                 content_markdown = excluded.content_markdown,
                 model = excluded.model,
                 input_tokens = excluded.input_tokens,
-                output_tokens = excluded.output_tokens
+                output_tokens = excluded.output_tokens,
+                -- A delivered email stays delivered: a later failed re-run
+                -- (or a replayed failed row) for the same day must not
+                -- erase the earlier send.
+                sent_id = COALESCE(excluded.sent_id, review_snapshots.sent_id)
         """, [review_type, date, subject, content_html, content_text,
-              content_markdown, model, input_tokens, output_tokens])
+              content_markdown, model, input_tokens, output_tokens, sent_id])
 
     # ---- Nightly run record ----
 

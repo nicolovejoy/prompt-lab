@@ -355,6 +355,7 @@ def main():
             model=row.get("model", "unknown"),
             input_tokens=row.get("input_tokens", 0) or 0,
             output_tokens=row.get("output_tokens", 0) or 0,
+            sent_id=row.get("sent_id"),
         ),
         dry_run,
     )
