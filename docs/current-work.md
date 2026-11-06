@@ -160,8 +160,8 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   recap v2 (checked live in a new tab 2026-11-05), #116 emails R10-R12 (model returns content,
   `send-review.py` renders it), #117 review subject built in code (`Work recap · Thu 5 Nov`).
   Facts: `docs/design-review/facts.md`; rulings: `docs/design-review/review.md`; screenshots
-  outside the repo in `~/.claude/state/prompt-lab/design-review/`. Parked follow-ups: roving
-  tabindex on chart bars (Health has 360+ tab stops), iOS standalone status bar is
+  outside the repo in `~/.claude/state/prompt-lab/design-review/`. Roving tabindex on chart bars
+  is #119 (each chart one tab stop, arrows move between bars). Parked follow-ups: iOS standalone status bar is
   `black-translucent` so `theme-color` may not show, optional dark `--chart-1` → `#5558e6`.
   Next check: read the first few review emails built from #116/#117.
 - **Public rollups:** only ibuild4you `2026-05-18` is unpublished — a deliberate skip that

@@ -41,7 +41,10 @@ export async function smallTargets(page) {
 // focusable: a timeline row is clicked anywhere but focused on its phrase.
 export async function unreachableClickables(page) {
   return page.evaluate(() => {
-    const FOCUSABLE = 'a[href], button, select, input, textarea, summary, [role=button][tabindex="0"]';
+    // A chart bar is reachable with tabindex -1: its chart is one tab stop and
+    // the arrow keys move between its bars (roving tabindex).
+    const FOCUSABLE = 'a[href], button, select, input, textarea, summary, [role=button][tabindex="0"], '
+      + '[data-test="chart-bars"] [role=button][tabindex]';
     const out = [];
     for (const el of document.querySelectorAll('body *')) {
       if (getComputedStyle(el).cursor !== 'pointer') continue;
@@ -1021,5 +1024,13 @@ CHECKS.push({
     await page.keyboard.press('Enter');
     t.ok(await page.locator('[data-chart="home"] [data-test="chart-readout"]').isVisible(),
       'Enter on a chart bar selects it and shows the readout');
+    const bars = page.locator('[data-chart="home"] [data-test="chart-bar"]');
+    t.ok(await page.locator('[data-chart="home"] [data-test="chart-bar"][tabindex="0"]').count() === 1,
+      'a chart is one tab stop');
+    await page.keyboard.press('ArrowLeft');
+    const n = await bars.count();
+    t.ok(await bars.nth(n - 2).evaluate((el) => el === document.activeElement),
+      'ArrowLeft moves focus to the previous bar');
+    t.ok(await bars.nth(n - 2).getAttribute('tabindex') === '0', 'and the tab stop moves with it');
   },
 });

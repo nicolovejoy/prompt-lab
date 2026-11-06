@@ -2504,6 +2504,18 @@
     // Visitors nor Health, so keeps Todos. Everything the bar doesn't name
     // lives behind More. A project or day page is reached from inside a view,
     // so it highlights nothing rather than pretending to belong to one tab.
+    // A chart is one tab stop, not one per bar (Health had 360+): the arrow
+    // keys move between bars inside it, as in a toolbar. The next bar for a
+    // key, or null when the chart should leave the key alone.
+    function rovingIndex(key, i, n) {
+      if (!(n > 0)) return null;
+      const at = Math.min(Math.max(i, 0), n - 1);
+      if (key === 'ArrowRight' || key === 'ArrowDown') return Math.min(at + 1, n - 1);
+      if (key === 'ArrowLeft' || key === 'ArrowUp') return Math.max(at - 1, 0);
+      if (key === 'Home') return 0;
+      if (key === 'End') return n - 1;
+      return null;
+    }
     function tabsFor(role) {
       return [
         ['home', 'Home', '#/'],
@@ -2700,7 +2712,24 @@
         if (b.size === 'day' && CAN_HOVER) navigate('#/day/' + b.key);
         else select(i);
       };
-      return { selected, rowRef, onPointerDown, onPointerMove, endGesture, onBarClick };
+      // Roving tabindex: the one bar Tab lands on is the last one focused, else
+      // the selected one, else the newest, where every chart opens.
+      const [focusPick, setFocusPick] = useState(null);
+      const n = buckets.length;
+      const focusIdx = focusPick && focusPick.layout === layout && focusPick.i < n
+        ? focusPick.i : (selected != null ? selected : n - 1);
+      const barTab = (i) => (i === focusIdx ? '0' : '-1');
+      const onBarFocus = (i) => setFocusPick({ layout, i });
+      const onRowKeyDown = (e) => {
+        const j = rovingIndex(e.key, focusIdx, n);
+        if (j == null) return;
+        e.preventDefault();
+        setFocusPick({ layout, i: j });
+        const el = rowRef.current && rowRef.current.querySelectorAll('[data-test="chart-bar"]')[j];
+        if (el) el.focus();
+      };
+      return { selected, rowRef, onPointerDown, onPointerMove, endGesture, onBarClick,
+               barTab, onBarFocus, onRowKeyDown };
     }
 
     // The props after markToday exist for particular charts, and each default
@@ -2726,8 +2755,8 @@
 
       const size = bucketSizeFor(days, narrow);
       const buckets = bucketDates(dates, size);
-      const { selected, rowRef, onPointerDown, onPointerMove, endGesture, onBarClick } =
-        useBarSelection(layout, buckets);
+      const { selected, rowRef, onPointerDown, onPointerMove, endGesture, onBarClick,
+              barTab, onBarFocus, onRowKeyDown } = useBarSelection(layout, buckets);
       const totals = buckets.map((b) => {
         const t = bucketTotals(b, byDateSeg);
         const tail = tailSeg == null ? -1 : t.segs.findIndex(([s]) => s === tailSeg);
@@ -2764,7 +2793,8 @@
         return html`
           <div data-test="chart-bar" data-key=${b.key} data-selected=${selected === i ? 'true' : undefined}
                style="flex: 1; min-width: 3px; height: 100%; position: relative; cursor: pointer"
-               role="button" tabindex="0" aria-label=${heading(b, total).join('')}
+               role="button" tabindex=${barTab(i)} aria-label=${heading(b, total).join('')}
+               onFocus=${() => onBarFocus(i)}
                onPointerEnter=${(e) => { prefetchDay(b.dates[b.dates.length - 1]); if (e.pointerType === 'mouse') setHovered(i); }}
                onPointerLeave=${() => setHovered((h2) => (h2 === i ? null : h2))}
                onClick=${(e) => onBarClick(e, i)}
@@ -2802,7 +2832,7 @@
              style="display: flex; gap: 2px; align-items: stretch; height: ${chartH}px;
                     border-bottom: 1px solid var(--border)"
              onPointerDown=${onPointerDown} onPointerMove=${onPointerMove}
-             onPointerUp=${endGesture} onPointerCancel=${endGesture}>
+             onPointerUp=${endGesture} onPointerCancel=${endGesture} onKeyDown=${onRowKeyDown}>
           ${bars}
         </div>`;
       const axis = html`<${DateAxis} dates=${buckets.map((b) => b.key)} fmt=${(k) => label[k]}
@@ -4005,7 +4035,8 @@
       const size = bucketSizeFor(days, narrow);
       const buckets = bucketDates(dates, size);
       const n = buckets.length;
-      const { selected, rowRef, onPointerDown, onPointerMove, endGesture, onBarClick } =
+      const { selected, rowRef, onPointerDown, onPointerMove, endGesture, onBarClick,
+              barTab, onBarFocus, onRowKeyDown } =
         useBarSelection(days + '|' + dates.length + '|' + narrow, buckets);
 
       // Charts open at the recent (right) end — browsers default scrollLeft to
@@ -4158,7 +4189,7 @@
         <div data-test="chart-bars" ref=${rowRef} class=${narrow ? 'chart-bars narrow' : 'chart-bars'}
              style="display: flex; gap: 2px; border-bottom: 1px solid var(--border)"
              onPointerDown=${onPointerDown} onPointerMove=${onPointerMove}
-             onPointerUp=${endGesture} onPointerCancel=${endGesture}>
+             onPointerUp=${endGesture} onPointerCancel=${endGesture} onKeyDown=${onRowKeyDown}>
           ${buckets.map((b, i) => {
             const c = cells[i];
             const msH = c.ms > 0 ? Math.max(1, Math.round((c.ms / peakMs) * (MS_H - 2))) : 0;
@@ -4169,7 +4200,7 @@
             return html`
               <div data-test="chart-bar" data-key=${b.key} data-selected=${selected === i ? 'true' : undefined}
                    style="flex: 1; min-width: 3px; position: relative; cursor: pointer"
-                   role="button" tabindex="0"
+                   role="button" tabindex=${barTab(i)} onFocus=${() => onBarFocus(i)}
                    aria-label=${b.label + ': ' + (c.has ? 'uptime ' + fmtPct(c.uptime) + ', response ' + fmtMs(c.ms) : 'no record')}
                    onPointerEnter=${(e) => { prefetchDay(b.dates[b.dates.length - 1]); if (e.pointerType === 'mouse') setHovered(i); }}
                    onPointerLeave=${() => setHovered(h => h === i ? null : h)}
