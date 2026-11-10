@@ -173,18 +173,24 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   reader), **#9** beacon fan-out (prntd asked via handoff 2026-11-03), **#85** localize
   second language. Closed: #49 2026-11-03 (all four batches), #51 by the unmapped-costs PR,
   #91 Neon fees and #109 beacon navigations 2026-11-04, #14 design tokens 2026-11-05.
-- **WindowServer crash on the laptop, 2026-11-09 15:55 PST: cause still open.** WindowServer
-  held 64,414 of about 65,500 IOSurfaces (the kernel's own tally, ten seconds before the
-  abort) and died on a 390x844 window capture requested by Playwright's WebKit build.
-  Headless WebKit and Edge runs did not reproduce any growth on the fresh WindowServer with
-  the display on. The system log shows about 226,000 failed IOSurface lookups from
-  WindowServer that day, only while the display was on and before any Playwright run. Two
-  suspects remain: a WindowServer fault unrelated to tests, or WebKit window captures made
-  while the display is off (unattended suites ran from 13:31 to the crash with the display
-  off). Interim guidance sent to the other sessions: Edge and Chromium unrestricted, no
-  unattended WebKit suites. Gauge: `ioclasscount IOSurface` (a few hundred is normal).
-  Evidence: `~/.claude/state/prompt-lab/windowserver-crash-2026-11-09/`. Not yet done: a
-  display-off repeat of the measurement, a Feedback Assistant report, a recurring logger.
+- **WindowServer crash on the laptop, 2026-11-09 15:55 PST: cause known, rule not yet
+  written.** It is a macOS bug, confirmed by the Playwright maintainers in
+  https://github.com/microsoft/playwright/issues/43066 (Apple FB25101947): while every
+  display is asleep, each window capture makes WindowServer keep the captured window's
+  surfaces until a display wakes. Playwright's WebKit screencast (tracing with screenshots,
+  also video) captures 25 times a second, so an unattended WebKit suite with the display
+  off fills WindowServer's 65,536 IOSurface limit and it aborts. Our case fits exactly:
+  the display was off from 13:31 to the crash, WebKit suites with `trace:
+  'retain-on-failure'` ran throughout, WindowServer held 64,414 surfaces, and the stack is
+  the same frame for frame. With the display on nothing is kept (measured here, seven
+  ways). Chromium and Edge are not affected. The maintainers' workaround is to keep the
+  display awake for the run (`caffeinate -d -i <test command>`); turning trace screenshots
+  off for WebKit removes the 25-a-second capture at the source. The ~226,000 failed
+  IOSurface lookups in the log that day are a separate, unexplained thing seen with
+  GPU-drawn terminals. Gauge: `ioclasscount IOSurface` (400 to 900 is normal). Evidence:
+  `~/.claude/state/prompt-lab/windowserver-crash-2026-11-09/`. Not yet done: the fleet
+  rule, a local display-off confirmation, a Feedback Assistant report citing FB25101947,
+  and a look at `scripts/phone/check.mjs`, which screenshots in WebKit.
 - **Playwright 1.60.0 cannot install on GitHub's ubuntu-26.04 runners (2026-11-09).**
   `ubuntu-latest` moved; 1.62.1 and later install fine. Red: split-recording, musicforge,
   prntd; bakerylouise-v1 fails on its next run. Each was told via handoff to bump Playwright
