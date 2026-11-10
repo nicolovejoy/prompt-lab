@@ -191,9 +191,12 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   `~/.claude/state/prompt-lab/windowserver-crash-2026-11-09/`. Confirmed on this laptop
   2026-11-09 18:02: with the display off, three WebKit runs with trace on took the count
   from 493 to 6,720 in four minutes (the 53-test spec alone added 4,551), where the same
-  runs with the display on added nothing. Not yet done: the fleet rule, a Feedback
-  Assistant report citing FB25101947, and a look at `scripts/phone/check.mjs`, which
-  screenshots in WebKit.
+  runs with the display on added nothing. The held surfaces stayed at about 6,700 for the
+  next three hours of display sleep, so nothing else adds to them. `scripts/phone/check.mjs`
+  is safe: run at 21:05 with the display off (WebKit, 49 plain screenshots, no trace or
+  video) it moved the count by 25, which is noise. Plain `page.screenshot` does not go
+  through the window capture; only the screencast does. Not yet done: the fleet rule and
+  a Feedback Assistant report citing FB25101947.
 - **Playwright 1.60.0 cannot install on GitHub's ubuntu-26.04 runners (2026-11-09).**
   `ubuntu-latest` moved; 1.62.1 and later install fine. Red: split-recording, musicforge,
   prntd; bakerylouise-v1 fails on its next run. Each was told via handoff to bump Playwright
