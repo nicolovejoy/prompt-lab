@@ -197,8 +197,8 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   is safe: run at 21:05 with the display off (WebKit, 49 plain screenshots, no trace or
   video) it moved the count by 25, which is noise. Plain `page.screenshot` does not go
   through the window capture; only the screencast does. The fleet rule landed 2026-11-10 (shared conventions and bulletin): WebKit records no
-  trace screenshots or video on a Mac, and no `caffeinate -d`. Not yet done: a Feedback
-  Assistant report citing FB25101947, which is Nico's to file.
+  trace screenshots or video on a Mac, and no `caffeinate -d`. Nico filed a Feedback
+  Assistant report citing FB25101947 on 2026-11-10. Nothing left open here.
 - **Playwright 1.60.0 cannot install on GitHub's ubuntu-26.04 runners (2026-11-09).**
   `ubuntu-latest` moved; 1.62.1 and later install fine. Red: split-recording, musicforge,
   prntd; bakerylouise-v1 fails on its next run. Each was told via handoff to bump Playwright
