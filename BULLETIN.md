@@ -10,6 +10,41 @@ entry — history lives in git. When advice no longer applies, delete the entry.
 
 ---
 
+## 2026-11-10 — WebKit test runs record no frames on a Mac
+
+Scope: every repo with a Playwright WebKit project (today: anomatom, musicforge)
+
+**A WebKit run that records trace screenshots or video while the display is asleep
+can end the login session.** macOS WindowServer keeps every captured window buffer
+until a display wakes, and at 65,536 it aborts. That happened on the laptop on
+2026-11-09 at 15:55. It is a macOS bug (Apple FB25101947); Playwright closed
+https://github.com/microsoft/playwright/issues/43066 with no fix on its side.
+
+- Measured here: with the display off, three WebKit runs with trace on added 6,200
+  buffers in four minutes. With the display on, the same runs added none. The
+  buffers were released the moment the display woke.
+- In any config with a WebKit project, set `screenshots: false` on the trace for
+  local runs, for example `trace: { mode: 'retain-on-failure', screenshots: false }`,
+  and leave video off. CI on Linux may keep them. The trace keeps DOM snapshots,
+  network and console; it loses only the filmstrip.
+- With that set, `--trace on` on the command line stays safe (tested on 1.64.1:
+  0 frames recorded, against 110 without it).
+- Plain `page.screenshot` is fine. Edge, Chromium and Firefox are unaffected.
+- Do not wrap runs in `caffeinate -d`. It cannot wake a display that is already
+  asleep, it does nothing with the lid shut, and around a command it ignores `-t`,
+  so a hung runner keeps the display on with no limit.
+- To check a machine: `ioclasscount IOSurface` reads 400 to 900 when healthy.
+
+What to do in your repo: if a Playwright config has a WebKit project, make the
+change above. Then re-sync the shared block, which now carries this rule. Review
+the `git diff`, then commit.
+
+```
+~/.claude/bin/sync-shared-md.sh --apply ./CLAUDE.md
+```
+
+---
+
 ## 2026-11-04 — Never ask Nico to recall a past moment
 
 Scope: every repo, every agent
