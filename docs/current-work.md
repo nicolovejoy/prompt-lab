@@ -188,9 +188,12 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   off for WebKit removes the 25-a-second capture at the source. The ~226,000 failed
   IOSurface lookups in the log that day are a separate, unexplained thing seen with
   GPU-drawn terminals. Gauge: `ioclasscount IOSurface` (400 to 900 is normal). Evidence:
-  `~/.claude/state/prompt-lab/windowserver-crash-2026-11-09/`. Not yet done: the fleet
-  rule, a local display-off confirmation, a Feedback Assistant report citing FB25101947,
-  and a look at `scripts/phone/check.mjs`, which screenshots in WebKit.
+  `~/.claude/state/prompt-lab/windowserver-crash-2026-11-09/`. Confirmed on this laptop
+  2026-11-09 18:02: with the display off, three WebKit runs with trace on took the count
+  from 493 to 6,720 in four minutes (the 53-test spec alone added 4,551), where the same
+  runs with the display on added nothing. Not yet done: the fleet rule, a Feedback
+  Assistant report citing FB25101947, and a look at `scripts/phone/check.mjs`, which
+  screenshots in WebKit.
 - **Playwright 1.60.0 cannot install on GitHub's ubuntu-26.04 runners (2026-11-09).**
   `ubuntu-latest` moved; 1.62.1 and later install fine. Red: split-recording, musicforge,
   prntd; bakerylouise-v1 fails on its next run. Each was told via handoff to bump Playwright
