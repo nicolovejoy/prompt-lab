@@ -153,7 +153,7 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
 - **`#/health` works on desktop (Nico, 2026-10-09) and on a phone.** The phone layout
   was covered by #76 (`health`, `health-cards` in `scripts/phone/checks.mjs`); the full
   phone run on 2026-11-04 passed 404/404 and the screenshot was checked by eye.
-- **Beacon interface (2026-11-04, #110 merged, deployed).** `/api/beacon` is a documented contract (`docs/beacon.md`): new `nav` event for in-app views (stored with no visitor hash, day-level date, random id), ID-like path segments become `:id`, sites can no longer post `login`, frozen `beacon-v1.js` with SRI (headers verified live). prntd's #363 tag is live; their own call with `nav` is in progress and they post the ship date, then check #/visitors. The first `--apply` backfill is done (no unscrubbed old-rule paths remain). Widened ID rule (emails, key:value such as `name%3A<person>`, dashed IDs, IDs inside slugs) merged as #111 2026-11-04 and its `--apply` backfill ran the same day (5 paths / 8 rows, including 3 person-name paths); a dry run afterwards shows 0 paths to change. #109 is optional now that sites can report `nav` themselves.
+- **Beacon interface (2026-11-04, #110 merged, deployed).** `/api/beacon` is a documented contract (`docs/beacon.md`): new `nav` event for in-app views (stored with no visitor hash, day-level date, random id), ID-like path segments become `:id`, sites can no longer post `login`, frozen `beacon-v1.js` with SRI (headers verified live). prntd's #363 tag is live; their own call with `nav` is in progress and they post the ship date, then check #/visitors. The first `--apply` backfill is done (no unscrubbed old-rule paths remain). Widened ID rule (emails, key:value such as `name%3A<person>`, dashed IDs, IDs inside slugs) merged as #111 2026-11-04 and its `--apply` backfill ran the same day (5 paths / 8 rows, including 3 person-name paths); a dry run afterwards shows 0 paths to change. #109 closed 2026-11-04: sites report `nav` themselves.
 - **Design review of prompt-labs.org and its emails: all merged 2026-11-05.** #112 font-size
   scale, #113 pass 1 (colour roles, chart/spacing/radius tokens, one 640px breakpoint, a11y),
   #114 pass 2 (`.chip`, `.btn`, `.page-title`, role-aware admin tab bar) plus `recap`, #115
@@ -163,15 +163,32 @@ Open, from the 2026-08-02 uptime/health thread and the issue backlog:
   outside the repo in `~/.claude/state/prompt-lab/design-review/`. Roving tabindex on chart bars
   is #119 (each chart one tab stop, arrows move between bars). Parked follow-ups: iOS standalone status bar is
   `black-translucent` so `theme-color` may not show, optional dark `--chart-1` → `#5558e6`.
-  Next check: read the first few review emails built from #116/#117.
+  Next check: read the first few review emails built from #116/#117. #118 checked
+  2026-11-09: the `review_snapshots` rows for 11-06 to 11-09 all carry a `sent_id`.
 - **Public rollups:** only ibuild4you `2026-05-18` is unpublished — a deliberate skip that
   reappears in every future draft by design.
 - **#48 residual, settled (Nico, 2026-11-04): leave it.** The "8am" cron is `0 15 * * *`,
   8am Pacific in summer and 7am in winter; Vercel crons are UTC-only. Not a bug.
-- Open issues (2026-11-05): **#43** sign-ins panel (gated on a second
+- Open issues (checked 2026-11-09): **#43** sign-ins panel (gated on a second
   reader), **#9** beacon fan-out (prntd asked via handoff 2026-11-03), **#85** localize
   second language. Closed: #49 2026-11-03 (all four batches), #51 by the unmapped-costs PR,
-  #91 Neon fees 2026-11-04, #14 design tokens 2026-11-05.
+  #91 Neon fees and #109 beacon navigations 2026-11-04, #14 design tokens 2026-11-05.
+- **WindowServer crash on the laptop, 2026-11-09 15:55 PST: cause still open.** WindowServer
+  held 64,414 of about 65,500 IOSurfaces (the kernel's own tally, ten seconds before the
+  abort) and died on a 390x844 window capture requested by Playwright's WebKit build.
+  Headless WebKit and Edge runs did not reproduce any growth on the fresh WindowServer with
+  the display on. The system log shows about 226,000 failed IOSurface lookups from
+  WindowServer that day, only while the display was on and before any Playwright run. Two
+  suspects remain: a WindowServer fault unrelated to tests, or WebKit window captures made
+  while the display is off (unattended suites ran from 13:31 to the crash with the display
+  off). Interim guidance sent to the other sessions: Edge and Chromium unrestricted, no
+  unattended WebKit suites. Gauge: `ioclasscount IOSurface` (a few hundred is normal).
+  Evidence: `~/.claude/state/prompt-lab/windowserver-crash-2026-11-09/`. Not yet done: a
+  display-off repeat of the measurement, a Feedback Assistant report, a recurring logger.
+- **Playwright 1.60.0 cannot install on GitHub's ubuntu-26.04 runners (2026-11-09).**
+  `ubuntu-latest` moved; 1.62.1 and later install fine. Red: split-recording, musicforge,
+  prntd; bakerylouise-v1 fails on its next run. Each was told via handoff to bump Playwright
+  (stopgap: `runs-on: ubuntu-24.04`). prompt-lab's CI runs no Playwright.
 - **Unmapped API spend (#51, 2026-11-03).** The Admin API workspace list is the source of
   workspace names: the August "assumed prompt-lab" workspace is recountly (→ raconte), the
   one unmapped workspace was byside, and elusion was mapped ahead of its first spend. A new
