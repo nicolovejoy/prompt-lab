@@ -63,7 +63,7 @@ It inserts the entry at the **top** of `## Active`. When an entry is acted on, m
 
 Docs-only commits go straight to `main`. Code goes through a `claude/<desc>` branch and a squash-merged PR; Nico merges.
 
-Before opening a code PR, have a fresh subagent that never saw the conversation review the diff against `REVIEW.md`, and post its findings as a PR comment. Two rounds at most; the second reads only the new diff.
+Before opening a code PR, write the diff to a file and dispatch the `reviewer` agent (`.claude/agents/reviewer.md`) on it. It reads `REVIEW.md` and never saw the conversation. Post its findings as a PR comment. Two rounds at most; the second reads only the new diff.
 
 `gh pr create --body` skips `.github/pull_request_template.md`, so write its headings into the body: Testing, Risk, How to undo, Review.
 
