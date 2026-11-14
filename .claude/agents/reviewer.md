@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Reviews a diff against REVIEW.md with fresh context. Use before opening a code PR. Give it the path of a file holding the diff and, on a later round, the earlier findings.
+description: Reviews a diff against REVIEW.md with fresh context. Use before opening a code PR. Run `git fetch origin main`, write `git diff origin/main...HEAD` to a file outside the repo and pass its path. On a later round, pass the diff since the reviewed commit plus the earlier findings.
 tools: Read, Grep, Glob
 model: sonnet
 ---

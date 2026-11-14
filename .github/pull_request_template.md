@@ -10,4 +10,4 @@
 <!-- A git revert is enough only when nothing outside git changed. If this writes to Turso, runs a backfill, or changes a Vercel env var, a launchd plist or an installed copy under ~/.claude, say how each is put back. -->
 
 ## Review
-<!-- The count line from the fresh-context review against REVIEW.md, and what was fixed or declined. -->
+<!-- The count line from the fresh-context review against REVIEW.md, what was fixed or declined, and anything still open after round two. -->
