@@ -59,6 +59,14 @@ This repo coordinates with peer repos (selected-projects, prntd) via an append-o
 
 It inserts the entry at the **top** of `## Active`. When an entry is acted on, move it under `## Archived` with a one-line outcome (a normal Edit), then `~/.claude/bin/handoff.sh sync`. Exit codes: 0 ok · 3 conflict (kept local, resolve in `~/src/.handoff`) · 4 offline (kept local, re-run `sync` later) · 5 lock contention · 6 repo unwritable (no writable root over `~/src/.handoff`, not a lock). Design + 26/26 pressure test: `docs/handoff-repo-plan.md`, `workflow/handoff-sim/`.
 
+## Landing a change
+
+Docs-only commits go straight to `main`. Code goes through a `claude/<desc>` branch and a squash-merged PR; Nico merges.
+
+Before opening a code PR, have a fresh subagent that never saw the conversation review the diff against `REVIEW.md`, and post its findings as a PR comment. Two rounds at most; the second reads only the new diff.
+
+`gh pr create --body` skips `.github/pull_request_template.md`, so write its headings into the body: Testing, Risk, How to undo, Review.
+
 ## Next Steps
 
 Shipped work is in git and in the code. What follows is only what isn't:
