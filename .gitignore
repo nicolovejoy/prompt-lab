@@ -10,7 +10,8 @@ __pycache__/
 synthesizer.env
 reports/
 .DS_Store
-.claude/
+.claude/*
+!.claude/agents/
 .playwright-mcp/
 .vercel
 .env*

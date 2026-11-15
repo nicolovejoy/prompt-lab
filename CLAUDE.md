@@ -38,7 +38,7 @@ cache would show remembered state as current. Icons are generated from
 - `/ask` queries the knowledge store with natural language
 - `workflow/` — slash commands (`commands/`), hooks, and `statusline-command.sh` (copy to `~/.claude/`)
 - **Data & access model: see `docs/data-and-access.md`** — the single coherent description of the three storage tiers (raw/private, processed/private, public), how public vs private is differentiated, the two-tier cloud auth, and how secrets grant access. Read it first when reasoning about what's stored where or who can see it.
-- `web/api/public_history.py` — unauthenticated `GET /api/public_history?project=<name>` for portfolio About pages. No read-time allowlist: it serves whatever rows exist in `public_session_summaries` / `public_weekly_rollups`, which are safe-by-construction (written only by the reviewed, git-committed draft-to-artifact flow — `scripts/draft_public_refresh.py` → human review → `scripts/publish_public_draft.py`, plus the original `scripts/backfill_public_*.py` one-shots — never by `/handoff`, the synthesizer, or raw sync). The allowlist (`docs/public-allowlist.txt`) is a 9-key **write-time publish gate**, not a read gate — `publish_public_draft.py` refuses to publish an off-list project, and `check_public_allowlist.py` audits published rows against it. Current keys: `bakerylouise, ibuild4you, musicforge, prntd, prompt-lab, raconte, selected-projects, showcase, songscribe` (`raconte` added 2026-10-17; `am-i-an-ai` dropped 2026-07-21 when the site removed lojong and its rows were unpublished). The table `project` column is the consumer's historyKey, NOT the display slug. The invariant to preserve is "never write un-scrubbed text into the public_* tables." Curation of *which* projects appear publicly is the consumer's job — the `selected-projects` MDX manifest (`content/projects/*.mdx`) is the single source of truth for the public site. Unknown project → empty `200`. **Read-time counts projection (2026-07-21):** for a project with `project_metadata.public_counts=1`, the endpoint additionally overlays counts-only weekly rows projected from the private `weekly_rollups` (numeric columns only — no prose can leak) on weeks lacking a published prose row. Opt in via `scripts/seed_public_counts.py`.
+- `web/api/public_history.py` — unauthenticated `GET /api/public_history?project=<name>` for portfolio About pages. No read-time allowlist: it serves whatever rows exist in `public_session_summaries` / `public_weekly_rollups`, which are safe-by-construction (written only by the reviewed, git-committed draft-to-artifact flow — `scripts/draft_public_refresh.py` → human review → `scripts/publish_public_draft.py`, plus the original `scripts/backfill_public_*.py` one-shots — never by `/handoff`, the synthesizer, or raw sync). The allowlist (`docs/public-allowlist.txt`) is a 10-key **write-time publish gate**, not a read gate — `publish_public_draft.py` refuses to publish an off-list project, and `check_public_allowlist.py` audits published rows against it. Current keys: `anomatom, bakerylouise, ibuild4you, musicforge, prntd, prompt-lab, raconte, selected-projects, showcase, songscribe` (`anomatom` added 2026-11-02; `raconte` added 2026-10-17; `am-i-an-ai` dropped 2026-07-21 when the site removed lojong and its rows were unpublished). The table `project` column is the consumer's historyKey, NOT the display slug. The invariant to preserve is "never write un-scrubbed text into the public_* tables." Curation of *which* projects appear publicly is the consumer's job — the `selected-projects` MDX manifest (`content/projects/*.mdx`) is the single source of truth for the public site. Unknown project → empty `200`. **Read-time counts projection (2026-07-21):** for a project with `project_metadata.public_counts=1`, the endpoint additionally overlays counts-only weekly rows projected from the private `weekly_rollups` (numeric columns only — no prose can leak) on weeks lacking a published prose row. Opt in via `scripts/seed_public_counts.py`.
 - `project_aliases` table + `scripts/alias.py` CLI — project renames are non-destructive: aliases stay in the table, rows keep their original `project` value, and every read expands `WHERE project = ?` into `WHERE project IN (canonical, …aliases)` via `store.expand_project()` / `web.turso_helper.resolve_project_names()`. Run `python scripts/alias.py add <old> <new>` to alias; run `python sync_to_turso.py` to propagate to the cloud dashboard. Design rationale in `docs/alias-layer-plan.md`.
 
 ## Machine label
@@ -58,6 +58,14 @@ This repo coordinates with peer repos (selected-projects, prntd) via an append-o
 ```
 
 It inserts the entry at the **top** of `## Active`. When an entry is acted on, move it under `## Archived` with a one-line outcome (a normal Edit), then `~/.claude/bin/handoff.sh sync`. Exit codes: 0 ok · 3 conflict (kept local, resolve in `~/src/.handoff`) · 4 offline (kept local, re-run `sync` later) · 5 lock contention · 6 repo unwritable (no writable root over `~/src/.handoff`, not a lock). Design + 26/26 pressure test: `docs/handoff-repo-plan.md`, `workflow/handoff-sim/`.
+
+## Landing a change
+
+Docs-only commits go straight to `main`; `docs/public-allowlist.txt`, `workflow/commands/` and `.claude/agents/` count as code. Code goes through a `claude/<desc>` branch and a squash-merged PR; Nico merges.
+
+Before opening a code PR, dispatch the `reviewer` agent (`.claude/agents/reviewer.md`) on a diff file, as its description says. Open the PR, then post the review as a PR comment. Two rounds at most; the second reads only the new diff. Fix every Important; a Nit is optional.
+
+`gh pr create` with `--body` or `--body-file` skips `.github/pull_request_template.md`, so write all five of its headings into the body.
 
 ## Next Steps
 
@@ -202,7 +210,7 @@ earlier day's `sent_id` (COALESCE in the Turso upsert).
   reached Turso at all (week of 2026-10-19, found 10-27). `INSERT OR REPLACE` resets
   `created_at`, which is what makes it the write time.
 - **`/api/private_history` has no allowlist of its own** — any project, gated solely by
-  `SERVICE_HISTORY_KEY`. The 9-key allowlist is the *public* tier's write gate.
+  `SERVICE_HISTORY_KEY`. The 10-key allowlist is the *public* tier's write gate.
 - **Deep coverage over an autosuspending DB needs a poll interval longer than the
   suspend window**, not a deeper URL — else the check keeps the DB warm and reports
   that it answers. Cost garm and byside their Neon CU quota; filed in
