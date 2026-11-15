@@ -6,7 +6,7 @@ rules and follow the relevant pointers below rather than loading every plan.
 | Need | Read |
 | --- | --- |
 | Install or verify workflows | [README](../README.md), then `scripts/test_*.py` |
-| Why Codex is gone and what was removed | [Codex removal plan](remove-codex-plan.md) |
+| Why Codex is gone and what was removed | [Codex removal record](remove-codex-plan.md) |
 | Other current work and deferred decisions | [Current work](current-work.md) |
 | Cleanup scope and savings measurement | [Short cleanup plan](workflow-cleanup-plan.md) |
 | Storage, privacy, authentication | [Data and access](data-and-access.md) |
@@ -20,9 +20,7 @@ rules and follow the relevant pointers below rather than loading every plan.
 | Previous UI and plans | [Archived source](../archive/README.md), [archived plans](archive/README.md) |
 | Public publishing review trail | [Public drafts](../drafts/README.md) |
 
-Active external follow-ups: [copy review](copy-review-49.md),
-[selected-projects migration](selected-projects-api-migration.md).
-[Garm integration](garm-consumer-plan.md) is deferred pending a real second user.
+[Garm integration](garm-consumer-plan.md) is built and not rolled out.
 
 Keep current status in the linked owner document. Historical plans describe what
 was proposed then; unchecked boxes in them are not a fresh task list. When a plan

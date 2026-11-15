@@ -54,6 +54,13 @@ Scheduled CI is also absent. Nothing here runs on a schedule (`test.yml` is push
 
 - **UptimeRobot** (immediate alerting, independent infra) — one monitor per app, pointed at the deep URL where one exists, homepage otherwise. A homepage-200 check can pass while the backend is dead; upgrade the monitor URL when the app adopts this convention.
 - **Daily summary email** — `web/api/health_report.py` (issue #34), triggered by Vercel cron, polls the `TARGETS` list in that module. Add new targets there as apps expose endpoints.
+  It opens with "What needs attention": one line per problem, marked NEW today, Day N or
+  Ongoing, or "nothing needs attention" on a clean run. The Turso `health_email_state` key
+  `reported_problems` holds {problem key: first lab day reported} for the last email sent.
+  Day N counts lab days the problem has existed, the first being Day 1: a stale artifact
+  counts from the day after it last landed, a bad night from the night itself. Dry runs and
+  paused runs neither read nor write the key. A failed read still sends, marks nothing NEW
+  and skips the write; the write happens only after a successful send.
 
 ## Why alerting is external
 
