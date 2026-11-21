@@ -80,6 +80,14 @@ run allow 'grep -E "(alpha|beta).*" README.md'
 run allow 'grep -E "<.*>" README.md'
 run allow 'rg "TODO|.*FIXME" src'
 run allow 'git log --oneline -5 --grep="(a|b).*" | head -3'
+run allow 'grep -E ".*(foo|bar)" README.md'
+run allow 'grep -rn -i -E "^#+ .*(step|runbook)|^[0-9]+\. " README.md | head -60'
+run allow 'grep -n "def a\|for .* in .*stub\|etag" README.md | head'
+run allow "awk '/^### .*(x|y) *z/{print}' README.md"
+run allow 'echo "$PWD" && grep -E "a .* b" README.md'
+run allow 'grep -E "a|.*|.*|b" README.md'
+run allow 'sed -E "s/(.*?)x/y/" README.md'
+run allow 'cp .env.local ~/bk/. && ls'
 run allow 'echo "run env or printenv yourself" && op run --env-file=.env.tpl -- pnpm dev'
 run allow 'ls ~/secrets | grep firebase'
 
@@ -114,6 +122,7 @@ run block 'git commit -m "docs: never cat .env in a session"'
 run block "git commit -m 'op read is blocked; so is cat .env.local'"
 run block 'git commit -m "never cat ~/secrets/x.json"'
 run block 'gh pr comment 5 --body "the hook blocks op item get on purpose"'
+run block 'mv .env.local .env.bak && echo "tail restored"'
 run block '~/.claude/bin/handoff.sh append x.md "### 2026-11-21 a → b: note
 
 Use op read sparingly, and never cat .env. It'"'"'s a rule."'
@@ -125,6 +134,47 @@ run block 'cat .e*'
 run block 'cat .*'
 run block 'wc -l < .e*'
 run block "perl -ne 'print' .e*"
+run block 'cat .*|head'
+run block 'echo "$PWD"; cat .e*; echo "x"'
+run block 'cat "$a" .* "$b"'
+run block "echo \"it's\"; cat .e*; echo 'x'"
+run block 'echo "$a"; read -r k < .env; echo "$k"'
+run block 'wc -l < ".env"'
+
+echo "# must BLOCK: a quoted wildcard that another shell or tool expands"
+run block 'ssh mini "ls; cat .e*"'
+run block "bash -c 'echo hi; cat .e*'"
+run block 'eval "true; cat .e*"'
+run block 'ssh mini "cat .*"'
+run block 'sh -c "cat .*"'
+run block 'cat "x" .* "y"'
+run block "echo \"it's\"; cat .*; echo 'x'"
+run block 'echo "$(date)" ".*"; cat .*'
+run block "git grep --no-index KEY '.e*'"
+run block "python3 -c \"import glob; print([open(f).read() for f in glob.glob('.e*')])\""
+
+echo "# must BLOCK: a quoted .* in a string that holds a reader, whatever runs it"
+run block "awk 'BEGIN{system(\"cat .*\")}'"
+run block "git -c alias.x='!cat .*' x"
+run block "\$SHELL -c 'echo hi; cat .*'"
+run block "python3 -c \"import os; os.system('cat .*')\""
+run block "tmux send-keys 'head -3 .*' Enter"
+run block 'grep -E "tail .*" notes.md'
+
+echo "# must BLOCK: a quoted string that is exactly .* is a whole argument"
+run block "git grep --no-index KEY '.*'"
+run block "ssh mini cat '.*'"
+
+echo "# must BLOCK: a comment after an operator hides a quote mark"
+run block "true &# it's
+cat .*
+echo 'x'"
+run block "(# it's
+cat .*; echo 'x')"
+
+echo "# must ALLOW: a quoted pattern inside an interpreter's own string"
+run allow "python3 -c \"import re; print(re.sub('(.*)', 'x', 'abc'))\""
+run allow "echo \"a <.*> b\" | grep -c '<.*>'"
 
 echo "# must BLOCK: a reader inside a string that something runs"
 run block 'sh -c "cat .env"'
@@ -217,6 +267,10 @@ cat .e*
 # don'"'"'t print it'
 run block "echo \\' ; cat .e* ; echo \\'"
 run block "echo \$'\\'' ; cat .e* ; echo \$'\\''"
+run block '# it'"'"'s the project env
+cat .*
+# don'"'"'t print it'
+run block "echo \\' ; cat .* ; echo \\'"
 
 echo "# must BLOCK: a here-string is not a heredoc"
 run block 'grep -q x <<<y

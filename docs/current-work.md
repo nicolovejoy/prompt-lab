@@ -5,12 +5,11 @@ Trimmed 2026-11-14; the long version is this file's git history.
 
 ## Open
 
-- **`block-secrets.sh` does not parse quotes, on purpose (2026-11-21).** A quoted commit message, note or PR body that mentions a reader command, an `op` command or a secret file is blocked; pass it by heredoc or from a file. A quote-aware version was built and dropped (PR #122's first three commits): two review rounds each found ways past its parser, and on 6,000 real commands the simple version cleared more false blocks.
+- **`block-secrets.sh` does not parse quotes, on purpose (2026-11-21).** A quoted commit message, note or PR body that mentions a reader command, an `op` command or a secret file is blocked; pass it by heredoc or from a file. A quote-aware version was built and dropped (PR #122's first three commits): two review rounds each found ways past its parser, and on 6,000 real commands it cleared no more false blocks than the simple version. A second attempt cut quoted text out with `sed` before expanding wildcards; review showed mis-paired quote marks hid unquoted words. What shipped expands every word, as before, and drops only a bare `.*` split out of a quoted search pattern. A small scanner (`mark_quoted_stars`) decides that: the quoted string must hold no reader verb and must not be exactly `.*`, and anything unusual (a `#`, a backslash, a backtick, `$(` inside double quotes) turns the exception off. What it gives up against the old hook: a quoted `.*` that is expanded later by something whose string names no reader, such as `python3 -c "glob.glob('.*')"`.
 - **`block-secrets.sh` still lets these through (found 2026-11-21; none is new).**
   - A heredoc fed to a shell or interpreter (`bash <<EOF`, `python3 <<EOF`) is treated as file contents, so a reader inside it is not seen. `strip_heredocs` also drops the rest of the line after `<<TAG` and takes a `<<` inside quotes for a heredoc.
   - A secret file reached through a variable (`F=.env; cat "$F"`) is not classified.
   - A recursive read that names no file: `grep -rn KEY .`, and its twin with a catch-all pattern, `find . -name "*" -exec cat {} +`.
-  - A wildcard inside inline code (`python3 -c "... glob('.e*') ..."`). The old hook caught it only by expanding every quoted word.
   - A file printed by a command that is not on the reader list: `cp .env /dev/stdout`, `diff`, `jq -R`, `dd`, `tac`, `nl`, `paste`, `git diff --no-index`. Also a reader the list cannot see: `$(which cat) .env`, `{cat,.env}`.
   - `echo "$CMD" | grep -q` under `pipefail` can die of SIGPIPE on a command of tens of KB and read as no match.
   - The hook's test is not in CI: it needs `jq`, and the hook's `grep` and `sed` use is only proven on macOS.

@@ -18,9 +18,9 @@
 # Quotes: the hook does not parse the shell. A reader verb, an op command or the
 # name of a secret file counts wherever it is written, inside quotes or not, so
 # a quoted commit message or note that mentions one is blocked. Pass such text
-# by heredoc (heredoc bodies are not scanned) or from a file. The one thing
-# quotes change is wildcards: only words outside quotes are expanded, because a
-# quoted .* is a search pattern and expanding it here would name the env file.
+# by heredoc (heredoc bodies are not scanned) or from a file. Every word is also
+# expanded as a wildcard, quoted or not, with one exception: a bare .* inside
+# a quoted search pattern, which is not a file list (see mark_quoted_stars).
 
 set -euo pipefail
 
@@ -123,17 +123,49 @@ strip_heredocs() {
   '
 }
 
-# The command with quoted text cut out, on one line. Crude on purpose: it only
-# decides which words may be expanded as wildcards. A double-quoted span holding
-# $ or a backtick is kept, since the shell still runs what is inside it. Where
-# a quote mark may not be a quote mark (a comment, an escaped quote, $'...'),
-# nothing is cut and every word is expanded, as the hook always did.
-unquoted() {
-  if printf '%s' "$1" | grep -qE "(^|[[:space:];])#|\\\\['\"\`]|\\\$'"; then
-    printf '%s' "$1" | tr '\n' ' '
-  else
-    printf '%s' "$1" | tr '\n' ' ' | sed -E "s/'[^']*'/ /g; s/\"[^\"\$\`]*\"/ /g"
-  fi
+# The reader verbs: commands whose output can carry a file's contents.
+VERBS='cat|head|tail|less|more|bat|sed|awk|grep|rg|ag|source|xxd|strings|base64|od|hexdump|cut|tr|sort|uniq|wc|python3?|node|ruby|perl'
+
+# Mark every * inside a quoted string that reads as a search pattern (as the
+# byte \001). Reads the command on stdin. A quoted string is NOT a pattern, and
+# keeps its stars, when it holds a reader verb (it may be a command something
+# runs: sh -c "cat .*", awk system("cat .*")) or is exactly .* (a whole
+# argument: a file pattern or pathspec). Pairs quote marks the way the shell
+# does in the plain cases and gives up on the rest, printing the input
+# unchanged: a # , backslash, backtick or $'...' outside quotes, a $( ${ or
+# backtick inside double quotes, quotes that do not balance. Giving up costs
+# nothing but the exception in words_to_expand.
+mark_quoted_stars() {
+  LC_ALL=C awk -v sq="'" -v dq='"' -v verb="(^|[^A-Za-z0-9_])($VERBS)[ \t\n]" '
+    { all = all $0 "\n" }
+    END {
+      n = length(all); q = ""; out = ""; seg = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(all, i, 1); d = substr(all, i + 1, 1)
+        if (q == "") {
+          if (c == "\\" || c == "`" || c == "#" || (c == "$" && d == sq)) { printf "%s", all; exit }
+          if (c == sq || c == dq) { q = c; seg = "" }
+          out = out c; continue
+        }
+        if (q == dq && c == "\\") { seg = seg c d; i++; continue }
+        if (q == dq && (c == "`" || (c == "$" && (d == "(" || d == "{")))) { printf "%s", all; exit }
+        if (c != q) { seg = seg c; continue }
+        if (seg !~ /^\.\*\??$/ && seg !~ verb) gsub(/\*/, "\001", seg)
+        out = out seg c; q = ""
+      }
+      printf "%s", (q == "") ? out : all
+    }'
+}
+
+# The words of a command that may be expanded as wildcards, one per line: all
+# of them, as the hook always did, except a bare .* (or .*?) that
+# mark_quoted_stars marked. "(a|b).*" and "for .* in x" are search patterns;
+# expanded here, that .* would name the env file and block every such search.
+# Nothing else is exempt: a quoted .e* still expands, since a tool or a second
+# shell may expand it too.
+words_to_expand() {
+  printf '%s\n' "$1" | mark_quoted_stars | tr '"'"'"'`|;&()<>' '          ' | tr -s ' \t' '\n\n' \
+    | { grep -vxE $'\\.\001\\??' || true; } | tr '\001' '*'
 }
 
 # Classify one word from the command line: return 0 if it names a secret file.
@@ -206,10 +238,10 @@ cmd_mentions_secret_file() {
   fi
   set +f
   [ "$found" -eq 0 ] && return 0
-  # Words outside quotes, expanded as the shell would expand them: `cat .e*`
-  # names .env. The hook runs in the session's directory, so this matches.
-  # shellcheck disable=SC2086
-  for tok in $(unquoted "$cmd" | tr '"'"'"'`|;&()<>' '          ' | tr -s ' ' '\n'); do
+  # Every word again, expanded as a wildcard: `cat .e*` names .env. The hook
+  # runs in the session's directory, so this matches what the shell would do.
+  # shellcheck disable=SC2046
+  for tok in $(words_to_expand "$cmd"); do
     if word_names_secret "$tok"; then return 0; fi
   done
   return 1
@@ -268,15 +300,17 @@ case "$TOOL" in
     # --- secret files on the command line ---
     # A reader verb anywhere + a secret-classified file token anywhere = block.
     # The verb may follow a quote mark or backtick (sh -c "cat x"), a backslash
-    # (\cat), a path (/bin/cat) or a shell-escape bang.
+    # (\cat), a path (/bin/cat) or a shell-escape bang. The "." verb (source)
+    # may not: after a slash it is a path ending in "/.".
     # Writers (cp, mv, touch, test -f, op inject -o) with no reader verb pass.
-    READER='(^|[|;&(!\\/"`'"'"']|\s)(cat|head|tail|less|more|bat|sed|awk|grep|rg|ag|source|xxd|strings|base64|od|hexdump|cut|tr|sort|uniq|wc|python3?|node|ruby|perl|\.)\s'
+    READER='((^|[|;&(!\\/"`'"'"']|\s)('"$VERBS"')|(^|[|;&(]|\s)\.)\s'
     if echo "$CMD" | grep -qE "$READER" 2>/dev/null && cmd_mentions_secret_file "$CMD"; then
       block "Shell command reads a secret file"
     fi
     # Redirect-in from a secret file: < .env, < .env.local, <.env
-    # Outside quotes only: a quoted <.*> is a pattern. Stops at ) for $(<file).
-    for tok in $(unquoted "$CMD" | grep -oE '<\s*[^ <>|;&)]+' | sed -E 's/^<\s*//' || true); do
+    # A quoted <.*> is a pattern, not a redirect. Stops at ) for $(<file).
+    for tok in $(printf '%s\n' "$CMD" | mark_quoted_stars | grep -oE '<\s*[^ <>|;&)]+' | sed -E 's/^<\s*//' | { grep -vE $'^\\.\001\\??[\"\']?$' || true; } | tr '\001' '*' || true); do
+      tok="${tok//[\"\']/}"
       if is_secret_file "$tok"; then block "Shell command reads a secret file via redirect"; fi
     done
 
