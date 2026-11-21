@@ -5,8 +5,9 @@ Trimmed 2026-11-14; the long version is this file's git history.
 
 ## Open
 
-- **Review kit.** PR open, branch `claude/review-kit`: a read-only reviewer agent, a "Landing a change" section for CLAUDE.md and a PR template. After the merge, start a new session and confirm the `reviewer` agent dispatches by name.
-- **elusion's bulletin ask (handoff 2026-11-06).** A new `op://` reference in `.env.tpl` comes with an `op item create` command. Not yet answered.
+- **Review kit.** Merged as #120. The `reviewer` agent is registered in new sessions; its first real dispatch is still to come.
+- **ear-worm is on Fossil (handoff 2026-11-20).** `/handoff` records zero commits there and never reports uncommitted work. Needs a Fossil branch in `/handoff`; `/readup`'s sync step is unchecked.
+- **l6-music's size reminder (handoff 2026-11-18).** `readup-checks.sh` prints a `CLAUDE_SIZE=` line and `/readup` mentions it above a threshold, counting a repo's own text apart from the synced block.
 - **Review emails after the design pass.** Read a few built since 2026-11-05 and judge the layout.
 - **ntz-conveyor in `~/src/mini-rescue/`.** Kept until person-tracking confirms its gitignored `db.sqlite3` data lives elsewhere (asked 2026-11-03).
 - **Open issues:** #43 sign-ins panel (waits on a second reader), #9 beacon fan-out, #85 second language for `/localize`.
@@ -29,7 +30,7 @@ repos through handoff. Loop Phase B is live (2026-10-31). The reader-side design
 
 ## How-to
 
-- **New 1Password item.** Create its secret field with the literal placeholder `replace-this-value`; Nico pastes the real value in 1Password.
+- **New 1Password item.** Hand Nico the `op item create` command, with the secret field set to the literal placeholder `replace-this-value`; he pastes the real value in 1Password. Full rule: `BULLETIN.md`, 2026-11-20.
 - **Unmapped API spend.** A new workspace lands as `__unmapped__` and the health email says so. Add it to `scripts/seed_project_workspaces.py`, run that with `--remap`, then run a FULL `sync_to_turso.py`: the nightly `--days 7` sync never carries older remapped rows.
 - **Neon compute per project, this month.** `neonctl projects get <id> --org-id org-spring-cherry-36158724`.
 - **Before deleting a rescued checkout,** run `git status --ignored`. A clean `git status` is not "nothing unique".
