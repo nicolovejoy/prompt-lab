@@ -222,6 +222,21 @@ def test_damaged_git_and_partial_install(tmp):
         check(f"{sub[0]}: git exit 128 under a .git entry exits 2 with no answer",
               (rc, out, ".git entry" in err), (2, "", True))
 
+    # A branch ref emptied by a crash mid-write: git still sees a work tree, but
+    # the history cannot be read. That is not "no commits yet".
+    broken = tmp / "broken-ref"
+    broken.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=broken, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "one"], cwd=broken,
+                   check=True, capture_output=True, env={**os.environ, **IDENT})
+    branch = subprocess.run(["git", "symbolic-ref", "--short", "HEAD"], cwd=broken,
+                            capture_output=True, text=True, check=True).stdout.strip()
+    (broken / ".git" / "refs" / "heads" / branch).write_text("")
+    check("the emptied ref still looks like a git checkout", run(broken, "kind")[:2], (0, "git\n"))
+    rc, out, err = run(broken, "commits-since", "2026-11-20 11:00:00")
+    check("commits-since on a corrupt branch ref exits 4 with no rows",
+          (rc, out, "git log failed" in err), (4, "", True))
+
     # gc-vcs.sh copied alone, as a stale ~/.claude/bin would hold it.
     alone = tmp / "bin"
     alone.mkdir()

@@ -52,10 +52,11 @@ git_entry_above() {
   return 1
 }
 
-# Sets KIND. Mirrors gc_resolve_project: only git's exit 128 ("not a git
-# repository") moves on to Fossil or `none`. A git that fails any other way is an
-# error, never a quiet "none". Git also answers 128 for a damaged repository and
-# for "dubious ownership", so 128 with a .git entry above is an error too.
+# Sets KIND. Like gc_resolve_project, only git's exit 128 ("not a git
+# repository") moves on to Fossil or `none`, and a git that fails any other way
+# is an error. Stricter than the resolver in one way: git also answers 128 for a
+# damaged repository, a stale worktree gitfile and "dubious ownership", so here
+# 128 with a .git entry above is an error too, where the resolver says `scratch`.
 detect_kind() {
   local rc=0
   KIND=none
@@ -118,10 +119,16 @@ case "$CMD" in
     detect_kind || exit $?
     case "$KIND" in
       git)
-        # A repository with no commits yet has nothing to list, and `git log`
-        # would exit 128 there.
-        git rev-parse --verify -q HEAD >/dev/null 2>&1 || exit 0
-        out="$(git log --since="${since}Z" --format='%H|%ct|%s' 2>&1)" || { echo "gc-vcs: git log failed: $out" >&2; exit 4; }
+        # LC_ALL=C pins the one message exempted below. A repository with no
+        # commits yet has nothing to list. Every other `git log` failure,
+        # a corrupt branch ref included, stays "could not read".
+        out="$(LC_ALL=C git log --since="${since}Z" --format='%H|%ct|%s' 2>&1)" || {
+          case "$out" in
+            *"does not have any commits yet"*) exit 0 ;;
+          esac
+          echo "gc-vcs: git log failed: $out" >&2
+          exit 4
+        }
         if [ -n "$out" ]; then printf '%s\n' "$out"; fi
         ;;
       fossil)
