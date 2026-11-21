@@ -776,6 +776,57 @@ def test_session_id_from_before_git_init_still_works(tmp: Path) -> None:
           [(None,)])
 
 
+def test_fossil_checkout_is_its_own_project(tmp: Path) -> None:
+    """A Fossil checkout is a project, not `scratch`.
+
+    git answers 128 inside one, so ear-worm's first session and its 11 prompts
+    were filed under `scratch` and no `ear-worm` project existed (2026-11-20).
+    The marker Fossil writes at a checkout root names the project. No `fossil`
+    binary is involved, so neither is one needed here.
+    """
+    print("\n24. a Fossil checkout resolves to its own project, not scratch")
+    e = Env(tmp)
+
+    for marker in (".fslckout", "_FOSSIL_"):
+        name = "ear-worm" if marker == ".fslckout" else "old-checkout"
+        root = tmp / "fossil" / name
+        deep = root / "Sources" / "App"
+        deep.mkdir(parents=True)
+        (root / marker).write_text("")
+
+        for label, where in (("root", root), ("subdirectory", deep)):
+            e.submit(f"a prompt from the {label} of a {marker} checkout", cwd=where)
+            check(f"hook: {marker} checkout {label} names the project",
+                  e.q("SELECT project FROM prompts ORDER BY id DESC LIMIT 1")[0][0], name)
+            check(f"gc-read project from a {marker} checkout {label}",
+                  e.gc(GC_READ, "project", cwd=where), name)
+
+        e.gc(GC_WRITE, "register-session", cwd=deep)
+        check(f"register-session in a {marker} checkout files under the project",
+              e.q("SELECT project FROM sessions ORDER BY id DESC LIMIT 1")[0][0], name)
+
+    # A directory that merely sits beside a checkout is still scratch.
+    loose = tmp / "fossil" / "not-a-checkout"
+    loose.mkdir()
+    e.submit("a prompt from a plain directory next to a Fossil checkout", cwd=loose)
+    check("a plain directory beside a checkout still buckets to scratch",
+          e.q("SELECT project FROM prompts ORDER BY id DESC LIMIT 1")[0][0], "scratch")
+    check("gc-read project there is scratch too",
+          e.gc(GC_READ, "project", cwd=loose), "scratch")
+
+    # Git wins when a Fossil marker sits inside a git repo: one rule, no surprises.
+    (e.cwd / ".fslckout").write_text("")
+    check("a git repo holding a Fossil marker is still named by git",
+          e.gc(GC_READ, "project", cwd=e.cwd), PROJECT)
+
+    # Drift guard: the hook carries the walk inline, the helper as a function.
+    hook = HOOK.read_text()
+    helper = (ROOT / "workflow" / "bin" / "_gc_project.sh").read_text()
+    for marker in (".fslckout", "_FOSSIL_"):
+        check(f"hook looks for {marker}", f'/{marker}"' in hook, True)
+        check(f"helper looks for {marker}", f'/{marker}"' in helper, True)
+
+
 def main() -> int:
     # The hook is bash and shells out; skip rather than fail red if the runner
     # lacks a dependency. A skip is honest; a red CI for an env reason is noise.
@@ -808,6 +859,7 @@ def main() -> int:
         test_quoted_project_and_stop,
         test_scratch_row_closes_once_the_conversation_has_a_repo,
         test_session_id_from_before_git_init_still_works,
+        test_fossil_checkout_is_its_own_project,
     ]
     for t in tests:
         with tempfile.TemporaryDirectory() as d:

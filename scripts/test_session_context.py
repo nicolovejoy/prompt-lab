@@ -8,6 +8,7 @@ import datetime
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -168,6 +169,54 @@ with tempfile.TemporaryDirectory() as td:
         "handoff: M==0 no headlines listed",
         "FRESH_HEADLINE_ONE" not in out3 and "FRESH_HEADLINE_TWO" not in out3 and "STALE_HEADLINE" not in out3,
     )
+
+# 6. A Fossil checkout under ~/src gets start context too. It used to get none:
+#    "not a git repo" was read as "not a project" (ear-worm, 2026-11-20). Runs
+#    against a fake `fossil` and a temp HOME, so CI needs no Fossil.
+with tempfile.TemporaryDirectory() as td:
+    home = pathlib.Path(td).resolve() / "home"
+    checkout = home / "src" / "ear-worm"
+    checkout.mkdir(parents=True)
+    (checkout / ".fslckout").write_text("")
+    plain = home / "src" / "just-a-folder"
+    plain.mkdir()
+    fakebin = home / "fakebin"
+    fakebin.mkdir()
+    fossil = fakebin / "fossil"
+    fossil.write_text(
+        "#!/bin/sh\n"
+        'case "$1" in\n'
+        "  timeline) printf '4ac5718d63 add the lyric view\\n14787350f3 initial empty check-in\\n"
+        "+++ no more data (2) +++\\n' ;;\n"
+        "  changes) printf 'EDITED     Sources/App.swift\\nEXTRA      .hidden\\n' ;;\n"
+        "esac\n"
+    )
+    fossil.chmod(0o755)
+    script = f"{REPO_DIR}/workflow/bin/session-context.sh"
+    env = dict(os.environ, HOME=str(home), PATH=f"{fakebin}:{os.environ['PATH']}",
+               HANDOFF_DIR=str(home / "no-handoff"))
+
+    r = subprocess.run([script], cwd=checkout, capture_output=True, text=True, env=env)
+    out = r.stdout
+    check("fossil: script exits 0", r.returncode == 0, r.stderr[-300:])
+    check("fossil: checkout gets context", "Project: ear-worm" in out, out[:300])
+    check("fossil: context says the checkout is Fossil", "Checkout: Fossil, not git." in out)
+    check("fossil: recent commits listed", "4ac5718d63 add the lyric view" in out)
+    check("fossil: timeline trailer is not a commit", "no more data" not in out)
+    check("fossil: uncommitted and untracked files listed",
+          "Uncommitted:\nEDITED     Sources/App.swift\nEXTRA      .hidden" in out)
+
+    silent = subprocess.run([script], cwd=plain, capture_output=True, text=True, env=env)
+    check("a plain folder under ~/src still gets nothing", silent.stdout == "")
+
+    bare = "/usr/bin:/bin"
+    if shutil.which("fossil", path=bare):
+        print("[SKIP] missing-fossil case: /usr/bin:/bin holds a fossil here")
+    else:
+        r = subprocess.run([script], cwd=checkout, capture_output=True, text=True,
+                           env=dict(env, PATH=bare))
+        check("fossil missing: says commits and files were NOT read",
+              "were NOT read" in r.stdout and "Recent commits:" not in r.stdout, r.stdout[:400])
 
 print()
 if failures:

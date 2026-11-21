@@ -33,12 +33,36 @@
 # repo — and adding it would mean a second, differently-shaped copy of the same
 # idea. Keep this one function as the only implementation on this side.
 #
+# FOSSIL CHECKOUTS (2026-11-20)
+# ---------------------------
+# A Fossil checkout is not a git repository, so git answers 128 and the work used
+# to land in `scratch`: ear-worm's first session and its 11 prompts did, and no
+# `ear-worm` project existed at all. Before bucketing to `scratch`, look for the
+# checkout marker Fossil writes at its root (`.fslckout`, or `_FOSSIL_` on older
+# and Windows checkouts) in the directory or any parent, and name the project
+# after that directory. No `fossil` binary is needed, so the name does not depend
+# on what is installed. Git still wins when both apply. log-prompt.sh carries the
+# same walk inline; scripts/test_session_identity.py holds the two in step.
+#
 # Callers use `set -euo pipefail`, so every git invocation is written so a
 # non-zero exit is captured rather than aborting the script.
 
+# Print the root of the Fossil checkout holding $1 (default $PWD); return 1 if none.
+gc_fossil_root() {
+    local d="${1:-$PWD}"
+    while [ -n "$d" ] && [ "$d" != "/" ] && [ "$d" != "." ]; do
+        if [ -f "$d/.fslckout" ] || [ -f "$d/_FOSSIL_" ]; then
+            printf '%s' "$d"
+            return 0
+        fi
+        d=$(dirname "$d")
+    done
+    return 1
+}
+
 gc_resolve_project() {
     local dir="${1:-$PWD}"
-    local repo_name="" git_common="" git_rc=0
+    local repo_name="" git_common="" git_rc=0 fossil_root=""
 
     if command -v git >/dev/null 2>&1 && [ -n "$dir" ]; then
         git_common=$(git -C "$dir" rev-parse --path-format=absolute \
@@ -46,7 +70,12 @@ gc_resolve_project() {
         if [ "$git_rc" -eq 0 ] && [ -n "$git_common" ]; then
             repo_name=$(basename "$(dirname "$git_common")")
         elif [ "$git_rc" -eq 128 ]; then
-            repo_name="scratch"
+            fossil_root=$(gc_fossil_root "$dir") || fossil_root=""
+            if [ -n "$fossil_root" ]; then
+                repo_name=$(basename "$fossil_root")
+            else
+                repo_name="scratch"
+            fi
         fi
     fi
 

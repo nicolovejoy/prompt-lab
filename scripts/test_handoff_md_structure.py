@@ -41,7 +41,17 @@ check("full handoff gathers whole-day context", "gc-read.sh today-context" in fu
 check("full handoff uses guarded persistence", "gc-write.sh save-daily-summary" in full)
 check("full handoff preserves revision and prose", "context_revision" in full and "existing_daily" in full)
 check("full handoff attributes the agent", '"model": "claude-code"' in full)
-check("maintenance retains protected size trim", "SHARED-CONVENTIONS" in maintenance and "stat -c %Y" in maintenance)
+check("maintenance retains protected size trim",
+      "SHARED-CONVENTIONS" in maintenance and "claude-md-size.sh" in maintenance and "claude-trim-" in maintenance)
+check("maintenance may run the size helper",
+      "Bash(~/.claude/bin/claude-md-size.sh:*)" in maintenance.split("---")[1])
+# /handoff reads the checkout through gc-vcs.sh so a Fossil checkout is not
+# recorded as "no commits, clean tree" (ear-worm, 2026-11-20).
+check("handoff reads uncommitted work through gc-vcs.sh", "gc-vcs.sh status" in content)
+check("handoff reads commits through gc-vcs.sh", 'gc-vcs.sh commits-since "<started_at>"' in content)
+check("handoff no longer calls git directly", "git status" not in content.split("do not run")[0] and "git log" not in content)
+check("handoff may run gc-vcs.sh", "Bash(~/.claude/bin/gc-vcs.sh:*)" in content.split("---")[1])
+check("handoff never records an unread checkout as zero", "Never record that as zero" in content)
 check("maintenance preserves public review gate", "Never run the publish step yourself" in maintenance)
 
 print()
