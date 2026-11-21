@@ -35,28 +35,20 @@ set -uo pipefail
 BIN_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
 # shellcheck source=./_gc_project.sh
 [ -f "$BIN_DIR/_gc_project.sh" ] && . "$BIN_DIR/_gc_project.sh"
-if ! command -v gc_fossil_root >/dev/null 2>&1; then
-  # A partial install under ~/.claude/bin. Without the helper a Fossil checkout
-  # would come out as `none` with exit 0.
+if ! command -v gc_fossil_root >/dev/null 2>&1 || ! command -v gc_git_entry_root >/dev/null 2>&1; then
+  # A partial install under ~/.claude/bin. Without the helper (or with an old
+  # one) a Fossil checkout or a damaged repository would come out as `none`
+  # with exit 0.
   echo "gc-vcs: $BIN_DIR/_gc_project.sh is missing or broken; the checkout was not read" >&2
   exit 2
 fi
-
-# Is there a .git entry in $PWD or any parent?
-git_entry_above() {
-  local d="$PWD"
-  while [ -n "$d" ] && [ "$d" != "/" ] && [ "$d" != "." ]; do
-    [ -e "$d/.git" ] && return 0
-    d=$(dirname "$d")
-  done
-  return 1
-}
 
 # Sets KIND. Like gc_resolve_project, only git's exit 128 ("not a git
 # repository") moves on to Fossil or `none`, and a git that fails any other way
 # is an error. Stricter than the resolver in one way: git also answers 128 for a
 # damaged repository, a stale worktree gitfile and "dubious ownership", so here
-# 128 with a .git entry above is an error too, where the resolver says `scratch`.
+# 128 with a .git entry above is an error too, where the resolver still names
+# the project.
 detect_kind() {
   local rc=0
   KIND=none
@@ -67,7 +59,7 @@ detect_kind() {
       echo "gc-vcs: git failed with exit $rc; the checkout was not read" >&2
       return 2
     fi
-    if git_entry_above; then
+    if gc_git_entry_root "$PWD" >/dev/null; then
       echo "gc-vcs: a .git entry exists here or above, but git cannot read it (exit 128); the checkout was not read" >&2
       return 2
     fi

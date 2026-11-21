@@ -167,8 +167,9 @@ earlier day's `sent_id` (COALESCE in the Turso upsert).
 - **`workflow/bin/_gc_project.sh` is the ONE project-resolution implementation** for
   `gc-read.sh`/`gc-write.sh` — never a second one. It mirrors `log-prompt.sh`:
   `--git-common-dir` (never `--show-toplevel`), only git exit 128 buckets to
-  `scratch`, never an empty name. On 128 it first looks for a Fossil checkout
-  marker (`.fslckout`, `_FOSSIL_`) and names the project after that directory.
+  `scratch`, never an empty name. On 128 it first looks for a `.git` entry
+  above (a repository git cannot read) or a Fossil checkout marker
+  (`.fslckout`, `_FOSSIL_`) and names the project after that.
 - **A checkout that cannot be read is never recorded as "no commits" or "clean".**
   `/handoff` reads git and Fossil through `workflow/bin/gc-vcs.sh`, where exit 0
   means the answer is complete and anything else means "could not read".

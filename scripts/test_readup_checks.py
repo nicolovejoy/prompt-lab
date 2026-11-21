@@ -179,6 +179,22 @@ exit "${FAKE_AUDIT_RC:-0}"
     check("Fossil checkout: the git-based resync is never due",
           "RESYNC=skip reason=not-a-git-repo due=no\n" in result.stdout, result.stdout)
     (repo / ".fslckout").unlink()
+    # git answers 128 for a repository it cannot read, too. With a .git entry
+    # above, that is "unreadable", never "not a git repo".
+    (repo / ".git").mkdir()
+    result = subprocess.run([str(SCRIPT)], cwd=repo / "scripts/deep",
+                            env=dict(env, FAKE_OUTSIDE="1"), capture_output=True,
+                            text=True, timeout=10)
+    check("unreadable repo: says unreadable, not not-a-git-repo",
+          "REMOTE=unreadable\n  git exit 128" in result.stdout
+          and "not-a-git-repo" not in result.stdout, result.stdout)
+    check("unreadable repo: worktrees, resync and CI are reported unchecked",
+          "WORKTREES=unavailable" in result.stdout
+          and "RESYNC=skip reason=repo-unreadable due=no\n" in result.stdout
+          and "CI_PROBE=skip reason=repo-unreadable\n" in result.stdout, result.stdout)
+    check("unreadable repo: the project is still named",
+          "PROJECT=prompt-lab\n" in result.stdout, result.stdout)
+    (repo / ".git").rmdir()
     check("no home state beyond the isolated sync fixture",
           list(home.iterdir()) == [home / ".claude"])
 

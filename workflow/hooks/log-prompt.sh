@@ -63,6 +63,10 @@ esac
 # to `scratch` walk up for the marker Fossil writes at a checkout root
 # (`.fslckout`, or `_FOSSIL_`) and name the project after that directory. The
 # same walk is gc_fossil_root() in workflow/bin/_gc_project.sh; keep them alike.
+#
+# git answers 128 for a repository it cannot read, too (a damaged .git, a
+# linked worktree whose record was pruned). A .git entry here or above means a
+# real project, named as gc_git_entry_name() in _gc_project.sh names it.
 REPO_NAME=""
 if command -v git >/dev/null 2>&1 && [ -n "$CWD" ]; then
     GIT_COMMON=$(git -C "$CWD" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
@@ -71,14 +75,33 @@ if command -v git >/dev/null 2>&1 && [ -n "$CWD" ]; then
         REPO_NAME=$(basename "$(dirname "$GIT_COMMON")")
     elif [ "$GIT_RC" -eq 128 ]; then
         REPO_NAME="scratch"
-        FOSSIL_DIR="$CWD"
-        while [ -n "$FOSSIL_DIR" ] && [ "$FOSSIL_DIR" != "/" ] && [ "$FOSSIL_DIR" != "." ]; do
-            if [ -f "$FOSSIL_DIR/.fslckout" ] || [ -f "$FOSSIL_DIR/_FOSSIL_" ]; then
-                REPO_NAME=$(basename "$FOSSIL_DIR")
-                break
-            fi
-            FOSSIL_DIR=$(dirname "$FOSSIL_DIR")
+        GIT_ROOT="$CWD"
+        while [ -n "$GIT_ROOT" ] && [ "$GIT_ROOT" != "/" ] && [ "$GIT_ROOT" != "." ]; do
+            [ -e "$GIT_ROOT/.git" ] && break
+            GIT_ROOT=$(dirname "$GIT_ROOT")
         done
+        if [ -e "$GIT_ROOT/.git" ]; then
+            GITFILE_LINE=""
+            if [ -f "$GIT_ROOT/.git" ]; then
+                IFS= read -r GITFILE_LINE < "$GIT_ROOT/.git" || true
+            fi
+            case "$GITFILE_LINE" in
+                "gitdir: /"*/.git/worktrees/*)
+                    GITFILE_LINE="${GITFILE_LINE#gitdir: }"
+                    GIT_ROOT="${GITFILE_LINE%%/.git/worktrees/*}"
+                    ;;
+            esac
+            REPO_NAME=$(basename "$GIT_ROOT")
+        else
+            FOSSIL_DIR="$CWD"
+            while [ -n "$FOSSIL_DIR" ] && [ "$FOSSIL_DIR" != "/" ] && [ "$FOSSIL_DIR" != "." ]; do
+                if [ -f "$FOSSIL_DIR/.fslckout" ] || [ -f "$FOSSIL_DIR/_FOSSIL_" ]; then
+                    REPO_NAME=$(basename "$FOSSIL_DIR")
+                    break
+                fi
+                FOSSIL_DIR=$(dirname "$FOSSIL_DIR")
+            done
+        fi
     fi
 fi
 PROJECT="${REPO_NAME:-$(basename "$CWD" 2>/dev/null)}"
