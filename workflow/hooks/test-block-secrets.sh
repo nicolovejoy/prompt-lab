@@ -75,70 +75,13 @@ run allow 'echo created'
 run allow 'cat package.json'
 run allow 'cat src/lib/env.ts'
 
-echo "# must ALLOW: quoted text is words, not commands"
+echo "# must ALLOW: a quoted search pattern is not a list of files"
 run allow 'grep -E "(alpha|beta).*" README.md'
 run allow 'grep -E "<.*>" README.md'
 run allow 'rg "TODO|.*FIXME" src'
-run allow 'git commit -m "docs: op inject without the out flag prints secrets"'
-run allow 'git commit -m "docs: never cat .env in a session"'
-run allow "git commit -m 'op read is blocked; so is cat .env.local'"
-run allow 'git commit -m "fix the bash hook: sh and ssh are named here, with cat .env"'
-run allow 'git commit -m "never cat ~/secrets/x.json"'
-run allow 'gh pr comment 5 --body "the hook blocks op item get on purpose"'
-run allow '~/.claude/bin/handoff.sh append x.md "### 2026-11-21 a → b: note
-
-Use op read sparingly, and never cat .env. It'"'"'s a rule."'
+run allow 'git log --oneline -5 --grep="(a|b).*" | head -3'
 run allow 'echo "run env or printenv yourself" && op run --env-file=.env.tpl -- pnpm dev'
 run allow 'ls ~/secrets | grep firebase'
-
-echo "# must BLOCK: wildcards outside quotes expand to the real file"
-run block 'cat .e*'
-run block 'cat .*'
-run block 'wc -l < .e*'
-
-echo "# must BLOCK: quoted text that is handed to a shell"
-run block 'sh -c "cat .env"'
-run block "bash -c 'cat .env.local'"
-run block '/bin/bash -c "cat .env"'
-run block 'zsh -c "op read op://v/i/f"'
-run block 'eval "cat .env"'
-run block 'ssh mini "cat .env"'
-run block 'echo "cat .env" | bash'
-run block 'watch "cat .env"'
-run block '$SHELL -c "cat .env"'
-run block 'docker exec app sh -c "cat .env"'
-run block "python3 -c \"import glob; print([open(f).read() for f in glob.glob('.e*')])\""
-run block "perl -ne 'print' .e*"
-
-echo "# must BLOCK: the live parts of a quoted string"
-run block 'echo "token: $(op read op://v/i/f)"'
-run block 'git commit -m "$(cat .env)"'
-run block 'echo "`cat .env`"'
-run block 'x=`cat .env`'
-run block 'op run --env-file=.env.tpl -- echo "$RESEND_API_KEY"'
-run block 'git commit -m "note ${X:-$(cat .env)}"'
-
-echo "# must BLOCK: a secret file name counts wherever it is written"
-run block 'cat ".env"'
-run block "grep KEY '.env.local'"
-run block 'cat "$DIR/.env"'
-run block "python3 -c \"print(open('.env').read())\""
-run block 'cat "$HOME/secrets/x.json"'
-run block 'cat "/Users/nico/secrets/x.json"'
-run block 'op read "op://v/i/f"'
-run block 'op item get "photomirande"'
-
-echo "# must BLOCK: a quoted wildcard where a tool takes a file pattern"
-run block 'find . -name ".*" -exec cat {} +'
-run block 'find . -name ".e*" -type f -exec cat {} +'
-run block 'grep -r KEY --include=".e*" .'
-run block 'grep -r KEY --include=.e* .'
-run block 'rg KEY -g ".env*"'
-run block "find . -path '*/.e*' -exec cat {} +"
-run block 'git grep --no-index KEY -- ".e*"'
-run block 'fd ".env*" -x cat {}'
-run block 'echo $(<.env)'
-run block 'git commit -m "note ${X:-`cat .env`}"'
 
 echo "# must ALLOW: file patterns that select no secret"
 run allow 'find . -name "*.py" -exec grep -l foo {} +'
@@ -149,24 +92,60 @@ run allow "find . -name CLAUDE.md -not -path '*/node_modules/*' | head -5"
 run allow "grep -rl TODO --include='*' src | head"
 run allow 'du -sh -- * _archived/* | sort -rh | head -40'
 
-echo "# must ALLOW: everyday chains of inert commands keep the lenient reading"
-run allow 'cd /tmp/x && git add -A && git commit -m "never cat or op read here" 2>&1 | tail -3'
-run allow "git commit -m \"it's done: op read stays blocked\" && git push"
-run allow 'echo "done: $(date) never cat .env"'
-run allow 'gh pr create --title "x" --body "mentions op read and cat .env"'
-run allow 'for f in a b; do echo "cat .env $f"; done'
-run allow 'git log --oneline -5 --grep="(a|b).*" | head -3'
+echo "# must ALLOW: a message that mentions readers and secrets, passed by heredoc or file"
+run allow 'git commit -q -F - <<'"'"'EOF'"'"'
+docs: never cat .env in a session; op read stays blocked
+EOF'
+run allow 'git commit -m "$(cat <<'"'"'EOF'"'"'
+docs: op inject without the out flag prints secrets
+EOF
+)"'
+run allow '~/.claude/bin/handoff.sh append x.md "$(cat <<'"'"'EOF'"'"'
+### 2026-11-21 a → b: note
 
-echo "# must BLOCK: a secret name inside a quoted string, with a reader on the line"
-run block "sed 'r .env' README.md"
-run block 'for f in ".env .env.local"; do cat $f; done'
-run block 'git commit -m "never cat .env" 2>&1 | tail -3'
+Use op read sparingly, and never cat .env. It'"'"'s a rule.
+EOF
+)"'
+run allow 'gh pr comment 5 --body-file /tmp/body.md'
 
-echo "# must BLOCK: a command that is not on the inert list runs its string"
+echo "# BLOCKED by design: the same words inside a quoted message (the hook does not parse quotes)"
+run block 'git commit -m "docs: op inject without the out flag prints secrets"'
+run block 'git commit -m "docs: never cat .env in a session"'
+run block "git commit -m 'op read is blocked; so is cat .env.local'"
+run block 'git commit -m "never cat ~/secrets/x.json"'
+run block 'gh pr comment 5 --body "the hook blocks op item get on purpose"'
+run block '~/.claude/bin/handoff.sh append x.md "### 2026-11-21 a → b: note
+
+Use op read sparingly, and never cat .env. It'"'"'s a rule."'
+run block 'echo "done: $(date) never cat .env"'
+run block 'git commit -m "never cat .env'
+
+echo "# must BLOCK: wildcards outside quotes expand to the real file"
+run block 'cat .e*'
+run block 'cat .*'
+run block 'wc -l < .e*'
+run block "perl -ne 'print' .e*"
+
+echo "# must BLOCK: a reader inside a string that something runs"
+run block 'sh -c "cat .env"'
+run block "bash -c 'cat .env.local'"
+run block '/bin/bash -c "cat .env"'
+run block 'zsh -c "op read op://v/i/f"'
+run block 'eval "cat .env"'
+run block 'ssh mini "cat .env"'
+run block 'echo "cat .env" | bash'
+run block 'watch "cat .env"'
+run block '$SHELL -c "cat .env"'
+run block 'docker exec app sh -c "cat .env"'
+run block '"sh" -c "echo x; cat .env"'
+run block 's\h -c "echo x; cat .env"'
+run block 'X="x; cat .env"; $X'
 run block "awk 'BEGIN{system(\"op read op://v/i/f\")}'"
 run block "git -c alias.x='!op read op://v/i/f' x"
 run block 'git "-c" "alias.commit=!op read op://v/i/f" commit'
 run block 'git fetch --upload-pack "op read op://v/i/f" /tmp/r'
+run block "git fetch \"--upload-pack=sh -c 'op read op://v/i/f'\" /tmp/r"
+run block "git grep -nO\"sh -c 'op read op://v/i/f' x\" KEY"
 run block "env -S 'op read op://v/i/f'"
 run block 'source <(echo "op read op://v/i/f")'
 run block ". <(echo \"op item get x\")"
@@ -177,45 +156,71 @@ run block 'npm exec -c "op read op://v/i/f"'
 run block 'psql -c "\! cat .env"'
 run block 'sqlite3 :memory: ".shell cat .env"'
 run block 'vim -es -c "r !cat .env"'
-run block 'X="x; cat .env"; $X'
+run block "[[ 'a[\$(op read op://v/i/f)]' -eq 0 ]]"
+run block "printf -v 'a[\$(op read op://v/i/f)]' x"
 
-echo "# must BLOCK: shell syntax the quote reader does not model"
+echo "# must BLOCK: the live parts of a quoted string"
+run block 'echo "token: $(op read op://v/i/f)"'
+run block 'git commit -m "$(cat .env)"'
+run block 'echo "`cat .env`"'
+run block 'x=`cat .env`'
+run block 'op run --env-file=.env.tpl -- echo "$RESEND_API_KEY"'
+run block 'git commit -m "note ${X:-$(cat .env)}"'
+run block 'git commit -m "note ${X:-`cat .env`}"'
+run block 'echo "${X:-$(echo '"'"'{}'"'"' ; cat .env)}"'
+run block 'echo "${X:-$(
+cat .env
+)}"'
+run block 'echo $(<.env)'
+
+echo "# must BLOCK: a secret file name counts wherever it is written"
+run block 'cat ".env"'
+run block "grep KEY '.env.local'"
+run block 'cat "$DIR/.env"'
+run block "python3 -c \"print(open('.env').read())\""
+run block 'cat "$HOME/secrets/x.json"'
+run block 'cat "${HOME}/secrets/k"'
+run block 'cat "/Users/nico/secrets/x.json"'
+run block 'op read "op://v/i/f"'
+run block 'op item get "photomirande"'
+run block "sed 'r .env' README.md"
+run block 'for f in ".env .env.local"; do cat $f; done'
+run block 'cat .e"nv"'
+run block "cat '.e'nv"
+
+echo "# must BLOCK: a quoted wildcard where a tool takes a file pattern"
+run block 'find . -name ".*" -exec cat {} +'
+run block 'find . -name ".e*" -type f -exec cat {} +'
+run block 'grep -r KEY --include=".e*" .'
+run block 'grep -r KEY --include=.e* .'
+run block 'rg KEY -g ".env*"'
+run block "find . -path '*/.e*' -exec cat {} +"
+run block 'git grep --no-index KEY -- ".e*"'
+run block 'fd ".env*" -x cat {}'
+
+echo "# must BLOCK: a reader spelled with a backslash or a path"
+run block '\cat .env'
+run block 'echo x | \grep KEY .env'
+run block '/bin/cat .env'
+
+echo "# must BLOCK: comments, ANSI-C quotes and stray parens hide nothing"
 run block '# it'"'"'s the project env
 cat .env
 # don'"'"'t print it'
 run block 'git status # it'"'"'s the project env
 cat .env
 # don'"'"'t print it'
-run block 'echo "${X:-$(echo '"'"'{}'"'"' ; cat .env)}"'
-run block 'echo "${X:-$(
-cat .env
-)}"'
 run block "echo \$'\\'' ; cat .env ; echo \$'\\''"
-run block '"sh" -c "echo x; cat .env"'
-run block 's\h -c "echo x; cat .env"'
 run block 'echo a ) ; cat .env'
-
-echo "# must BLOCK: a reader spelled with a backslash or a path"
-run block '\cat .env'
-run block 'echo x | \grep KEY .env'
-run block '/bin/cat .env'
-run block 'cat .e"nv"'
-run block "cat '.e'nv"
-run block 'cat "${HOME}/secrets/k"'
-
-echo "# must BLOCK: a flag that makes an inert command run a program"
-run block "git fetch \"--upload-pack=sh -c 'op read op://v/i/f'\" /tmp/r"
-run block 'git fetch --upl "op read op://v/i/f" /tmp/r'
-run block "git grep -nO\"sh -c 'op read op://v/i/f' x\" KEY"
-run block "[[ 'a[\$(op read op://v/i/f)]' -eq 0 ]]"
-run block "printf -v 'a[\$(op read op://v/i/f)]' x"
+run block '# it'"'"'s the project env
+cat .e*
+# don'"'"'t print it'
+run block "echo \\' ; cat .e* ; echo \\'"
+run block "echo \$'\\'' ; cat .e* ; echo \$'\\''"
 
 echo "# must BLOCK: a here-string is not a heredoc"
 run block 'grep -q x <<<y
 cat .env'
-
-echo "# must BLOCK: quotes that do not balance fall back to the strict reading"
-run block 'git commit -m "never cat .env'
 
 echo
 echo "passed=$ok failed=$bad"
