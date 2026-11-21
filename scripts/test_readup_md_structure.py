@@ -51,6 +51,8 @@ check("readup leaves backfill to nightly", "unsummarized-context" not in content
 check("readup retains authoritative registration identity", "<session_id>|<started_at>" in content)
 check("readup reports incomplete public audit", "`incomplete`" in content)
 check("readup reports failed remote fetch", "REMOTE=error" in content)
+check("readup names the unchecked Fossil remote", "REMOTE=fossil-unchecked" in content)
+check("readup never trims CLAUDE.md itself", "Never trim during readup" in content)
 check("readup is materially smaller", len(content) < 9000, f"{len(content)} bytes")
 
 # Table-drift guard: every KEY the script can emit must be named in readup.md's
@@ -68,7 +70,7 @@ expected_keys = {
     "HANDOFF_SYNC", "PUBLIC_DRIFT", "CI_PROBE", "CI_PROBE_NOTE", "CI_MAIN",
     "CI_BRANCH", "RESYNC", "CONVENTIONS_CLAUDE",
     "REMOTE", "TRACKING", "REMOTE_ONLY", "WORKTREES",
-    "PROJECT",
+    "PROJECT", "CLAUDE_SIZE",
 }
 check(
     "extraction found all expected keys",

@@ -16,6 +16,11 @@ fi
 echo "PROJECT=$project"
 in_repo=0
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 && in_repo=1
+# A Fossil checkout (ear-worm, 2026-11-20) is a project too, just not a git one.
+fossil_root=""
+if [ "$in_repo" != 1 ] && command -v gc_fossil_root >/dev/null 2>&1; then
+  fossil_root="$(gc_fossil_root "$PWD")" || fossil_root=""
+fi
 
 # --- 2. remote check (no pull) ------------------------------------------------
 if [ "$in_repo" = 1 ]; then
@@ -40,6 +45,10 @@ if [ "$in_repo" = 1 ]; then
   else
     echo "WORKTREES=main-only"
   fi
+elif [ -n "$fossil_root" ]; then
+  # Nothing here talks to a Fossil remote yet, so say "unchecked", never "clean".
+  cd "$fossil_root" || true
+  echo "REMOTE=fossil-unchecked"; echo "WORKTREES=main-only"
 else
   echo "REMOTE=not-a-git-repo"; echo "WORKTREES=main-only"
 fi
@@ -47,14 +56,21 @@ fi
 # --- 5. resync marker --------------------------------------------------------
 marker="$HOME/.claude/state/resync-$project.touch"
 if [ -f "$marker" ] && [ "$in_repo" = 1 ]; then
-  mt="$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null || echo 0)"
+  # GNU form first: see claude-md-size.sh for why the other order breaks on Linux.
+  mt="$(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null || echo 0)"
   age_h=$(( ($(date +%s) - mt) / 3600 ))
   commits_since="$(git log --oneline --since="@$mt" 2>/dev/null | wc -l | tr -d ' ')"
 else
   age_h=9999; commits_since=9999
 fi
 due=no; [ "$age_h" -ge 48 ] && [ "$commits_since" -gt 3 ] && due=yes
-echo "RESYNC=age_h=$age_h commits_since=$commits_since due=$due"
+if [ "$in_repo" = 1 ]; then
+  echo "RESYNC=age_h=$age_h commits_since=$commits_since due=$due"
+else
+  # /resync reads git history and GitHub issues. Outside a git repo the 9999s
+  # above would read as "due" at every session start of a Fossil checkout.
+  echo "RESYNC=skip reason=not-a-git-repo due=no"
+fi
 
 # --- 6. shared-conventions drift (check only) --------------------------------
 conv() {  # $1 = file → in sync | behind | tampered | missing | absent
@@ -71,6 +87,13 @@ conv() {  # $1 = file → in sync | behind | tampered | missing | absent
 claude_md=CLAUDE.md
 [ ! -f CLAUDE.md ] && [ -f .claude/CLAUDE.md ] && claude_md=.claude/CLAUDE.md
 echo "CONVENTIONS_CLAUDE=$(conv "$claude_md")"
+
+# --- 6b. CLAUDE.md size (reminder only; nothing here edits the file) ----------
+if [ -x "$RC_BIN_DIR/claude-md-size.sh" ]; then
+  echo "CLAUDE_SIZE=$("$RC_BIN_DIR/claude-md-size.sh" "$claude_md")"
+else
+  echo "CLAUDE_SIZE=skip"
+fi
 
 # --- 7. flush handoff channel -------------------------------------------------
 if [ -d "$HOME/src/.handoff/.git" ] && [ -x "$HOME/.claude/bin/handoff.sh" ]; then

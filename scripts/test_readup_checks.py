@@ -118,9 +118,67 @@ exit "${FAKE_AUDIT_RC:-0}"
     probe(FAKE_CONV_LOG=str(conv_log))
     check("root CLAUDE.md wins when both exist",
           "./CLAUDE.md" in conv_log.read_text().splitlines())
+    # CLAUDE.md size: own text only, and quiet for a week after a trim.
+    block = ("<!-- SHARED-CONVENTIONS:BEGIN v=x -->\n" + "shared line\n" * 50
+             + "<!-- SHARED-CONVENTIONS:END -->\n")
+    own = "# Root\n" + "own line é\n" * 20
+    (repo / "CLAUDE.md").write_text(own + block)
+    own_bytes, shared_bytes = len(own.encode()), len(block.encode())
+    sized = probe(CLAUDE_SIZE_LIMIT=str(own_bytes - 1))
+    check("size line leaves the shared block out of own_bytes",
+          f"CLAUDE_SIZE=own_bytes={own_bytes} shared_bytes={shared_bytes} " in sized, sized)
+    check("own text over the limit with no trim marker is due",
+          f"limit={own_bytes - 1} " in sized and " due=yes\n" in sized, sized)
+    check("own text at the limit is not due, however big the shared block",
+          " due=no\n" in probe(CLAUDE_SIZE_LIMIT=str(own_bytes)))
+    marker = home / ".claude/state" / f"claude-trim-{repo.name}.touch"
+    marker.parent.mkdir()
+    marker.write_text("")
+    check("a trim in the last 7 days silences the reminder",
+          "trim_age_d=0 due=no\n" in probe(CLAUDE_SIZE_LIMIT=str(own_bytes - 1)))
+    os.utime(marker, (0, 0))
+    check("an old trim marker lets it come due again",
+          " due=yes\n" in probe(CLAUDE_SIZE_LIMIT=str(own_bytes - 1)))
+    check("a non-numeric limit falls back to the default",
+          "limit=30000 " in probe(CLAUDE_SIZE_LIMIT="lots"))
+    # /workflow-maintenance runs the helper with no argument. It must pick the
+    # file readup picked, or readup says "due" and maintenance says "absent".
+    size_helper = ROOT / "workflow/bin/claude-md-size.sh"
+
+    def bare_size():
+        return subprocess.run([str(size_helper)], cwd=repo, env=env, capture_output=True,
+                              text=True, timeout=10).stdout
+
+    check("no argument: root CLAUDE.md is measured",
+          f"own_bytes={own_bytes} " in bare_size(), bare_size())
+    (repo / "CLAUDE.md").unlink()
+    check("no argument: .claude/CLAUDE.md is measured when the root has none",
+          bare_size().startswith("own_bytes=") and "absent" not in bare_size(), bare_size())
+    (repo / ".claude/CLAUDE.md").unlink()
+    check("no argument: neither file is absent", bare_size() == "absent\n", bare_size())
+    check("no CLAUDE.md is absent, not zero bytes",
+          "CLAUDE_SIZE=absent\n" in probe())
+    (repo / "CLAUDE.md").write_text("# Root\n")
+
     outside = probe(FAKE_OUTSIDE="1")
     check("outside repo skips CI and public audit",
           "CI_PROBE=skip" in outside and "PUBLIC_DRIFT=skip" in outside)
+    check("a plain directory is not a git repo", "REMOTE=not-a-git-repo\n" in outside, outside)
+    # A Fossil checkout is a project whose remote nothing here checks yet.
+    (repo / "scripts/deep").mkdir()
+    (repo / ".fslckout").write_text("")
+    result = subprocess.run([str(SCRIPT)], cwd=repo / "scripts/deep",
+                            env=dict(env, FAKE_OUTSIDE="1"), capture_output=True,
+                            text=True, timeout=10)
+    check("Fossil checkout: remote is reported unchecked, never clean",
+          "REMOTE=fossil-unchecked\n" in result.stdout, result.stdout)
+    check("Fossil checkout: CLAUDE.md is found from a subdirectory",
+          "CONVENTIONS_CLAUDE=in sync" in result.stdout and "CLAUDE_SIZE=own_bytes=" in result.stdout,
+          result.stdout)
+    check("Fossil checkout: CI probe is skipped", "CI_PROBE=skip" in result.stdout)
+    check("Fossil checkout: the git-based resync is never due",
+          "RESYNC=skip reason=not-a-git-repo due=no\n" in result.stdout, result.stdout)
+    (repo / ".fslckout").unlink()
     check("no home state beyond the isolated sync fixture",
           list(home.iterdir()) == [home / ".claude"])
 

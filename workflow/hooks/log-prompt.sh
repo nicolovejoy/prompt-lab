@@ -58,6 +58,11 @@ esac
 # (git missing, or the Xcode license prompt that broke every git call on this
 # laptop on 2026-08-05) MUST fall back to the old basename behavior: a broken
 # git must never silently relabel real project work as scratch.
+#
+# A Fossil checkout also answers 128. It is a real project, so before bucketing
+# to `scratch` walk up for the marker Fossil writes at a checkout root
+# (`.fslckout`, or `_FOSSIL_`) and name the project after that directory. The
+# same walk is gc_fossil_root() in workflow/bin/_gc_project.sh; keep them alike.
 REPO_NAME=""
 if command -v git >/dev/null 2>&1 && [ -n "$CWD" ]; then
     GIT_COMMON=$(git -C "$CWD" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
@@ -66,6 +71,14 @@ if command -v git >/dev/null 2>&1 && [ -n "$CWD" ]; then
         REPO_NAME=$(basename "$(dirname "$GIT_COMMON")")
     elif [ "$GIT_RC" -eq 128 ]; then
         REPO_NAME="scratch"
+        FOSSIL_DIR="$CWD"
+        while [ -n "$FOSSIL_DIR" ] && [ "$FOSSIL_DIR" != "/" ] && [ "$FOSSIL_DIR" != "." ]; do
+            if [ -f "$FOSSIL_DIR/.fslckout" ] || [ -f "$FOSSIL_DIR/_FOSSIL_" ]; then
+                REPO_NAME=$(basename "$FOSSIL_DIR")
+                break
+            fi
+            FOSSIL_DIR=$(dirname "$FOSSIL_DIR")
+        done
     fi
 fi
 PROJECT="${REPO_NAME:-$(basename "$CWD" 2>/dev/null)}"

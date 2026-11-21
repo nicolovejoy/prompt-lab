@@ -14,12 +14,27 @@ set -u
 CWD="$(pwd)"
 HOME_SRC="$HOME/src"
 
-# Guard: only run in real project dirs under ~/src/ that are git repos
+# Guard: only run in real project dirs under ~/src/ that are git repos or
+# Fossil checkouts. The Fossil case was added 2026-11-20: ear-worm sessions were
+# starting with no context at all, because "not a git repo" meant "not a project".
 case "$CWD" in
   "$HOME_SRC"/*) ;;
   *) exit 0 ;;
 esac
-git -C "$CWD" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
+VCS=git
+if ! git -C "$CWD" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  SC_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+  # shellcheck source=./_gc_project.sh
+  [ -f "$SC_DIR/_gc_project.sh" ] && . "$SC_DIR/_gc_project.sh"
+  if ! command -v gc_fossil_root >/dev/null 2>&1; then
+    # A partial install. Without the helper this cannot tell a Fossil checkout
+    # from a plain folder, and staying silent would hide a real project.
+    printf '%s' "Session-start context: not produced. $SC_DIR/_gc_project.sh is missing or broken, so this directory could not be checked for a Fossil checkout. Reinstall the workflow scripts."
+    exit 0
+  fi
+  gc_fossil_root "$CWD" >/dev/null || exit 0
+  VCS=fossil
+fi
 
 PROJECT="$(basename "$CWD")"
 TODAY="$(date "+%A, %B %-d, %Y")"
@@ -37,8 +52,31 @@ LAST_SUMMARY="$(sqlite3 "$HOME/.claude/prompt-history.db" \
   "SELECT substr(summary, 1, 400) || '|' || ended_at FROM sessions WHERE project='$PROJECT' AND ended_at IS NOT NULL ORDER BY started_at DESC LIMIT 1;" 2>/dev/null)"
 
 # Recent commits + working tree
-RECENT_COMMITS="$(git -C "$CWD" log --oneline -5 2>/dev/null)"
-DIRTY="$(git -C "$CWD" status --short 2>/dev/null)"
+VCS_NOTE=""
+if [ "$VCS" = git ]; then
+  RECENT_COMMITS="$(git -C "$CWD" log --oneline -5 2>/dev/null)"
+  DIRTY="$(git -C "$CWD" status --short 2>/dev/null)"
+elif command -v fossil >/dev/null 2>&1; then
+  FOSSIL_OK=1
+  FOSSIL_LOG="$(cd "$CWD" && fossil timeline -n 5 -t ci -F '%h %c' 2>/dev/null)" || FOSSIL_OK=0
+  DIRTY="$(cd "$CWD" && fossil changes --differ --dotfiles 2>/dev/null)" || FOSSIL_OK=0
+  if [ "$FOSSIL_OK" = 1 ]; then
+    VCS_NOTE="Checkout: Fossil, not git. Use fossil commands here; git ones fail."
+    # The last timeline line is a trailer ("+++ no more data (2) +++"), not a commit.
+    RECENT_COMMITS="$(printf '%s\n' "$FOSSIL_LOG" | grep -Ev '^(\+\+\+|---) .* (\+\+\+|---)$')"
+  else
+    # A moved repository file or an older Fossil fails here. Say so: empty
+    # sections would read as "no commits, clean tree".
+    VCS_NOTE="Checkout: Fossil, not git. A fossil command failed, so recent commits and uncommitted files were NOT read."
+    RECENT_COMMITS=""
+    DIRTY=""
+  fi
+else
+  # Say so. An empty section here would read as "no commits, clean tree".
+  VCS_NOTE="Checkout: Fossil, not git. The fossil command is not installed, so recent commits and uncommitted files were NOT read."
+  RECENT_COMMITS=""
+  DIRTY=""
+fi
 
 # Bulletin headlines (skip silently if file missing)
 BULLETIN="$(grep -E '^## ' "$HOME/src/prompt-lab/BULLETIN.md" 2>/dev/null | head -5)"
@@ -51,6 +89,11 @@ Machine: $MACHINE
 Project: $PROJECT
 Working dir: $CWD
 "
+
+if [ -n "$VCS_NOTE" ]; then
+  CTX+="$VCS_NOTE
+"
+fi
 
 if [ -n "$LAST_SUMMARY" ]; then
   CTX+="

@@ -6,8 +6,6 @@ Trimmed 2026-11-14; the long version is this file's git history.
 ## Open
 
 - **Review kit.** Merged as #120. The `reviewer` agent is registered in new sessions; its first real dispatch is still to come.
-- **ear-worm is on Fossil (handoff 2026-11-20).** `/handoff` records zero commits there and never reports uncommitted work. Needs a Fossil branch in `/handoff`; `/readup`'s sync step is unchecked.
-- **l6-music's size reminder (handoff 2026-11-18).** `readup-checks.sh` prints a `CLAUDE_SIZE=` line and `/readup` mentions it above a threshold, counting a repo's own text apart from the synced block.
 - **Review emails after the design pass.** Read a few built since 2026-11-05 and judge the layout.
 - **ntz-conveyor in `~/src/mini-rescue/`.** Kept until person-tracking confirms its gitignored `db.sqlite3` data lives elsewhere (asked 2026-11-03).
 - **Open issues:** #43 sign-ins panel (waits on a second reader), #9 beacon fan-out, #85 second language for `/localize`.
@@ -15,6 +13,7 @@ Trimmed 2026-11-14; the long version is this file's git history.
 
 ## Waiting on other repos
 
+- ear-worm's shared Fossil repo does not exist yet. Until it does, `/readup` reports `REMOTE=fossil-unchecked` and nothing checks a Fossil remote.
 - Playwright 1.60.0 cannot install on GitHub's ubuntu-26.04 runners; 1.62.1 and later can. prntd and split-recording are fixed. musicforge and bakerylouise-v1 were told 2026-11-09.
 - `AGENTS.md` is still committed in musicforge, person-tracking and split-recording. Each repo's call.
 - Two Pi leftovers, filed in `~/src/.handoff`: a laptop SSH key into Home Assistant's add-on, and repointing hardcoded `192.168.5.34` to `homeassistant.local`. See `pi-inventory.md`.

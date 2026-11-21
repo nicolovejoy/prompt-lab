@@ -1,7 +1,7 @@
 ---
 name: handoff
 description: Save session findings and next steps, capture commits, and close this session
-allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(python3:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(~/.claude/bin/handoff.sh:*), Read
+allowed-tools: Bash(git:*), Bash(sqlite3:*), Bash(python3:*), Bash(~/.claude/bin/gc-read.sh:*), Bash(~/.claude/bin/gc-write.sh:*), Bash(~/.claude/bin/gc-vcs.sh:*), Bash(~/.claude/bin/handoff.sh:*), Read
 ---
 
 Close out this session briefly. Do not delegate. Routine handoff saves local session
@@ -18,8 +18,12 @@ Use the authoritative `<session_id>|<started_at>` retained from readup:
 
 ```bash
 ~/.claude/bin/gc-read.sh current-session <session_id>
-git status --short
+~/.claude/bin/gc-vcs.sh status
 ```
+
+The second command prints `VCS=git`, `VCS=fossil` or `VCS=none`, then one line
+per uncommitted file. It reads git and Fossil checkouts alike; do not run
+`git status` in its place.
 
 If readup has not run, register with `~/.claude/bin/gc-write.sh register-session`
 and retain its result. A missing or different validated ID is an error; never
@@ -31,13 +35,18 @@ leave them intact and continue saving the session. Handoff does not commit files
 Capture commits since session start using actual UTC commit timestamps:
 
 ```bash
-git log --since="<started_at>Z" --format="%H|%ct|%s"
+~/.claude/bin/gc-vcs.sh commits-since "<started_at>"
 ```
 
-Insert each hash, message and validated session ID into the local database at
+Each line is `hash|unix-seconds|subject`, the same for git and Fossil. Split on
+the first two `|` only: a subject may contain one. Insert each hash, message and
+validated session ID into the local database at
 `~/.claude/prompt-history.db` with Python sqlite3 parameter bindings:
 `INSERT OR IGNORE INTO commits (hash, message, timestamp, session_id) VALUES (?, ?, datetime(?, 'unixepoch'), ?)`.
-Use `%ct` for Unix seconds; never substitute insertion time. Zero commits is normal.
+Use the second field for Unix seconds; never substitute insertion time. No lines
+with exit 0 is normal. A non-zero exit from either `gc-vcs.sh` call means the
+checkout could not be read: finish the save, and say in the final report that
+commits or uncommitted work were not checked. Never record that as zero.
 The unique index on `hash` (see `scripts/dedup_commits.py`) is what makes OR IGNORE actually ignore a re-run.
 
 Save a concise session summary, usually 50–100 words. Include findings, key
