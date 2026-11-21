@@ -195,6 +195,25 @@ run block '"sh" -c "echo x; cat .env"'
 run block 's\h -c "echo x; cat .env"'
 run block 'echo a ) ; cat .env'
 
+echo "# must BLOCK: a reader spelled with a backslash or a path"
+run block '\cat .env'
+run block 'echo x | \grep KEY .env'
+run block '/bin/cat .env'
+run block 'cat .e"nv"'
+run block "cat '.e'nv"
+run block 'cat "${HOME}/secrets/k"'
+
+echo "# must BLOCK: a flag that makes an inert command run a program"
+run block "git fetch \"--upload-pack=sh -c 'op read op://v/i/f'\" /tmp/r"
+run block 'git fetch --upl "op read op://v/i/f" /tmp/r'
+run block "git grep -nO\"sh -c 'op read op://v/i/f' x\" KEY"
+run block "[[ 'a[\$(op read op://v/i/f)]' -eq 0 ]]"
+run block "printf -v 'a[\$(op read op://v/i/f)]' x"
+
+echo "# must BLOCK: a here-string is not a heredoc"
+run block 'grep -q x <<<y
+cat .env'
+
 echo "# must BLOCK: quotes that do not balance fall back to the strict reading"
 run block 'git commit -m "never cat .env'
 

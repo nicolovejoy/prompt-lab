@@ -117,7 +117,8 @@ strip_heredocs() {
         if (line == tag) { skip = 0; tag = "" }
         next
       }
-      if (match($0, /<<-?[ \t]*['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/)) {
+      line = $0; gsub(/<<</, "###", line)     # a here-string is not a heredoc
+      if (match(line, /<<-?[ \t]*['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/)) {
         t = substr($0, RSTART, RLENGTH)
         sub(/^<<-?[ \t]*/, "", t); gsub(/['"'"'"]/, "", t)
         tag = t; skip = 1
@@ -203,7 +204,9 @@ mask_quoted() {
 # output of `mask_quoted code`. Exit 0 = yes. This is an allow-list on purpose: a
 # command missing from it only loses the lenient reading, it never gains one.
 # Not listed, because they run a string: sh, eval, ssh, xargs, find, env, awk,
-# python, node, sqlite3, op, and anything this list has not heard of.
+# python, node, sqlite3, op, and anything this list has not heard of. Also not
+# listed: [[, [, test and printf, where bash evaluates a quoted operand as
+# arithmetic and runs a $(...) inside it.
 only_inert_commands() {
   LC_ALL=C awk '
     function fail() { failed = 1; exit 1 }
@@ -230,7 +233,7 @@ only_inert_commands() {
     function open(kind) { endword(); d++; typ[d] = kind; pos[d] = 1; nw[d] = 0; cmd[d] = "" }
     BEGIN {
       d = 1; pos[1] = 1; nw[1] = 0; cmd[1] = ""; w = ""; failed = 0
-      split("cd ls pwd echo printf true false test [ [[ for mkdir touch cp mv rm cat head tail wc sort uniq cut tr grep egrep fgrep rg sed jq date diff sleep basename dirname handoff.sh gc-write.sh gc-read.sh", a, " ")
+      split("cd ls pwd echo true false for mkdir touch cp mv rm cat head tail wc sort uniq cut tr grep egrep fgrep rg sed jq date diff sleep basename dirname handoff.sh gc-write.sh gc-read.sh", a, " ")
       for (k in a) ok[a[k]] = 1
       split("add commit tag notes log show diff status grep push pull fetch checkout switch branch stash merge restore rev-parse cherry ls-files blame mv rm reset", g, " ")
       for (k in g) gitok[g[k]] = 1
@@ -398,11 +401,14 @@ case "$TOOL" in
     # models, nothing but inert commands, and none of the flags that make an
     # inert command run a program. Then verbs are looked for outside the data,
     # and only unquoted words are expanded.
-    EXEC_FLAG='(^|[[:space:]])(--(upload-pack|receive-pack|exec|pre|compress-program|open-files-in-pager|ext-diff)|-O)'
+    # git accepts any unique prefix of a long option, hence the open endings.
+    # A name too many here only costs the lenient reading.
+    EXEC_FLAG='(^|[[:space:]])(--(u|rec|exe|compress|op|ext)[a-z-]*|--pre(-glob)?([=[:space:]]|$)|-[A-Za-z]*O)'
     if MASKED="$(printf '%s\n' "$CMD" | mask_quoted code)" \
        && only_inert_commands <<<"$MASKED" \
+       && WORDS="$(printf '%s\n' "$CMD" | mask_quoted words)" \
        && ! grep -qE -- "$EXEC_FLAG" <<<"$MASKED" \
-       && WORDS="$(printf '%s\n' "$CMD" | mask_quoted words)"; then
+       && ! grep -qE -- "$EXEC_FLAG" <<<"$WORDS"; then
       VIEW="$WORDS"
       GLOBVIEW="$(printf '%s\n' "$MASKED" | tr '"'"'"'`' '   ')"
     fi
@@ -410,10 +416,13 @@ case "$TOOL" in
     # --- secret files on the command line ---
     # A reader verb + a secret-classified file name anywhere on the line = block.
     # Writers (cp, mv, touch, test -f, op inject -o) with no reader verb pass.
-    READER='(^|[|;&(!]|\s)(cat|head|tail|less|more|bat|sed|awk|grep|rg|ag|source|xxd|strings|base64|od|hexdump|cut|tr|sort|uniq|wc|python3?|node|ruby|perl|\.)\s'
+    READER='(^|[|;&(!\\/]|\s)(cat|head|tail|less|more|bat|sed|awk|grep|rg|ag|source|xxd|strings|base64|od|hexdump|cut|tr|sort|uniq|wc|python3?|node|ruby|perl|\.)\s'
     READS=0
     if grep -qE "$READER" <<<"$VIEW" 2>/dev/null; then READS=1; fi
-    if [ "$READS" -eq 1 ] && cmd_mentions_secret_file "$FLAT" "$GLOBVIEW"; then
+    # JOINED deletes the quote marks instead: .e"nv" is one word to the shell.
+    JOINED="$(printf '%s\n' "$CMD" | tr -d '"'"'"'"'"'"'"')"
+    if [ "$READS" -eq 1 ] && cmd_mentions_secret_file "$FLAT
+$JOINED" "$GLOBVIEW"; then
       block "Shell command reads a secret file"
     fi
     # Redirect-in from a secret file: < .env, < .env.local, <.env
@@ -422,7 +431,7 @@ case "$TOOL" in
     done
 
     # --- ~/secrets and ~/.secrets: contents never, listing OK ---
-    if [ "$READS" -eq 1 ] && grep -qE "$READER"'.*(~|\$HOME|/Users/[^/]+)/\.?secrets' <<<"$VIEW" 2>/dev/null; then
+    if [ "$READS" -eq 1 ] && grep -qE "$READER"'.*(~|\$HOME|\$\{HOME\}|/Users/[^/]+)/\.?secrets' <<<"$VIEW" 2>/dev/null; then
       block "Shell command reads file in secrets dir — ask the user to handle it directly"
     fi
 

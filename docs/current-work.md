@@ -5,7 +5,13 @@ Trimmed 2026-11-14; the long version is this file's git history.
 
 ## Open
 
-- **`block-secrets.sh` still lets four shapes through (found 2026-11-21, while fixing its false blocks; none is new).** A heredoc fed to a shell or interpreter (`bash <<EOF`, `python3 <<EOF`) is treated as file contents, so a reader inside it is not seen. `strip_heredocs` also drops the rest of the line after `<<TAG` and takes a `<<` inside quotes for a heredoc, which hides whatever follows. A secret file reached through a variable (`F=.env; cat "$F"`) is not classified. A recursive search from the project root (`grep -rn KEY .`) names no secret file. The hook's test is also not in CI: it needs `jq`, and the hook's `grep` and `awk` use is only proven on macOS.
+- **`block-secrets.sh` still lets these through (found 2026-11-21, while fixing its false blocks; none is new).**
+  - A heredoc fed to a shell or interpreter (`bash <<EOF`, `python3 <<EOF`) is treated as file contents, so a reader inside it is not seen. `strip_heredocs` also drops the rest of the line after `<<TAG` and takes a `<<` inside quotes for a heredoc.
+  - A secret file reached through a variable (`F=.env; cat "$F"`) is not classified.
+  - A recursive read that names no file: `grep -rn KEY .`, and its twin with a catch-all pattern, `find . -name "*" -exec cat {} +`.
+  - A file printed by a command that is not on the reader list: `cp .env /dev/stdout`, `diff`, `jq -R`, `dd`, `tac`, `nl`, `paste`, `git diff --no-index`. Also a reader the list cannot see: `$(which cat) .env`, `{cat,.env}`.
+  - GNU sed's `e` command inside a quoted program. macOS sed has none, so this only matters where `gsed` is installed.
+  - The hook's test is not in CI: it needs `jq`, and the hook's `grep` and `awk` use is only proven on macOS.
 - **Git's exit 128 is read as "not a repository" outside `gc-vcs.sh`** (review of #121). A damaged `.git` or a stale worktree gitfile gets no start context and files under `scratch`. musicforge and ibuild4you hold stale worktree gitfiles today.
 - **Review emails after the design pass.** Read a few built since 2026-11-05 and judge the layout.
 - **ntz-conveyor in `~/src/mini-rescue/`.** Kept until person-tracking confirms its gitignored `db.sqlite3` data lives elsewhere (asked 2026-11-03).
