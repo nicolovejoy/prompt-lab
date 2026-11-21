@@ -165,6 +165,15 @@ echo "# must BLOCK: a quoted string that is exactly .* is a whole argument"
 run block "git grep --no-index KEY '.*'"
 run block "ssh mini cat '.*'"
 
+echo "# must BLOCK: a reader outside the string, and a second shell or git expands the .*"
+run block 'eval cat ".* "'
+run block "ssh mini cat '.* '"
+run block "sh -c \"cat \"'.* '"
+run block "\${SHELL} -c cat ' .*'"
+run block "git grep --no-index KEY ':(top).*'"
+run block "git grep --no-index KEY ':(glob).*'"
+run block 'sh -c ". .env; env"'
+
 echo "# must BLOCK: a comment after an operator hides a quote mark"
 run block "true &# it's
 cat .*
@@ -175,6 +184,7 @@ cat .*; echo 'x')"
 echo "# must ALLOW: a quoted pattern inside an interpreter's own string"
 run allow "python3 -c \"import re; print(re.sub('(.*)', 'x', 'abc'))\""
 run allow "echo \"a <.*> b\" | grep -c '<.*>'"
+run allow '~/.claude/bin/handoff.sh sync && grep -E "(a|b).*" README.md'
 
 echo "# must BLOCK: a reader inside a string that something runs"
 run block 'sh -c "cat .env"'

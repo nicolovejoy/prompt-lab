@@ -129,16 +129,20 @@ VERBS='cat|head|tail|less|more|bat|sed|awk|grep|rg|ag|source|xxd|strings|base64|
 # Mark every * inside a quoted string that reads as a search pattern (as the
 # byte \001). Reads the command on stdin. A quoted string is NOT a pattern, and
 # keeps its stars, when it holds a reader verb (it may be a command something
-# runs: sh -c "cat .*", awk system("cat .*")) or is exactly .* (a whole
-# argument: a file pattern or pathspec). Pairs quote marks the way the shell
-# does in the plain cases and gives up on the rest, printing the input
-# unchanged: a # , backslash, backtick or $'...' outside quotes, a $( ${ or
-# backtick inside double quotes, quotes that do not balance. Giving up costs
-# nothing but the exception in words_to_expand.
+# runs: awk system("cat .*")), is .* and nothing else (a whole argument: a
+# file list for ssh host cat '.*'), or starts with a colon (a git pathspec).
+# Pairs quote marks the way the shell does in the plain cases and gives up on
+# the rest, printing the input unchanged: a command that hands words to a
+# second shell (RUNNER), a # , backslash, backtick or $'...' outside quotes,
+# a $( ${ or backtick inside double quotes, quotes that do not balance.
+# Giving up costs nothing but the exception in words_to_expand.
+RUNNER='(sh|bash|zsh|dash|ksh|csh|tcsh|fish|eval|ssh|mosh|su|watch|osascript|tmux|screen|parallel|docker|kubectl|[$][{]?SHELL[}]?)'
 mark_quoted_stars() {
-  LC_ALL=C awk -v sq="'" -v dq='"' -v verb="(^|[^A-Za-z0-9_])($VERBS)[ \t\n]" '
+  LC_ALL=C awk -v sq="'" -v dq='"' -v verb="(^|[^A-Za-z0-9_])($VERBS)[ \t\n]" \
+      -v runner="(^|[^A-Za-z0-9_.-])$RUNNER[ \t\n]" '
     { all = all $0 "\n" }
     END {
+      if (all ~ runner) { printf "%s", all; exit }
       n = length(all); q = ""; out = ""; seg = ""
       for (i = 1; i <= n; i++) {
         c = substr(all, i, 1); d = substr(all, i + 1, 1)
@@ -150,7 +154,7 @@ mark_quoted_stars() {
         if (q == dq && c == "\\") { seg = seg c d; i++; continue }
         if (q == dq && (c == "`" || (c == "$" && (d == "(" || d == "{")))) { printf "%s", all; exit }
         if (c != q) { seg = seg c; continue }
-        if (seg !~ /^\.\*\??$/ && seg !~ verb) gsub(/\*/, "\001", seg)
+        if (seg !~ /^[ \t\n]*\.\*\??[ \t\n]*$/ && seg !~ /^:/ && seg !~ verb) gsub(/\*/, "\001", seg)
         out = out seg c; q = ""
       }
       printf "%s", (q == "") ? out : all
@@ -301,9 +305,9 @@ case "$TOOL" in
     # A reader verb anywhere + a secret-classified file token anywhere = block.
     # The verb may follow a quote mark or backtick (sh -c "cat x"), a backslash
     # (\cat), a path (/bin/cat) or a shell-escape bang. The "." verb (source)
-    # may not: after a slash it is a path ending in "/.".
+    # may follow a quote mark but not a slash: "/." ends a path.
     # Writers (cp, mv, touch, test -f, op inject -o) with no reader verb pass.
-    READER='((^|[|;&(!\\/"`'"'"']|\s)('"$VERBS"')|(^|[|;&(]|\s)\.)\s'
+    READER='((^|[|;&(!\\/"`'"'"']|\s)('"$VERBS"')|(^|[|;&("`'"'"']|\s)\.)\s'
     if echo "$CMD" | grep -qE "$READER" 2>/dev/null && cmd_mentions_secret_file "$CMD"; then
       block "Shell command reads a secret file"
     fi
