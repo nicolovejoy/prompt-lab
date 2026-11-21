@@ -1,7 +1,8 @@
 #!/bin/bash
 # claude-md-size.sh — is this repo's CLAUDE.md due for a trim? Read-only.
 #
-#   claude-md-size.sh [FILE]     FILE defaults to ./CLAUDE.md
+#   claude-md-size.sh [FILE]     FILE defaults to ./CLAUDE.md, or .claude/CLAUDE.md
+#                                when the root has none (the order readup uses)
 #
 # Prints one line and always exits 0:
 #   own_bytes=N shared_bytes=N lines=N limit=N trim_age_d=N due=yes|no
@@ -24,7 +25,11 @@
 # /readup (through readup-checks.sh) and /workflow-maintenance both read this
 # line, so the two cannot disagree about what "too big" means.
 
-f="${1:-CLAUDE.md}"
+f="${1:-}"
+if [ -z "$f" ]; then
+  f=CLAUDE.md
+  [ ! -f CLAUDE.md ] && [ -f .claude/CLAUDE.md ] && f=.claude/CLAUDE.md
+fi
 limit="${CLAUDE_SIZE_LIMIT:-30000}"
 case "$limit" in ''|*[!0-9]*) limit=30000 ;; esac
 
@@ -41,7 +46,10 @@ own=$(( total - shared ))
 [ "$own" -lt 0 ] && own=0
 
 marker="$HOME/.claude/state/claude-trim-$(basename "$PWD").touch"
-mt="$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null || echo 0)"
+# GNU first. GNU stat reads `-f` as "filesystem status", prints a report for the
+# marker and fails, so with BSD first a marker that exists yields two answers.
+# BSD stat rejects `-c` and prints nothing.
+mt="$(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null || echo 0)"
 trim_age_d=$(( ($(date +%s) - mt) / 86400 ))
 
 due=no

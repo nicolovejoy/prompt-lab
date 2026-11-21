@@ -141,8 +141,21 @@ exit "${FAKE_AUDIT_RC:-0}"
           " due=yes\n" in probe(CLAUDE_SIZE_LIMIT=str(own_bytes - 1)))
     check("a non-numeric limit falls back to the default",
           "limit=30000 " in probe(CLAUDE_SIZE_LIMIT="lots"))
+    # /workflow-maintenance runs the helper with no argument. It must pick the
+    # file readup picked, or readup says "due" and maintenance says "absent".
+    size_helper = ROOT / "workflow/bin/claude-md-size.sh"
+
+    def bare_size():
+        return subprocess.run([str(size_helper)], cwd=repo, env=env, capture_output=True,
+                              text=True, timeout=10).stdout
+
+    check("no argument: root CLAUDE.md is measured",
+          f"own_bytes={own_bytes} " in bare_size(), bare_size())
     (repo / "CLAUDE.md").unlink()
+    check("no argument: .claude/CLAUDE.md is measured when the root has none",
+          bare_size().startswith("own_bytes=") and "absent" not in bare_size(), bare_size())
     (repo / ".claude/CLAUDE.md").unlink()
+    check("no argument: neither file is absent", bare_size() == "absent\n", bare_size())
     check("no CLAUDE.md is absent, not zero bytes",
           "CLAUDE_SIZE=absent\n" in probe())
     (repo / "CLAUDE.md").write_text("# Root\n")

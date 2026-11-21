@@ -85,8 +85,15 @@ def test_git(tmp):
           (0, f"{head}|{epoch(when)}|first | with a pipe\n"))
     check("commit before the cutoff is not listed, and that is exit 0",
           run(repo, "commits-since", "2026-11-20 13:00:00")[:2], (0, ""))
+    (repo / "web" / "api").mkdir(parents=True)
     check("works from a subdirectory",
-          run(repo / ".git" / ".." , "kind")[:2], (0, "git\n"))
+          run(repo / "web" / "api", "kind")[:2], (0, "git\n"))
+
+    fresh = tmp / "fresh"
+    fresh.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=fresh, check=True, capture_output=True)
+    check("a repository with no commits yet has no commits, exit 0",
+          run(fresh, "commits-since", "2026-11-20 11:00:00")[:2], (0, ""))
 
 
 def test_none(tmp):
@@ -204,6 +211,29 @@ def test_broken_git(tmp):
         check(f"{sub[0]} exits 2 with no answer", (rc, out), (2, ""))
 
 
+def test_damaged_git_and_partial_install(tmp):
+    print("\n8. a damaged repository or a partial install is an error, not 'none'")
+    repo = tmp / "damaged"
+    (repo / "src").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, capture_output=True)
+    (repo / ".git" / "HEAD").unlink()
+    for sub in (("kind",), ("status",), ("commits-since", "2026-11-21 01:59:47")):
+        rc, out, err = run(repo / "src", *sub)
+        check(f"{sub[0]}: git exit 128 under a .git entry exits 2 with no answer",
+              (rc, out, ".git entry" in err), (2, "", True))
+
+    # gc-vcs.sh copied alone, as a stale ~/.claude/bin would hold it.
+    alone = tmp / "bin"
+    alone.mkdir()
+    shutil.copy(SCRIPT, alone / "gc-vcs.sh")
+    root = fossil_checkout(tmp)
+    for sub in (("kind",), ("status",), ("commits-since", "2026-11-21 01:59:47")):
+        r = subprocess.run([str(alone / "gc-vcs.sh"), *sub], cwd=str(root), text=True,
+                           capture_output=True, timeout=30)
+        check(f"{sub[0]}: without _gc_project.sh beside it exits 2 with no answer",
+              (r.returncode, r.stdout, "_gc_project.sh" in r.stderr), (2, "", True))
+
+
 def test_fossil_live(tmp):
     print("\n7. a real Fossil checkout")
     if not shutil.which("fossil"):
@@ -251,7 +281,7 @@ def test_fossil_live(tmp):
 
 def main():
     for t in (test_git, test_none, test_usage, test_fossil_fake, test_fossil_failures,
-              test_broken_git, test_fossil_live):
+              test_broken_git, test_fossil_live, test_damaged_git_and_partial_install):
         with tempfile.TemporaryDirectory(prefix="gc-vcs-") as d:
             t(Path(d).resolve())
     print()

@@ -206,6 +206,25 @@ with tempfile.TemporaryDirectory() as td:
     check("fossil: uncommitted and untracked files listed",
           "Uncommitted:\nEDITED     Sources/App.swift\nEXTRA      .hidden" in out)
 
+    # A fossil that fails (a moved repository file, an older version) is not
+    # "no commits, clean tree".
+    fossil.write_text("#!/bin/sh\necho 'repository does not exist' >&2\nexit 1\n")
+    r = subprocess.run([script], cwd=checkout, capture_output=True, text=True, env=env)
+    check("fossil failing: says commits and files were NOT read",
+          "A fossil command failed" in r.stdout and "were NOT read" in r.stdout
+          and "Recent commits:" not in r.stdout and "Uncommitted:" not in r.stdout,
+          r.stdout[:400])
+
+    # session-context.sh copied alone: it cannot tell a Fossil checkout from a
+    # plain folder, and must say so rather than print nothing.
+    lone = home / "lonebin"
+    lone.mkdir()
+    shutil.copy(script, lone / "session-context.sh")
+    r = subprocess.run([str(lone / "session-context.sh")], cwd=checkout,
+                       capture_output=True, text=True, env=env)
+    check("helper missing: says context was not produced",
+          "not produced" in r.stdout and "_gc_project.sh" in r.stdout, r.stdout[:300])
+
     silent = subprocess.run([script], cwd=plain, capture_output=True, text=True, env=env)
     check("a plain folder under ~/src still gets nothing", silent.stdout == "")
 

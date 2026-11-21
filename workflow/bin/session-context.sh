@@ -24,9 +24,14 @@ esac
 VCS=git
 if ! git -C "$CWD" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   SC_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
-  [ -f "$SC_DIR/_gc_project.sh" ] || exit 0
   # shellcheck source=./_gc_project.sh
-  . "$SC_DIR/_gc_project.sh"
+  [ -f "$SC_DIR/_gc_project.sh" ] && . "$SC_DIR/_gc_project.sh"
+  if ! command -v gc_fossil_root >/dev/null 2>&1; then
+    # A partial install. Without the helper this cannot tell a Fossil checkout
+    # from a plain folder, and staying silent would hide a real project.
+    printf '%s' "Session-start context: not produced. $SC_DIR/_gc_project.sh is missing or broken, so this directory could not be checked for a Fossil checkout. Reinstall the workflow scripts."
+    exit 0
+  fi
   gc_fossil_root "$CWD" >/dev/null || exit 0
   VCS=fossil
 fi
@@ -52,11 +57,20 @@ if [ "$VCS" = git ]; then
   RECENT_COMMITS="$(git -C "$CWD" log --oneline -5 2>/dev/null)"
   DIRTY="$(git -C "$CWD" status --short 2>/dev/null)"
 elif command -v fossil >/dev/null 2>&1; then
-  VCS_NOTE="Checkout: Fossil, not git. Use fossil commands here; git ones fail."
-  # The last timeline line is a trailer ("+++ no more data (2) +++"), not a commit.
-  RECENT_COMMITS="$(cd "$CWD" && fossil timeline -n 5 -t ci -F '%h %c' 2>/dev/null \
-    | grep -Ev '^(\+\+\+|---) .* (\+\+\+|---)$')"
-  DIRTY="$(cd "$CWD" && fossil changes --differ --dotfiles 2>/dev/null)"
+  FOSSIL_OK=1
+  FOSSIL_LOG="$(cd "$CWD" && fossil timeline -n 5 -t ci -F '%h %c' 2>/dev/null)" || FOSSIL_OK=0
+  DIRTY="$(cd "$CWD" && fossil changes --differ --dotfiles 2>/dev/null)" || FOSSIL_OK=0
+  if [ "$FOSSIL_OK" = 1 ]; then
+    VCS_NOTE="Checkout: Fossil, not git. Use fossil commands here; git ones fail."
+    # The last timeline line is a trailer ("+++ no more data (2) +++"), not a commit.
+    RECENT_COMMITS="$(printf '%s\n' "$FOSSIL_LOG" | grep -Ev '^(\+\+\+|---) .* (\+\+\+|---)$')"
+  else
+    # A moved repository file or an older Fossil fails here. Say so: empty
+    # sections would read as "no commits, clean tree".
+    VCS_NOTE="Checkout: Fossil, not git. A fossil command failed, so recent commits and uncommitted files were NOT read."
+    RECENT_COMMITS=""
+    DIRTY=""
+  fi
 else
   # Say so. An empty section here would read as "no commits, clean tree".
   VCS_NOTE="Checkout: Fossil, not git. The fossil command is not installed, so recent commits and uncommitted files were NOT read."

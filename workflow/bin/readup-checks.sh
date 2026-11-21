@@ -56,7 +56,8 @@ fi
 # --- 5. resync marker --------------------------------------------------------
 marker="$HOME/.claude/state/resync-$project.touch"
 if [ -f "$marker" ] && [ "$in_repo" = 1 ]; then
-  mt="$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null || echo 0)"
+  # GNU form first: see claude-md-size.sh for why the other order breaks on Linux.
+  mt="$(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null || echo 0)"
   age_h=$(( ($(date +%s) - mt) / 3600 ))
   commits_since="$(git log --oneline --since="@$mt" 2>/dev/null | wc -l | tr -d ' ')"
 else

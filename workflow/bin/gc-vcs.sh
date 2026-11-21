@@ -18,7 +18,8 @@
 # 0 means the answer is complete, and an empty answer is a real "nothing".
 # Anything else means the checkout could not be read, with the reason on stderr.
 # A caller must report that, never record it as "no commits" or "clean".
-#   2 usage, or git itself is failing   3 Fossil checkout without the fossil command
+#   2 usage, git itself is failing, or the helper beside this script is missing
+#   3 Fossil checkout without the fossil command
 #   4 the VCS command failed            5 a timeline line could not be parsed
 #
 # Fossil facts this relies on, checked on 2.28:
@@ -33,11 +34,28 @@ set -uo pipefail
 
 BIN_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
 # shellcheck source=./_gc_project.sh
-. "$BIN_DIR/_gc_project.sh"
+[ -f "$BIN_DIR/_gc_project.sh" ] && . "$BIN_DIR/_gc_project.sh"
+if ! command -v gc_fossil_root >/dev/null 2>&1; then
+  # A partial install under ~/.claude/bin. Without the helper a Fossil checkout
+  # would come out as `none` with exit 0.
+  echo "gc-vcs: $BIN_DIR/_gc_project.sh is missing or broken; the checkout was not read" >&2
+  exit 2
+fi
+
+# Is there a .git entry in $PWD or any parent?
+git_entry_above() {
+  local d="$PWD"
+  while [ -n "$d" ] && [ "$d" != "/" ] && [ "$d" != "." ]; do
+    [ -e "$d/.git" ] && return 0
+    d=$(dirname "$d")
+  done
+  return 1
+}
 
 # Sets KIND. Mirrors gc_resolve_project: only git's exit 128 ("not a git
 # repository") moves on to Fossil or `none`. A git that fails any other way is an
-# error, never a quiet "none".
+# error, never a quiet "none". Git also answers 128 for a damaged repository and
+# for "dubious ownership", so 128 with a .git entry above is an error too.
 detect_kind() {
   local rc=0
   KIND=none
@@ -46,6 +64,10 @@ detect_kind() {
     if [ "$rc" -eq 0 ]; then KIND=git; return 0; fi
     if [ "$rc" -ne 128 ]; then
       echo "gc-vcs: git failed with exit $rc; the checkout was not read" >&2
+      return 2
+    fi
+    if git_entry_above; then
+      echo "gc-vcs: a .git entry exists here or above, but git cannot read it (exit 128); the checkout was not read" >&2
       return 2
     fi
   fi
@@ -96,6 +118,9 @@ case "$CMD" in
     detect_kind || exit $?
     case "$KIND" in
       git)
+        # A repository with no commits yet has nothing to list, and `git log`
+        # would exit 128 there.
+        git rev-parse --verify -q HEAD >/dev/null 2>&1 || exit 0
         out="$(git log --since="${since}Z" --format='%H|%ct|%s' 2>&1)" || { echo "gc-vcs: git log failed: $out" >&2; exit 4; }
         if [ -n "$out" ]; then printf '%s\n' "$out"; fi
         ;;
