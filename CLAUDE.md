@@ -52,12 +52,15 @@ This repo coordinates with peer repos (selected-projects, prntd) via an append-o
 **Writing a cross-repo note** — never hand-edit + manually `git push`; use the wrapper so the pull-rebase/commit/push is atomic and conflicts surface loudly:
 
 ```
-~/.claude/bin/handoff.sh append <file> "### YYYY-MM-DD <from> → <to>: <subject>
+~/.claude/bin/handoff.sh append <file> "$(cat <<'EOF'
+### YYYY-MM-DD <from> → <to>: <subject>
 
-<body>"
+<body>
+EOF
+)"
 ```
 
-It inserts the entry at the **top** of `## Active`. When an entry is acted on, move it under `## Archived` with a one-line outcome (a normal Edit), then `~/.claude/bin/handoff.sh sync`. Exit codes: 0 ok · 3 conflict (kept local, resolve in `~/src/.handoff`) · 4 offline (kept local, re-run `sync` later) · 5 lock contention · 6 repo unwritable (no writable root over `~/src/.handoff`, not a lock). Design + 26/26 pressure test: `docs/handoff-repo-plan.md`, `workflow/handoff-sim/`.
+The heredoc matters: `block-secrets.sh` reads a plain quoted body as commands, so a note that mentions `cat .env` or `op read` is refused. It inserts the entry at the **top** of `## Active`. When an entry is acted on, move it under `## Archived` with a one-line outcome (a normal Edit), then `~/.claude/bin/handoff.sh sync`. Exit codes: 0 ok · 3 conflict (kept local, resolve in `~/src/.handoff`) · 4 offline (kept local, re-run `sync` later) · 5 lock contention · 6 repo unwritable (no writable root over `~/src/.handoff`, not a lock). Design + 26/26 pressure test: `docs/handoff-repo-plan.md`, `workflow/handoff-sim/`.
 
 ## Landing a change
 

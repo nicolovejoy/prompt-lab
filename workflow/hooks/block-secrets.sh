@@ -14,6 +14,13 @@
 # value into the conversation. Commands that only write secrets to places the hook
 # already refuses to read (a .env file, the 1Password vault, a child process's
 # environment) are allowed.
+#
+# Quotes: the hook does not parse the shell. A reader verb, an op command or the
+# name of a secret file counts wherever it is written, inside quotes or not, so
+# a quoted commit message or note that mentions one is blocked. Pass such text
+# by heredoc (heredoc bodies are not scanned) or from a file. Every word is also
+# expanded as a wildcard, quoted or not, with one exception: a bare .* inside
+# a quoted search pattern, which is not a file list (see mark_quoted_stars).
 
 set -euo pipefail
 
@@ -103,7 +110,8 @@ strip_heredocs() {
         if (line == tag) { skip = 0; tag = "" }
         next
       }
-      if (match($0, /<<-?[ \t]*['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/)) {
+      line = $0; gsub(/<<</, "###", line)     # a here-string is not a heredoc
+      if (match(line, /<<-?[ \t]*['"'"'"]?[A-Za-z_][A-Za-z0-9_]*['"'"'"]?/)) {
         t = substr($0, RSTART, RLENGTH)
         sub(/^<<-?[ \t]*/, "", t); gsub(/['"'"'"]/, "", t)
         tag = t; skip = 1
@@ -115,35 +123,139 @@ strip_heredocs() {
   '
 }
 
-# Does the command contain any token whose basename classifies as a secret file?
-# Tokens are whitespace- or quote-delimited words that look like paths or names.
-# Using the same classifier as the file-tool branch keeps the two in agreement:
-# .env.tpl is allowed here exactly as it is for Read/Edit/Write.
+# The reader verbs: commands whose output can carry a file's contents.
+VERBS='cat|head|tail|less|more|bat|sed|awk|grep|rg|ag|source|xxd|strings|base64|od|hexdump|cut|tr|sort|uniq|wc|python3?|node|ruby|perl'
+
+# Mark every * inside a quoted string that reads as a search pattern (as the
+# byte \001). Reads the command on stdin. A quoted string is NOT a pattern, and
+# keeps its stars, when it holds a reader verb (it may be a command something
+# runs: awk system("cat .*")), is .* and nothing else (a whole argument: a
+# file list for ssh host cat '.*'), or starts with a colon (a git pathspec).
+# Pairs quote marks the way the shell does in the plain cases and gives up on
+# the rest, printing the input unchanged: a command that hands words to a
+# second shell (RUNNER), a # , backslash, backtick or $'...' outside quotes,
+# a $( ${ or backtick inside double quotes, quotes that do not balance.
+# Giving up costs nothing but the exception in words_to_expand.
+RUNNER='(sh|bash|zsh|dash|ksh|csh|tcsh|fish|eval|ssh|mosh|su|watch|osascript|tmux|screen|parallel|docker|kubectl|[$][{]?SHELL[}]?)'
+mark_quoted_stars() {
+  LC_ALL=C awk -v sq="'" -v dq='"' -v verb="(^|[^A-Za-z0-9_])($VERBS)[ \t\n]" \
+      -v runner="(^|[^A-Za-z0-9_.-])$RUNNER[ \t\n]" '
+    { all = all $0 "\n" }
+    END {
+      if (all ~ runner) { printf "%s", all; exit }
+      n = length(all); q = ""; out = ""; seg = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(all, i, 1); d = substr(all, i + 1, 1)
+        if (q == "") {
+          if (c == "\\" || c == "`" || c == "#" || (c == "$" && d == sq)) { printf "%s", all; exit }
+          if (c == sq || c == dq) { q = c; seg = "" }
+          out = out c; continue
+        }
+        if (q == dq && c == "\\") { seg = seg c d; i++; continue }
+        if (q == dq && (c == "`" || (c == "$" && (d == "(" || d == "{")))) { printf "%s", all; exit }
+        if (c != q) { seg = seg c; continue }
+        if (seg !~ /^[ \t\n]*\.\*\??[ \t\n]*$/ && seg !~ /^:/ && seg !~ verb) gsub(/\*/, "\001", seg)
+        out = out seg c; q = ""
+      }
+      printf "%s", (q == "") ? out : all
+    }'
+}
+
+# The words of a command that may be expanded as wildcards, one per line: all
+# of them, as the hook always did, except a bare .* (or .*?) that
+# mark_quoted_stars marked. "(a|b).*" and "for .* in x" are search patterns;
+# expanded here, that .* would name the env file and block every such search.
+# Nothing else is exempt: a quoted .e* still expands, since a tool or a second
+# shell may expand it too.
+words_to_expand() {
+  printf '%s\n' "$1" | mark_quoted_stars | tr '"'"'"'`|;&()<>' '          ' | tr -s ' \t' '\n\n' \
+    | { grep -vxE $'\\.\001\\??' || true; } | tr '\001' '*'
+}
+
+# Classify one word from the command line: return 0 if it names a secret file.
+# Uses the same classifier as the file-tool branch, so the two agree: .env.tpl
+# is allowed here exactly as it is for Read/Edit/Write.
+word_names_secret() {
+  local tok="$1"
+  case "$tok" in
+    *.env*|*.pem|*.key|credentials*|*/credentials*) ;;
+    *) return 1 ;;
+  esac
+  tok="${tok%%=*}"
+  [ -z "$tok" ] && return 1
+  # --env-file=.env.tpl and friends are classified by the flag loop below
+  case "$tok" in --*) return 1 ;; esac
+  if is_secret_file "$tok"; then return 0; fi
+  # A name spelled with wildcards (.env*, *.env.*) names the file it wraps.
+  case "$tok" in
+    *[*?]*) is_secret_file "${tok//[*?]/}" ;;
+    *) return 1 ;;
+  esac
+}
+
+# Flags whose argument is a file pattern the tool matches itself (find -name,
+# grep --include, rg -g, a git pathspec after --). A quoted wildcard there
+# selects files, so it is tested against sample secret names.
+is_pattern_flag() {
+  case "${1%=}" in
+    -name|-iname|-path|-ipath|-wholename|-iwholename|--include|-g|--glob|--iglob|--) return 0 ;;
+  esac
+  return 1
+}
+pattern_selects_secret() {
+  local pat="$1" n
+  # A catch-all (*, */*) says no more than leaving the flag out, and a
+  # recursive search with no pattern is not blocked either.
+  [ -z "${pat//[*?\/]/}" ] && return 1
+  # Bare names for -name and --include, paths for -path and pathspecs: a
+  # pattern like */node_modules/* matches neither.
+  for n in .env .env.local x.pem x.key credentials; do
+    # shellcheck disable=SC2254
+    case "$n" in $pat) return 0 ;; esac
+    # shellcheck disable=SC2254
+    case "./$n" in $pat) return 0 ;; esac
+    # shellcheck disable=SC2254
+    case "d/$n" in $pat) return 0 ;; esac
+  done
+  return 1
+}
+
+# Does the command name a secret file?
 cmd_mentions_secret_file() {
-  local cmd="$1" tok real
+  local cmd="$1" tok prev="" found=1
+  # Names as written, quoted or not. Read twice: with quote marks turned into
+  # spaces, and with them deleted, since .e"nv" is one word to the shell. No
+  # wildcard expansion here: a quoted .* is a pattern, not a file list.
+  set -f
   # shellcheck disable=SC2086
-  for tok in $(printf '%s' "$cmd" | tr '"'"'"'|;&()<>' '          ' | tr -s ' ' '\n'); do
-    case "$tok" in
-      *.env*|*.pem|*.key|credentials*|*/credentials*) ;;
-      *) continue ;;
-    esac
-    tok="${tok%%=*}"            # VAR=.env.local  -> keep the value side below
-    [ -z "$tok" ] && continue
-    # the token may be the right-hand side of --env-file=.env.tpl
-    case "$tok" in --*) continue ;; esac
-    if is_secret_file "$tok"; then return 0; fi
+  for tok in $(printf '%s\n%s' "$(printf '%s' "$cmd" | tr '"'"'"'`' '   ')" "$(printf '%s' "$cmd" | tr -d '"'"'"'"'"'"'"')" | tr '|;&()<>' '       ' | tr -s ' ' '\n'); do
+    if word_names_secret "$tok"; then found=0; break; fi
+    if is_pattern_flag "$prev" && pattern_selects_secret "$tok"; then found=0; break; fi
+    prev="$tok"
   done
   # --flag=VALUE forms (e.g. --env-file=.env.local): classify the value part
-  for tok in $(printf '%s' "$cmd" | grep -oE -- '--?[A-Za-z-]+=[^ "'"'"']+' || true); do
-    tok="${tok#*=}"
-    case "$tok" in *.env*|*.pem|*.key|credentials*) ;; *) continue ;; esac
-    if is_secret_file "$tok"; then return 0; fi
+  if [ "$found" -ne 0 ]; then
+    for tok in $(printf '%s' "$cmd" | tr '"'"'"'' '  ' | grep -oE -- '--?[A-Za-z-]+=[^ ]+' || true); do
+      if word_names_secret "${tok#*=}"; then found=0; break; fi
+      if is_pattern_flag "${tok%%=*}" && pattern_selects_secret "${tok#*=}"; then found=0; break; fi
+    done
+  fi
+  set +f
+  [ "$found" -eq 0 ] && return 0
+  # Every word again, expanded as a wildcard: `cat .e*` names .env. The hook
+  # runs in the session's directory, so this matches what the shell would do.
+  # shellcheck disable=SC2046
+  for tok in $(words_to_expand "$cmd"); do
+    if word_names_secret "$tok"; then return 0; fi
   done
   return 1
 }
 
 block() {
   echo "BLOCKED: $1 — ask the user to handle this file directly." >&2
+  if [ "$TOOL" = "Bash" ]; then
+    echo "If the match is only words inside a quoted message or note, pass that text by heredoc or from a file; the hook does not read heredoc bodies." >&2
+  fi
   exit 2
 }
 
@@ -191,18 +303,23 @@ case "$TOOL" in
 
     # --- secret files on the command line ---
     # A reader verb anywhere + a secret-classified file token anywhere = block.
+    # The verb may follow a quote mark or backtick (sh -c "cat x"), a backslash
+    # (\cat), a path (/bin/cat) or a shell-escape bang. The "." verb (source)
+    # may follow a quote mark but not a slash: "/." ends a path.
     # Writers (cp, mv, touch, test -f, op inject -o) with no reader verb pass.
-    READER='(^|[|;&(]|\s)(cat|head|tail|less|more|bat|sed|awk|grep|rg|ag|source|xxd|strings|base64|od|hexdump|cut|tr|sort|uniq|wc|python3?|node|ruby|perl|\.)\s'
+    READER='((^|[|;&(!\\/"`'"'"']|\s)('"$VERBS"')|(^|[|;&("`'"'"']|\s)\.)\s'
     if echo "$CMD" | grep -qE "$READER" 2>/dev/null && cmd_mentions_secret_file "$CMD"; then
       block "Shell command reads a secret file"
     fi
     # Redirect-in from a secret file: < .env, < .env.local, <.env
-    for tok in $(echo "$CMD" | grep -oE '<\s*[^ <>|;&]+' | sed -E 's/^<\s*//' || true); do
+    # A quoted <.*> is a pattern, not a redirect. Stops at ) for $(<file).
+    for tok in $(printf '%s\n' "$CMD" | mark_quoted_stars | grep -oE '<\s*[^ <>|;&)]+' | sed -E 's/^<\s*//' | { grep -vE $'^\\.\001\\??[\"\']?$' || true; } | tr '\001' '*' || true); do
+      tok="${tok//[\"\']/}"
       if is_secret_file "$tok"; then block "Shell command reads a secret file via redirect"; fi
     done
 
     # --- ~/secrets and ~/.secrets: contents never, listing OK ---
-    if echo "$CMD" | grep -qE "$READER"'.*(~|\$HOME|/Users/[^/]+)/\.?secrets' 2>/dev/null; then
+    if echo "$CMD" | grep -qE "$READER"'.*(~|\$HOME|\$\{HOME\}|/Users/[^/]+)/\.?secrets' 2>/dev/null; then
       block "Shell command reads file in secrets dir — ask the user to handle it directly"
     fi
 
