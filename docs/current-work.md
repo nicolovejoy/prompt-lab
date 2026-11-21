@@ -5,7 +5,7 @@ Trimmed 2026-11-14; the long version is this file's git history.
 
 ## Open
 
-- **`block-secrets.sh` blocks two harmless shapes (found 2026-11-20).** A bare `.*` from a quoted regex is glob-expanded against the session's directory, so it becomes `.env` where one exists; and prose that mentions `op inject` or `cat .env` in a note or commit message is matched as a command. Proposed: glob only words that were outside quotes, and match `op` only where a command can start. Not started. Nico left it to the agent (2026-11-21): do it as its own PR, with cases added to `workflow/hooks/test-block-secrets.sh`. The installed hook is a copy, so it needs copying after the merge.
+- **`block-secrets.sh` still lets three shapes through (found 2026-11-21, while fixing its false blocks).** A heredoc fed to a shell or interpreter (`bash <<EOF`, `python3 <<EOF`) is treated as file contents, so a reader inside it is not seen. A recursive search from the project root (`grep -rn KEY .`) names no secret file. A redirect from a quoted name on a command that is not a known reader (`mycmd < ".env"`) is missed. None is new. The hook's test is also not in CI: it needs `jq`, and the hook's `grep` and `awk` use is only proven on macOS.
 - **Git's exit 128 is read as "not a repository" outside `gc-vcs.sh`** (review of #121). A damaged `.git` or a stale worktree gitfile gets no start context and files under `scratch`. musicforge and ibuild4you hold stale worktree gitfiles today.
 - **Review emails after the design pass.** Read a few built since 2026-11-05 and judge the layout.
 - **ntz-conveyor in `~/src/mini-rescue/`.** Kept until person-tracking confirms its gitignored `db.sqlite3` data lives elsewhere (asked 2026-11-03).
