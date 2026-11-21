@@ -134,6 +134,8 @@ run block 'find . -name ".e*" -type f -exec cat {} +'
 run block 'grep -r KEY --include=".e*" .'
 run block 'grep -r KEY --include=.e* .'
 run block 'rg KEY -g ".env*"'
+run block "find . -path '*/.e*' -exec cat {} +"
+run block 'git grep --no-index KEY -- ".e*"'
 run block 'fd ".env*" -x cat {}'
 run block 'echo $(<.env)'
 run block 'git commit -m "note ${X:-`cat .env`}"'
@@ -143,6 +145,55 @@ run allow 'find . -name "*.py" -exec grep -l foo {} +'
 run allow 'rg "foo.*bar" -g "*.md"'
 run allow 'grep -rn "a|.*" --include="*.sh" workflow'
 run allow 'find src -name ".*" -maxdepth 1'
+run allow "find . -name CLAUDE.md -not -path '*/node_modules/*' | head -5"
+run allow "grep -rl TODO --include='*' src | head"
+run allow 'du -sh -- * _archived/* | sort -rh | head -40'
+
+echo "# must ALLOW: everyday chains of inert commands keep the lenient reading"
+run allow 'cd /tmp/x && git add -A && git commit -m "never cat or op read here" 2>&1 | tail -3'
+run allow "git commit -m \"it's done: op read stays blocked\" && git push"
+run allow 'echo "done: $(date) never cat .env"'
+run allow 'gh pr create --title "x" --body "mentions op read and cat .env"'
+run allow 'for f in a b; do echo "cat .env $f"; done'
+run allow 'git log --oneline -5 --grep="(a|b).*" | head -3'
+
+echo "# must BLOCK: a secret name inside a quoted string, with a reader on the line"
+run block "sed 'r .env' README.md"
+run block 'for f in ".env .env.local"; do cat $f; done'
+run block 'git commit -m "never cat .env" 2>&1 | tail -3'
+
+echo "# must BLOCK: a command that is not on the inert list runs its string"
+run block "awk 'BEGIN{system(\"op read op://v/i/f\")}'"
+run block "git -c alias.x='!op read op://v/i/f' x"
+run block 'git "-c" "alias.commit=!op read op://v/i/f" commit'
+run block 'git fetch --upload-pack "op read op://v/i/f" /tmp/r'
+run block "env -S 'op read op://v/i/f'"
+run block 'source <(echo "op read op://v/i/f")'
+run block ". <(echo \"op item get x\")"
+run block "node -p \"require('child_process').execSync('op read op://v/i/f')+''\""
+run block "perl -E 'system(q(op read op://v/i/f))'"
+run block "python3 -Bc \"import os;os.system('op read op://v/i/f')\""
+run block 'npm exec -c "op read op://v/i/f"'
+run block 'psql -c "\! cat .env"'
+run block 'sqlite3 :memory: ".shell cat .env"'
+run block 'vim -es -c "r !cat .env"'
+run block 'X="x; cat .env"; $X'
+
+echo "# must BLOCK: shell syntax the quote reader does not model"
+run block '# it'"'"'s the project env
+cat .env
+# don'"'"'t print it'
+run block 'git status # it'"'"'s the project env
+cat .env
+# don'"'"'t print it'
+run block 'echo "${X:-$(echo '"'"'{}'"'"' ; cat .env)}"'
+run block 'echo "${X:-$(
+cat .env
+)}"'
+run block "echo \$'\\'' ; cat .env ; echo \$'\\''"
+run block '"sh" -c "echo x; cat .env"'
+run block 's\h -c "echo x; cat .env"'
+run block 'echo a ) ; cat .env'
 
 echo "# must BLOCK: quotes that do not balance fall back to the strict reading"
 run block 'git commit -m "never cat .env'
