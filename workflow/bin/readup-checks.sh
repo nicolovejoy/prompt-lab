@@ -9,16 +9,32 @@ if [ -f "$RC_BIN_DIR/_gc_project.sh" ]; then
   # shellcheck source=./_gc_project.sh
   . "$RC_BIN_DIR/_gc_project.sh"
   project="$(gc_resolve_project "$PWD")"
+  # An older helper beside this script cannot tell an unreadable repository
+  # from a plain directory. Say so; do not answer "not a git repo" in silence.
+  command -v gc_git_entry_root >/dev/null 2>&1 || echo "PROJECT_RESOLVER=out-of-date"
 else
   project="$(basename "$PWD")"
   echo "PROJECT_RESOLVER=fallback-basename"
 fi
 echo "PROJECT=$project"
-in_repo=0
-git rev-parse --is-inside-work-tree >/dev/null 2>&1 && in_repo=1
+in_repo=0; git_rc=0
+git_err="$(git rev-parse --is-inside-work-tree 2>&1 >/dev/null)" || git_rc=$?
+[ "$git_rc" -eq 0 ] && in_repo=1
+# git answers 128 for "not a repository" and for one it cannot read (a damaged
+# .git, a pruned worktree record). With a .git entry here or above, or any other
+# failure, the checkout is unreadable: that is not "not a git repo".
+unreadable=0; skip_reason=not-a-git-repo
+if [ "$in_repo" != 1 ] && command -v git >/dev/null 2>&1; then
+  if [ "$git_rc" -ne 128 ]; then
+    unreadable=1
+  elif command -v gc_git_entry_root >/dev/null 2>&1 && gc_git_entry_root "$PWD" >/dev/null; then
+    unreadable=1
+  fi
+  [ "$unreadable" = 1 ] && skip_reason=repo-unreadable
+fi
 # A Fossil checkout (ear-worm, 2026-11-20) is a project too, just not a git one.
 fossil_root=""
-if [ "$in_repo" != 1 ] && command -v gc_fossil_root >/dev/null 2>&1; then
+if [ "$in_repo" != 1 ] && [ "$unreadable" != 1 ] && command -v gc_fossil_root >/dev/null 2>&1; then
   fossil_root="$(gc_fossil_root "$PWD")" || fossil_root=""
 fi
 
@@ -45,6 +61,10 @@ if [ "$in_repo" = 1 ]; then
   else
     echo "WORKTREES=main-only"
   fi
+elif [ "$unreadable" = 1 ]; then
+  echo "REMOTE=unreadable"
+  printf '%s\n' "git exit $git_rc: $git_err" | head -1 | sed 's/^/  /'
+  echo "WORKTREES=unavailable (git could not read this checkout)"
 elif [ -n "$fossil_root" ]; then
   # Nothing here talks to a Fossil remote yet, so say "unchecked", never "clean".
   cd "$fossil_root" || true
@@ -69,7 +89,7 @@ if [ "$in_repo" = 1 ]; then
 else
   # /resync reads git history and GitHub issues. Outside a git repo the 9999s
   # above would read as "due" at every session start of a Fossil checkout.
-  echo "RESYNC=skip reason=not-a-git-repo due=no"
+  echo "RESYNC=skip reason=$skip_reason due=no"
 fi
 
 # --- 6. shared-conventions drift (check only) --------------------------------
@@ -106,7 +126,7 @@ fi
 
 # --- 8. CI health --------------------------------------------------------------
 if [ "$in_repo" != 1 ]; then
-  echo "CI_PROBE=skip reason=not-a-git-repo"
+  echo "CI_PROBE=skip reason=$skip_reason"
 elif ! command -v gh >/dev/null 2>&1; then
   echo "CI_PROBE=skip reason=gh-not-installed"
 elif ! gh auth status >/dev/null 2>&1; then

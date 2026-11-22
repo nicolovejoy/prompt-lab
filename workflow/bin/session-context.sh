@@ -17,19 +17,29 @@ HOME_SRC="$HOME/src"
 # Guard: only run in real project dirs under ~/src/ that are git repos or
 # Fossil checkouts. The Fossil case was added 2026-11-20: ear-worm sessions were
 # starting with no context at all, because "not a git repo" meant "not a project".
+# A repository git cannot read is a project too: it says so instead of printing
+# nothing. git answers 128 both for "not a repository" and for a damaged one, so
+# 128 only means "not a project" when no .git entry sits here or above.
 case "$CWD" in
   "$HOME_SRC"/*) ;;
   *) exit 0 ;;
 esac
 VCS=git
-if ! git -C "$CWD" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+GIT_RC=0
+GIT_ERR="$(git -C "$CWD" rev-parse --is-inside-work-tree 2>&1 >/dev/null)" || GIT_RC=$?
+if [ "$GIT_RC" -ne 0 ]; then
   SC_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
   # shellcheck source=./_gc_project.sh
   [ -f "$SC_DIR/_gc_project.sh" ] && . "$SC_DIR/_gc_project.sh"
-  if ! command -v gc_fossil_root >/dev/null 2>&1; then
+  if ! command -v gc_fossil_root >/dev/null 2>&1 || ! command -v gc_git_entry_root >/dev/null 2>&1; then
     # A partial install. Without the helper this cannot tell a Fossil checkout
-    # from a plain folder, and staying silent would hide a real project.
-    printf '%s' "Session-start context: not produced. $SC_DIR/_gc_project.sh is missing or broken, so this directory could not be checked for a Fossil checkout. Reinstall the workflow scripts."
+    # or a damaged repository from a plain folder, and staying silent would
+    # hide a real project.
+    printf '%s' "Session-start context: not produced. $SC_DIR/_gc_project.sh is missing, broken or out of date, so this directory could not be checked for a Fossil checkout or an unreadable git repository. Reinstall the workflow scripts."
+    exit 0
+  fi
+  if command -v git >/dev/null 2>&1 && { [ "$GIT_RC" -ne 128 ] || gc_git_entry_root "$CWD" >/dev/null; }; then
+    printf '%s' "Session-start context: not produced. git could not read this checkout (exit $GIT_RC): $(printf '%s' "$GIT_ERR" | head -1). Commits and uncommitted files were NOT read; this is not a clean tree and not an empty project."
     exit 0
   fi
   gc_fossil_root "$CWD" >/dev/null || exit 0

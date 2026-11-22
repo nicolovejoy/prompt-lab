@@ -42,21 +42,15 @@ if ! command -v gc_fossil_root >/dev/null 2>&1; then
   exit 2
 fi
 
-# Is there a .git entry in $PWD or any parent?
-git_entry_above() {
-  local d="$PWD"
-  while [ -n "$d" ] && [ "$d" != "/" ] && [ "$d" != "." ]; do
-    [ -e "$d/.git" ] && return 0
-    d=$(dirname "$d")
-  done
-  return 1
-}
-
 # Sets KIND. Like gc_resolve_project, only git's exit 128 ("not a git
 # repository") moves on to Fossil or `none`, and a git that fails any other way
 # is an error. Stricter than the resolver in one way: git also answers 128 for a
 # damaged repository, a stale worktree gitfile and "dubious ownership", so here
-# 128 with a .git entry above is an error too, where the resolver says `scratch`.
+# 128 with a .git entry above is an error too, where the resolver still names
+# the project. That holds even for a Fossil checkout sitting below the
+# unreadable .git: the resolver names it (nearest marker wins), but its commits
+# are not read until the outer .git is fixed. readup-checks.sh and
+# session-context.sh are strict in the same way.
 detect_kind() {
   local rc=0
   KIND=none
@@ -67,7 +61,13 @@ detect_kind() {
       echo "gc-vcs: git failed with exit $rc; the checkout was not read" >&2
       return 2
     fi
-    if git_entry_above; then
+    if ! command -v gc_git_entry_root >/dev/null 2>&1; then
+      # An older _gc_project.sh beside a newer gc-vcs.sh. A damaged repository
+      # would come out as `none` with exit 0.
+      echo "gc-vcs: $BIN_DIR/_gc_project.sh is out of date; the checkout was not read" >&2
+      return 2
+    fi
+    if gc_git_entry_root "$PWD" >/dev/null; then
       echo "gc-vcs: a .git entry exists here or above, but git cannot read it (exit 128); the checkout was not read" >&2
       return 2
     fi

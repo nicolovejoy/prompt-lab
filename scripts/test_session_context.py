@@ -228,6 +228,30 @@ with tempfile.TemporaryDirectory() as td:
     silent = subprocess.run([script], cwd=plain, capture_output=True, text=True, env=env)
     check("a plain folder under ~/src still gets nothing", silent.stdout == "")
 
+    # A repository git cannot read (exit 128 under a .git entry) is a project.
+    # It used to get no context at all, like a plain folder.
+    damaged = home / "src" / "damaged"
+    (damaged / "sub").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=damaged, check=True, capture_output=True)
+    (damaged / ".git" / "HEAD").unlink()
+    r = subprocess.run([script], cwd=damaged / "sub", capture_output=True, text=True, env=env)
+    check("damaged repo: says context was not produced, and why",
+          "not produced" in r.stdout and "git could not read this checkout (exit 128)" in r.stdout
+          and "were NOT read" in r.stdout, r.stdout[:400])
+    check("damaged repo: no commits or clean tree are claimed",
+          "Recent commits:" not in r.stdout and "Uncommitted:" not in r.stdout, r.stdout[:400])
+
+    # A git that fails any other way (the Xcode license prompt) says so as well.
+    gitbin = home / "brokengit"
+    gitbin.mkdir()
+    (gitbin / "git").write_text("#!/bin/sh\necho 'xcode license not accepted' >&2\nexit 69\n")
+    (gitbin / "git").chmod(0o755)
+    r = subprocess.run([script], cwd=plain, capture_output=True, text=True,
+                       env=dict(env, PATH=f"{gitbin}:{env['PATH']}"))
+    check("broken git: says context was not produced, with git's message",
+          "not produced" in r.stdout and "(exit 69): xcode license not accepted" in r.stdout,
+          r.stdout[:400])
+
     bare = "/usr/bin:/bin"
     if shutil.which("fossil", path=bare):
         print("[SKIP] missing-fossil case: /usr/bin:/bin holds a fossil here")

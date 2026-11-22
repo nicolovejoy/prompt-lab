@@ -827,6 +827,74 @@ def test_fossil_checkout_is_its_own_project(tmp: Path) -> None:
         check(f"helper looks for {marker}", f'/{marker}"' in helper, True)
 
 
+def test_unreadable_git_repo_is_its_own_project(tmp: Path) -> None:
+    """A repository git cannot read is a project, not `scratch`.
+
+    git answers 128 for "not a repository" and also for a damaged `.git` or a
+    linked worktree whose record was pruned. That work was filed under
+    `scratch` (review of the Fossil change, 2026-11-21). A `.git` entry in the
+    directory or a parent names the project instead.
+    """
+    print("\n25. an unreadable git repository resolves to its own project, not scratch")
+    e = Env(tmp)
+
+    def both(label: str, where: Path, name: str) -> None:
+        e.submit(f"a prompt from {label}", cwd=where)
+        check(f"hook: {label} names the project",
+              e.q("SELECT project FROM prompts ORDER BY id DESC LIMIT 1")[0][0], name)
+        check(f"gc-read project from {label}", e.gc(GC_READ, "project", cwd=where), name)
+
+    # A damaged repository: `.git` is there, HEAD is gone.
+    damaged = tmp / "unreadable" / "damaged-repo"
+    (damaged / "src" / "deep").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=damaged, check=True, capture_output=True)
+    (damaged / ".git" / "HEAD").unlink()
+    probe = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=damaged,
+                           capture_output=True)
+    check("fixture: git answers 128 in the damaged repository", probe.returncode, 128)
+    both("the root of a damaged repository", damaged, "damaged-repo")
+    both("a subdirectory of a damaged repository", damaged / "src" / "deep", "damaged-repo")
+
+    # A linked worktree whose record in the main repository is gone. Its .git
+    # file still says which repository it belonged to.
+    stale = tmp / "unreadable" / "elsewhere" / "feature-x"
+    (stale / "lib").mkdir(parents=True)
+    main_repo = tmp / "unreadable" / "main-repo"
+    (stale / ".git").write_text(f"gitdir: {main_repo}/.git/worktrees/feature-x\n")
+    both("a worktree with a pruned record", stale / "lib", "main-repo")
+
+    # git 2.48 can write that path relative to the worktree.
+    inside = main_repo / "trees" / "agent-7"
+    inside.mkdir(parents=True)
+    (inside / ".git").write_text("gitdir: ../../.git/worktrees/agent-7\n")
+    both("a worktree with a pruned record and a relative path", inside, "main-repo")
+
+    # The nearest marker wins: a Fossil checkout below an unreadable .git
+    # keeps its own name.
+    nested = damaged / "vendor" / "fossil-thing"
+    nested.mkdir(parents=True)
+    (nested / ".fslckout").write_text("")
+    both("a Fossil checkout inside a damaged repository", nested, "fossil-thing")
+
+    # A .git file that points nowhere recognisable: the directory names it.
+    odd = tmp / "unreadable" / "odd-one"
+    odd.mkdir()
+    (odd / ".git").write_text("gitdir: ../somewhere/else\n")
+    both("a checkout with an unrecognised .git file", odd, "odd-one")
+
+    # No .git entry anywhere above: still scratch.
+    loose = tmp / "unreadable" / "loose"
+    loose.mkdir()
+    both("a plain directory beside them", loose, "scratch")
+
+    # Drift guard: the hook carries the steps inline, the helper as functions.
+    hook = HOOK.read_text()
+    helper = (ROOT / "workflow" / "bin" / "_gc_project.sh").read_text()
+    for needle in ('/.git" ]', '"gitdir: "*/.git/worktrees/*)', '%%/.git/worktrees/*}'):
+        check(f"hook has {needle}", needle in hook, True)
+        check(f"helper has {needle}", needle in helper, True)
+
+
 def main() -> int:
     # The hook is bash and shells out; skip rather than fail red if the runner
     # lacks a dependency. A skip is honest; a red CI for an env reason is noise.
@@ -860,6 +928,7 @@ def main() -> int:
         test_scratch_row_closes_once_the_conversation_has_a_repo,
         test_session_id_from_before_git_init_still_works,
         test_fossil_checkout_is_its_own_project,
+        test_unreadable_git_repo_is_its_own_project,
     ]
     for t in tests:
         with tempfile.TemporaryDirectory() as d:

@@ -63,6 +63,11 @@ esac
 # to `scratch` walk up for the marker Fossil writes at a checkout root
 # (`.fslckout`, or `_FOSSIL_`) and name the project after that directory. The
 # same walk is gc_fossil_root() in workflow/bin/_gc_project.sh; keep them alike.
+#
+# git answers 128 for a repository it cannot read, too (a damaged .git, a
+# linked worktree whose record was pruned). A .git entry here or above means a
+# real project, named as gc_git_entry_name() in _gc_project.sh names it. The
+# nearest marker wins, as in gc_resolve_project().
 REPO_NAME=""
 if command -v git >/dev/null 2>&1 && [ -n "$CWD" ]; then
     GIT_COMMON=$(git -C "$CWD" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
@@ -71,13 +76,32 @@ if command -v git >/dev/null 2>&1 && [ -n "$CWD" ]; then
         REPO_NAME=$(basename "$(dirname "$GIT_COMMON")")
     elif [ "$GIT_RC" -eq 128 ]; then
         REPO_NAME="scratch"
-        FOSSIL_DIR="$CWD"
-        while [ -n "$FOSSIL_DIR" ] && [ "$FOSSIL_DIR" != "/" ] && [ "$FOSSIL_DIR" != "." ]; do
-            if [ -f "$FOSSIL_DIR/.fslckout" ] || [ -f "$FOSSIL_DIR/_FOSSIL_" ]; then
-                REPO_NAME=$(basename "$FOSSIL_DIR")
+        MARK_DIR="$CWD"
+        while [ -n "$MARK_DIR" ] && [ "$MARK_DIR" != "/" ] && [ "$MARK_DIR" != "." ]; do
+            if [ -e "$MARK_DIR/.git" ]; then
+                GIT_ROOT="$MARK_DIR"
+                GITFILE_LINE=""
+                if [ -f "$MARK_DIR/.git" ]; then
+                    IFS= read -r GITFILE_LINE < "$MARK_DIR/.git" || true
+                fi
+                case "$GITFILE_LINE" in
+                    "gitdir: "*/.git/worktrees/*)
+                        GITFILE_LINE="${GITFILE_LINE#gitdir: }"
+                        GITFILE_LINE="${GITFILE_LINE%%/.git/worktrees/*}"
+                        case "$GITFILE_LINE" in
+                            /*) GIT_ROOT="$GITFILE_LINE" ;;
+                            *)  GIT_ROOT=$(cd "$MARK_DIR/$GITFILE_LINE" 2>/dev/null && pwd) || GIT_ROOT="$MARK_DIR" ;;
+                        esac
+                        ;;
+                esac
+                REPO_NAME=$(basename "$GIT_ROOT")
                 break
             fi
-            FOSSIL_DIR=$(dirname "$FOSSIL_DIR")
+            if [ -f "$MARK_DIR/.fslckout" ] || [ -f "$MARK_DIR/_FOSSIL_" ]; then
+                REPO_NAME=$(basename "$MARK_DIR")
+                break
+            fi
+            MARK_DIR=$(dirname "$MARK_DIR")
         done
     fi
 fi
