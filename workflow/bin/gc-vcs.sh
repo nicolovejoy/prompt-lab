@@ -47,7 +47,10 @@ fi
 # is an error. Stricter than the resolver in one way: git also answers 128 for a
 # damaged repository, a stale worktree gitfile and "dubious ownership", so here
 # 128 with a .git entry above is an error too, where the resolver still names
-# the project.
+# the project. That holds even for a Fossil checkout sitting below the
+# unreadable .git: the resolver names it (nearest marker wins), but its commits
+# are not read until the outer .git is fixed. readup-checks.sh and
+# session-context.sh are strict in the same way.
 detect_kind() {
   local rc=0
   KIND=none
