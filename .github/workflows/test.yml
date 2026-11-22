@@ -42,6 +42,7 @@ jobs:
       - name: Readup and whole-day workflow tests
         run: |
           python scripts/test_readup_checks.py
+          python scripts/test_sync_shared_fleet.py
           python scripts/test_gc_vcs.py
           python scripts/test_public_allowlist.py
           python scripts/test_day_context.py
