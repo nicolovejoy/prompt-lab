@@ -130,7 +130,7 @@ the cloud after a successful nightly synthesis and sync.
 Shared conventions are materialized into each repo's `CLAUDE.md`.
 `sync-shared-md.sh --check <file>` distinguishes a clean old block (`behind`) from
 local edits or malformed markers (`tampered`); apply refuses tampered blocks. Use
-`sync-shared-fleet.sh` for a read-only tab-separated inventory of both files across
+`sync-shared-fleet.sh` for a read-only tab-separated inventory of every `CLAUDE.md` across
 repositories under `~/src`. Its explicit `--apply` mode updates only verified
 `behind` or `missing` blocks; it never creates absent files, commits, or pushes.
 A repository git cannot read is listed as `unreadable` and the run exits nonzero,
