@@ -35,10 +35,9 @@ set -uo pipefail
 BIN_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
 # shellcheck source=./_gc_project.sh
 [ -f "$BIN_DIR/_gc_project.sh" ] && . "$BIN_DIR/_gc_project.sh"
-if ! command -v gc_fossil_root >/dev/null 2>&1 || ! command -v gc_git_entry_root >/dev/null 2>&1; then
-  # A partial install under ~/.claude/bin. Without the helper (or with an old
-  # one) a Fossil checkout or a damaged repository would come out as `none`
-  # with exit 0.
+if ! command -v gc_fossil_root >/dev/null 2>&1; then
+  # A partial install under ~/.claude/bin. Without the helper a Fossil checkout
+  # would come out as `none` with exit 0.
   echo "gc-vcs: $BIN_DIR/_gc_project.sh is missing or broken; the checkout was not read" >&2
   exit 2
 fi
@@ -57,6 +56,12 @@ detect_kind() {
     if [ "$rc" -eq 0 ]; then KIND=git; return 0; fi
     if [ "$rc" -ne 128 ]; then
       echo "gc-vcs: git failed with exit $rc; the checkout was not read" >&2
+      return 2
+    fi
+    if ! command -v gc_git_entry_root >/dev/null 2>&1; then
+      # An older _gc_project.sh beside a newer gc-vcs.sh. A damaged repository
+      # would come out as `none` with exit 0.
+      echo "gc-vcs: $BIN_DIR/_gc_project.sh is out of date; the checkout was not read" >&2
       return 2
     fi
     if gc_git_entry_root "$PWD" >/dev/null; then

@@ -1,6 +1,7 @@
 """Deterministic wrapper probes; no live git, network, DB, or handoff sync."""
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -195,6 +196,18 @@ exit "${FAKE_AUDIT_RC:-0}"
     check("unreadable repo: the project is still named",
           "PROJECT=prompt-lab\n" in result.stdout, result.stdout)
     (repo / ".git").rmdir()
+    # An older helper beside the script, as a half-updated ~/.claude/bin holds
+    # it: the script says the resolver is out of date.
+    stale = Path(tmp) / "stalebin"
+    stale.mkdir()
+    shutil.copy(SCRIPT, stale / "readup-checks.sh")
+    (stale / "_gc_project.sh").write_text(
+        "gc_fossil_root() { return 1; }\ngc_resolve_project() { printf scratch; }\n")
+    result = subprocess.run([str(stale / "readup-checks.sh")], cwd=repo, env=env,
+                            capture_output=True, text=True, timeout=10)
+    check("stale helper: the resolver is reported out of date",
+          "PROJECT_RESOLVER=out-of-date\n" in result.stdout, result.stdout)
+    check("current helper: no resolver warning", "PROJECT_RESOLVER" not in probe())
     check("no home state beyond the isolated sync fixture",
           list(home.iterdir()) == [home / ".claude"])
 

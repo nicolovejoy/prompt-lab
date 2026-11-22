@@ -863,6 +863,19 @@ def test_unreadable_git_repo_is_its_own_project(tmp: Path) -> None:
     (stale / ".git").write_text(f"gitdir: {main_repo}/.git/worktrees/feature-x\n")
     both("a worktree with a pruned record", stale / "lib", "main-repo")
 
+    # git 2.48 can write that path relative to the worktree.
+    inside = main_repo / "trees" / "agent-7"
+    inside.mkdir(parents=True)
+    (inside / ".git").write_text("gitdir: ../../.git/worktrees/agent-7\n")
+    both("a worktree with a pruned record and a relative path", inside, "main-repo")
+
+    # The nearest marker wins: a Fossil checkout below an unreadable .git
+    # keeps its own name.
+    nested = damaged / "vendor" / "fossil-thing"
+    nested.mkdir(parents=True)
+    (nested / ".fslckout").write_text("")
+    both("a Fossil checkout inside a damaged repository", nested, "fossil-thing")
+
     # A .git file that points nowhere recognisable: the directory names it.
     odd = tmp / "unreadable" / "odd-one"
     odd.mkdir()
@@ -877,7 +890,7 @@ def test_unreadable_git_repo_is_its_own_project(tmp: Path) -> None:
     # Drift guard: the hook carries the steps inline, the helper as functions.
     hook = HOOK.read_text()
     helper = (ROOT / "workflow" / "bin" / "_gc_project.sh").read_text()
-    for needle in ('/.git" ]', '"gitdir: /"*/.git/worktrees/*)', '%%/.git/worktrees/*}'):
+    for needle in ('/.git" ]', '"gitdir: "*/.git/worktrees/*)', '%%/.git/worktrees/*}'):
         check(f"hook has {needle}", needle in hook, True)
         check(f"helper has {needle}", needle in helper, True)
 

@@ -9,6 +9,9 @@ if [ -f "$RC_BIN_DIR/_gc_project.sh" ]; then
   # shellcheck source=./_gc_project.sh
   . "$RC_BIN_DIR/_gc_project.sh"
   project="$(gc_resolve_project "$PWD")"
+  # An older helper beside this script cannot tell an unreadable repository
+  # from a plain directory. Say so; do not answer "not a git repo" in silence.
+  command -v gc_git_entry_root >/dev/null 2>&1 || echo "PROJECT_RESOLVER=out-of-date"
 else
   project="$(basename "$PWD")"
   echo "PROJECT_RESOLVER=fallback-basename"

@@ -34,7 +34,7 @@ Use the recent session summaries in startup context for continuity.
 
 One line of behaviour per key. Anything not listed here → say nothing.
 
-- `PROJECT`: informational; silent, except `PROJECT_RESOLVER=fallback-basename` → one line: `_gc_project.sh` not installed alongside.
+- `PROJECT`: informational; silent, except `PROJECT_RESOLVER=fallback-basename` → one line: `_gc_project.sh` not installed alongside. `PROJECT_RESOLVER=out-of-date` → one line: the installed `_gc_project.sh` is older than `readup-checks.sh`, so an unreadable repository would read as "not a git repo"; reinstall the workflow scripts.
 - `REMOTE` / `TRACKING` / `REMOTE_ONLY`: `REMOTE=unreadable` → lead the summary with a ⚠️ line: git could not read this checkout (quote the indented line); remote, worktrees, resync and CI were NOT checked, and this is never "not a git repo" or "clean". `REMOTE=error` → fetch failed; report that remote status could not be checked, never interpret stale tracking data as current. Otherwise, any branch ahead/behind, or an unfamiliar remote-only branch → flag it in the summary so the user can decide whether to `git pull --rebase` / `git checkout` manually. Clean → silent. `REMOTE=fossil-unchecked` → one line: Fossil checkout, remote not checked.
 - `WORKTREES:` block (more than the main checkout) → another agent may be mid-task; flag it with its branch. Combine with `ListAgents` from the Do list, item 4.
 - `RESYNC=… due=yes` → invoke `/resync --light` inline and fold its findings into the summary (no separate wall of text). `due=no` → silent.

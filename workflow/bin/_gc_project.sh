@@ -53,7 +53,8 @@
 # in the directory or any parent and name the project after the repository it
 # belongs to. A linked worktree's .git is a one-line file pointing into the main
 # repository, which names it even when the record it points at is gone.
-# log-prompt.sh carries the same steps inline.
+# The nearest marker wins: a Fossil checkout below an unreadable .git keeps its
+# own name. log-prompt.sh carries the same steps inline.
 #
 # Callers use `set -euo pipefail`, so every git invocation is written so a
 # non-zero exit is captured rather than aborting the script.
@@ -91,9 +92,14 @@ gc_git_entry_name() {
     if [ -f "$root/.git" ]; then
         IFS= read -r line < "$root/.git" || true
         case "$line" in
-            "gitdir: /"*/.git/worktrees/*)
+            "gitdir: "*/.git/worktrees/*)
                 line="${line#gitdir: }"
-                root="${line%%/.git/worktrees/*}"
+                line="${line%%/.git/worktrees/*}"
+                # git 2.48 can write the path relative to the worktree.
+                case "$line" in
+                    /*) root="$line" ;;
+                    *)  root=$(cd "$root/$line" 2>/dev/null && pwd) || root="$1" ;;
+                esac
                 ;;
         esac
     fi
@@ -112,7 +118,7 @@ gc_resolve_project() {
         elif [ "$git_rc" -eq 128 ]; then
             git_root=$(gc_git_entry_root "$dir") || git_root=""
             fossil_root=$(gc_fossil_root "$dir") || fossil_root=""
-            if [ -n "$git_root" ]; then
+            if [ -n "$git_root" ] && [ "${#git_root}" -ge "${#fossil_root}" ]; then
                 repo_name=$(gc_git_entry_name "$git_root")
             elif [ -n "$fossil_root" ]; then
                 repo_name=$(basename "$fossil_root")

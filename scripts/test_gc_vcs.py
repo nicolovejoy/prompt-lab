@@ -248,6 +248,25 @@ def test_damaged_git_and_partial_install(tmp):
         check(f"{sub[0]}: without _gc_project.sh beside it exits 2 with no answer",
               (r.returncode, r.stdout, "_gc_project.sh" in r.stderr), (2, "", True))
 
+    # An older _gc_project.sh beside a newer gc-vcs.sh: it has the Fossil walk
+    # but not the .git one. A healthy repository must still answer, and a
+    # damaged one must be an error, not `none`.
+    stale = tmp / "stalebin"
+    stale.mkdir()
+    shutil.copy(SCRIPT, stale / "gc-vcs.sh")
+    (stale / "_gc_project.sh").write_text("gc_fossil_root() { return 1; }\n")
+    healthy = tmp / "healthy"
+    healthy.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=healthy, check=True, capture_output=True)
+    r = subprocess.run([str(stale / "gc-vcs.sh"), "kind"], cwd=str(healthy), text=True,
+                       capture_output=True, timeout=30)
+    check("stale helper: a healthy repository still answers git",
+          (r.returncode, r.stdout), (0, "git\n"))
+    r = subprocess.run([str(stale / "gc-vcs.sh"), "kind"], cwd=str(repo / "src"), text=True,
+                       capture_output=True, timeout=30)
+    check("stale helper: a damaged repository exits 2 with no answer",
+          (r.returncode, r.stdout, "out of date" in r.stderr), (2, "", True))
+
 
 def test_fossil_live(tmp):
     print("\n7. a real Fossil checkout")
