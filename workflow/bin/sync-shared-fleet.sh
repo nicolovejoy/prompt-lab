@@ -8,6 +8,9 @@
 # behind or whose existing file has no block. It never creates an absent file,
 # overwrites a tampered block, commits, or pushes.
 #
+# A directory with a .git entry that git cannot read is reported as `unreadable`
+# and the run exits nonzero. It is never skipped as if it were a plain directory.
+#
 # Usage: sync-shared-fleet.sh [--check|--apply] [ROOT]
 # ROOT defaults to ~/src. SHARED_FLEET_ROOT and SYNC_SHARED_MD may override the
 # root and single-file helper for isolated tests.
@@ -40,10 +43,23 @@ problems=0
 found=0
 for repo in "$ROOT"/*; do
     [ -d "$repo" ] || continue
-    git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || continue
-    found=1
     repo_name="$(basename "$repo")"
     filename=CLAUDE.md
+    git_rc=0
+    git_err="$(git -C "$repo" rev-parse --is-inside-work-tree 2>&1 >/dev/null)" || git_rc=$?
+    if [ "$git_rc" -ne 0 ]; then
+        # No .git entry: a plain directory, not a fleet member.
+        [ -e "$repo/.git" ] || continue
+        # A .git entry git cannot read (damaged, a pruned worktree record,
+        # "dubious ownership"), or git itself failing. That is a repository,
+        # so say so and fail the run; its file is neither checked nor changed.
+        found=1
+        problems=1
+        printf '%s\t%s\tunreadable: git exit %s: %s\n' \
+            "$repo_name" "$filename" "$git_rc" "${git_err%%$'\n'*}"
+        continue
+    fi
+    found=1
     target="$repo/$filename"
     output="$("$SYNC" --check "$target" 2>&1)"
     state="${output%%:*}"

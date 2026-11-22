@@ -51,6 +51,18 @@ with tempfile.TemporaryDirectory(prefix="shared-fleet-") as tmp:
     leftover_agents = "Read CLAUDE.md first.\n"
     (behind / "AGENTS.md").write_text(leftover_agents)
 
+    # A repository git cannot read: a .git entry pointing at a record that is
+    # gone, as a pruned linked worktree leaves behind. It must be reported,
+    # never skipped like a plain directory.
+    damaged = fleet_root / "damaged"
+    damaged.mkdir()
+    (damaged / ".git").write_text("gitdir: /nonexistent/.git/worktrees/damaged\n")
+    damaged_text = "# Damaged, no block\n"
+    (damaged / "CLAUDE.md").write_text(damaged_text)
+    plain = fleet_root / "plain-directory"
+    plain.mkdir()
+    (plain / "CLAUDE.md").write_text("# Not a repository\n")
+
     canonical.write_text("## Shared conventions\n\n- New canonical rule\n")
     subprocess.run([str(SYNC), "--apply", str(current / "CLAUDE.md")],
                    env=env, check=True, capture_output=True, text=True)
@@ -67,6 +79,10 @@ with tempfile.TemporaryDirectory(prefix="shared-fleet-") as tmp:
     check("dry-run reports tampered", "tampered\tCLAUDE.md\ttampered" in audit.stdout)
     check("dry-run reports absent", "absent\tCLAUDE.md\tabsent" in audit.stdout)
     check("tampered audit exits nonzero", audit.returncode == 1, audit.stdout)
+    check("dry-run reports a repository git cannot read",
+          "damaged\tCLAUDE.md\tunreadable: git exit 128" in audit.stdout, audit.stdout)
+    check("a plain directory is still left out",
+          "plain-directory" not in audit.stdout, audit.stdout)
     check("dry-run changes no files", before == after)
 
     applied = subprocess.run([str(FLEET), "--apply"], env=env,
@@ -80,6 +96,11 @@ with tempfile.TemporaryDirectory(prefix="shared-fleet-") as tmp:
           "AGENTS.md" not in applied.stdout + audit.stdout
           and (behind / "AGENTS.md").read_text() == leftover_agents)
     check("apply does not create absent files", not (absent / "CLAUDE.md").exists())
+    check("apply reports the unreadable repository and leaves its file alone",
+          "damaged\tCLAUDE.md\tunreadable: git exit 128" in applied.stdout
+          and (damaged / "CLAUDE.md").read_text() == damaged_text, applied.stdout)
+    check("apply with an unreadable repository exits nonzero",
+          applied.returncode == 1, applied.stdout)
     check("apply makes no commits",
           all(not (path / ".git/refs/heads/main").exists() and
               not (path / ".git/refs/heads/master").exists()
@@ -91,6 +112,39 @@ with tempfile.TemporaryDirectory(prefix="shared-fleet-") as tmp:
                                    env=env, capture_output=True, text=True)
     check("updated behind block is current", behind_check.returncode == 0)
     check("updated missing block is current", missing_check.returncode == 0)
+
+with tempfile.TemporaryDirectory(prefix="shared-fleet-lone-") as tmp:
+    base = Path(tmp)
+    fleet_root = base / "src"
+    lone = fleet_root / "lone"
+    lone.mkdir(parents=True)
+    (lone / ".git").write_text("gitdir: /nonexistent/.git/worktrees/lone\n")
+    canonical = base / "canonical.md"
+    canonical.write_text("## Shared conventions\n\n- Original rule\n")
+    env = dict(os.environ, CLAUDE_MD_SHARED=str(canonical),
+               SHARED_FLEET_ROOT=str(fleet_root), SYNC_SHARED_MD=str(SYNC))
+    alone = subprocess.run([str(FLEET)], env=env, capture_output=True, text=True)
+    check("an unreadable repository alone exits nonzero",
+          alone.returncode == 1 and "lone\tCLAUDE.md\tunreadable" in alone.stdout,
+          alone.stdout + alone.stderr)
+    check("an unreadable repository is not 'no git repositories found'",
+          "no git repositories found" not in alone.stderr, alone.stderr)
+
+    # git itself failing (missing, or the Xcode license prompt) must not read
+    # as an empty fleet either: every directory holding a .git is reported.
+    fake_bin = base / "bin"
+    fake_bin.mkdir()
+    fake_git = fake_bin / "git"
+    fake_git.write_text("#!/bin/sh\necho 'git: broken for this test' >&2\n"
+                        "echo 'second line' >&2\nexit 69\n")
+    fake_git.chmod(0o755)
+    broken_env = dict(env, PATH=f"{fake_bin}:{env['PATH']}")
+    broken = subprocess.run([str(FLEET)], env=broken_env, capture_output=True, text=True)
+    check("a failing git reports the repository with git's own words",
+          broken.returncode == 1
+          and "lone\tCLAUDE.md\tunreadable: git exit 69: git: broken for this test\n"
+          in broken.stdout and "second line" not in broken.stdout,
+          broken.stdout + broken.stderr)
 
 if failures:
     sys.exit(f"{len(failures)} failures: {failures}")
