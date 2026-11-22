@@ -49,7 +49,8 @@ for repo in "$ROOT"/*; do
     git_err="$(git -C "$repo" rev-parse --is-inside-work-tree 2>&1 >/dev/null)" || git_rc=$?
     if [ "$git_rc" -ne 0 ]; then
         # No .git entry: a plain directory, not a fleet member.
-        [ -e "$repo/.git" ] || continue
+        # -L as well: -e is false for a .git that is a dangling symlink.
+        [ -e "$repo/.git" ] || [ -L "$repo/.git" ] || continue
         # A .git entry git cannot read (damaged, a pruned worktree record,
         # "dubious ownership"), or git itself failing. That is a repository,
         # so say so and fail the run; its file is neither checked nor changed.
@@ -84,6 +85,8 @@ for repo in "$ROOT"/*; do
 done
 
 if [ "$found" = 0 ]; then
+    # An empty inventory is a failure, not a clean fleet: a wrong ROOT must not pass.
     echo "sync-shared-fleet: no git repositories found under $ROOT" >&2
+    problems=1
 fi
 exit "$problems"

@@ -123,7 +123,17 @@ with tempfile.TemporaryDirectory(prefix="shared-fleet-lone-") as tmp:
     canonical.write_text("## Shared conventions\n\n- Original rule\n")
     env = dict(os.environ, CLAUDE_MD_SHARED=str(canonical),
                SHARED_FLEET_ROOT=str(fleet_root), SYNC_SHARED_MD=str(SYNC))
+    empty = subprocess.run([str(FLEET), "--check", str(base / "bin-less")],
+                           env=env, capture_output=True, text=True)
+    check("a missing root exits 2", empty.returncode == 2, empty.stderr)
+    (fleet_root / "notes").mkdir()
+    dangling = fleet_root / "dangling"
+    dangling.mkdir()
+    (dangling / ".git").symlink_to(base / "gone" / ".git")
     alone = subprocess.run([str(FLEET)], env=env, capture_output=True, text=True)
+    check("a .git that is a dangling symlink is reported, not skipped",
+          "dangling\tCLAUDE.md\tunreadable: git exit 128" in alone.stdout,
+          alone.stdout + alone.stderr)
     check("an unreadable repository alone exits nonzero",
           alone.returncode == 1 and "lone\tCLAUDE.md\tunreadable" in alone.stdout,
           alone.stdout + alone.stderr)
@@ -145,6 +155,16 @@ with tempfile.TemporaryDirectory(prefix="shared-fleet-lone-") as tmp:
           and "lone\tCLAUDE.md\tunreadable: git exit 69: git: broken for this test\n"
           in broken.stdout and "second line" not in broken.stdout,
           broken.stdout + broken.stderr)
+
+with tempfile.TemporaryDirectory(prefix="shared-fleet-empty-") as tmp:
+    fleet_root = Path(tmp) / "src"
+    (fleet_root / "notes").mkdir(parents=True)
+    env = dict(os.environ, SHARED_FLEET_ROOT=str(fleet_root), SYNC_SHARED_MD=str(SYNC))
+    nothing = subprocess.run([str(FLEET)], env=env, capture_output=True, text=True)
+    check("a root with no repositories exits nonzero and says so",
+          nothing.returncode == 1 and nothing.stdout == ""
+          and "no git repositories found" in nothing.stderr,
+          nothing.stdout + nothing.stderr)
 
 if failures:
     sys.exit(f"{len(failures)} failures: {failures}")

@@ -133,7 +133,8 @@ local edits or malformed markers (`tampered`); apply refuses tampered blocks. Us
 `sync-shared-fleet.sh` for a read-only tab-separated inventory of both files across
 repositories under `~/src`. Its explicit `--apply` mode updates only verified
 `behind` or `missing` blocks; it never creates absent files, commits, or pushes.
-A repository git cannot read is listed as `unreadable` and the run exits nonzero.
+A repository git cannot read is listed as `unreadable` and the run exits nonzero,
+as does a root that holds no repositories at all.
 
 `/review [N] [project] [-v]` — session review across projects for last N days (default: 7), optional verbose mode for non-technical audience
 
