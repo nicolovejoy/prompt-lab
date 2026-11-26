@@ -144,8 +144,10 @@ with tempfile.TemporaryDirectory(prefix="shared-fleet-") as tmp:
     fossil_checks = [subprocess.run([str(SYNC), "--check", str(path / "CLAUDE.md")],
                                     env=env, capture_output=True, text=True)
                      for path in (fossil_behind, fossil_missing, fossil_old)]
-    check("a Fossil checkout's applied block is current by --check",
-          fossil_checks[0].returncode == 0 and fossil_checks[1].returncode == 0,
+    check("apply updates the _FOSSIL_ checkout's file too",
+          "fossil-old\tCLAUDE.md\tmissing -> updated\tfossil\n" in applied.stdout, applied.stdout)
+    check("every Fossil checkout's applied block is current by --check",
+          all(c.returncode == 0 for c in fossil_checks),
           str([c.stdout + c.stderr for c in fossil_checks]))
     check("Fossil handling never runs the fossil command", not sentinel.exists())
     check("apply reports the unreadable repository and leaves its file alone",
@@ -244,8 +246,8 @@ with tempfile.TemporaryDirectory(prefix="shared-fleet-fossil-") as tmp:
     check("an unreadable .git beside a Fossil marker is reported unreadable",
           mixed.returncode == 1
           and "both\tCLAUDE.md\tunreadable: git exit 128" in mixed.stdout
-          and "both\tCLAUDE.md\t" in mixed.stdout and "fossil" not in
-          [l for l in mixed.stdout.splitlines() if l.startswith("both\t")][0],
+          and not [l for l in mixed.stdout.splitlines()
+                   if l.startswith("both\t")][0].endswith("\tfossil"),
           mixed.stdout + mixed.stderr)
 
     # Without git on PATH (rc 127) a Fossil checkout is still listed.
