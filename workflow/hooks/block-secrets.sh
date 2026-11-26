@@ -308,7 +308,7 @@ case "$TOOL" in
     # may follow a quote mark but not a slash: "/." ends a path.
     # Writers (cp, mv, touch, test -f, op inject -o) with no reader verb pass.
     READER='((^|[|;&(!\\/"`'"'"']|\s)('"$VERBS"')|(^|[|;&("`'"'"']|\s)\.)\s'
-    if echo "$CMD" | grep -qE "$READER" 2>/dev/null && cmd_mentions_secret_file "$CMD"; then
+    if grep -qE "$READER" <<<"$CMD" 2>/dev/null && cmd_mentions_secret_file "$CMD"; then
       block "Shell command reads a secret file"
     fi
     # Redirect-in from a secret file: < .env, < .env.local, <.env
@@ -319,37 +319,37 @@ case "$TOOL" in
     done
 
     # --- ~/secrets and ~/.secrets: contents never, listing OK ---
-    if echo "$CMD" | grep -qE "$READER"'.*(~|\$HOME|\$\{HOME\}|/Users/[^/]+)/\.?secrets' 2>/dev/null; then
+    if grep -qE "$READER"'.*(~|\$HOME|\$\{HOME\}|/Users/[^/]+)/\.?secrets' <<<"$CMD" 2>/dev/null; then
       block "Shell command reads file in secrets dir — ask the user to handle it directly"
     fi
 
     # --- 1Password CLI ---
     # Still blocked, always: anything whose purpose is to PRINT a secret value.
-    if echo "$CMD" | grep -qE '\bop\s+read\b' 2>/dev/null; then
+    if grep -qE '\bop\s+read\b' <<<"$CMD" 2>/dev/null; then
       block "op read prints a secret value — suggest the user run it manually"
     fi
-    if echo "$CMD" | grep -qE '\bop\s+item\s+(get|delete)\b' 2>/dev/null; then
+    if grep -qE '\bop\s+item\s+(get|delete)\b' <<<"$CMD" 2>/dev/null; then
       block "op item get/delete — suggest the user run it manually"
     fi
-    if echo "$CMD" | grep -qE '\bop\b.*--reveal' 2>/dev/null; then
+    if grep -qE '\bop\b.*--reveal' <<<"$CMD" 2>/dev/null; then
       block "op --reveal prints secret values"
     fi
-    if echo "$CMD" | grep -qE '\bop\s+item\s+(create|edit)\b.*--format' 2>/dev/null; then
+    if grep -qE '\bop\s+item\s+(create|edit)\b.*--format' <<<"$CMD" 2>/dev/null; then
       block "op item create/edit with --format prints field values"
     fi
     # op inject: allowed only when writing to a file (-o / --out-file). Without
     # it, the materialized secrets go to stdout.
-    if echo "$CMD" | grep -qE '\bop\s+inject\b' 2>/dev/null; then
-      if ! echo "$CMD" | grep -qE '\bop\s+inject\b[^|;&]*(\s-o\s|--out-file[ =])' 2>/dev/null; then
+    if grep -qE '\bop\s+inject\b' <<<"$CMD" 2>/dev/null; then
+      if ! grep -qE '\bop\s+inject\b[^|;&]*(\s-o\s|--out-file[ =])' <<<"$CMD" 2>/dev/null; then
         block "op inject without -o would print secrets — add -o <file>"
       fi
     fi
     # op run: secrets go into the child's environment, not the transcript. Block
     # only if the child command obviously dumps the environment.
-    if echo "$CMD" | grep -qE '\bop\s+run\b' 2>/dev/null; then
+    if grep -qE '\bop\s+run\b' <<<"$CMD" 2>/dev/null; then
       CHILD="${CMD#*op run}"
       CHILD="${CHILD#* -- }"
-      if echo "$CHILD" | grep -qE '(^|[|;&(]|\s)(env|printenv)(\s|$)|\bexport\s+-p\b|\bdeclare\s+-[xp]\b|\becho\b[^|;&]*\$' 2>/dev/null; then
+      if grep -qE '(^|[|;&(]|\s)(env|printenv)(\s|$)|\bexport\s+-p\b|\bdeclare\s+-[xp]\b|\becho\b[^|;&]*\$' <<<"$CHILD" 2>/dev/null; then
         block "op run child command would print environment variables"
       fi
     fi
