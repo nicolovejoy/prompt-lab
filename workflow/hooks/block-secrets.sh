@@ -21,6 +21,14 @@
 # by heredoc (heredoc bodies are not scanned) or from a file. Every word is also
 # expanded as a wildcard, quoted or not, with one exception: a bare .* inside
 # a quoted search pattern, which is not a file list (see mark_quoted_stars).
+#
+# Matching: every `grep -q` reads its text from a here-string (`<<<"$CMD"`),
+# never from `echo "$CMD" | grep -q`. Under pipefail, grep -q exiting at an
+# early match kills the echo, and the SIGPIPE status read as "no match": a
+# secret read followed by ~200 KB of filler was allowed (fixed 2026-11-26).
+# Known limit: a here-string needs a temp file (bash 3.2 always, bash 5 above
+# the pipe size), so an unwritable $TMPDIR makes the check fail open, as a
+# grep error already does.
 
 set -euo pipefail
 

@@ -290,9 +290,9 @@ cat .env'
 
 # A match on an early line, then a long tail: grep -q exits at the first line
 # and the writer is killed mid-write. Under pipefail, `echo "$CMD" | grep -q`
-# then reads as "no match" and the block is silently skipped. The `op` rules
-# are the only check that can catch the first two (cat .env is also caught
-# by other rules), so they are the ones that prove the point.
+# then reads as "no match" and the block is silently skipped. Each case below
+# is caught by exactly one rule (the op rules, then the READER check for
+# cat .env), so each one proves the point for its rule.
 echo "# must BLOCK: a command of 200 KB (early match, long tail; SIGPIPE must not read as no match)"
 BIG="$(head -c 200000 /dev/zero | tr '\0' 'x')"
 run block "op read op://v/i/f
