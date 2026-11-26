@@ -89,6 +89,11 @@ jobs:
       - name: Recap command tests
         run: python scripts/test_recap.py
 
+      - name: block-secrets hook tests
+        run: |
+          command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq jq; }
+          bash workflow/hooks/test-block-secrets.sh
+
   deploy:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

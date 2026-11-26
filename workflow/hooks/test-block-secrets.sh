@@ -1,12 +1,13 @@
 #!/bin/bash
-# Usage: test-block-secrets.sh <hook-script>
+# Usage: test-block-secrets.sh [hook-script]   (default: block-secrets.sh beside this file)
 # Feeds sample Bash commands through the hook and prints PASS/FAIL per case.
 # Each case: expected (allow|block) then the command.
 #
 # Every case runs from a temporary directory that holds an EMPTY file named
 # .env, because the hook expands wildcards against its working directory and a
 # real project directory has one. Nothing here reads a real secret.
-HOOK="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"; ok=0; bad=0
+HOOK_ARG="${1:-$(dirname "$0")/block-secrets.sh}"
+HOOK="$(cd "$(dirname "$HOOK_ARG")" && pwd)/$(basename "$HOOK_ARG")"; ok=0; bad=0
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 : > "$WORK/.env"; : > "$WORK/.gitignore"; : > "$WORK/README.md"
 cd "$WORK" || exit 1
@@ -14,8 +15,9 @@ run() {
   local expect="$1" cmd="$2" rc
   printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(printf '%s' "$cmd" | jq -Rs .)" \
     | bash "$HOOK" >/dev/null 2>&1 && rc=allow || rc=block
-  if [ "$rc" = "$expect" ]; then ok=$((ok+1)); printf '  ok    %-5s  %s\n' "$expect" "$cmd"
-  else bad=$((bad+1)); printf '  FAIL  want %-5s got %-5s  %s\n' "$expect" "$rc" "$cmd"; fi
+  local shown="$cmd"; [ "${#cmd}" -gt 300 ] && shown="${cmd:0:80}... (${#cmd} bytes)"
+  if [ "$rc" = "$expect" ]; then ok=$((ok+1)); printf '  ok    %-5s  %s\n' "$expect" "$shown"
+  else bad=$((bad+1)); printf '  FAIL  want %-5s got %-5s  %s\n' "$expect" "$rc" "$shown"; fi
 }
 
 echo "# must still BLOCK"
@@ -285,6 +287,21 @@ run block "echo \\' ; cat .* ; echo \\'"
 echo "# must BLOCK: a here-string is not a heredoc"
 run block 'grep -q x <<<y
 cat .env'
+
+# A match on an early line, then a long tail: grep -q exits at the first line
+# and the writer is killed mid-write. Under pipefail, `echo "$CMD" | grep -q`
+# then reads as "no match" and the block is silently skipped. Each case below
+# is caught by exactly one rule (the op rules, then the READER check for
+# cat .env), so each one proves the point for its rule.
+echo "# must BLOCK: a command of 200 KB (early match, long tail; SIGPIPE must not read as no match)"
+BIG="$(head -c 200000 /dev/zero | tr '\0' 'x')"
+run block "op read op://v/i/f
+echo $BIG"
+run block "op item get x --vault v
+echo $BIG"
+run block "cat .env
+echo $BIG"
+run allow "echo $BIG"
 
 echo
 echo "passed=$ok failed=$bad"
