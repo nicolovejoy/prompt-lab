@@ -1,6 +1,8 @@
 """
 scripts/test_session_context.py — verify session-context.sh and
 session-start.sh agree, and that session-context.sh's own guard clauses work.
+Hermetic: every run uses a throwaway HOME and fixture checkouts under it, so it
+needs no particular repo location and never touches the real ~/.claude.
 
 Standalone runner (this repo doesn't use pytest — see CLAUDE.md Testing section).
 """
@@ -19,17 +21,44 @@ REPO_DIR = subprocess.run(
 
 failures = []
 
+# Hermetic by construction: every run below gets a throwaway HOME (the script
+# reads only $HOME, plus HANDOFF_* overrides), and the cwd is a fixture git
+# checkout under $HOME/src. Nothing touches the real ~/.claude (no history DB,
+# no nudge stamp) and the test does not care where the repo is checked out, so
+# it runs in CI. Inherited HANDOFF_*/GIT_* variables are scrubbed so a developer
+# shell cannot change the outcome.
+_TMP = tempfile.TemporaryDirectory()
+ROOT = pathlib.Path(_TMP.name).resolve()
+HOME_DIR = ROOT / "home"
+PROJECT = "fixture-proj"
+CHECKOUT = HOME_DIR / "src" / PROJECT
+CHECKOUT.mkdir(parents=True)
+_GIT_ID = ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid"]
+subprocess.run(["git", "init", "-q"], cwd=CHECKOUT, check=True, capture_output=True)
+(CHECKOUT / "a.txt").write_text("a\n")
+subprocess.run(["git", "add", "a.txt"], cwd=CHECKOUT, check=True, capture_output=True)
+subprocess.run(["git", *_GIT_ID, "commit", "-q", "-m", "fixture first commit"],
+               cwd=CHECKOUT, check=True, capture_output=True)
+(CHECKOUT / "dirty.txt").write_text("x\n")  # an untracked file for "Uncommitted:"
+
+
+def hermetic_env(home=None, **extra):
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith(("HANDOFF_", "GIT_"))}
+    env["HOME"] = str(home or HOME_DIR)
+    env.update(extra)
+    return env
+
+
 # The "neglected custom commands" nudge in session-context.sh is
 # self-extinguishing: if the nudge stamp is >7 days stale and a command
 # qualifies, whichever of the two invocations below runs first emits the
-# nudge text AND touches the stamp, so the second invocation won't see it —
-# making the two outputs differ and flaking the startswith assertion below
-# about once a week. Freshen (or create) the stamp right before both
-# invocations so they see identical "not yet due" nudge-eligibility state.
-NUDGE_STAMP = pathlib.Path.home() / ".claude" / "state" / "commands-nudge.touch"
+# nudge text AND touches the stamp, so the second invocation won't see it,
+# making the two outputs differ. The fixture HOME has no ~/.claude/commands, so
+# the nudge cannot fire in sections 1-5; section 7 covers the nudge itself.
+NUDGE_STAMP = HOME_DIR / ".claude" / "state" / "commands-nudge.touch"
 NUDGE_STAMP.parent.mkdir(parents=True, exist_ok=True)
 NUDGE_STAMP.touch(exist_ok=True)
-os.utime(NUDGE_STAMP, None)
 
 
 def check(name, condition, detail=""):
@@ -41,24 +70,28 @@ def check(name, condition, detail=""):
 
 # 1. session-context.sh run standalone from the repo root produces non-empty
 #    output containing the expected field labels.
+CTX_SH = f"{REPO_DIR}/workflow/bin/session-context.sh"
+HOOK_SH = f"{REPO_DIR}/workflow/hooks/session-start.sh"
 ctx_result = subprocess.run(
-    ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True
+    [CTX_SH], cwd=CHECKOUT, capture_output=True, text=True, env=hermetic_env()
 )
 check("session-context.sh exits 0", ctx_result.returncode == 0)
 ctx_out = ctx_result.stdout
 check("session-context.sh output non-empty", len(ctx_out.strip()) > 0)
-for label in ("Today:", "Machine:", "Project:", "Working dir:"):
+for label in ("Today:", "Machine:", f"Project: {PROJECT}", f"Working dir: {CHECKOUT}",
+              "Recent commits:\n", "fixture first commit", "Uncommitted:\n", "dirty.txt"):
     check(f"session-context.sh output contains '{label}'", label in ctx_out)
 
 # 2. session-start.sh's JSON output wraps EXACTLY session-context.sh's stdout
 #    plus the readup nudge sentence — i.e. the hook is a thin wrapper, not a
 #    second copy of the gathering logic.
 hook_result = subprocess.run(
-    ["workflow/hooks/session-start.sh"],
-    cwd=REPO_DIR,
+    [HOOK_SH],
+    cwd=CHECKOUT,
     input="{}",
     capture_output=True,
     text=True,
+    env=hermetic_env(),
 )
 check("session-start.sh exits 0", hook_result.returncode == 0)
 try:
@@ -85,9 +118,7 @@ check(
 
 # 3. Guard clause: outside ~/src/*, session-context.sh prints nothing.
 outside_result = subprocess.run(
-    ["bash", "-c", f'cd /tmp && "{REPO_DIR}/workflow/bin/session-context.sh"'],
-    capture_output=True,
-    text=True,
+    [CTX_SH], cwd=ROOT, capture_output=True, text=True, env=hermetic_env()
 )
 check("session-context.sh silent outside ~/src/*", outside_result.stdout == "")
 
@@ -95,10 +126,7 @@ check("session-context.sh silent outside ~/src/*", outside_result.stdout == "")
 #    (guard fails), session-start.sh exits 0 with zero stdout (no JSON) to
 #    preserve the exact old behavior when the guard fails.
 hook_outside_result = subprocess.run(
-    ["bash", "-c", f'cd /tmp && "{REPO_DIR}/workflow/hooks/session-start.sh"'],
-    input="{}",
-    capture_output=True,
-    text=True,
+    [HOOK_SH], input="{}", cwd=ROOT, capture_output=True, text=True, env=hermetic_env()
 )
 check("session-start.sh produces zero stdout outside ~/src/*", hook_outside_result.stdout == "")
 check("session-start.sh exits 0 outside ~/src/*", hook_outside_result.returncode == 0)
@@ -107,7 +135,7 @@ check("session-start.sh exits 0 outside ~/src/*", hook_outside_result.returncode
 #    ~/src/.handoff with one channel matching this repo's basename and three
 #    entries: fresh, stale, and fresh-with-a-multiline-body. Bodies must never
 #    reach the output (they were 99% of a 194 KB injection on 2026-09-13).
-project = os.path.basename(REPO_DIR)
+project = PROJECT
 fresh = (datetime.date.today() - datetime.timedelta(days=3)).isoformat()
 stale = (datetime.date.today() - datetime.timedelta(days=90)).isoformat()
 with tempfile.TemporaryDirectory() as td:
@@ -128,9 +156,9 @@ with tempfile.TemporaryDirectory() as td:
         "## Archived\n\n"
         f"### {fresh} peer → {project}: ARCHIVED_HEADLINE\n"
     )
-    env = dict(os.environ, HANDOFF_DIR=str(hd), HANDOFF_BIN="/nonexistent/handoff.sh")
+    env = hermetic_env(HANDOFF_DIR=str(hd), HANDOFF_BIN="/nonexistent/handoff.sh")
     r = subprocess.run(
-        ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True, env=env
+        [CTX_SH], cwd=CHECKOUT, capture_output=True, text=True, env=env
     )
     out = r.stdout
     check("handoff: script exits 0 with fake channel", r.returncode == 0, r.stderr[-300:])
@@ -145,7 +173,7 @@ with tempfile.TemporaryDirectory() as td:
     # Window is overridable (so a repo can widen it) — with 100 days the stale one shows.
     env2 = dict(env, HANDOFF_HEADLINE_DAYS="100")
     out2 = subprocess.run(
-        ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True, env=env2
+        [CTX_SH], cwd=CHECKOUT, capture_output=True, text=True, env=env2
     ).stdout
     check("handoff: HANDOFF_HEADLINE_DAYS widens the window", "STALE_HEADLINE" in out2)
     check("handoff: widened header counts", "3 active entries, 3 newer than 100d" in out2)
@@ -154,7 +182,7 @@ with tempfile.TemporaryDirectory() as td:
     # every entry ever written (empty cutoff from a failed `date` call).
     env_bad = dict(env, HANDOFF_HEADLINE_DAYS="abc")
     out_bad = subprocess.run(
-        ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True, env=env_bad
+        [CTX_SH], cwd=CHECKOUT, capture_output=True, text=True, env=env_bad
     ).stdout
     check("handoff: non-numeric HANDOFF_HEADLINE_DAYS falls back to 30d", "newer than 30d" in out_bad)
 
@@ -162,7 +190,7 @@ with tempfile.TemporaryDirectory() as td:
     # count) so an old-but-unarchived backlog stays visible — just no headlines.
     env3 = dict(env, HANDOFF_HEADLINE_DAYS="1")
     out3 = subprocess.run(
-        ["workflow/bin/session-context.sh"], cwd=REPO_DIR, capture_output=True, text=True, env=env3
+        [CTX_SH], cwd=CHECKOUT, capture_output=True, text=True, env=env3
     ).stdout
     check("handoff: M==0 header still prints", f"peer-{project}.md: 3 active entries, 0 newer than 1d" in out3)
     check(
@@ -193,8 +221,8 @@ with tempfile.TemporaryDirectory() as td:
     )
     fossil.chmod(0o755)
     script = f"{REPO_DIR}/workflow/bin/session-context.sh"
-    env = dict(os.environ, HOME=str(home), PATH=f"{fakebin}:{os.environ['PATH']}",
-               HANDOFF_DIR=str(home / "no-handoff"))
+    env = hermetic_env(home, PATH=f"{fakebin}:{os.environ['PATH']}",
+                       HANDOFF_DIR=str(home / "no-handoff"))
 
     r = subprocess.run([script], cwd=checkout, capture_output=True, text=True, env=env)
     out = r.stdout
@@ -260,6 +288,28 @@ with tempfile.TemporaryDirectory() as td:
                            env=dict(env, PATH=bare))
         check("fossil missing: says commits and files were NOT read",
               "were NOT read" in r.stdout and "Recent commits:" not in r.stdout, r.stdout[:400])
+
+# 7. The weekly nudge for neglected custom commands, in a throwaway HOME: it
+#    fires once for a command with no history, touches its stamp, and then stays
+#    quiet. Exercises the GNU `date -d` fallback on Linux.
+with tempfile.TemporaryDirectory() as td:
+    home = pathlib.Path(td).resolve() / "home"
+    (home / "src" / PROJECT).mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=home / "src" / PROJECT, check=True, capture_output=True)
+    cmds = home / ".claude" / "commands"
+    cmds.mkdir(parents=True)
+    (cmds / "oldcmd.md").write_text("---\ndescription: An unused fixture command\n---\nbody\n")
+    stamp = home / ".claude" / "state" / "commands-nudge.touch"
+    env = hermetic_env(home)
+    cwd = home / "src" / PROJECT
+    r = subprocess.run([CTX_SH], cwd=cwd, capture_output=True, text=True, env=env)
+    check("nudge: fires for a command with no history",
+          "/oldcmd \u2014 An unused fixture command (never used)" in r.stdout, r.stdout[-300:])
+    check("nudge: touches its stamp in the fixture HOME", stamp.exists())
+    r = subprocess.run([CTX_SH], cwd=cwd, capture_output=True, text=True, env=env)
+    check("nudge: quiet while the stamp is fresh", "oldcmd" not in r.stdout, r.stdout[-300:])
+
+_TMP.cleanup()
 
 print()
 if failures:

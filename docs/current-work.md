@@ -13,7 +13,6 @@ Trimmed 2026-11-14; the long version is this file's git history.
   - A file printed by a command that is not on the reader list: `cp .env /dev/stdout`, `diff`, `jq -R`, `dd`, `tac`, `nl`, `paste`, `git diff --no-index`. Also a reader the list cannot see: `$(which cat) .env`, `{cat,.env}`.
   - `echo "$CMD" | grep -q` under `pipefail` can die of SIGPIPE on a command of tens of KB and read as no match.
   - The hook's test is not in CI: it needs `jq`, and the hook's `grep` and `sed` use is only proven on macOS.
-- **Left by the unreadable-repository fix (2026-11-21).** `scripts/test_session_context.py` is not in the CI gate: it only works from under `~/src` and touches the real nudge stamp in `~/.claude/state`. `sync-shared-fleet.sh` now lists a Fossil checkout (marker `.fslckout` or `_FOSSIL_` in the directory) as a fleet member, with a fourth `fossil` column, and checks or applies its `CLAUDE.md` like a git repo's. Neither kind gets a clean-tree test and the script never calls `fossil`; an apply leaves the edit uncommitted. ear-worm has no `CLAUDE.md`, so it reports `absent` and nothing is created.
 - **Review emails after the design pass.** Read a few built since 2026-11-05 and judge the layout.
 - **ntz-conveyor in `~/src/mini-rescue/`.** Kept until person-tracking confirms its gitignored `db.sqlite3` data lives elsewhere (asked 2026-11-03).
 - **Open issues:** #43 sign-ins panel (waits on a second reader), #9 beacon fan-out, #85 second language for `/localize`.
