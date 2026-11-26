@@ -133,8 +133,10 @@ local edits or malformed markers (`tampered`); apply refuses tampered blocks. Us
 `sync-shared-fleet.sh` for a read-only tab-separated inventory of every `CLAUDE.md` across
 repositories under `~/src`. Its explicit `--apply` mode updates only verified
 `behind` or `missing` blocks; it never creates absent files, commits, or pushes.
+A Fossil checkout (no `.git`, a `.fslckout` or `_FOSSIL_` file in the directory) is a
+member too; its lines carry a fourth `fossil` column.
 A repository git cannot read is listed as `unreadable` and the run exits nonzero,
-as does a root that holds no repositories at all.
+as does a root that holds no repositories or checkouts at all.
 
 `/review [N] [project] [-v]` — session review across projects for last N days (default: 7), optional verbose mode for non-technical audience
 

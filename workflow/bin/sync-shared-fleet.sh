@@ -11,6 +11,14 @@
 # A directory with a .git entry that git cannot read is reported as `unreadable`
 # and the run exits nonzero. It is never skipped as if it were a plain directory.
 #
+# A Fossil checkout (marker file .fslckout, or _FOSSIL_ on older and Windows
+# checkouts, directly in the directory: the same marker _gc_project.sh looks
+# for) is a fleet member too. Its lines carry a fourth tab-separated column,
+# `fossil`. Nothing here asks the VCS anything: the check and apply act on
+# CLAUDE.md alone, and git members get no clean-tree or tracked-file test
+# either, so Fossil needs no `fossil` binary and gets none. An apply leaves
+# the edit uncommitted, as it does in git. Git wins when both apply.
+#
 # Usage: sync-shared-fleet.sh [--check|--apply] [ROOT]
 # ROOT defaults to ~/src. SHARED_FLEET_ROOT and SYNC_SHARED_MD may override the
 # root and single-file helper for isolated tests.
@@ -46,11 +54,20 @@ for repo in "$ROOT"/*; do
     repo_name="$(basename "$repo")"
     filename=CLAUDE.md
     git_rc=0
+    vcs_note=""
     git_err="$(git -C "$repo" rev-parse --is-inside-work-tree 2>&1 >/dev/null)" || git_rc=$?
     if [ "$git_rc" -ne 0 ]; then
-        # No .git entry: a plain directory, not a fleet member.
-        # -L as well: -e is false for a .git that is a dangling symlink.
-        [ -e "$repo/.git" ] || [ -L "$repo/.git" ] || continue
+        if [ ! -e "$repo/.git" ] && [ ! -L "$repo/.git" ]; then
+            # No .git entry. A Fossil checkout is a member; anything else is a
+            # plain directory. (-L above: -e is false for a dangling symlink.)
+            if [ -f "$repo/.fslckout" ] || [ -f "$repo/_FOSSIL_" ]; then
+                vcs_note="$(printf '\tfossil')"
+            else
+                continue
+            fi
+        fi
+    fi
+    if [ "$git_rc" -ne 0 ] && [ -z "$vcs_note" ]; then
         # A .git entry git cannot read (damaged, a pruned worktree record,
         # "dubious ownership"), or git itself failing. That is a repository,
         # so say so and fail the run; its file is neither checked nor changed.
@@ -73,20 +90,20 @@ for repo in "$ROOT"/*; do
     if [ "$MODE" = "--apply" ] && { [ "$state" = behind ] || [ "$state" = missing ]; }; then
         apply_output="$("$SYNC" --apply "$target" 2>&1)"
         if [ $? -eq 0 ]; then
-            printf '%s\t%s\t%s -> updated\n' "$repo_name" "$filename" "$state"
+            printf '%s\t%s\t%s -> updated%s\n' "$repo_name" "$filename" "$state" "$vcs_note"
         else
-            printf '%s\t%s\terror: %s\n' "$repo_name" "$filename" "$apply_output"
+            printf '%s\t%s\terror: %s%s\n' "$repo_name" "$filename" "$apply_output" "$vcs_note"
             problems=1
         fi
     else
-        printf '%s\t%s\t%s\n' "$repo_name" "$filename" "$state"
+        printf '%s\t%s\t%s%s\n' "$repo_name" "$filename" "$state" "$vcs_note"
         [ "$state" = tampered ] && problems=1
     fi
 done
 
 if [ "$found" = 0 ]; then
     # An empty inventory is a failure, not a clean fleet: a wrong ROOT must not pass.
-    echo "sync-shared-fleet: no git repositories found under $ROOT" >&2
+    echo "sync-shared-fleet: no git or Fossil checkouts found under $ROOT" >&2
     problems=1
 fi
 exit "$problems"
