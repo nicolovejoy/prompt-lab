@@ -246,8 +246,8 @@ with tempfile.TemporaryDirectory(prefix="shared-fleet-fossil-") as tmp:
     check("an unreadable .git beside a Fossil marker is reported unreadable",
           mixed.returncode == 1
           and "both\tCLAUDE.md\tunreadable: git exit 128" in mixed.stdout
-          and not [l for l in mixed.stdout.splitlines()
-                   if l.startswith("both\t")][0].endswith("\tfossil"),
+          and not [ln for ln in mixed.stdout.splitlines()
+                   if ln.startswith("both\t")][0].endswith("\tfossil"),
           mixed.stdout + mixed.stderr)
 
     # Without git on PATH (rc 127) a Fossil checkout is still listed.
