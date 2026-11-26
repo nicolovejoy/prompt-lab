@@ -56,6 +56,9 @@ jobs:
           python scripts/test_sync_failures.py
           python scripts/test_sync_weekly_window.py
 
+      - name: Session context tests
+        run: python scripts/test_session_context.py
+
       - name: Cost pipeline smoke tests
         run: python scripts/test_cost_pipeline.py
 
