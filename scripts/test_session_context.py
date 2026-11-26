@@ -33,21 +33,26 @@ HOME_DIR = ROOT / "home"
 PROJECT = "fixture-proj"
 CHECKOUT = HOME_DIR / "src" / PROJECT
 CHECKOUT.mkdir(parents=True)
-_GIT_ID = ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid"]
-subprocess.run(["git", "init", "-q"], cwd=CHECKOUT, check=True, capture_output=True)
-(CHECKOUT / "a.txt").write_text("a\n")
-subprocess.run(["git", "add", "a.txt"], cwd=CHECKOUT, check=True, capture_output=True)
-subprocess.run(["git", *_GIT_ID, "commit", "-q", "-m", "fixture first commit"],
-               cwd=CHECKOUT, check=True, capture_output=True)
-(CHECKOUT / "dirty.txt").write_text("x\n")  # an untracked file for "Uncommitted:"
 
 
 def hermetic_env(home=None, **extra):
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("HANDOFF_", "GIT_"))}
     env["HOME"] = str(home or HOME_DIR)
+    # No system or global git config either: gpgsign, hooksPath, safe.directory.
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
     env.update(extra)
     return env
+
+
+_GIT_ID = ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid"]
+subprocess.run(["git", "init", "-q"], cwd=CHECKOUT, check=True, capture_output=True, env=hermetic_env())
+(CHECKOUT / "a.txt").write_text("a\n")
+subprocess.run(["git", "add", "a.txt"], cwd=CHECKOUT, check=True, capture_output=True, env=hermetic_env())
+subprocess.run(["git", *_GIT_ID, "commit", "-q", "-m", "fixture first commit"],
+               cwd=CHECKOUT, check=True, capture_output=True, env=hermetic_env())
+(CHECKOUT / "dirty.txt").write_text("x\n")  # an untracked file for "Uncommitted:"
 
 
 # The "neglected custom commands" nudge in session-context.sh is
@@ -260,7 +265,7 @@ with tempfile.TemporaryDirectory() as td:
     # It used to get no context at all, like a plain folder.
     damaged = home / "src" / "damaged"
     (damaged / "sub").mkdir(parents=True)
-    subprocess.run(["git", "init", "-q"], cwd=damaged, check=True, capture_output=True)
+    subprocess.run(["git", "init", "-q"], cwd=damaged, check=True, capture_output=True, env=env)
     (damaged / ".git" / "HEAD").unlink()
     r = subprocess.run([script], cwd=damaged / "sub", capture_output=True, text=True, env=env)
     check("damaged repo: says context was not produced, and why",
@@ -295,7 +300,8 @@ with tempfile.TemporaryDirectory() as td:
 with tempfile.TemporaryDirectory() as td:
     home = pathlib.Path(td).resolve() / "home"
     (home / "src" / PROJECT).mkdir(parents=True)
-    subprocess.run(["git", "init", "-q"], cwd=home / "src" / PROJECT, check=True, capture_output=True)
+    subprocess.run(["git", "init", "-q"], cwd=home / "src" / PROJECT, check=True,
+                   capture_output=True, env=hermetic_env(home))
     cmds = home / ".claude" / "commands"
     cmds.mkdir(parents=True)
     (cmds / "oldcmd.md").write_text("---\ndescription: An unused fixture command\n---\nbody\n")
